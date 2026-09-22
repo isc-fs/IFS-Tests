@@ -6,24 +6,87 @@
 # ROADMAP.md — the workflow will overwrite any local changes.
 #
 # Schema:
-#   phases: list of phase clusters. Each phase has a number, a title, a
-#           tag applied on dev→main when every branch in the phase has
-#           landed, and a list of planned feat/fix branches. Each branch
-#           has a `name` (exact git branch name) and a short `scope`
-#           sentence used as the commit label in the mermaid diagram.
-#   sidequests: off-roadmap branches kept in the diagram for history
-#               (e.g. infrastructure work that doesn't map to a phase).
+#   title:      H1 heading shown at the top of ROADMAP.md.
+#   intro:      One-paragraph description shown under the heading.
+#   phases:     list of phase clusters. Each phase has a number, a title,
+#               a tag applied on dev→main when every branch in the phase
+#               has landed, and a list of planned feat/fix branches. Each
+#               branch has a `name` (exact git branch name) and a short
+#               `scope` sentence used as the commit label in the mermaid
+#               diagram. Two optional phase-level fields:
+#                 deferred: true  — phase is paused / not yet approved.
+#                                   Every branch shows `⏸ deferred` and the
+#                                   phase is left out of the diagram.
+#                 note: "..."     — one-liner rendered under the phase
+#                                   title in the table.
+#   sidequests: off-roadmap branches kept in the table for history.
 #
-# Replace the TODO entries below with the actual phases and branches for
-# this repository. See isc-fs/stm32-can-bootloader/.github/roadmap.yaml
-# for a fully filled-in example.
+# Branch names in deferred phases are placeholders: the real number is
+# assigned when the branch is cut (last closed issue of that type + 1).
+
+title: IFS-Tests roadmap
+
+intro: |
+  Plan for the team's Formula Student quiz practice system. Each phase
+  is a cluster of feat branches cut from `dev`; a milestone tag on `main`
+  closes the phase once every branch in it has merged. Branch status
+  badges (✅ / 🔄 / 🔜 / ⏸) are derived from each branch's tracking issue
+  state in GitHub Issues.
+
+  Phases 1 and 2 are the groundwork: understand the FS-Quiz data, mirror
+  it, sort it into mechanical and electrical topics, and make it
+  practicable. Phases 3 and 4 (web app, daily question, leaderboard,
+  Notion tracking) are **deferred until the team decides the format**;
+  the options are laid out in `docs/proposals/`.
 
 phases:
   - number: 1
-    title: TODO — first phase title
+    title: Foundations
     tag: v0.1.0
     branches:
-      - name: feat/1-todo-branch-name
-        scope: One-line description of what this branch delivers
+      - name: feat/1-project-scope
+        scope: README, roadmap and agent instructions for the quiz practice system
+      - name: feat/2-fsquiz-client
+        scope: FS-Quiz API v2 client, polite full mirror and API reference
+      - name: feat/3-team-proposal
+        scope: Gamification options deck and ideas doc for the team decision
+
+  - number: 2
+    title: Question bank & practice
+    tag: v0.2.0
+    note: "Offline, no accounts: usable by anyone with the repo"
+    branches:
+      - name: feat/4-topic-taxonomy
+        scope: Reviewed mech / elec (HV, DV, electronics) / rules labels for every question
+      - name: feat/5-mock-quiz
+        scope: Timed mock quiz that replays a real event quiz or a topic mix
+      - name: feat/6-bank-export
+        scope: Versioned export of the labelled bank for the app and for study sessions
+
+  - number: 3
+    title: Team platform
+    tag: v0.3.0
+    deferred: true
+    note: "Pending team decision: format, hosting, sign-in (see docs/proposals)"
+    branches:
+      - name: feat/7-web-app
+        scope: Web app to practise by topic and replay past quizzes
+      - name: feat/8-uni-sign-in
+        scope: Sign-in restricted to university email addresses
+      - name: feat/9-daily-question
+        scope: One question a day per area, with streaks
+      - name: feat/10-leaderboard
+        scope: Individual and department leaderboards
+
+  - number: 4
+    title: Tracking & quiz day
+    tag: v0.4.0
+    deferred: true
+    note: "Pending team decision: what we track and where"
+    branches:
+      - name: feat/11-notion-sync
+        scope: Match users to the Notion members database and push progress
+      - name: feat/12-quiz-day-drill
+        scope: Full-team rehearsal under real registration-quiz conditions
 
 sidequests: []
