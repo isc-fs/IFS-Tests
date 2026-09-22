@@ -1,0 +1,29 @@
+# Source of truth for ROADMAP.md.
+#
+# Edit this file (or close / reopen a tracking issue on GitHub) and the
+# `Render ROADMAP` workflow will regenerate ROADMAP.md with updated
+# status badges and a fresh mermaid branch diagram. Do not hand-edit
+# ROADMAP.md — the workflow will overwrite any local changes.
+#
+# Schema:
+#   phases: list of phase clusters. Each phase has a number, a title, a
+#           tag applied on dev→main when every branch in the phase has
+#           landed, and a list of planned feat/fix branches. Each branch
+#           has a `name` (exact git branch name) and a short `scope`
+#           sentence used as the commit label in the mermaid diagram.
+#   sidequests: off-roadmap branches kept in the diagram for history
+#               (e.g. infrastructure work that doesn't map to a phase).
+#
+# Replace the TODO entries below with the actual phases and branches for
+# this repository. See isc-fs/stm32-can-bootloader/.github/roadmap.yaml
+# for a fully filled-in example.
+
+phases:
+  - number: 1
+    title: TODO — first phase title
+    tag: v0.1.0
+    branches:
+      - name: feat/1-todo-branch-name
+        scope: One-line description of what this branch delivers
+
+sidequests: []
