@@ -1,6 +1,6 @@
 import { type ReactNode, useEffect, useId, useRef, useState } from 'react'
-import type { AnswerIn, Feedback, PlayQuestion } from '../api/types.gen'
-import { ME_KEY, queryClient, useMe } from '../lib/api'
+import type { AnswerIn, Feedback, HintOut, PlayQuestion } from '../api/types.gen'
+import { errorMessage, ME_KEY, queryClient, useMe } from '../lib/api'
 import { AREAS, TOPICS } from '../lib/areas'
 import { changes, TOP_LEVEL, tierOf, xp } from '../lib/xp'
 import { Emblem } from './Emblem'
@@ -14,7 +14,7 @@ const HINTS: Record<string, string> = {
   text: "Capital letters and spaces don't matter.",
 }
 
-function hint(q: PlayQuestion): string | undefined {
+function formatHint(q: PlayQuestion): string | undefined {
   if (q.answer_kind === 'numbers') {
     return `${q.values ?? 'Several'} values separated by semicolons, in the order the question asks, e.g. 12.5; 40`
   }
@@ -120,6 +120,7 @@ export function QuestionCard({
   clock,
   expired,
   focusOnShow,
+  onHint,
 }: {
   question: PlayQuestion
   feedback?: Feedback
@@ -132,10 +133,17 @@ export function QuestionCard({
   expired?: boolean
   /** Move focus to the question when it appears (it replaced the previous one). */
   focusOnShow?: boolean
+  /** Ask for a hint; offered only to the levels that still get them. */
+  onHint?: () => Promise<HintOut | undefined>
 }) {
   const [chosen, setChosen] = useState<number[]>([])
   const [value, setValue] = useState('')
   const [missing, setMissing] = useState<string>()
+  const [hint, setHint] = useState<HintOut>()
+  const [hintError, setHintError] = useState<string>()
+  const { data: me } = useMe()
+  const hintable = !!onHint && !!me?.progress?.aids.hint && question.graded && question.answer_kind !== 'self'
+  const askHint = () => onHint?.().then(setHint, (e: unknown) => setHintError(errorMessage(e)))
   const after = useRef<HTMLDivElement>(null)
   const text = useRef<HTMLParagraphElement>(null)
   const legend = useId()
@@ -194,14 +202,15 @@ export function QuestionCard({
             {question.options.map((o) => {
               const right = feedback?.correct_options.includes(o.id)
               const picked = chosen.includes(o.id)
-              const state = !answered ? '' : right ? 'right' : picked ? 'wrong' : ''
+              const removed = !answered && hint?.removed_options.includes(o.id)
+              const state = !answered ? (removed ? 'removed' : '') : right ? 'right' : picked ? 'wrong' : ''
               return (
                 <label key={o.id} className={`choice ${state}`}>
                   <input
                     type={kind === 'choice-one' ? 'radio' : 'checkbox'}
                     name={`q${question.id}`}
                     checked={picked}
-                    disabled={locked}
+                    disabled={locked || removed}
                     aria-invalid={!!missing}
                     onChange={() => toggle(o.id)}
                   />
@@ -230,7 +239,7 @@ export function QuestionCard({
               setValue(e.target.value)
               setMissing(undefined)
             }}
-            hint={hint(question)}
+            hint={formatHint(question)}
             error={missing}
           />
         )}
@@ -240,6 +249,11 @@ export function QuestionCard({
             <button type="submit" disabled={pending}>
               {kind === 'self' ? 'Show the official answer' : 'Check answer'}
             </button>
+            {hintable && !hint && (
+              <button type="button" className="secondary" disabled={pending} onClick={askHint}>
+                Hint (halves the XP)
+              </button>
+            )}
             {question.graded && kind !== 'self' && (
               <button
                 type="button"
@@ -253,6 +267,12 @@ export function QuestionCard({
             )}
           </div>
         )}
+        {hint && (
+          <Notice tone="ok">
+            <strong>Hint:</strong> {hint.text} Right answers now earn half the XP.
+          </Notice>
+        )}
+        {hintError && <Notice tone="error">{hintError}</Notice>}
         {!answered && !expired && question.graded && kind !== 'self' && (
           <p className="muted answer-note" id={`${legend}-unsure`}>
             Not sure? You see the answer and nothing is gained or lost. A wrong answer can cost XP.

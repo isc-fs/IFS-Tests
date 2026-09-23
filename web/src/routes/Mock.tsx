@@ -8,9 +8,11 @@ import {
   mockStateQueryKey,
   startMockMutation,
 } from '../api/@tanstack/react-query.gen'
+import { mockHint } from '../api/sdk.gen'
 import type { MockQuiz, MockState, MockSummary } from '../api/types.gen'
 import { Countdown } from '../components/Countdown'
 import { ErrorNotice, Notice } from '../components/Form'
+import { LearningAids } from '../components/LearningAids'
 import { Page } from '../components/Page'
 import { QuestionCard } from '../components/QuestionCard'
 import { queryClient } from '../lib/api'
@@ -153,17 +155,22 @@ export function MockRun() {
             Question {s.position + 1} of {s.total}
           </p>
           <progress className="quiz-progress" max={s.total} value={s.position} aria-label="Progress" />
-          <QuestionCard
-            key={current.attempt_id}
-            focusOnShow={s.position > 0}
-            question={current.question}
-            pending={send.isPending}
-            expired={expired}
-            clock={<Countdown deadline={current.deadline_at} serverNow={current.server_now} onExpire={expire} />}
-            onAnswer={(body) =>
-              send.mutate({ path: { session_id: s.session_id }, body: { ...body, attempt_id: current.attempt_id } })
-            }
-          />
+          <LearningAids question={current.question}>
+            <QuestionCard
+              key={current.attempt_id}
+              focusOnShow={s.position > 0}
+              question={current.question}
+              pending={send.isPending}
+              expired={expired}
+              clock={<Countdown deadline={current.deadline_at} serverNow={current.server_now} onExpire={expire} />}
+              onAnswer={(body) =>
+                send.mutate({ path: { session_id: s.session_id }, body: { ...body, attempt_id: current.attempt_id } })
+              }
+              onHint={async () =>
+                (await mockHint({ path: { session_id: s.session_id, attempt_id: current.attempt_id } })).data
+              }
+            />
+          </LearningAids>
           <ErrorNotice error={send.error} />
         </>
       )}

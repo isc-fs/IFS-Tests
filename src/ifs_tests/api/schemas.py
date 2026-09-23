@@ -208,6 +208,34 @@ class PlayQuestion(BaseModel):
     documents: QuestionDocs
 
 
+class HintOut(BaseModel):
+    """A nudge, never the answer: taking it halves the XP for the question."""
+
+    text: str
+    removed_options: list[int] = Field(description="Options the hint rules out")
+
+
+class Formula(BaseModel):
+    name: str
+    formula: str
+    where: str | None = None
+    tip: str | None = None
+
+
+class Reading(BaseModel):
+    title: str
+    url: str
+    note: str
+
+
+class Learning(BaseModel):
+    """A topic's panels; empty lists where the player's level has taken them away."""
+
+    title: str
+    formulas: list[Formula]
+    learn_more: list[Reading]
+
+
 class KeyIn(In):
     """An answer as options picked or a typed value."""
 

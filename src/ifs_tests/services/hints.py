@@ -1,0 +1,70 @@
+"""Hints on demand: one per question, before answering, for the levels that still get them."""
+
+from __future__ import annotations
+
+from datetime import datetime
+
+from sqlalchemy import delete, select, update
+from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.orm import Session as DB
+
+from ..db.models import AnswerKey, AnswerOption, Attempt, MockSession, PracticeHint, Question, User
+from ..domain import daily as timing
+from ..domain import hints as rules
+from ..domain import xp as xp_rules
+from .errors import UserError
+from .questions import playable
+
+
+def _hint(db: DB, user: User, q: Question) -> rules.Hint:
+    if not xp_rules.at(xp_rules.level_for(user.xp)).hint:
+        raise UserError("Hints end at DT I: from there it's the quiz as it is on the day.", 403)
+    key = db.get(AnswerKey, q.id)
+    options = list(
+        db.scalars(select(AnswerOption.id).where(AnswerOption.question_id == q.id).order_by("position"))
+    )
+    h = rules.hint(key.effective if key and q.graded else None, options, seed=q.id)
+    if h is None:
+        raise UserError("There's no hint for this question.", 404)
+    return h
+
+
+def practice(db: DB, user: User, question_id: int, now: datetime) -> rules.Hint:
+    h = _hint(db, user, playable(db, question_id))
+    db.execute(
+        insert(PracticeHint)
+        .values(user_id=user.id, question_id=question_id, created_at=now)
+        .on_conflict_do_nothing()
+    )
+    db.commit()
+    return h
+
+
+def spend_practice(db: DB, user_id: int, question_id: int) -> bool:
+    """Whether a hint was taken for this answer; it is used up either way."""
+    gone = db.execute(
+        delete(PracticeHint)
+        .where(PracticeHint.user_id == user_id, PracticeHint.question_id == question_id)
+        .returning(PracticeHint.user_id)
+    ).first()
+    return gone is not None
+
+
+def timed(db: DB, user: User, attempt_id: int, now: datetime, session_id: int | None = None) -> rules.Hint:
+    """A hint on a running daily or mock question: recorded on the attempt, which then earns half XP."""
+    stmt = select(Attempt).where(Attempt.id == attempt_id, Attempt.user_id == user.id)
+    if session_id is not None:
+        stmt = stmt.join(MockSession, MockSession.id == Attempt.session_id).where(
+            MockSession.id == session_id
+        )
+    else:
+        stmt = stmt.where(Attempt.mode == "daily")
+    a = db.scalar(stmt)
+    if a is None or a.deadline_at is None:
+        raise UserError("That question isn't running.", 404)
+    if a.submitted_at is not None or timing.is_late(now, a.deadline_at):
+        raise UserError("Hints come before answering.", 409)
+    h = _hint(db, user, db.get_one(Question, a.question_id))
+    db.execute(update(Attempt).where(Attempt.id == a.id).values(hint_used=True))
+    db.commit()
+    return h

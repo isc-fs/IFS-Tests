@@ -213,7 +213,16 @@ def answer(
         if recorded:  # only the request that recorded the answer earns the XP
             repeat = xp.last_seen(db, user.id, q.id, now, other_than=a.id) is not None
             granted = xp.grant(
-                db, user.id, q, "daily", checked.correct, now, late=late, repeat=repeat, passed=checked.passed
+                db,
+                user.id,
+                q,
+                "daily",
+                checked.correct,
+                now,
+                late=late,
+                repeat=repeat,
+                passed=checked.passed,
+                hint=a.hint_used,
             )
             db.execute(update(Attempt).where(Attempt.id == a.id).values(xp=granted.xp))
             db.commit()

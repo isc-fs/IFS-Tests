@@ -5,10 +5,10 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Path
 
-from ...services import daily, questions
+from ...services import daily, hints, questions
 from ..deps import Db, Member, Now
 from ..present import feedback, play_question
-from ..schemas import AnswerIn, DailyArea, DailyResult, DailyStatus, TimedQuestion
+from ..schemas import AnswerIn, DailyArea, DailyResult, DailyStatus, HintOut, TimedQuestion
 
 router = APIRouter(prefix="/api/daily", tags=["daily"])
 Area = Literal["mech", "elec", "rules"]
@@ -56,3 +56,9 @@ def answer_daily(attempt_id: Id, body: AnswerIn, user: Member, db: Db, now: Now)
 @router.get("/{area}/review")
 def review_daily(area: Area, user: Member, db: Db, now: Now) -> DailyResult:
     return _result(db, daily.review(db, user, area, now))
+
+
+@router.post("/attempts/{attempt_id}/hint")
+def daily_hint(attempt_id: Id, user: Member, db: Db, now: Now) -> HintOut:
+    h = hints.timed(db, user, attempt_id, now)
+    return HintOut(text=h.text, removed_options=h.removed_options)
