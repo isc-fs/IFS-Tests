@@ -20,7 +20,12 @@ export function useLive(code: string) {
   useEffect(() => {
     if (!allowed || typeof EventSource === 'undefined') return
     const events = new EventSource(`/api/live/sessions/${code}/events`)
-    events.onmessage = () => queryClient.invalidateQueries({ queryKey: sessionStateQueryKey(options) })
+    // Screens refetch at slightly different moments, so a room of phones doesn't hit the server at once.
+    events.onmessage = () =>
+      window.setTimeout(
+        () => queryClient.invalidateQueries({ queryKey: sessionStateQueryKey(options) }),
+        Math.random() * 600,
+      )
     return () => events.close()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code, allowed])

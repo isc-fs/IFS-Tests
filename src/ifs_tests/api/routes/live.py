@@ -16,6 +16,7 @@ from ...services.live import View
 from ..deps import Db, Member, Now
 from ..present import feedback, play_question
 from ..schemas import (
+    AdvanceIn,
     AnswerIn,
     KeyIn,
     LiveCode,
@@ -153,8 +154,8 @@ def remove_player(code: Code, user_id: Id, user: Member, db: Db) -> Response:
 
 
 @router.post("/sessions/{code}/advance", status_code=204)
-def advance_session(code: Code, user: Member, db: Db, now: Now) -> Response:
-    live.advance(db, user, code, now)
+def advance_session(code: Code, user: Member, db: Db, now: Now, body: AdvanceIn | None = None) -> Response:
+    live.advance(db, user, code, now, (body.state, body.position) if body else None)
     return NO_CONTENT
 
 

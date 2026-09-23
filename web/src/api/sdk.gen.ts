@@ -426,7 +426,14 @@ export const movePlayer = <ThrowOnError extends boolean = false>(options: Option
 /**
  * Advance Session
  */
-export const advanceSession = <ThrowOnError extends boolean = false>(options: Options<AdvanceSessionData, ThrowOnError>): RequestResult<AdvanceSessionResponses, AdvanceSessionErrors, ThrowOnError> => (options.client ?? client).post<AdvanceSessionResponses, AdvanceSessionErrors, ThrowOnError>({ url: '/api/live/sessions/{code}/advance', ...options });
+export const advanceSession = <ThrowOnError extends boolean = false>(options: Options<AdvanceSessionData, ThrowOnError>): RequestResult<AdvanceSessionResponses, AdvanceSessionErrors, ThrowOnError> => (options.client ?? client).post<AdvanceSessionResponses, AdvanceSessionErrors, ThrowOnError>({
+    url: '/api/live/sessions/{code}/advance',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
 
 /**
  * End Session

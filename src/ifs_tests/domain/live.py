@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 # No look-alikes (0/O, 1/I/L), so a code read off a projector is typed right first time.
 CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
 CODE_LENGTH = 6
+EVERYONE_ELSE = "Everyone else"
 
 # The Team Directory's departments in Notion, by vertical, and the question topics each answers best.
 SUBDEPARTMENTS: dict[str, tuple[str, str, tuple[str, ...]]] = {
@@ -67,7 +68,7 @@ def seat_by_subdepartment(players: list[Player]) -> list[Table]:
     for code in sorted(groups, key=lambda c: (c == "", c)):
         members = groups[code]
         captain = max(members, key=lambda p: (p.level, -p.user_id))
-        name, _, topics = SUBDEPARTMENTS[code] if code else ("Everyone else", "", ())
+        name, _, topics = SUBDEPARTMENTS[code] if code else (EVERYONE_ELSE, "", ())
         tables.append(Table(name, [p.user_id for p in members], captain.user_id, list(topics)))
     return tables
 

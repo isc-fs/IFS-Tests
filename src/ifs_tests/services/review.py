@@ -16,17 +16,14 @@ from ..db.models import (
     AnswerKey,
     AnswerOption,
     Attempt,
-    DailyQuestion,
-    MockSession,
     Question,
-    QuizQuestion,
     Report,
     User,
 )
 from ..domain import keys
-from ..domain.daily import madrid_day
 from .accounts import audit
 from .errors import UserError
+from .questions import running_for
 
 Queue = Literal["all", "reports", "changed", "unclassified", "ungraded", "excluded"]
 PAGE = 30
@@ -100,30 +97,6 @@ class Detail:
     answer_hidden: bool
 
 
-def live_for(db: DB, user: User, question_id: int, now: datetime) -> bool:
-    """Whether `user` still has to answer this question in a scored mode: today's daily question for its
-    area, or a question in one of their open mock runs. Reviewers must not read those answers early."""
-    day = madrid_day(now)
-    answered = select(Attempt.id).where(
-        Attempt.user_id == user.id, Attempt.question_id == question_id, Attempt.submitted_at.is_not(None)
-    )
-    daily = exists().where(DailyQuestion.day == day, DailyQuestion.question_id == question_id)
-    in_run = (
-        select(MockSession.id)
-        .join(QuizQuestion, QuizQuestion.quiz_id == MockSession.quiz_id)
-        .where(
-            MockSession.user_id == user.id,
-            MockSession.finished_at.is_(None),
-            QuizQuestion.question_id == question_id,
-            ~exists(answered.where(Attempt.session_id == MockSession.id)),
-        )
-    )
-    daily_open = db.scalar(select(daily)) and not db.scalar(
-        select(exists(answered.where(Attempt.mode == "daily", Attempt.day == day)))
-    )
-    return bool(daily_open or db.scalar(select(exists(in_run))))
-
-
 def _question(db: DB, question_id: int) -> Question:
     q = db.get(Question, question_id, with_for_update=True)
     if q is None:
@@ -149,7 +122,7 @@ def detail(db: DB, reviewer: User, question_id: int, now: datetime) -> Detail:
             Attempt.question_id == q.id, Attempt.submitted_at.is_not(None) | (Attempt.mode == "practice")
         )
     ).one()
-    hidden = live_for(db, reviewer, q.id, now)
+    hidden = running_for(db, reviewer.id, q.id, now)
     return Detail(
         q, db.get(AnswerKey, q.id), list(options), [(r, n) for r, n in reports], answered, right, hidden
     )

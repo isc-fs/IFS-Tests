@@ -308,7 +308,9 @@ def test_the_host_downloads_the_results_as_a_safe_csv(room: dict[str, Any], db: 
     assert r.status_code == 200 and r.headers["content-type"].startswith("text/csv")
     rows = list(csv.reader(io.StringIO(r.text)))
     assert rows[0][:3] == ["question", "text", "answered by"]
-    assert any(row[3] == "'=HYPERLINK(1)" and row[6] == "yes" for row in rows[1:])
+    assert rows[0][5:8] == ["answer", "official answer", "right"]
+    assert any(row[3] == "'=HYPERLINK(1)" and row[7] == "yes" and row[6] for row in rows[1:])
+    assert not any(row[5].isdigit() for row in rows[1:])  # option text, not database ids
     assert room["Ana"].get(f"/api/live/sessions/{code}/results.csv").status_code == 403
 
 
@@ -350,3 +352,228 @@ def test_subdepartments_come_from_the_team_directory(room: dict[str, Any]) -> No
 def test_a_session_needs_a_captain_to_start(room: dict[str, Any]) -> None:
     code = create(room["Tere"], areas=["rules"])
     assert room["Tere"].post(f"/api/live/sessions/{code}/advance").status_code == 409
+
+
+# From the adversarial review
+
+
+def test_a_host_cannot_touch_the_tables_or_players_of_another_session(
+    room: dict[str, Any], app_client: Any, new_client: NewClient
+) -> None:
+    mine = lobby(room, areas=["rules"])
+    other_td = new_client()
+    assert (
+        register(
+            other_td, invite(app_client), "rui@alu.comillas.edu", "Rui", position="technical_director"
+        ).status_code
+        == 201
+    )
+    theirs = create(other_td)
+    assert room["Ana"].post(f"/api/live/sessions/{theirs}/join").status_code == 200
+    aero = tables(room, mine)["Aerodynamics"]["id"]
+    url = f"/api/live/sessions/{theirs}"
+    assert other_td.patch(f"{url}/tables/{aero}", json={"name": "pwned"}).status_code == 404
+    assert other_td.put(f"{url}/players/{room['Ana_id']}", json={"table_id": aero}).status_code == 404
+    # another TD is not the host of this session
+    assert other_td.post(f"/api/live/sessions/{mine}/advance").status_code == 403
+    assert other_td.delete(f"/api/live/sessions/{mine}/players/{room['Ana_id']}").status_code == 403
+    assert other_td.get(f"/api/live/sessions/{mine}/results.csv").status_code == 403
+    assert tables(room, mine)["Aerodynamics"]["name"] == "Aerodynamics"
+
+
+def test_removing_a_captain_mid_question_lets_the_other_tables_close_it(
+    room: dict[str, Any], db: Session
+) -> None:
+    code = lobby(room, areas=["rules"])
+    advance(room, code)
+    assert room["Tere"].delete(f"/api/live/sessions/{code}/players/{room['Leo_id']}").status_code == 204
+    t = tables(room, code)
+    assert t["Aerodynamics"]["captain_id"] is None and room["Leo_id"] not in t["Aerodynamics"]["member_ids"]
+    assert send(room["Leo"], code, {"options": []}) == 403  # gone, and no longer a captain
+    qid = state(room["Pau"], code)["question"]["id"]
+    assert send(room["Pau"], code, right_answer(db, qid)) == 204
+    assert state(room["Ana"], code)["state"] == "closed"  # a table without a captain is not waited for
+
+
+def test_joined_but_unseated_players_see_the_quiz_and_earn_nothing(
+    room: dict[str, Any], db: Session, app_client: Any, new_client: NewClient
+) -> None:
+    code = lobby(room, areas=["rules"])
+    late = new_client()
+    r = register(late, invite(app_client), "lia@alu.comillas.edu", "Lia")
+    assert r.status_code == 201
+    assert late.post(f"/api/live/sessions/{code}/join").status_code == 200
+    advance(room, code)
+    s = state(late, code)
+    assert s["my_table_id"] is None and s["question"] and not any(w in str(s) for w in ANSWER_WORDS)
+    assert late.put(f"/api/live/sessions/{code}/proposal", json={"options": []}).status_code == 409
+    qid = s["question"]["id"]
+    send(room["Leo"], code, right_answer(db, qid))
+    send(room["Pau"], code, right_answer(db, qid))
+    users = set(db.scalars(select(Attempt.user_id).where(Attempt.mode == "live")))
+    assert r.json()["id"] not in users and len(users) == 4
+
+
+def test_answers_must_be_options_of_the_question_on_screen(
+    room: dict[str, Any], db: Session, bank: dict[int, int]
+) -> None:
+    code = lobby(room, areas=["rules"])
+    advance(room, code)
+    qid = state(room["Leo"], code)["question"]["id"]
+    foreign = next(q for q in bank.values() if q != qid)
+    from tests.api.helpers import options
+
+    stray = options(db, foreign)
+    if stray:
+        assert send(room["Leo"], code, {"options": stray[:1]}) == 400
+        assert room["Ana"].put(
+            f"/api/live/sessions/{code}/proposal", json={"options": stray[:1]}
+        ).status_code in (204, 400)
+    assert state(room["Ana"], code)["tables"][0]["answered"] is False  # nothing was recorded
+
+
+def test_a_rehearsal_with_speed_points_hides_points_and_tallies_until_the_end(
+    room: dict[str, Any], db: Session
+) -> None:
+    code = lobby(room, areas=["rules"], count=2, feedback="end", speed_points=True)
+    advance(room, code)
+    qid = state(room["Leo"], code)["question"]["id"]
+    send(room["Leo"], code, right_answer(db, qid))
+    send(room["Pau"], code, wrong(db, qid))
+    for who in ("Ana", "Marta", "Tere"):
+        s = state(room[who], code)
+        assert s["state"] == "closed"
+        assert [(t["right"], t["points"]) for t in s["tables"]] == [(0, 0), (0, 0)], (
+            who
+        )  # points > 0 would say "right"
+        assert s["reveals"] == [] and s["room_right"] is None and not any(w in str(s) for w in ANSWER_WORDS)
+    assert room["Tere"].post(f"/api/live/sessions/{code}/end").status_code == 204
+    done = {t["name"]: (t["right"], t["points"] > 0) for t in state(room["Ana"], code)["tables"]}
+    assert done == {"Aerodynamics": (1, True), "Batteries": (0, False)}
+
+
+def test_a_session_ended_in_the_lobby_still_shows_and_exports(room: dict[str, Any]) -> None:
+    code = lobby(room)
+    assert room["Tere"].post(f"/api/live/sessions/{code}/end").status_code == 204
+    s = state(room["Ana"], code)
+    assert (s["state"], s["total"], s["room_asked"], s["reveals"]) == ("finished", 0, 0, [])
+    rows = list(csv.reader(io.StringIO(room["Tere"].get(f"/api/live/sessions/{code}/results.csv").text)))
+    assert len(rows) == 1  # the header only
+    for path in ("advance", "tables/auto", "end"):
+        assert room["Tere"].post(f"/api/live/sessions/{code}/{path}").status_code == 409
+
+
+def test_the_events_stream_needs_the_same_access_as_the_state(room: dict[str, Any]) -> None:
+    code = create(room["Tere"])
+    assert room["Ana"].get(f"/api/live/sessions/{code}/events").status_code == 403  # not joined
+
+
+def test_seating_is_for_the_lobby_only(room: dict[str, Any]) -> None:
+    code = lobby(room, areas=["rules"])
+    advance(room, code)
+    assert room["Tere"].post(f"/api/live/sessions/{code}/tables/auto").status_code == 409
+    assert room["Tere"].put(f"/api/live/sessions/{code}/tables", json={"tables": []}).status_code == 409
+    assert len(tables(room, code)) == 2
+
+
+# BUG: moving a player to another table mid-question scores them twice for the same question.
+def test_a_player_moved_mid_question_is_scored_once(room: dict[str, Any], db: Session) -> None:
+    code = lobby(room, areas=["rules"])
+    advance(room, code)
+    qid = state(room["Leo"], code)["question"]["id"]
+    assert send(room["Leo"], code, right_answer(db, qid)) == 204  # Aero answers: Ana scores
+    bat = tables(room, code)["Batteries"]["id"]
+    assert (
+        room["Tere"]
+        .put(f"/api/live/sessions/{code}/players/{room['Ana_id']}", json={"table_id": bat})
+        .status_code
+        == 204
+    )
+    assert (
+        send(room["Pau"], code, right_answer(db, qid)) == 204
+    )  # Batteries answers with Ana now seated there
+    ana = db.scalars(select(Attempt).where(Attempt.mode == "live", Attempt.user_id == room["Ana_id"])).all()
+    assert len(ana) == 1, [(a.xp, a.correct) for a in ana]
+
+
+# BUG: while a live question is open, any player can read its answer through practice mode.
+def test_the_open_live_question_is_not_answered_by_practice_mode(room: dict[str, Any]) -> None:
+    code = lobby(room, areas=["rules"])
+    advance(room, code)
+    qid = state(room["Ana"], code)["question"]["id"]
+    r = room["Ana"].post(f"/api/practice/questions/{qid}/answer", json={"unsure": True})
+    assert r.status_code == 409 or not (r.json().get("official") or r.json().get("correct_options")), r.json()
+
+
+# From the backend and security reviews
+
+
+def test_time_running_out_shows_its_reveal_and_never_closes_the_next_question(
+    room: dict[str, Any], clock: Clock
+) -> None:
+    code = lobby(room, areas=["rules", "mech"], seconds=30)
+    advance(room, code)
+    clock.advance(seconds=34)  # nobody noticed the deadline yet
+    advance(room, code)  # so this press closes the question (and its reveal shows) instead of skipping it
+    s = state(room["Ana"], code)
+    assert (s["state"], s["position"], len(s["reveals"])) == ("closed", 0, 1)
+    advance(room, code)
+    assert (state(room["Ana"], code)["state"], state(room["Ana"], code)["position"]) == ("open", 1)
+
+
+def test_a_double_tap_on_advance_does_not_skip_a_step(room: dict[str, Any]) -> None:
+    code = lobby(room, areas=["rules"])
+    seen = {"state": "lobby", "position": -1}
+    assert room["Tere"].post(f"/api/live/sessions/{code}/advance", json=seen).status_code == 204
+    assert room["Tere"].post(f"/api/live/sessions/{code}/advance", json=seen).status_code == 409
+    assert state(room["Ana"], code)["state"] == "open"
+
+
+def test_a_removed_player_cannot_join_again(room: dict[str, Any]) -> None:
+    code = lobby(room)
+    assert room["Tere"].delete(f"/api/live/sessions/{code}/players/{room['Ana_id']}").status_code == 204
+    assert room["Ana"].post(f"/api/live/sessions/{code}/join").status_code == 403
+    assert room["Ana_id"] not in [p["user_id"] for p in state(room["Tere"], code)["players"]]
+
+
+def test_a_reviewer_at_a_table_cannot_read_the_open_question_in_the_review_tools(
+    room: dict[str, Any], db: Session
+) -> None:
+    db.execute(update(User).where(User.id == room["Ana_id"]).values(role="reviewer"))
+    db.commit()
+    code = lobby(room, areas=["rules"])
+    advance(room, code)
+    qid = state(room["Ana"], code)["question"]["id"]
+    r = room["Ana"].get(f"/api/review/questions/{qid}").json()
+    assert r["answer_hidden"] is True and not r["official"]
+
+
+def test_a_rehearsal_holds_back_xp_until_the_end(room: dict[str, Any], db: Session) -> None:
+    code = lobby(room, areas=["rules"], count=1, feedback="end")
+    advance(room, code)
+    qid = state(room["Leo"], code)["question"]["id"]
+    send(room["Leo"], code, right_answer(db, qid))
+    assert db.scalars(select(Attempt).where(Attempt.mode == "live")).all() == []  # XP would give it away
+    advance(room, code)  # close
+    advance(room, code)  # finish: now everyone at the table shares it
+    rows = db.scalars(select(Attempt).where(Attempt.mode == "live")).all()
+    assert sorted(a.user_id for a in rows) == sorted([room["Ana_id"], room["Leo_id"]]) and all(
+        a.xp > 0 for a in rows
+    )
+
+
+def test_one_catch_all_table_at_most_and_auto_seating_picks_everyone_else(
+    room: dict[str, Any], app_client: TestClient, new_client: NewClient
+) -> None:
+    code = lobby(room)
+    url = f"/api/live/sessions/{code}/tables"
+    two = [
+        {"name": "A", "member_ids": [room["Ana_id"]], "catch_all": True},
+        {"name": "B", "member_ids": [room["Leo_id"]], "catch_all": True},
+    ]
+    assert room["Tere"].put(url, json={"tables": two}).status_code == 400
+    loner = new_client()
+    assert register(loner, invite(app_client), "sol@alu.comillas.edu", "Sol").status_code == 201
+    loner.post(f"/api/live/sessions/{code}/join")
+    room["Tere"].post(f"{url}/auto")
+    assert {t["name"]: t["catch_all"] for t in state(room["Tere"], code)["tables"]}["Everyone else"] is True

@@ -12,7 +12,7 @@ from ..db.models import AREAS, Attempt, Question, User
 from ..domain.daily import madrid_day
 from . import hints, xp
 from .errors import UserError
-from .questions import Checked, check, playable
+from .questions import Checked, check, not_running, playable
 
 
 @dataclass
@@ -82,6 +82,7 @@ def answer(
     unsure: bool = False,
 ) -> Checked:
     q = playable(db, question_id)
+    not_running(db, user.id, q.id, now)
     result = check(db, q, options, value, unsure)
     xp.lock(db, user.id)  # so two tabs can't both score the first answer
     last = xp.last_seen(db, user.id, q.id, now)

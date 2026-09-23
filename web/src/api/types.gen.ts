@@ -47,6 +47,22 @@ export type AdminUser = {
 };
 
 /**
+ * AdvanceIn
+ *
+ * The step the host's screen showed, so a double tap can't skip one.
+ */
+export type AdvanceIn = {
+    /**
+     * State
+     */
+    state: 'lobby' | 'open' | 'closed';
+    /**
+     * Position
+     */
+    position: number;
+};
+
+/**
  * Aids
  */
 export type Aids = {
@@ -3343,7 +3359,10 @@ export type MovePlayerResponses = {
 export type MovePlayerResponse = MovePlayerResponses[keyof MovePlayerResponses];
 
 export type AdvanceSessionData = {
-    body?: never;
+    /**
+     * Body
+     */
+    body?: AdvanceIn | null;
     path: {
         /**
          * Code

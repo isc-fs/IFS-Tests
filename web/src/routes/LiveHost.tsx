@@ -9,7 +9,7 @@ import {
   seatBySubdepartmentMutation,
   seatTablesMutation,
 } from '../api/@tanstack/react-query.gen'
-import type { LiveState, TableIn } from '../api/types.gen'
+import type { AdvanceIn, LiveState, TableIn } from '../api/types.gen'
 import { Countdown } from '../components/Countdown'
 import { ErrorNotice, Notice } from '../components/Form'
 import { Reveal, Results, RoomScore, Tables } from '../components/LiveParts'
@@ -78,11 +78,13 @@ export function HostControls({ s }: { s: LiveState }) {
         <div className="answer-actions">
           <button
             type="button"
-            onClick={() => advance.mutate(path)}
+            onClick={() =>
+              advance.mutate({ ...path, body: { state: s.state as AdvanceIn['state'], position: s.position } })
+            }
             disabled={advance.isPending || (s.state === 'lobby' && dirty)}
           >
             {s.state === 'lobby' && dirty
-              ? 'Save the tables first'
+              ? 'Start (save the tables first)'
               : last
                 ? 'Finish and show the results'
                 : STEP[s.state]}

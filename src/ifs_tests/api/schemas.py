@@ -516,6 +516,13 @@ class LiveConfig(In):
         return self
 
 
+class AdvanceIn(In):
+    """The step the host's screen showed, so a double tap can't skip one."""
+
+    state: Literal["lobby", "open", "closed"]
+    position: int = Field(ge=-1, le=10_000)
+
+
 class LiveCreated(BaseModel):
     code: str
 

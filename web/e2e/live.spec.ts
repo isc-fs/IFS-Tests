@@ -29,7 +29,7 @@ test('a host runs a live quiz: players join with the code, one proposes, the cap
   await page.getByLabel(`Cap ${tag}`).selectOption('0')
   await page.getByLabel(`Mate ${tag}`).selectOption('0')
   await page.getByLabel('Captain').selectOption({ label: `Cap ${tag}` })
-  await page.getByRole('button', { name: 'Save the tables' }).click()
+  await page.getByRole('button', { name: 'Save the tables', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Tables saved' })).toBeVisible()
   await page.getByRole('button', { name: 'Start the quiz' }).click()
 

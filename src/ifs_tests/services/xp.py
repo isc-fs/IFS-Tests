@@ -122,7 +122,8 @@ def recalibrate(db: DB) -> int:
     person's first answer in time counts, so nobody can drag a question's difficulty by answering it again."""
     first = (
         select(Attempt.question_id, Attempt.correct)
-        .where(Attempt.correct.is_not(None), Attempt.late.is_not(True))
+        # A live answer is a table's, shared by everyone at it: it says little about how one person does.
+        .where(Attempt.correct.is_not(None), Attempt.late.is_not(True), Attempt.mode != "live")
         .distinct(Attempt.user_id, Attempt.question_id)
         .order_by(Attempt.user_id, Attempt.question_id, Attempt.created_at, Attempt.id)
         .subquery()

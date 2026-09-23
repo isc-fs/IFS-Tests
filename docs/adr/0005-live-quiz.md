@@ -86,6 +86,9 @@ collaborative, and one person per table submits: letting everyone submit is too 
   shared result: the answer is collective. Mode `live` is worth ×1.5 like a mock quiz, and each member's own
   level decides the penalty (by kind of question, as in ADR 0004). "I'm not sure" is available to the captain.
   Members who joined but sat at no table earn nothing.
+- In a rehearsal (right and wrong only at the end) the XP is held back until the end too: a teammate's XP
+  moving would otherwise give each answer away.
+- A live answer is a table's, shared by everyone at it, so it doesn't feed a question's difficulty.
 - After the session everyone can review every question with its answer and worked solution, and the host can
   download the results as a CSV (the Excel replacement).
 
@@ -103,7 +106,16 @@ collaborative, and one person per table submits: letting everyone submit is too 
   seconds in case a stream drops. Actions (join, propose, answer, next) are ordinary requests with the usual CSRF
   check.
 - **Timing is the server's**, as in daily and mock questions; answers after the deadline plus grace are refused.
-- **Answers stay secret** until the reveal. Proposals are visible only to the proposer's table.
+- **Answers stay secret** until the reveal: proposals are visible only at the table they go to, reviewers at a
+  table get the open question's answer hidden in the review tools, and practice refuses to answer or hint at
+  it (`running_for`).
+- **Host actions carry the step the host's screen showed**, so a double tap or a second device can't skip a
+  reveal; a question whose time ran out is closed (and revealed) before the next one opens.
+- **Removed players stay removed:** the host's removal is remembered and joining again is refused.
+- **Load:** a request hands its database connection back once it knows who is asking, before waiting for the
+  route; screens spread their refetches over half a second; Nginx caps connections per address on `/api/`. On
+  the dev stack, 200 simultaneous state requests answer in under a second and 100 open streams don't slow
+  anything else.
 - **Nginx needs no change:** the stream sends `X-Accel-Buffering: no` and a heartbeat every 15 seconds, well
   inside the default read timeout.
 - **The results CSV** escapes cells a spreadsheet would run as formulas (`=`, `+`, `-`, `@`), since names and

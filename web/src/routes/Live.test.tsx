@@ -253,7 +253,7 @@ test('the host cannot start with unsaved tables, and a failed settings save expl
     },
   )
   await userEvent.click(await screen.findByRole('button', { name: 'Add a table' }))
-  expect(screen.getByRole('button', { name: 'Save the tables first' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'Start (save the tables first)' })).toBeDisabled()
   await userEvent.click(screen.getByText('Change the settings'))
   await userEvent.click(screen.getByRole('button', { name: 'Save the settings' }))
   expect(await screen.findByText('Pick the quiz to replay.')).toBeInTheDocument()

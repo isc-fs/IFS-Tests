@@ -309,16 +309,31 @@ def test_a_question_seen_before_earns_a_tenth_in_every_mode(
     signed_in: TestClient, new_client: NewClient, db: Session, clock: Clock, bank: dict[int, int]
 ) -> None:
     c = new_client()
-    join(signed_in, c, "Ana")
+    ana = join(signed_in, c, "Ana")
     started = c.post("/api/daily/mech/start").json()
     qid = started["question"]["id"]
-    c.post(f"/api/practice/questions/{qid}/answer", json=_wrong(started))  # sees the official answer
+    # practice can't reveal a question that is running elsewhere...
+    assert c.post(f"/api/practice/questions/{qid}/answer", json=_wrong(started)).status_code == 409
+    assert c.post(f"/api/practice/questions/{qid}/hint").status_code == 409
+    # ...but one practised earlier in the season is a repeat when it comes back as the daily
+    db.add(
+        Attempt(
+            user_id=ana["id"],
+            question_id=qid,
+            mode="practice",
+            answer={},
+            correct=False,
+            created_at=clock.now - timedelta(days=3),
+        )
+    )
+    db.commit()
     r = c.post(f"/api/daily/attempts/{started['attempt_id']}/answer", json=right_answer(db, qid)).json()
     assert r["xp"] == award(True, 3, "daily", 0, repeat=True) == 5
 
-    state = c.post("/api/mock/quizzes/9002/start").json()
-    seen = state["current"]["question"]["id"]
+    seen = bank[90001]  # the first question of quiz 9002
     c.post(f"/api/practice/questions/{seen}/answer", json=right_answer(db, seen))
+    state = c.post("/api/mock/quizzes/9002/start").json()
+    assert state["current"]["question"]["id"] == seen
     state = c.post(
         f"/api/mock/sessions/{state['session_id']}/answer",
         json={"attempt_id": state["current"]["attempt_id"], **right_answer(db, seen)},

@@ -16,6 +16,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DB
 
 from ..db.models import (
+    AnswerOption,
     Attempt,
     LiveAnswer,
     LivePlayer,
@@ -65,7 +66,8 @@ def _check_config(db: DB, config: dict[str, Any]) -> None:
 
 def _session(db: DB, code: str, lock: bool = False) -> LiveSession:
     stmt = select(LiveSession).where(LiveSession.code == code.upper())
-    s = db.scalar(stmt.with_for_update() if lock else stmt)
+    # populate_existing: a locked read must see what another request committed, not this session's cache.
+    s = db.scalar(stmt.with_for_update().execution_options(populate_existing=True) if lock else stmt)
     if s is None:
         raise UserError("No live quiz with that code.", 404)
     return s
@@ -92,9 +94,11 @@ def _touch(s: LiveSession) -> None:
     s.version += 1
 
 
-def _finish(s: LiveSession, now: datetime) -> None:
+def _finish(db: DB, s: LiveSession, now: datetime) -> None:
     s.state, s.finished_at = "finished", now
     _touch(s)
+    for a in db.scalars(select(LiveAnswer).where(LiveAnswer.session_id == s.id, ~LiveAnswer.granted)):
+        _share(db, s, a, now)  # a rehearsal's XP, held back so it couldn't give answers away
 
 
 def _expired(s: LiveSession, now: datetime) -> bool:
@@ -102,20 +106,30 @@ def _expired(s: LiveSession, now: datetime) -> bool:
 
 
 def refresh(db: DB, code: str, now: datetime) -> int:
-    """Close a question whose time ran out; the version tells screens whether to fetch the state again."""
-    s = _session(db, code)
-    if _expired(s, now):
-        s = _session(db, code, lock=True)
-        if _expired(s, now):
-            s.state = "closed"
-            _touch(s)
+    """Close a question whose time ran out; the version tells screens whether to fetch the state again.
+    One conditional update, so it can never close a question the host opened a moment earlier."""
+    closed = db.execute(
+        update(LiveSession)
+        .where(
+            LiveSession.code == code.upper(),
+            LiveSession.state == "open",
+            LiveSession.deadline_at < now - timing.GRACE,
+        )
+        .values(state="closed", version=LiveSession.version + 1)
+        .returning(LiveSession.version)
+    ).scalar()
+    version = closed if closed is not None else _session(db, code).version
     db.commit()
-    return s.version
+    return version
 
 
 def join(db: DB, user: User, code: str, now: datetime) -> LiveSession:
     s = _session(db, code, lock=True)
     _not_finished(s)
+    if db.scalar(
+        select(LivePlayer.removed).where(LivePlayer.session_id == s.id, LivePlayer.user_id == user.id)
+    ):
+        raise UserError("The host removed you from this live quiz.", 403)
     if user.id != s.host_id:
         added = db.execute(
             insert(LivePlayer)
@@ -140,7 +154,8 @@ def configure(db: DB, host: User, code: str, config: dict[str, Any]) -> None:
 
 
 def _players(db: DB, s: LiveSession) -> dict[int, LivePlayer]:
-    return {p.user_id: p for p in db.scalars(select(LivePlayer).where(LivePlayer.session_id == s.id))}
+    rows = db.scalars(select(LivePlayer).where(LivePlayer.session_id == s.id, ~LivePlayer.removed))
+    return {p.user_id: p for p in rows}
 
 
 def seat(db: DB, host: User, code: str, tables: list[dict[str, Any]]) -> None:
@@ -150,6 +165,8 @@ def seat(db: DB, host: User, code: str, tables: list[dict[str, Any]]) -> None:
         raise UserError("Tables are set before the quiz starts; move people one by one now.", 409)
     players = _players(db, s)
     seen: set[int] = set()
+    if sum(bool(t.get("catch_all")) for t in tables) > 1:
+        raise UserError("Only one table takes the questions nobody owns.")
     for t in tables:
         members = set(t["member_ids"])
         if not members <= players.keys() or members & seen:
@@ -180,11 +197,13 @@ def seat_by_subdepartment(db: DB, host: User, code: str) -> None:
     rows = db.execute(
         select(User.id, User.subdepartments, User.xp)
         .join(LivePlayer, LivePlayer.user_id == User.id)
-        .where(LivePlayer.session_id == s.id)
+        .where(LivePlayer.session_id == s.id, ~LivePlayer.removed)
     )
     players = [rules.Player(uid, tuple(subs or ()), xp_rules.level_for(total)) for uid, subs, total in rows]
-    tables = rules.seat_by_subdepartment(players)
-    seat(db, host, code, [asdict(t) for t in tables])
+    tables = [asdict(t) for t in rules.seat_by_subdepartment(players)]
+    for t in tables:  # the table of people without a sub-department takes the questions nobody owns
+        t["catch_all"] = t["name"] == rules.EVERYONE_ELSE
+    seat(db, host, code, tables)
 
 
 def move(db: DB, host: User, code: str, user_id: int, table_id: int | None) -> None:
@@ -229,7 +248,11 @@ def remove(db: DB, host: User, code: str, user_id: int) -> None:
         .where(LiveTable.session_id == s.id, LiveTable.captain_id == user_id)
         .values(captain_id=None)
     )
-    db.execute(delete(LivePlayer).where(LivePlayer.session_id == s.id, LivePlayer.user_id == user_id))
+    db.execute(
+        update(LivePlayer)
+        .where(LivePlayer.session_id == s.id, LivePlayer.user_id == user_id)
+        .values(removed=True, table_id=None)
+    )
     _touch(s)
     db.commit()
 
@@ -265,11 +288,17 @@ def _tables(db: DB, s: LiveSession) -> list[LiveTable]:
     return list(db.scalars(select(LiveTable).where(LiveTable.session_id == s.id).order_by(LiveTable.id)))
 
 
-def advance(db: DB, host: User, code: str, now: datetime) -> None:
-    """The host's one button: start, close the question, open the next one, finish after the last."""
+def advance(db: DB, host: User, code: str, now: datetime, seen: tuple[str, int] | None = None) -> None:
+    """The host's one button: start, close the question, open the next one, finish after the last. `seen` is
+    the state the host's screen showed: a double tap, or a second device, mustn't skip a step."""
     s = _hosted(db, host, code)
-    if _expired(s, now):
+    if seen is not None and seen != (s.state, s.position):
+        raise UserError("The quiz has already moved on.", 409)
+    if _expired(s, now):  # time ran out and nothing noticed yet: close it first, so its reveal shows
         s.state = "closed"
+        _touch(s)
+        db.commit()
+        return
     if s.state == "lobby":
         _start(db, s, now)
     elif s.state == "open":
@@ -278,7 +307,7 @@ def advance(db: DB, host: User, code: str, now: datetime) -> None:
     else:
         nxt = db.get(LiveQuestion, (s.id, s.position + 1))
         if nxt is None:
-            _finish(s, now)
+            _finish(db, s, now)
         else:
             _open(s, nxt.position, nxt.budget_s, now)
     db.commit()
@@ -309,7 +338,7 @@ def _start(db: DB, s: LiveSession, now: datetime) -> None:
 
 
 def end(db: DB, host: User, code: str, now: datetime) -> None:
-    _finish(_hosted(db, host, code), now)
+    _finish(db, _hosted(db, host, code), now)
     db.commit()
 
 
@@ -329,9 +358,9 @@ def propose(db: DB, user: User, code: str, answer: dict[str, Any], now: datetime
     """Suggest an answer to the captain of the table answering the question (your own, in all-tables mode)."""
     s, lq = _running(db, code, now)
     player = _players(db, s).get(user.id)
-    target = lq.table_id or (player.table_id if player else None)
-    if player is None or target is None:
+    if player is None or player.table_id is None:
         raise UserError("Sit at a table first.", 409)
+    target = lq.table_id or player.table_id
     row = {"table_id": target, "answer": answer, "updated_at": now}
     db.execute(
         insert(LiveProposal)
@@ -375,30 +404,16 @@ def answer(
     ).first()
     if sent is None:
         raise UserError("Your table has already answered.", 409)
-    members = db.scalars(
-        select(LivePlayer.user_id)
-        .where(LivePlayer.session_id == s.id, LivePlayer.table_id == table.id)
-        .order_by(LivePlayer.user_id)
-    ).all()
-    for uid in members:  # in id order, so two tables answering at once lock players in the same order
-        repeat = xp.last_seen(db, uid, q.id, now) is not None
-        granted = xp.grant(db, uid, q, "live", checked.correct, now, repeat=repeat, passed=checked.passed)
-        db.add(
-            Attempt(
-                user_id=uid,
-                question_id=q.id,
-                mode="live",
-                answer=body,
-                correct=checked.correct,
-                passed=checked.passed,
-                created_at=now,
-                submitted_at=now,
-                late=False,
-                area=q.area,
-                xp=granted.xp,
-                live_session_id=s.id,
-            )
+    a = db.get_one(LiveAnswer, (s.id, s.position, table.id))
+    a.member_ids = list(
+        db.scalars(
+            select(LivePlayer.user_id)
+            .where(LivePlayer.session_id == s.id, LivePlayer.table_id == table.id, ~LivePlayer.removed)
+            .order_by(LivePlayer.user_id)
         )
+    )
+    if s.config["feedback"] == "each":
+        _share(db, s, a, now)
     expected = {lq.table_id} if lq.table_id else {t.id for t in _tables(db, s) if t.captain_id is not None}
     answered = set(
         db.scalars(
@@ -411,6 +426,39 @@ def answer(
         s.state = "closed"
     _touch(s)
     db.commit()
+
+
+def _share(db: DB, s: LiveSession, a: LiveAnswer, now: datetime) -> None:
+    """Every member seated when the table answered shares its XP, each at their own level."""
+    q = db.get_one(Question, db.get_one(LiveQuestion, (s.id, a.position)).question_id)
+    scored = set(
+        db.scalars(
+            select(Attempt.user_id).where(Attempt.live_session_id == s.id, Attempt.question_id == q.id)
+        )
+    )
+    for uid in a.member_ids:  # in id order, so tables answering at once lock players in the same order
+        if uid in scored:  # moved to another table mid-question: their first table's answer counted
+            continue
+        xp.lock(db, uid)  # before checking what they've seen, so a first answer can't count twice
+        repeat = xp.last_seen(db, uid, q.id, now) is not None
+        granted = xp.grant(db, uid, q, "live", a.correct, now, repeat=repeat, passed=a.passed)
+        db.add(
+            Attempt(
+                user_id=uid,
+                question_id=q.id,
+                mode="live",
+                answer=a.answer,
+                correct=a.correct,
+                passed=a.passed,
+                created_at=now,
+                submitted_at=now,
+                late=False,
+                area=q.area,
+                xp=granted.xp,
+                live_session_id=s.id,
+            )
+        )
+    a.granted = True
 
 
 # What each screen sees
@@ -468,7 +516,7 @@ def view(db: DB, user: User, code: str, now: datetime) -> View:
     refresh(db, code, now)
     s = _session(db, code)
     players = _players(db, s)
-    if not _runs(user, s) and user.id not in players:
+    if user.id != s.host_id and user.id not in players:  # admins too: they join like anyone else
         raise UserError("Join the live quiz first.", 403)
     names = dict(
         db.execute(select(User.id, User.display_name).where(User.id.in_([*players, s.host_id])))
@@ -499,7 +547,7 @@ def view(db: DB, user: User, code: str, now: datetime) -> View:
     out = View(
         session=s,
         host_name=names.get(s.host_id, ""),
-        role="host" if user.id == s.host_id or me is None else "player",
+        role="host" if user.id == s.host_id else "player",
         my_table_id=me.table_id if me else None,
         captain=any(t.captain_id == user.id for t in tables),
         players=[(p.user_id, names.get(p.user_id, ""), p.table_id) for p in players.values()],
@@ -529,6 +577,7 @@ def view(db: DB, user: User, code: str, now: datetime) -> View:
     closed = [p for p in sorted(questions) if p < s.position or (p == s.position and s.state != "open")]
     if _revealed(s):
         _score(db, s, questions, answers, closed, out)
+    db.commit()  # read-only by now: give the connection back before the route serialises
     return out
 
 
@@ -571,12 +620,13 @@ def _cell(value: object) -> str:
 
 
 def results_csv(db: DB, user: User, code: str) -> str:
+    """One row per table answer (or per question nobody answered), as the Excel sheet had them."""
     s = _session(db, code)
     if not _runs(user, s):
         raise UserError("Only the host downloads the results.", 403)
     tables = {t.id: t.name for t in _tables(db, s)}
     rows = db.execute(
-        select(LiveQuestion.position, Question.text, LiveQuestion.table_id, LiveAnswer, User.display_name)
+        select(LiveQuestion.position, Question, LiveQuestion.table_id, LiveAnswer, User.display_name)
         .join(Question, Question.id == LiveQuestion.question_id)
         .outerjoin(
             LiveAnswer,
@@ -584,17 +634,38 @@ def results_csv(db: DB, user: User, code: str) -> str:
             & (LiveAnswer.position == LiveQuestion.position),
         )
         .outerjoin(User, User.id == LiveAnswer.by_user_id)
-        .where(LiveQuestion.session_id == s.id)
+        .where(LiveQuestion.session_id == s.id, LiveQuestion.position <= s.position)
         .order_by(LiveQuestion.position, LiveAnswer.table_id)
+    ).all()
+    ids = {row[1].id for row in rows}
+    texts = dict(
+        db.execute(select(AnswerOption.id, AnswerOption.text).where(AnswerOption.question_id.in_(ids)))
+        .tuples()
+        .all()
     )
+    official = {q.id: check(db, q, None, None).official or "" for q in {row[1] for row in rows}}
     out = io.StringIO()
     w = csv.writer(out)
-    w.writerow(["question", "text", "answered by", "table", "captain", "answer", "right", "points"])
-    for pos, text, owner, a, captain in rows:
-        row = [text[:120], tables.get(owner, "every table"), "", "", ""]
+    w.writerow(
+        [
+            "question",
+            "text",
+            "answered by",
+            "table",
+            "captain",
+            "answer",
+            "official answer",
+            "right",
+            "points",
+        ]
+    )
+    for pos, q, owner, a, captain in rows:
+        row = [q.text[:120], tables.get(owner, "every table"), "", "", ""]
         if a is not None:
-            sent = a.answer.get("value") or ",".join(map(str, a.answer.get("options") or []))
+            sent = a.answer.get("value") or ", ".join(
+                texts.get(o, "?") for o in a.answer.get("options") or []
+            )
             row[2:] = [tables.get(a.table_id, ""), captain or "", "not sure" if a.passed else sent]
         right = "" if a is None or a.correct is None else "yes" if a.correct else "no"
-        w.writerow([pos + 1, *map(_cell, row), right, a.points if a else ""])
+        w.writerow([pos + 1, *map(_cell, [*row, official[q.id]]), right, a.points if a else ""])
     return out.getvalue()

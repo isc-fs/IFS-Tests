@@ -105,7 +105,10 @@ on a position change. (The code calls it `position`; the ladder's tiers are the 
   server sends a panel only to levels that still get it and refuses hints from DT I. A hint is generated from
   the answer key (two options left on single choice, how many are right on multiple choice, a range that holds
   a number without being centred on it, the count and first value of a list, the length and first letter of a
-  text), comes before answering, one per question, and halves the XP.
+  text), comes before answering, one per question, and halves the XP. A hint is drawn with a seed from a secret kept in
+  the database (never from the public question id, which would let anyone run it backwards to the answer), and
+  none is given when it would be the answer: a number too small for a range wider than its grading tolerance, a
+  text of one or two characters, a single choice with more than one accepted option.
 - Gains don't depend on level but penalties do, so on the leaderboard an experienced member who picks a low
   position loses less for wrong answers until they level up (3,000 XP before penalties start). That is the
   price of letting people pick at sign-up; admins can correct a position that is plainly wrong.

@@ -76,6 +76,8 @@ def upgrade() -> None:
         sa.Column("points", sa.Integer(), server_default="0", nullable=False),
         sa.Column("by_user_id", sa.Integer(), nullable=True),
         sa.Column("submitted_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("member_ids", postgresql.ARRAY(sa.Integer()), server_default="{}", nullable=False),
+        sa.Column("granted", sa.Boolean(), server_default="false", nullable=False),
         sa.ForeignKeyConstraint(
             ["by_user_id"], ["users.id"], name=op.f("fk_live_answers_by_user_id_users"), ondelete="SET NULL"
         ),
@@ -99,6 +101,7 @@ def upgrade() -> None:
         sa.Column("user_id", sa.Integer(), nullable=False),
         sa.Column("table_id", sa.Integer(), nullable=True),
         sa.Column("joined_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("removed", sa.Boolean(), server_default="false", nullable=False),
         sa.ForeignKeyConstraint(
             ["session_id"],
             ["live_sessions.id"],

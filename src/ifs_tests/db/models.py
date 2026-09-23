@@ -408,6 +408,8 @@ class LivePlayer(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
     table_id: Mapped[int | None] = mapped_column(ForeignKey("live_tables.id", ondelete="SET NULL"))
     joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # Removed by the host: kept so that joining again is refused.
+    removed: Mapped[bool] = mapped_column(server_default="false")
 
 
 class LiveQuestion(Base):
@@ -440,6 +442,9 @@ class LiveAnswer(Base):
     points: Mapped[int] = mapped_column(server_default="0")
     by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     submitted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # Who sat at the table when it answered; they share the XP, at once or (in a rehearsal) at the end.
+    member_ids: Mapped[list[int]] = mapped_column(ARRAY(Integer), server_default="{}")
+    granted: Mapped[bool] = mapped_column(server_default="false")
 
 
 class LiveProposal(Base):

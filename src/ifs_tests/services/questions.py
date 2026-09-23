@@ -4,17 +4,24 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 from urllib.parse import urlsplit
 
-from sqlalchemy import select
+from sqlalchemy import and_, exists, or_, select
 from sqlalchemy.orm import Session as DB
 
 from ..db.models import (
     AnswerKey,
     AnswerOption,
+    Attempt,
+    DailyQuestion,
     Document,
     Event,
+    LivePlayer,
+    LiveQuestion,
+    LiveSession,
+    MockSession,
     Question,
     Quiz,
     QuizQuestion,
@@ -22,6 +29,7 @@ from ..db.models import (
     quiz_documents,
     quiz_events,
 )
+from ..domain.daily import madrid_day
 from ..domain.grading import grade
 from .errors import UserError
 
@@ -180,3 +188,51 @@ def check(db: DB, q: Question, options: list[int] | None, value: str | None, uns
         solutions=[(s.text, list(s.images)) for s in solutions],
         passed=passed,
     )
+
+
+def running_for(db: DB, user_id: int, question_id: int, now: datetime) -> bool:
+    """Whether `user_id` still has to answer this question in a scored mode: today's daily question for its
+    area, a question in one of their open mock runs, or the open question (every question, in a rehearsal)
+    of a live quiz they play in. Its answer must not reach them another way first."""
+    day = madrid_day(now)
+    answered = select(Attempt.id).where(
+        Attempt.user_id == user_id, Attempt.question_id == question_id, Attempt.submitted_at.is_not(None)
+    )
+    daily = exists().where(DailyQuestion.day == day, DailyQuestion.question_id == question_id)
+    in_run = (
+        select(MockSession.id)
+        .join(QuizQuestion, QuizQuestion.quiz_id == MockSession.quiz_id)
+        .where(
+            MockSession.user_id == user_id,
+            MockSession.finished_at.is_(None),
+            QuizQuestion.question_id == question_id,
+            ~exists(answered.where(Attempt.session_id == MockSession.id)),
+        )
+    )
+    in_live = (
+        select(LiveSession.id)
+        .join(LivePlayer, LivePlayer.session_id == LiveSession.id)
+        .join(LiveQuestion, LiveQuestion.session_id == LiveSession.id)
+        .where(
+            LivePlayer.user_id == user_id,
+            ~LivePlayer.removed,
+            LiveSession.state != "finished",
+            LiveQuestion.question_id == question_id,
+            or_(
+                and_(LiveQuestion.position == LiveSession.position, LiveSession.state == "open"),
+                LiveSession.config["feedback"].astext == "end",
+            ),
+        )
+    )
+    daily_open = db.scalar(select(daily)) and not db.scalar(
+        select(exists(answered.where(Attempt.mode == "daily", Attempt.day == day)))
+    )
+    return bool(daily_open or db.scalar(select(exists(in_run))) or db.scalar(select(exists(in_live))))
+
+
+def not_running(db: DB, user_id: int, question_id: int, now: datetime) -> None:
+    """Practice can't answer or hint at a question still to be answered elsewhere: that would give it away."""
+    if running_for(db, user_id, question_id, now):
+        raise UserError(
+            "This question is running in your daily question, mock or live quiz: answer it there first.", 409
+        )

@@ -2343,6 +2343,23 @@
       }
      }
     ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "anyOf": [
+         {
+          "$ref": "#/components/schemas/AdvanceIn"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Body"
+       }
+      }
+     }
+    },
     "responses": {
      "204": {
       "description": "Successful Response"
@@ -2651,6 +2668,33 @@
      "locked_until"
     ],
     "title": "AdminUser"
+   },
+   "AdvanceIn": {
+    "properties": {
+     "state": {
+      "type": "string",
+      "enum": [
+       "lobby",
+       "open",
+       "closed"
+      ],
+      "title": "State"
+     },
+     "position": {
+      "type": "integer",
+      "maximum": 10000.0,
+      "minimum": -1.0,
+      "title": "Position"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "state",
+     "position"
+    ],
+    "title": "AdvanceIn",
+    "description": "The step the host's screen showed, so a double tap can't skip one."
    },
    "Aids": {
     "properties": {
