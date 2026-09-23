@@ -19,7 +19,7 @@ import { ErrorNotice, Field, Form, Notice, SelectField } from '../components/For
 import { Page } from '../components/Page'
 import { queryClient, useMe } from '../lib/api'
 import { AREAS } from '../lib/areas'
-import { RANKS } from '../lib/xp'
+import { RANK_NAMES } from '../lib/xp'
 
 const when = (iso: string | null | undefined) =>
   iso
@@ -181,7 +181,7 @@ function Members({ selfId }: { selfId: number }) {
   const [link, setLink] = useState<{ userId: number; url: string; expires: string } | null>(null)
   const update = useMutation({
     ...updateUserMutation(),
-    onSuccess: (u) => setChanged(`${u.display_name} is now ${u.role}, ${u.status}, ${RANKS[u.rank]}.`),
+    onSuccess: (u) => setChanged(`${u.display_name} is now ${u.role}, ${u.status}, ${RANK_NAMES[u.rank]}.`),
     onSettled: () => refresh(usersQueryKey()),
   })
   const reset = useMutation({
@@ -256,7 +256,7 @@ function Members({ selfId }: { selfId: number }) {
                   ))}
                 </SelectField>
                 <SelectField label="Rank" value={u.rank} onChange={(e) => change(u, { rank: e.target.value as Rank })}>
-                  {Object.entries(RANKS).map(([r, label]) => (
+                  {Object.entries(RANK_NAMES).map(([r, label]) => (
                     <option key={r} value={r}>
                       {label}
                     </option>

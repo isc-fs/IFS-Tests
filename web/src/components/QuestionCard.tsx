@@ -1,8 +1,9 @@
 import { type ReactNode, useEffect, useId, useRef, useState } from 'react'
 import type { AnswerIn, Feedback, PlayQuestion } from '../api/types.gen'
-import { ME_KEY, queryClient } from '../lib/api'
+import { ME_KEY, queryClient, useMe } from '../lib/api'
 import { AREAS, TOPICS } from '../lib/areas'
-import { xp } from '../lib/xp'
+import { changes, TOP_LEVEL, tierOf, xp } from '../lib/xp'
+import { Emblem } from './Emblem'
 import { Field, Form, Notice } from './Form'
 import { ReportProblem } from './ReportProblem'
 
@@ -39,8 +40,31 @@ export function QuestionMeta({ question, children }: { question: PlayQuestion; c
   )
 }
 
+function Promotion({ level }: { level: number }) {
+  const { data: me } = useMe()
+  const ladder = me?.progress?.ladder
+  const step = ladder?.[level]
+  const title = step?.title ?? null
+  const newTier = level >= TOP_LEVEL || level % 5 === 0
+  const what = step ? changes(step, ladder?.[level - 1]) : []
+  return (
+    <div className={`promotion${newTier ? ' new-tier' : ''}`}>
+      <Emblem level={level} title={title} size={newTier ? 96 : 72} />
+      <div>
+        <strong className="promotion-title">
+          {level >= TOP_LEVEL
+            ? `You reached the top: ${title ?? 'legend'}!`
+            : `Promoted to ${title ?? `level ${level}`}!`}
+        </strong>
+        {newTier && level < TOP_LEVEL && <span> Welcome to {tierOf(level)}.</span>}
+        {what.length > 0 && <span className="muted"> {what.join(' · ')}.</span>}
+      </div>
+    </div>
+  )
+}
+
 function Earned({ feedback }: { feedback: Feedback }) {
-  const up = feedback.level_up === true
+  const up = feedback.level_up === true && feedback.level != null
   useEffect(() => {
     if (feedback.level != null) queryClient.invalidateQueries({ queryKey: ME_KEY })
   }, [feedback.level])
@@ -49,7 +73,7 @@ function Earned({ feedback }: { feedback: Feedback }) {
   return (
     <output className="earned">
       {amount !== 0 && <span className={amount > 0 ? 'xp gain' : 'xp loss'}>{xp(amount)}</span>}
-      {up && <strong> Level up! You're level {feedback.level} now.</strong>}
+      {up && <Promotion level={feedback.level as number} />}
     </output>
   )
 }

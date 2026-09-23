@@ -355,6 +355,16 @@ export type LeaderRow = {
      * Me
      */
     me: boolean;
+    /**
+     * Level
+     *
+     * Lifetime level, for the rank emblem
+     */
+    level: number;
+    /**
+     * Title
+     */
+    title: string;
 };
 
 /**
@@ -744,6 +754,10 @@ export type Progress = {
      */
     title: string;
     /**
+     * Tier
+     */
+    tier: 'Mingo' | 'Jefe' | 'DT' | 'Top';
+    /**
      * Level Xp
      *
      * Lifetime XP at which the current level started
@@ -751,8 +765,10 @@ export type Progress = {
     level_xp: number;
     /**
      * Next Level Xp
+     *
+     * Null at the top
      */
-    next_level_xp: number;
+    next_level_xp: number | null;
     /**
      * Penalty
      *
@@ -770,6 +786,10 @@ export type Progress = {
      */
     streak_bonus: number;
     aids: Aids;
+    /**
+     * Ladder
+     */
+    ladder: Array<Step>;
 };
 
 /**
@@ -1132,6 +1152,41 @@ export const Status = {
  * Status
  */
 export type Status = typeof Status[keyof typeof Status];
+
+/**
+ * Step
+ *
+ * One level of the ladder and what it changes.
+ */
+export type Step = {
+    /**
+     * Level
+     */
+    level: number;
+    /**
+     * Tier
+     */
+    tier: 'Mingo' | 'Jefe' | 'DT' | 'Top';
+    /**
+     * Title
+     *
+     * Null for the top until the player reaches DT V: a surprise
+     */
+    title: string | null;
+    /**
+     * Xp
+     *
+     * Lifetime XP that reaches it
+     */
+    xp: number;
+    aids: Aids;
+    /**
+     * Penalty
+     *
+     * Percentage of a right answer's XP a wrong answer costs
+     */
+    penalty: number;
+};
 
 /**
  * TimedQuestion

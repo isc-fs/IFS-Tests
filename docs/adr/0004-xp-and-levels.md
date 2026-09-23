@@ -38,37 +38,51 @@ can take XP away, so period XP can be negative; lifetime XP never drops below th
   counts, so nobody can move a question's difficulty by answering it again. Set on import, recalculated
   nightly by the maintenance job.
 
-**Levels.** Level *L* needs `25 × L^2.3` lifetime XP (L4 ≈ 600, L8 ≈ 3,000, L12 ≈ 7,600, L16 ≈ 14,700,
-L20 ≈ 24,600). Titles and training wheels by level:
+**Levels climb a ladder, like a competitive game's ranked tiers:** Mingo I–V, Jefe I–V, DT I–V, then one last
+title. Level *n* needs `250 × n × (n + 1)` lifetime XP, so each level asks 500 XP more than the one before:
+Mingo II at 500, Jefe I at 7,500, DT I at 27,500, the top at 60,000. Five divisions per tier rather than
+four, so promotions keep coming. Each level takes one training wheel away:
 
-| Levels | Title | Formulas | Learn more | Hint | Wrong answer costs |
+| Level | XP | Formulas | Learn more | Hint | Wrong answer costs |
 |---|---|---|---|---|---|
-| 0–3 | Mingo | ✓ | ✓ | ✓ | nothing |
-| 4–7 | Rookie | ✓ | ✓ | ✓ | nothing |
-| 8–11 | Engineer | ✓ | | ✓ | 10 % of what a right answer gives |
-| 12–15 | Department Head | | | ✓ | 25 % |
-| 16–19 | Senior | | | | 50 % |
-| 20+ | Technical Director | | | | 75 % |
+| Mingo I–III | 0 / 500 / 1,500 | ✓ | ✓ | ✓ | nothing |
+| Mingo IV | 3,000 | ✓ | ✓ | ✓ | 5 % of what a right answer gives |
+| Mingo V | 5,000 | ✓ | | ✓ | 10 % |
+| Jefe I–V | 7,500 … 22,500 | | | ✓ | 15, 20, 25, 30, 35 % |
+| DT I–V | 27,500 … 52,500 | | | | 45, 50, 55, 60, 70 % |
+| The top | 60,000 | | | | 75 % |
 
-**Ranks** set the starting level: Mingo (new this season) 0, returning member 8, Department Head 12,
-Technical Director 20. People choose their rank when they join and can move it up later (audited); only admins
-can lower it, so nobody can take a high title and then drop back to a gentler tier. Lifetime XP never drops
-on a rank change.
+The top title depends on the vertical: **Gigante Noble** for Mechanical, **Villano** for Electronics, Tractive
+System and Driverless (the electrical side, as the app's areas group them), **Leyenda** for everyone else. It
+is an easter egg: the API sends it as null, and the app shows "???", until the player reaches DT V. Lifetime XP
+past the top keeps counting.
 
-## Pacing (simulated, `tests/unit/test_xp_rules.py`)
+The ladder is what players chase, so it is always in view: an emblem per tier (bronze shield, silver hexagon,
+gold star, and its own art for each top title) with pips for the division; a season strip of all sixteen
+levels on the rank card; the whole road on the profile, with what each level changes; a promotion moment
+after the answer that earns it, bigger on entering a new tier; and emblems beside names on the leaderboard,
+which show lifetime rank while the ranking itself is XP earned in the period.
+
+**Ranks** set the starting level: Mingo (new this season) at Mingo I, returning member at Mingo IV, Department
+Head at Jefe I, Technical Director at DT I. People choose their rank when they join and can move it up later
+(audited); only admins can lower it, so nobody can take a high title and then drop back to a gentler tier.
+Lifetime XP never drops on a rank change.
+
+## Pacing (simulated over a season, `tests/unit/test_xp_rules.py`)
 
 - Active newcomer (plays 9 days in 10: three daily questions, ten practice questions, a mock quiz a week):
-  Engineer in ~3 weeks, Department Head band in ~5 weeks, Technical Director band in ~4 months, around the
-  January registration quizzes.
-- Typical newcomer (6 days in 10, three practice questions, a mock quiz a fortnight): Department Head band in
-  ~4 months; Technical Director over a second season.
+  Jefe in ~5 weeks, DT in ~4 months (around the January registration quizzes), the top in ~8 months (spring,
+  before the summer events).
+- Typical newcomer (6 days in 10, three practice questions, a mock quiz a fortnight): Jefe in ~3½ months, DT
+  near the end of the season, the top in a later season.
+- Casual (3 days in 10): Jefe in about seven months.
 
 ## Consequences
 
 - The leaderboard shows XP; old season points are not converted (nothing was deployed).
 - The formulas and learn-more panels and hints are gated by tier (next branch).
 - Gains don't depend on level but penalties do, so on the leaderboard an experienced member who picks a low
-  rank loses less for wrong answers until they level up (about 3,000 XP before penalties start). That is the
+  rank loses less for wrong answers until they level up (3,000 XP before penalties start). That is the
   price of letting people pick; admins can correct a rank that is plainly wrong.
 - Mock XP is granted as each answer is recorded, so a player's XP moves during a run even though the review
   only comes at the end. Answers can't be changed, so this reveals nothing useful.

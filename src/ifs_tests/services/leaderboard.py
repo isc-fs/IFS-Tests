@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session as DB
 
 from ..db.models import Attempt, MockSession, Question, User
 from ..domain import leaderboard as rules
+from ..domain import xp as xp_rules
 from ..domain.daily import madrid_day
 
 
@@ -21,6 +22,8 @@ class Row:
     vertical: str | None
     xp: int
     me: bool
+    level: int
+    title: str
 
 
 @dataclass
@@ -81,17 +84,21 @@ def board(db: DB, user: User, area: str | None, period: str, now: datetime) -> B
     scores = _scores(db, period, now, area)
     shown = sorted((s for s in scores if not s[3]), key=lambda s: (-s[4], s[1].casefold()))
     ranks = rules.ranks([s[4] for s in shown])
-    rows = [
-        Row(rank, name, vertical, xp, uid == user.id)
-        for rank, (uid, name, vertical, _, xp) in zip(ranks, shown, strict=True)
-    ]
+    top = [(rank, s) for rank, s in zip(ranks, shown, strict=True) if rank <= rules.TOP]
+    lifetime = dict(
+        db.execute(select(User.id, User.xp).where(User.id.in_([s[0] for _, s in top]))).tuples().all()
+    )
+    rows = []
+    for rank, (uid, name, vertical, _, xp) in top:
+        level = xp_rules.level_for(lifetime[uid])
+        rows.append(Row(rank, name, vertical, xp, uid == user.id, level, xp_rules.title(level, vertical)))
     mine = next((s[4] for s in scores if s[0] == user.id), None)
     me = None
     if mine is not None:  # XP won and lost can net to zero; they still played
         others = (s[4] for s in shown if s[0] != user.id)
         me = Mine(rules.rank_among(mine, others), mine, user.leaderboard_opt_out)
     # Everyone tied at the cut stays, so nobody ranked in the top 50 is missing from it.
-    return Board([r for r in rows if r.rank <= rules.TOP], me, len(shown))
+    return Board(rows, me, len(shown))
 
 
 def verticals(db: DB, period: str, now: datetime) -> list[rules.VerticalScore]:

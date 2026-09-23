@@ -9,6 +9,8 @@ const row = (rank: number, display_name: string, xp: number, extra = {}) => ({
   vertical: 'Mechanical',
   xp,
   me: false,
+  level: 2,
+  title: 'Mingo III',
   ...extra,
 })
 const BOARD = {
@@ -25,10 +27,11 @@ test('the board lists everyone by rank and highlights you', async () => {
   const list = await screen.findByRole('list', { name: 'Everyone, this season' })
   const items = within(list).getAllByRole('listitem')
   expect(items.map((i) => i.textContent)).toEqual([
-    '1LeoMechanical40 XP',
-    '2MartaYouDriverless30 XP',
-    '2PauMechanical30 XP',
+    '1IIILeoMingo III · Mechanical40 XP', // "III" is the emblem's numeral
+    '2IIIMartaYouMingo III · Driverless30 XP',
+    '2IIIPauMingo III · Mechanical30 XP',
   ])
+  expect(within(items[0]).getByRole('img', { name: 'Mingo III' })).toBeInTheDocument()
   expect(items[1]).toHaveClass('me')
   expect(items[1]).toHaveAttribute('value', '2')
   expect(screen.getByText('3 people on this board.')).toBeInTheDocument()

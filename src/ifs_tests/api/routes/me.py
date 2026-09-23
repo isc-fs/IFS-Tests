@@ -8,25 +8,42 @@ from ...db.models import User
 from ...domain import xp as rules
 from ...services import accounts, xp
 from ..deps import AppSettings, Db, Member, Now
-from ..schemas import Aids, Me, PasswordChangeIn, ProfileIn, Progress
+from ..schemas import Aids, Me, PasswordChangeIn, ProfileIn, Progress, Step
 
 router = APIRouter(prefix="/api/me", tags=["me"])
 
 
+def _step(lv: rules.Level, title: str | None) -> Step:
+    return Step(
+        level=lv.number,
+        tier=lv.tier,
+        title=title,
+        xp=rules.xp_for_level(lv.number),
+        aids=Aids(formulas=lv.formulas, learn_more=lv.learn_more, hint=lv.hint),
+        penalty=round(lv.penalty * 100),
+    )
+
+
 def _me(db: Db, user: User, now: datetime) -> Me:
     level = rules.level_for(user.xp)
-    t = rules.tier(level)
+    lv = rules.at(level)
     streak = xp.streak_days(db, user.id, now)
+    seen_top = level >= rules.TOP - 1
     out = Me.model_validate(user)
     out.progress = Progress(
         level=level,
-        title=t.name,
+        title=rules.title(level, user.vertical),
+        tier=lv.tier,
         level_xp=rules.xp_for_level(level),
-        next_level_xp=rules.xp_for_level(level + 1),
-        penalty=round(t.penalty * 100),
+        next_level_xp=rules.xp_for_level(level + 1) if level < rules.TOP else None,
+        penalty=round(lv.penalty * 100),
         streak=streak,
         streak_bonus=round((rules.streak_multiplier(streak) - 1) * 100),
-        aids=Aids(formulas=t.formulas, learn_more=t.learn_more, hint=t.hint),
+        aids=Aids(formulas=lv.formulas, learn_more=lv.learn_more, hint=lv.hint),
+        ladder=[
+            _step(s, rules.title(s.number, user.vertical) if s.number < rules.TOP or seen_top else None)
+            for s in rules.LEVELS
+        ],
     )
     return out
 

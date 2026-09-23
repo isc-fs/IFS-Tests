@@ -32,7 +32,7 @@ test('people can move their rank up, never down', async () => {
     within(rank)
       .getAllByRole('option')
       .map((o) => o.textContent),
-  ).toEqual(['Department Head', 'Technical Director'])
+  ).toEqual(['Department Head: starts at Jefe I', 'Technical Director: starts at DT I'])
   await userEvent.selectOptions(rank, 'technical_director')
   await userEvent.click(screen.getByRole('button', { name: 'Save profile' }))
   await waitFor(() => expect(sent('PATCH /api/me')).toHaveLength(1))

@@ -14,7 +14,7 @@ from ifs_tests.bank.mirror import load_bank
 from ifs_tests.bank.sample import SAMPLE_DIR
 from ifs_tests.db.models import AnswerOption, Attempt, AuditLog, Question, User
 from ifs_tests.domain import daily as daily_rules
-from ifs_tests.domain.xp import award, difficulty, floor_for, level_for, xp_for_level
+from ifs_tests.domain.xp import RANKS, TOP, award, difficulty, floor_for, level_for, xp_for_level
 from ifs_tests.services import maintenance, xp
 from ifs_tests.services.bank import import_bank
 
@@ -55,22 +55,10 @@ def options(db: Session, qid: int) -> list[int]:
 @pytest.mark.parametrize(
     ("rank", "level", "title", "aids", "penalty"),
     [
-        (None, 0, "Mingo", {"formulas": True, "learn_more": True, "hint": True}, 0),
-        ("member", 8, "Engineer", {"formulas": True, "learn_more": False, "hint": True}, 10),
-        (
-            "department_head",
-            12,
-            "Department Head",
-            {"formulas": False, "learn_more": False, "hint": True},
-            25,
-        ),
-        (
-            "technical_director",
-            20,
-            "Technical Director",
-            {"formulas": False, "learn_more": False, "hint": False},
-            75,
-        ),
+        (None, 0, "Mingo I", {"formulas": True, "learn_more": True, "hint": True}, 0),
+        ("member", 3, "Mingo IV", {"formulas": True, "learn_more": True, "hint": True}, 5),
+        ("department_head", 5, "Jefe I", {"formulas": False, "learn_more": False, "hint": True}, 15),
+        ("technical_director", 10, "DT I", {"formulas": False, "learn_more": False, "hint": False}, 45),
     ],
 )
 def test_the_rank_you_join_with_sets_your_starting_level(
@@ -86,9 +74,11 @@ def test_the_rank_you_join_with_sets_your_starting_level(
     me = join(signed_in, c, "Ana", rank)
     assert (me["rank"], me["xp"]) == (rank or "mingo", xp_for_level(level))
     progress = c.get("/api/me").json()["progress"]
+    ladder = progress.pop("ladder")
     assert progress == {
         "level": level,
         "title": title,
+        "tier": title.split()[0],
         "level_xp": xp_for_level(level),
         "next_level_xp": xp_for_level(level + 1),
         "penalty": penalty,
@@ -96,6 +86,39 @@ def test_the_rank_you_join_with_sets_your_starting_level(
         "streak_bonus": 0,
         "aids": aids,
     }
+    assert [s["title"] for s in ladder][:3] == ["Mingo I", "Mingo II", "Mingo III"]
+    assert ladder[TOP] == {
+        "level": TOP,
+        "tier": "Top",
+        "title": None,  # a surprise until DT V
+        "xp": xp_for_level(TOP),
+        "aids": {"formulas": False, "learn_more": False, "hint": False},
+        "penalty": 75,
+    }
+
+
+@pytest.mark.parametrize(
+    ("vertical", "top"), [("Mechanical", "Gigante Noble"), ("Electronics", "Villano"), (None, "Leyenda")]
+)
+def test_the_top_title_is_revealed_at_dt_v_and_depends_on_the_vertical(
+    signed_in: TestClient, new_client: NewClient, db: Session, vertical: str | None, top: str
+) -> None:
+    c = new_client()
+    ana = join(signed_in, c, "Ana")
+    c.patch("/api/me", json={"vertical": vertical})
+    db.execute(update(User).where(User.id == ana["id"]).values(xp=xp_for_level(TOP - 1)))
+    db.commit()
+    progress = c.get("/api/me").json()["progress"]
+    assert (progress["title"], progress["ladder"][TOP]["title"]) == ("DT V", top)
+    db.execute(update(User).where(User.id == ana["id"]).values(xp=10**6))
+    db.commit()
+    progress = c.get("/api/me").json()["progress"]
+    assert (progress["level"], progress["title"], progress["tier"], progress["next_level_xp"]) == (
+        TOP,
+        top,
+        "Top",
+        None,
+    )
 
 
 def test_an_unknown_rank_is_refused(signed_in: TestClient, new_client: NewClient) -> None:
@@ -112,7 +135,7 @@ def test_people_move_their_own_rank_up_only_and_it_is_audited(
     assert (up["rank"], up["xp"], up["progress"]["title"]) == (
         "department_head",
         floor_for("department_head"),
-        "Department Head",
+        "Jefe I",
     )
     down = c.patch("/api/me", json={"rank": "mingo"})
     assert down.status_code == 403
@@ -135,7 +158,7 @@ def test_admins_correct_a_rank_and_it_is_audited(
     r = signed_in.patch(f"/api/admin/users/{ana['id']}", json={"rank": "member"})
     assert r.status_code == 200, r.text
     assert (r.json()["rank"], r.json()["xp"]) == ("member", floor_for("member"))
-    assert c.get("/api/me").json()["progress"]["level"] == 8
+    assert c.get("/api/me").json()["progress"]["title"] == "Mingo IV"
     actions = [a.action for a in db.scalars(select(AuditLog).order_by(AuditLog.id))]
     assert actions[-1] == "user.update"
     details = db.scalars(select(AuditLog.details).order_by(AuditLog.id.desc())).first()
@@ -178,10 +201,10 @@ def test_wrong_answers_cost_xp_at_high_levels_but_never_below_the_rank(
     wrong = options(db, qid)[1]
     r = c.post(f"/api/practice/questions/{qid}/answer", json={"options": [wrong]}).json()
     assert r["correct"] is False
-    assert r["xp"] == award(False, 3, "practice", 20) == -9
-    assert r["level"] == 20
+    assert r["xp"] == award(False, 3, "practice", RANKS["technical_director"]) == -6
+    assert r["level"] == 10
     assert c.get("/api/me").json()["xp"] == floor_for("technical_director")
-    assert db.scalars(select(Attempt.xp)).all() == [-9]
+    assert db.scalars(select(Attempt.xp)).all() == [-6]
 
 
 def test_a_penalty_comes_off_xp_earned_above_the_floor(
@@ -193,7 +216,7 @@ def test_a_penalty_comes_off_xp_earned_above_the_floor(
     db.commit()
     qid = bank[90001]
     c.post(f"/api/practice/questions/{qid}/answer", json={"options": [options(db, qid)[1]]})
-    assert c.get("/api/me").json()["xp"] == floor_for("technical_director") + 91
+    assert c.get("/api/me").json()["xp"] == floor_for("technical_director") + 94
 
 
 def test_mingos_lose_nothing_for_wrong_answers(
@@ -217,8 +240,11 @@ def test_the_leaderboard_ranks_by_xp_earned_and_shows_losses(
     ana.post(f"/api/practice/questions/{qid}/answer", json={"options": [right]})
     toni.post(f"/api/practice/questions/{qid}/answer", json={"options": [wrong]})
     rows = ana.get("/api/leaderboard").json()["rows"]
-    assert [(r["display_name"], r["xp"]) for r in rows] == [("Ana", 12), ("Toni", -9)]
-    assert toni.get("/api/leaderboard").json()["me"]["xp"] == -9
+    assert [(r["display_name"], r["xp"], r["title"], r["level"]) for r in rows] == [
+        ("Ana", 12, "Mingo I", 0),
+        ("Toni", -6, "DT I", 10),  # the badge shows lifetime level, not the period's XP
+    ]
+    assert toni.get("/api/leaderboard").json()["me"]["xp"] == -6
 
 
 def test_the_streak_shows_on_the_profile_and_boosts_gains(
@@ -394,7 +420,7 @@ def test_a_daily_left_to_run_out_costs_like_a_wrong_answer(
     started = c.post("/api/daily/mech/start").json()
     clock.now = datetime.fromisoformat(started["deadline_at"]) + timedelta(seconds=4)
     area = c.get("/api/daily").json()["areas"][0]
-    penalty = award(False, 3, "daily", 20)
+    penalty = award(False, 3, "daily", RANKS["technical_director"])
     assert (area["state"], area["late"], area["correct"], area["xp"]) == ("done", True, False, penalty)
     assert c.get("/api/me").json()["progress"]["streak"] == 0
     stored = c.post(f"/api/daily/attempts/{started['attempt_id']}/answer", json=_wrong(started)).json()
@@ -417,7 +443,10 @@ def test_the_nightly_job_closes_abandoned_dailies_once(
     assert maintenance.run(db, clock.now)["dailies_closed"] == 2  # the one still inside its grace stays open
     assert maintenance.run(db, clock.now)["dailies_closed"] == 0
     got = dict(db.execute(select(Attempt.user_id, Attempt.xp).where(Attempt.area == "mech")).tuples().all())
-    assert sorted(got.values()) == [award(False, 3, "daily", 12), 0]  # a mingo loses nothing
+    assert sorted(got.values()) == [
+        award(False, 3, "daily", RANKS["department_head"]),
+        0,
+    ]  # a mingo loses nothing
 
 
 def test_a_daily_answer_reports_the_level_it_left_you_at(
@@ -449,7 +478,8 @@ def test_a_mock_question_left_to_run_out_costs_like_a_wrong_answer(
             json={"attempt_id": state["current"]["attempt_id"], **body},
         ).json()
     items = [i["feedback"]["xp"] for i in state["summary"]["items"]]
-    assert items == [award(False, 3, "mock", 12)] + [award(True, 3, "mock", 12)] * 4
+    dh = RANKS["department_head"]
+    assert items == [award(False, 3, "mock", dh)] + [award(True, 3, "mock", dh)] * 4
     assert state["summary"]["xp"] == sum(items)
 
 
