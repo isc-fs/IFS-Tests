@@ -24,8 +24,8 @@ after launch.
 | Phase | Title | Branches | Milestone tag |
 |:---:|---|---|---|
 | 1 | Foundations | ✅ done `feat/1-project-scope` · ✅ done `feat/2-fsquiz-client` · ✅ done `feat/3-team-proposal` | `v0.1.0` |
-| 2 | Platform foundation<br><sub>Staging live on the team server, accounts and the question bank in place</sub> | ✅ done `feat/4-platform-skeleton` · ✅ done `feat/5-server-deploy` · ✅ done `feat/6-accounts-auth` · 🔄 active `feat/7-bank-push` | `v0.2.0` |
-| 3 | Training MVP | 🔄 active `feat/8-practice` · 🔜 planned `feat/9-admin-taxonomy` · 🔜 planned `feat/10-daily-question` · 🔜 planned `feat/11-mock-quiz` · 🔄 active `feat/12-leaderboard` | `v0.3.0` |
+| 2 | Platform foundation<br><sub>Staging live on the team server, accounts and the question bank in place</sub> | ✅ done `feat/4-platform-skeleton` · ✅ done `feat/5-server-deploy` · ✅ done `feat/6-accounts-auth` · ✅ done `feat/7-bank-push` | `v0.2.0` |
+| 3 | Training MVP<br><sub>One branch per way of answering questions, then the tools around them</sub> | 🔄 active `feat/8-practice` · 🔄 active `feat/9-daily-question` · 🔄 active `feat/10-mock-quiz` · 🔄 active `feat/11-admin-taxonomy` · 🔄 active `feat/12-leaderboard` | `v0.3.0` |
 | 4 | Launch | 🔜 planned `feat/13-privacy-account` · 🔜 planned `feat/14-launch` | `v1.0.0` |
 | 5 | After launch _(deferred)_<br><sub>Ideas to prioritise with the team once the MVP is in use</sub> | ⏸ deferred `feat/15-admin-totp` · ⏸ deferred `feat/16-notion-sync` · ⏸ deferred `feat/17-solution-bounty` · ⏸ deferred `feat/18-team-questions` · ⏸ deferred `feat/19-quiz-day-drill` | `v1.1.0` |
 
@@ -70,7 +70,7 @@ gitGraph
     checkout dev
     merge feat/6-accounts-auth
     branch feat/7-bank-push
-    commit id: "… Bank tables, answer-key normaliser, idempotent import, mirrored images"
+    commit id: "✔ Bank tables, answer-key normaliser, idempotent import, mirrored images"
     checkout dev
     merge feat/7-bank-push
     checkout main
@@ -82,18 +82,18 @@ gitGraph
     commit id: "… Practice by topic with server-side grading and answer reveal"
     checkout dev
     merge feat/8-practice
-    branch feat/9-admin-taxonomy
-    commit id: "○ Reviewer tools for topic labels, answer keys and exclusions"
+    branch feat/9-daily-question
+    commit id: "… One question per area per day, time-boxed, with streaks"
     checkout dev
-    merge feat/9-admin-taxonomy
-    branch feat/10-daily-question
-    commit id: "○ One question per area per day, time-boxed, with streaks"
+    merge feat/9-daily-question
+    branch feat/10-mock-quiz
+    commit id: "… Replay a real past quiz against its original clock"
     checkout dev
-    merge feat/10-daily-question
-    branch feat/11-mock-quiz
-    commit id: "○ Replay a real past quiz against its original clock"
+    merge feat/10-mock-quiz
+    branch feat/11-admin-taxonomy
+    commit id: "… Reviewer tools for topic labels, answer keys and exclusions"
     checkout dev
-    merge feat/11-mock-quiz
+    merge feat/11-admin-taxonomy
     branch feat/12-leaderboard
     commit id: "… Season leaderboards per person, area and vertical, with opt-out"
     checkout dev
