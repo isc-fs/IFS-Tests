@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { AnswerDailyData, AnswerDailyErrors, AnswerDailyResponses, AnswerMockData, AnswerMockErrors, AnswerMockResponses, AnswerPracticeData, AnswerPracticeErrors, AnswerPracticeResponses, AuditLogData, AuditLogErrors, AuditLogResponses, BankSummaryData, BankSummaryResponses, ChangePasswordData, ChangePasswordErrors, ChangePasswordResponses, CreateInviteData, CreateInviteErrors, CreateInviteResponses, DailyStatusData, DailyStatusResponses, InviteInfoData, InviteInfoErrors, InviteInfoResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutResponses, MeData, MeResponses, MockQuizzesData, MockQuizzesResponses, MockStateData, MockStateErrors, MockStateResponses, NextQuestionData, NextQuestionErrors, NextQuestionResponses, OpenInvitesData, OpenInvitesResponses, PracticeAreasData, PracticeAreasResponses, PracticeQuestionData, PracticeQuestionErrors, PracticeQuestionResponses, RegisterData, RegisterErrors, RegisterResponses, ResetData, ResetErrors, ResetInfoData, ResetInfoErrors, ResetInfoResponses, ResetLinkData, ResetLinkErrors, ResetLinkResponses, ResetResponses, ReviewDailyData, ReviewDailyErrors, ReviewDailyResponses, RevokeInviteData, RevokeInviteErrors, RevokeInviteResponses, RevokeSessionsData, RevokeSessionsErrors, RevokeSessionsResponses, StartDailyData, StartDailyErrors, StartDailyResponses, StartMockData, StartMockErrors, StartMockResponses, UpdateMeData, UpdateMeErrors, UpdateMeResponses, UpdateUserData, UpdateUserErrors, UpdateUserResponses, UsersData, UsersResponses } from './types.gen';
+import type { AnswerDailyData, AnswerDailyErrors, AnswerDailyResponses, AnswerMockData, AnswerMockErrors, AnswerMockResponses, AnswerPracticeData, AnswerPracticeErrors, AnswerPracticeResponses, AuditLogData, AuditLogErrors, AuditLogResponses, BankSummaryData, BankSummaryResponses, ChangePasswordData, ChangePasswordErrors, ChangePasswordResponses, CreateInviteData, CreateInviteErrors, CreateInviteResponses, DailyStatusData, DailyStatusResponses, GetLeaderboardData, GetLeaderboardErrors, GetLeaderboardResponses, InviteInfoData, InviteInfoErrors, InviteInfoResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutResponses, MeData, MeResponses, MockQuizzesData, MockQuizzesResponses, MockStateData, MockStateErrors, MockStateResponses, NextQuestionData, NextQuestionErrors, NextQuestionResponses, OpenInvitesData, OpenInvitesResponses, PracticeAreasData, PracticeAreasResponses, PracticeQuestionData, PracticeQuestionErrors, PracticeQuestionResponses, RegisterData, RegisterErrors, RegisterResponses, ResetData, ResetErrors, ResetInfoData, ResetInfoErrors, ResetInfoResponses, ResetLinkData, ResetLinkErrors, ResetLinkResponses, ResetResponses, ReviewDailyData, ReviewDailyErrors, ReviewDailyResponses, RevokeInviteData, RevokeInviteErrors, RevokeInviteResponses, RevokeSessionsData, RevokeSessionsErrors, RevokeSessionsResponses, StartDailyData, StartDailyErrors, StartDailyResponses, StartMockData, StartMockErrors, StartMockResponses, UpdateMeData, UpdateMeErrors, UpdateMeResponses, UpdateUserData, UpdateUserErrors, UpdateUserResponses, UsersData, UsersResponses, VerticalLeaderboardData, VerticalLeaderboardErrors, VerticalLeaderboardResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -251,3 +251,13 @@ export const answerMock = <ThrowOnError extends boolean = false>(options: Option
         ...options.headers
     }
 });
+
+/**
+ * Get Leaderboard
+ */
+export const getLeaderboard = <ThrowOnError extends boolean = false>(options?: Options<GetLeaderboardData, ThrowOnError>): RequestResult<GetLeaderboardResponses, GetLeaderboardErrors, ThrowOnError> => (options?.client ?? client).get<GetLeaderboardResponses, GetLeaderboardErrors, ThrowOnError>({ url: '/api/leaderboard', ...options });
+
+/**
+ * Vertical Leaderboard
+ */
+export const verticalLeaderboard = <ThrowOnError extends boolean = false>(options?: Options<VerticalLeaderboardData, ThrowOnError>): RequestResult<VerticalLeaderboardResponses, VerticalLeaderboardErrors, ThrowOnError> => (options?.client ?? client).get<VerticalLeaderboardResponses, VerticalLeaderboardErrors, ThrowOnError>({ url: '/api/leaderboard/verticals', ...options });

@@ -260,3 +260,41 @@ class AuditEntry(BaseModel):
     actor: str | None
     target: str | None
     details: dict[str, Any]
+
+
+class LeaderRow(BaseModel):
+    rank: int
+    display_name: str
+    vertical: Vertical | None
+    points: int
+    me: bool
+
+
+class MyRank(BaseModel):
+    """The requesting member's own place, shown even when they are hidden or outside the top rows."""
+
+    rank: int
+    points: int
+    hidden: bool = Field(description="Opted out: others don't see them on the board")
+
+
+class Leaderboard(BaseModel):
+    period: Literal["season", "week"]
+    board: Literal["everyone", "mech", "elec", "rules"]
+    rows: list[LeaderRow]
+    me: MyRank | None = Field(description="Null until the member scores in this period")
+    players: int = Field(description="People on this board, including any beyond the rows shown")
+
+
+class VerticalRow(BaseModel):
+    vertical: Vertical
+    members: int
+    points_per_member: float
+    participation: float = Field(
+        description="Share of members who answered a daily question in the last 7 days"
+    )
+
+
+class VerticalBoard(BaseModel):
+    period: Literal["season", "week"]
+    rows: list[VerticalRow]

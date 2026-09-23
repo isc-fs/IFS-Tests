@@ -3,8 +3,8 @@
 import { type DefaultError, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { answerDaily, answerMock, answerPractice, auditLog, bankSummary, changePassword, createInvite, dailyStatus, inviteInfo, login, logout, me, mockQuizzes, mockState, nextQuestion, openInvites, type Options, practiceAreas, practiceQuestion, register, reset, resetInfo, resetLink, reviewDaily, revokeInvite, revokeSessions, startDaily, startMock, updateMe, updateUser, users } from '../sdk.gen';
-import type { AnswerDailyData, AnswerDailyError, AnswerDailyResponse, AnswerMockData, AnswerMockError, AnswerMockResponse, AnswerPracticeData, AnswerPracticeError, AnswerPracticeResponse, AuditLogData, AuditLogError, AuditLogResponse, BankSummaryData, BankSummaryResponse, ChangePasswordData, ChangePasswordError, ChangePasswordResponse, CreateInviteData, CreateInviteError, CreateInviteResponse, DailyStatusData, DailyStatusResponse, InviteInfoData, InviteInfoError, InviteInfoResponse, LoginData, LoginError, LoginResponse, LogoutData, LogoutResponse, MeData, MeResponse, MockQuizzesData, MockQuizzesResponse, MockStateData, MockStateError, MockStateResponse, NextQuestionData, NextQuestionError, NextQuestionResponse, OpenInvitesData, OpenInvitesResponse, PracticeAreasData, PracticeAreasResponse, PracticeQuestionData, PracticeQuestionError, PracticeQuestionResponse, RegisterData, RegisterError, RegisterResponse, ResetData, ResetError, ResetInfoData, ResetInfoError, ResetInfoResponse, ResetLinkData, ResetLinkError, ResetLinkResponse, ResetResponse, ReviewDailyData, ReviewDailyError, ReviewDailyResponse, RevokeInviteData, RevokeInviteError, RevokeInviteResponse, RevokeSessionsData, RevokeSessionsError, RevokeSessionsResponse, StartDailyData, StartDailyError, StartDailyResponse, StartMockData, StartMockError, StartMockResponse, UpdateMeData, UpdateMeError, UpdateMeResponse, UpdateUserData, UpdateUserError, UpdateUserResponse, UsersData, UsersResponse } from '../types.gen';
+import { answerDaily, answerMock, answerPractice, auditLog, bankSummary, changePassword, createInvite, dailyStatus, getLeaderboard, inviteInfo, login, logout, me, mockQuizzes, mockState, nextQuestion, openInvites, type Options, practiceAreas, practiceQuestion, register, reset, resetInfo, resetLink, reviewDaily, revokeInvite, revokeSessions, startDaily, startMock, updateMe, updateUser, users, verticalLeaderboard } from '../sdk.gen';
+import type { AnswerDailyData, AnswerDailyError, AnswerDailyResponse, AnswerMockData, AnswerMockError, AnswerMockResponse, AnswerPracticeData, AnswerPracticeError, AnswerPracticeResponse, AuditLogData, AuditLogError, AuditLogResponse, BankSummaryData, BankSummaryResponse, ChangePasswordData, ChangePasswordError, ChangePasswordResponse, CreateInviteData, CreateInviteError, CreateInviteResponse, DailyStatusData, DailyStatusResponse, GetLeaderboardData, GetLeaderboardError, GetLeaderboardResponse, InviteInfoData, InviteInfoError, InviteInfoResponse, LoginData, LoginError, LoginResponse, LogoutData, LogoutResponse, MeData, MeResponse, MockQuizzesData, MockQuizzesResponse, MockStateData, MockStateError, MockStateResponse, NextQuestionData, NextQuestionError, NextQuestionResponse, OpenInvitesData, OpenInvitesResponse, PracticeAreasData, PracticeAreasResponse, PracticeQuestionData, PracticeQuestionError, PracticeQuestionResponse, RegisterData, RegisterError, RegisterResponse, ResetData, ResetError, ResetInfoData, ResetInfoError, ResetInfoResponse, ResetLinkData, ResetLinkError, ResetLinkResponse, ResetResponse, ReviewDailyData, ReviewDailyError, ReviewDailyResponse, RevokeInviteData, RevokeInviteError, RevokeInviteResponse, RevokeSessionsData, RevokeSessionsError, RevokeSessionsResponse, StartDailyData, StartDailyError, StartDailyResponse, StartMockData, StartMockError, StartMockResponse, UpdateMeData, UpdateMeError, UpdateMeResponse, UpdateUserData, UpdateUserError, UpdateUserResponse, UsersData, UsersResponse, VerticalLeaderboardData, VerticalLeaderboardError, VerticalLeaderboardResponse } from '../types.gen';
 
 /**
  * Login
@@ -560,3 +560,39 @@ export const answerMockMutation = (options?: Partial<Options<AnswerMockData>>): 
     };
     return mutationOptions;
 };
+
+export const getLeaderboardQueryKey = (options?: Options<GetLeaderboardData>) => createQueryKey('getLeaderboard', options);
+
+/**
+ * Get Leaderboard
+ */
+export const getLeaderboardOptions = (options?: Options<GetLeaderboardData>) => queryOptions<GetLeaderboardResponse, GetLeaderboardError, GetLeaderboardResponse, ReturnType<typeof getLeaderboardQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await getLeaderboard({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: getLeaderboardQueryKey(options)
+});
+
+export const verticalLeaderboardQueryKey = (options?: Options<VerticalLeaderboardData>) => createQueryKey('verticalLeaderboard', options);
+
+/**
+ * Vertical Leaderboard
+ */
+export const verticalLeaderboardOptions = (options?: Options<VerticalLeaderboardData>) => queryOptions<VerticalLeaderboardResponse, VerticalLeaderboardError, VerticalLeaderboardResponse, ReturnType<typeof verticalLeaderboardQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await verticalLeaderboard({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: verticalLeaderboardQueryKey(options)
+});
