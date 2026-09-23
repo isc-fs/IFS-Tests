@@ -94,7 +94,7 @@ function People({ board, period }: { board: PersonBoard; period: Period }) {
   return (
     <section className="panel stack" aria-labelledby="board-title">
       <h2 id="board-title">{title}</h2>
-      <p className="muted" aria-live="polite">
+      <p className={q.isPending || q.isPlaceholderData ? 'muted' : 'sr-only'} aria-live="polite">
         {q.isPending || q.isPlaceholderData ? 'Loading the board…' : ''}
       </p>
       <ErrorNotice error={q.error} />
@@ -145,7 +145,7 @@ function Verticals({ period }: { period: Period }) {
         Average points per active member and the share who answered a daily question in the last 7 days. People who hide
         themselves from the leaderboard aren't counted, and only verticals with at least 3 other members are shown.
       </p>
-      <p className="muted" aria-live="polite">
+      <p className={q.isPending || q.isPlaceholderData ? 'muted' : 'sr-only'} aria-live="polite">
         {q.isPending || q.isPlaceholderData ? 'Loading the board…' : ''}
       </p>
       <ErrorNotice error={q.error} />

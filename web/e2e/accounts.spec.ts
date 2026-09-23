@@ -88,3 +88,12 @@ test('every navigation link is on screen on a phone', async ({ page }) => {
     expect(box && box.x >= 0 && box.x + box.width <= width, await link.innerText()).toBe(true)
   }
 })
+
+test('the selected filter chip stands out', async ({ page }) => {
+  await signIn(page, ADMIN.email, ADMIN.password)
+  for (const path of ['/leaderboard?period=week', '/practice?area=mech', '/review?queue=all']) {
+    await page.goto(path)
+    const chip = page.locator('.chips a[aria-current]').first()
+    await expect(chip, path).toHaveCSS('background-color', 'rgb(6, 66, 41)')
+  }
+})
