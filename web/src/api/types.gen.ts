@@ -146,6 +146,14 @@ export type BankSummary = {
      */
     key_changes: number;
     /**
+     * Missing Images
+     */
+    missing_images: number;
+    /**
+     * Excluded
+     */
+    excluded: number;
+    /**
      * Imported At
      */
     imported_at: string | null;
@@ -697,6 +705,16 @@ export type RegisterIn = {
 };
 
 /**
+ * ReportIn
+ */
+export type ReportIn = {
+    /**
+     * Message
+     */
+    message: string;
+};
+
+/**
  * ResetIn
  */
 export type ResetIn = {
@@ -718,6 +736,246 @@ export type ResetInfo = {
      * Expires At
      */
     expires_at: string;
+};
+
+/**
+ * ReviewOption
+ */
+export type ReviewOption = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Text
+     */
+    text: string;
+    /**
+     * Official
+     */
+    official: boolean;
+    /**
+     * Corrected
+     */
+    corrected: boolean;
+};
+
+/**
+ * ReviewPage
+ */
+export type ReviewPage = {
+    /**
+     * Rows
+     */
+    rows: Array<ReviewRow>;
+    /**
+     * Total
+     */
+    total: number;
+    /**
+     * Queues
+     */
+    queues: {
+        [key: string]: number;
+    };
+};
+
+/**
+ * ReviewPatch
+ */
+export type ReviewPatch = {
+    /**
+     * Area
+     */
+    area?: 'mech' | 'elec' | 'rules' | 'unclassified' | null;
+    /**
+     * Topic
+     */
+    topic?: string | null;
+    /**
+     * Labels Reviewed
+     */
+    labels_reviewed?: boolean | null;
+    /**
+     * Excluded
+     */
+    excluded?: boolean | null;
+    /**
+     * Exclusion Note
+     */
+    exclusion_note?: string | null;
+    /**
+     * Acknowledge Change
+     */
+    acknowledge_change?: boolean | null;
+};
+
+/**
+ * ReviewQuestion
+ *
+ * Everything a reviewer needs about one question, answers included (reviewers only).
+ */
+export type ReviewQuestion = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Fsquiz Id
+     */
+    fsquiz_id: number | null;
+    /**
+     * Type
+     */
+    type: string;
+    /**
+     * Text
+     */
+    text: string;
+    /**
+     * Images
+     */
+    images: Array<string>;
+    /**
+     * Area
+     */
+    area: string;
+    /**
+     * Topic
+     */
+    topic: string | null;
+    /**
+     * Labels Reviewed
+     */
+    labels_reviewed: boolean;
+    /**
+     * Answer Kind
+     */
+    answer_kind: string;
+    /**
+     * Graded
+     */
+    graded: boolean;
+    /**
+     * Playable
+     */
+    playable: boolean;
+    /**
+     * Images Missing
+     */
+    images_missing: boolean;
+    /**
+     * Excluded
+     */
+    excluded: boolean;
+    /**
+     * Exclusion Note
+     */
+    exclusion_note: string | null;
+    /**
+     * Key Changed At
+     */
+    key_changed_at: string | null;
+    /**
+     * Official
+     */
+    official: string | null;
+    /**
+     * Correction
+     */
+    correction: string | null;
+    /**
+     * Options
+     */
+    options: Array<ReviewOption>;
+    /**
+     * Quizzes
+     */
+    quizzes: Array<string>;
+    /**
+     * Reports
+     */
+    reports: Array<ReviewReport>;
+    /**
+     * Answered
+     */
+    answered: number;
+    /**
+     * Right
+     */
+    right: number;
+};
+
+/**
+ * ReviewReport
+ */
+export type ReviewReport = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * By
+     */
+    by: string | null;
+    /**
+     * Message
+     */
+    message: string;
+    /**
+     * At
+     */
+    at: string;
+};
+
+/**
+ * ReviewRow
+ */
+export type ReviewRow = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Text
+     */
+    text: string;
+    /**
+     * Area
+     */
+    area: string;
+    /**
+     * Topic
+     */
+    topic: string | null;
+    /**
+     * Answer Kind
+     */
+    answer_kind: string;
+    /**
+     * Graded
+     */
+    graded: boolean;
+    /**
+     * Playable
+     */
+    playable: boolean;
+    /**
+     * Excluded
+     */
+    excluded: boolean;
+    /**
+     * Labels Reviewed
+     */
+    labels_reviewed: boolean;
+    /**
+     * Key Changed At
+     */
+    key_changed_at: string | null;
+    /**
+     * Reports
+     */
+    reports: number;
 };
 
 /**
@@ -1647,6 +1905,232 @@ export type AnswerMockResponses = {
 };
 
 export type AnswerMockResponse = AnswerMockResponses[keyof AnswerMockResponses];
+
+export type ReviewQuestionsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Queue
+         */
+        queue?: 'all' | 'reports' | 'changed' | 'unclassified' | 'ungraded' | 'excluded';
+        /**
+         * Area
+         */
+        area?: string | null;
+        /**
+         * Topic
+         */
+        topic?: string | null;
+        /**
+         * Q
+         */
+        q?: string | null;
+        /**
+         * Offset
+         */
+        offset?: number;
+    };
+    url: '/api/review/questions';
+};
+
+export type ReviewQuestionsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ReviewQuestionsError = ReviewQuestionsErrors[keyof ReviewQuestionsErrors];
+
+export type ReviewQuestionsResponses = {
+    /**
+     * Successful Response
+     */
+    200: ReviewPage;
+};
+
+export type ReviewQuestionsResponse = ReviewQuestionsResponses[keyof ReviewQuestionsResponses];
+
+export type ReviewQuestionData = {
+    body?: never;
+    path: {
+        /**
+         * Question Id
+         */
+        question_id: number;
+    };
+    query?: never;
+    url: '/api/review/questions/{question_id}';
+};
+
+export type ReviewQuestionErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ReviewQuestionError = ReviewQuestionErrors[keyof ReviewQuestionErrors];
+
+export type ReviewQuestionResponses = {
+    /**
+     * Successful Response
+     */
+    200: ReviewQuestion;
+};
+
+export type ReviewQuestionResponse = ReviewQuestionResponses[keyof ReviewQuestionResponses];
+
+export type UpdateQuestionData = {
+    body: ReviewPatch;
+    path: {
+        /**
+         * Question Id
+         */
+        question_id: number;
+    };
+    query?: never;
+    url: '/api/review/questions/{question_id}';
+};
+
+export type UpdateQuestionErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type UpdateQuestionError = UpdateQuestionErrors[keyof UpdateQuestionErrors];
+
+export type UpdateQuestionResponses = {
+    /**
+     * Successful Response
+     */
+    200: ReviewQuestion;
+};
+
+export type UpdateQuestionResponse = UpdateQuestionResponses[keyof UpdateQuestionResponses];
+
+export type RemoveCorrectionData = {
+    body?: never;
+    path: {
+        /**
+         * Question Id
+         */
+        question_id: number;
+    };
+    query?: never;
+    url: '/api/review/questions/{question_id}/answer';
+};
+
+export type RemoveCorrectionErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type RemoveCorrectionError = RemoveCorrectionErrors[keyof RemoveCorrectionErrors];
+
+export type RemoveCorrectionResponses = {
+    /**
+     * Successful Response
+     */
+    200: ReviewQuestion;
+};
+
+export type RemoveCorrectionResponse = RemoveCorrectionResponses[keyof RemoveCorrectionResponses];
+
+export type CorrectAnswerData = {
+    body: AnswerIn;
+    path: {
+        /**
+         * Question Id
+         */
+        question_id: number;
+    };
+    query?: never;
+    url: '/api/review/questions/{question_id}/answer';
+};
+
+export type CorrectAnswerErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CorrectAnswerError = CorrectAnswerErrors[keyof CorrectAnswerErrors];
+
+export type CorrectAnswerResponses = {
+    /**
+     * Successful Response
+     */
+    200: ReviewQuestion;
+};
+
+export type CorrectAnswerResponse = CorrectAnswerResponses[keyof CorrectAnswerResponses];
+
+export type ResolveReportData = {
+    body?: never;
+    path: {
+        /**
+         * Report Id
+         */
+        report_id: number;
+    };
+    query?: never;
+    url: '/api/review/reports/{report_id}/resolve';
+};
+
+export type ResolveReportErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ResolveReportError = ResolveReportErrors[keyof ResolveReportErrors];
+
+export type ResolveReportResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type ResolveReportResponse = ResolveReportResponses[keyof ResolveReportResponses];
+
+export type ReportQuestionData = {
+    body: ReportIn;
+    path: {
+        /**
+         * Question Id
+         */
+        question_id: number;
+    };
+    query?: never;
+    url: '/api/questions/{question_id}/report';
+};
+
+export type ReportQuestionErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ReportQuestionError = ReportQuestionErrors[keyof ReportQuestionErrors];
+
+export type ReportQuestionResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type ReportQuestionResponse = ReportQuestionResponses[keyof ReportQuestionResponses];
 
 export type GetLeaderboardData = {
     body?: never;

@@ -64,7 +64,7 @@ test('invite, join, hide from the board, get a reset link, sign back in', async 
 
 test('pages never scroll sideways on a phone', async ({ page }) => {
   await signIn(page, ADMIN.email, ADMIN.password)
-  for (const path of ['/', '/daily', '/practice', '/mock', '/leaderboard', '/profile', '/admin']) {
+  for (const path of ['/', '/daily', '/practice', '/mock', '/leaderboard', '/profile', '/admin', '/review']) {
     await page.goto(path)
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
@@ -78,4 +78,13 @@ test('security headers and CSRF protection', async ({ request }) => {
   expect(r.headers()['x-frame-options']).toBe('DENY')
   const blocked = await request.post('/auth/login', { data: { email: 'x@y.z', password: 'x' } })
   expect(blocked.status()).toBe(403)
+})
+
+test('every navigation link is on screen on a phone', async ({ page }) => {
+  await signIn(page, ADMIN.email, ADMIN.password)
+  const width = page.viewportSize()?.width ?? 0
+  for (const link of await page.getByRole('navigation', { name: 'Main' }).getByRole('link').all()) {
+    const box = await link.boundingBox()
+    expect(box && box.x >= 0 && box.x + box.width <= width, await link.innerText()).toBe(true)
+  }
 })

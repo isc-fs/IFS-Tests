@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { AnswerDailyData, AnswerDailyErrors, AnswerDailyResponses, AnswerMockData, AnswerMockErrors, AnswerMockResponses, AnswerPracticeData, AnswerPracticeErrors, AnswerPracticeResponses, AuditLogData, AuditLogErrors, AuditLogResponses, BankSummaryData, BankSummaryResponses, ChangePasswordData, ChangePasswordErrors, ChangePasswordResponses, CreateInviteData, CreateInviteErrors, CreateInviteResponses, DailyStatusData, DailyStatusResponses, GetLeaderboardData, GetLeaderboardErrors, GetLeaderboardResponses, InviteInfoData, InviteInfoErrors, InviteInfoResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutResponses, MeData, MeResponses, MockQuizzesData, MockQuizzesResponses, MockStateData, MockStateErrors, MockStateResponses, NextQuestionData, NextQuestionErrors, NextQuestionResponses, OpenInvitesData, OpenInvitesResponses, PracticeAreasData, PracticeAreasResponses, PracticeQuestionData, PracticeQuestionErrors, PracticeQuestionResponses, RegisterData, RegisterErrors, RegisterResponses, ResetData, ResetErrors, ResetInfoData, ResetInfoErrors, ResetInfoResponses, ResetLinkData, ResetLinkErrors, ResetLinkResponses, ResetResponses, ReviewDailyData, ReviewDailyErrors, ReviewDailyResponses, RevokeInviteData, RevokeInviteErrors, RevokeInviteResponses, RevokeSessionsData, RevokeSessionsErrors, RevokeSessionsResponses, StartDailyData, StartDailyErrors, StartDailyResponses, StartMockData, StartMockErrors, StartMockResponses, UpdateMeData, UpdateMeErrors, UpdateMeResponses, UpdateUserData, UpdateUserErrors, UpdateUserResponses, UsersData, UsersResponses, VerticalLeaderboardData, VerticalLeaderboardErrors, VerticalLeaderboardResponses } from './types.gen';
+import type { AnswerDailyData, AnswerDailyErrors, AnswerDailyResponses, AnswerMockData, AnswerMockErrors, AnswerMockResponses, AnswerPracticeData, AnswerPracticeErrors, AnswerPracticeResponses, AuditLogData, AuditLogErrors, AuditLogResponses, BankSummaryData, BankSummaryResponses, ChangePasswordData, ChangePasswordErrors, ChangePasswordResponses, CorrectAnswerData, CorrectAnswerErrors, CorrectAnswerResponses, CreateInviteData, CreateInviteErrors, CreateInviteResponses, DailyStatusData, DailyStatusResponses, GetLeaderboardData, GetLeaderboardErrors, GetLeaderboardResponses, InviteInfoData, InviteInfoErrors, InviteInfoResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutResponses, MeData, MeResponses, MockQuizzesData, MockQuizzesResponses, MockStateData, MockStateErrors, MockStateResponses, NextQuestionData, NextQuestionErrors, NextQuestionResponses, OpenInvitesData, OpenInvitesResponses, PracticeAreasData, PracticeAreasResponses, PracticeQuestionData, PracticeQuestionErrors, PracticeQuestionResponses, RegisterData, RegisterErrors, RegisterResponses, RemoveCorrectionData, RemoveCorrectionErrors, RemoveCorrectionResponses, ReportQuestionData, ReportQuestionErrors, ReportQuestionResponses, ResetData, ResetErrors, ResetInfoData, ResetInfoErrors, ResetInfoResponses, ResetLinkData, ResetLinkErrors, ResetLinkResponses, ResetResponses, ResolveReportData, ResolveReportErrors, ResolveReportResponses, ReviewDailyData, ReviewDailyErrors, ReviewDailyResponses, ReviewQuestionData, ReviewQuestionErrors, ReviewQuestionResponses, ReviewQuestionsData, ReviewQuestionsErrors, ReviewQuestionsResponses, RevokeInviteData, RevokeInviteErrors, RevokeInviteResponses, RevokeSessionsData, RevokeSessionsErrors, RevokeSessionsResponses, StartDailyData, StartDailyErrors, StartDailyResponses, StartMockData, StartMockErrors, StartMockResponses, UpdateMeData, UpdateMeErrors, UpdateMeResponses, UpdateQuestionData, UpdateQuestionErrors, UpdateQuestionResponses, UpdateUserData, UpdateUserErrors, UpdateUserResponses, UsersData, UsersResponses, VerticalLeaderboardData, VerticalLeaderboardErrors, VerticalLeaderboardResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -245,6 +245,62 @@ export const mockState = <ThrowOnError extends boolean = false>(options: Options
  */
 export const answerMock = <ThrowOnError extends boolean = false>(options: Options<AnswerMockData, ThrowOnError>): RequestResult<AnswerMockResponses, AnswerMockErrors, ThrowOnError> => (options.client ?? client).post<AnswerMockResponses, AnswerMockErrors, ThrowOnError>({
     url: '/api/mock/sessions/{session_id}/answer',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Review Questions
+ */
+export const reviewQuestions = <ThrowOnError extends boolean = false>(options?: Options<ReviewQuestionsData, ThrowOnError>): RequestResult<ReviewQuestionsResponses, ReviewQuestionsErrors, ThrowOnError> => (options?.client ?? client).get<ReviewQuestionsResponses, ReviewQuestionsErrors, ThrowOnError>({ url: '/api/review/questions', ...options });
+
+/**
+ * Review Question
+ */
+export const reviewQuestion = <ThrowOnError extends boolean = false>(options: Options<ReviewQuestionData, ThrowOnError>): RequestResult<ReviewQuestionResponses, ReviewQuestionErrors, ThrowOnError> => (options.client ?? client).get<ReviewQuestionResponses, ReviewQuestionErrors, ThrowOnError>({ url: '/api/review/questions/{question_id}', ...options });
+
+/**
+ * Update Question
+ */
+export const updateQuestion = <ThrowOnError extends boolean = false>(options: Options<UpdateQuestionData, ThrowOnError>): RequestResult<UpdateQuestionResponses, UpdateQuestionErrors, ThrowOnError> => (options.client ?? client).patch<UpdateQuestionResponses, UpdateQuestionErrors, ThrowOnError>({
+    url: '/api/review/questions/{question_id}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Remove Correction
+ */
+export const removeCorrection = <ThrowOnError extends boolean = false>(options: Options<RemoveCorrectionData, ThrowOnError>): RequestResult<RemoveCorrectionResponses, RemoveCorrectionErrors, ThrowOnError> => (options.client ?? client).delete<RemoveCorrectionResponses, RemoveCorrectionErrors, ThrowOnError>({ url: '/api/review/questions/{question_id}/answer', ...options });
+
+/**
+ * Correct Answer
+ */
+export const correctAnswer = <ThrowOnError extends boolean = false>(options: Options<CorrectAnswerData, ThrowOnError>): RequestResult<CorrectAnswerResponses, CorrectAnswerErrors, ThrowOnError> => (options.client ?? client).put<CorrectAnswerResponses, CorrectAnswerErrors, ThrowOnError>({
+    url: '/api/review/questions/{question_id}/answer',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Resolve Report
+ */
+export const resolveReport = <ThrowOnError extends boolean = false>(options: Options<ResolveReportData, ThrowOnError>): RequestResult<ResolveReportResponses, ResolveReportErrors, ThrowOnError> => (options.client ?? client).post<ResolveReportResponses, ResolveReportErrors, ThrowOnError>({ url: '/api/review/reports/{report_id}/resolve', ...options });
+
+/**
+ * Report Question
+ */
+export const reportQuestion = <ThrowOnError extends boolean = false>(options: Options<ReportQuestionData, ThrowOnError>): RequestResult<ReportQuestionResponses, ReportQuestionErrors, ThrowOnError> => (options.client ?? client).post<ReportQuestionResponses, ReportQuestionErrors, ThrowOnError>({
+    url: '/api/questions/{question_id}/report',
     ...options,
     headers: {
         'Content-Type': 'application/json',

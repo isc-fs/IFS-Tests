@@ -139,6 +139,8 @@ const BANK = {
   by_area: { mech: 403, elec: 325, rules: 170, unclassified: 172 },
   quizzes: 121,
   key_changes: 2,
+  missing_images: 2,
+  excluded: 3,
   imported_at: '2026-09-23T10:00:00Z',
 }
 
@@ -148,7 +150,12 @@ test('the question bank panel summarises what is loaded and flags changed answer
   expect(within(panel).getByText(/1070 questions from 121 past quizzes, 990 of them graded/)).toBeInTheDocument()
   expect(within(panel).getByText('Mechanical').parentElement).toHaveTextContent('403 Mechanical')
   expect(within(panel).getByText(/2 are hidden until their images/)).toBeInTheDocument()
-  expect(within(panel).getByRole('alert')).toHaveTextContent('changed the official answer of 2 questions')
+  expect(within(panel).getByText(/3 hidden by reviewers/)).toBeInTheDocument()
+  expect(within(panel).getByRole('alert')).toHaveTextContent('FS-Quiz changed 2 questions since they were loaded.')
+  expect(within(panel).getByRole('link', { name: 'Review the changes' })).toHaveAttribute(
+    'href',
+    '/review?queue=changed',
+  )
 })
 
 test('an empty bank says how to load one', async () => {
