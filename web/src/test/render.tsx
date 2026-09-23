@@ -10,7 +10,7 @@ export type Api = Record<string, Reply | ((body: unknown) => Reply)>
 
 /** Mocks fetch by "METHOD /path" and renders the app at `path` (use `#token` for invite/reset links). */
 export function renderApp(path: string, api: Api) {
-  const calls: { key: string; body: unknown; headers: Headers }[] = []
+  const calls: { key: string; body: unknown; headers: Headers; url: URL }[] = []
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
     const request = input as Request
     const key = `${request.method} ${new URL(request.url).pathname}`
@@ -21,7 +21,7 @@ export function renderApp(path: string, api: Api) {
             .clone()
             .json()
             .catch(() => undefined)
-    calls.push({ key, body, headers: request.headers })
+    calls.push({ key, body, headers: request.headers, url: new URL(request.url) })
     const handler = api[key]
     const reply =
       typeof handler === 'function' ? handler(body) : (handler ?? { status: 404, body: { detail: 'Not Found' } })

@@ -259,3 +259,25 @@ class QuizQuestion(Base):
         ForeignKey("questions.id", ondelete="CASCADE"), primary_key=True, index=True
     )
     position: Mapped[int]
+
+
+MODES = ("practice", "daily", "mock")
+
+
+class Attempt(Base):
+    """One answer to one question, in any mode."""
+
+    __tablename__ = "attempts"
+    __table_args__ = (
+        CheckConstraint(_in("mode", MODES), name="mode"),
+        Index("ix_attempts_user_question", "user_id", "question_id"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    question_id: Mapped[int] = mapped_column(ForeignKey("questions.id", ondelete="CASCADE"), index=True)
+    mode: Mapped[str] = mapped_column(String(16))
+    answer: Mapped[dict[str, Any]]
+    # None when the question isn't graded automatically (the official answer was only shown).
+    correct: Mapped[bool | None]
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

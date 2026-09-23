@@ -3,8 +3,8 @@
 import { type DefaultError, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { auditLog, bankSummary, changePassword, createInvite, inviteInfo, login, logout, me, openInvites, type Options, register, reset, resetInfo, resetLink, revokeInvite, revokeSessions, updateMe, updateUser, users } from '../sdk.gen';
-import type { AuditLogData, AuditLogError, AuditLogResponse, BankSummaryData, BankSummaryResponse, ChangePasswordData, ChangePasswordError, ChangePasswordResponse, CreateInviteData, CreateInviteError, CreateInviteResponse, InviteInfoData, InviteInfoError, InviteInfoResponse, LoginData, LoginError, LoginResponse, LogoutData, LogoutResponse, MeData, MeResponse, OpenInvitesData, OpenInvitesResponse, RegisterData, RegisterError, RegisterResponse, ResetData, ResetError, ResetInfoData, ResetInfoError, ResetInfoResponse, ResetLinkData, ResetLinkError, ResetLinkResponse, ResetResponse, RevokeInviteData, RevokeInviteError, RevokeInviteResponse, RevokeSessionsData, RevokeSessionsError, RevokeSessionsResponse, UpdateMeData, UpdateMeError, UpdateMeResponse, UpdateUserData, UpdateUserError, UpdateUserResponse, UsersData, UsersResponse } from '../types.gen';
+import { answerPractice, auditLog, bankSummary, changePassword, createInvite, inviteInfo, login, logout, me, nextQuestion, openInvites, type Options, practiceAreas, practiceQuestion, register, reset, resetInfo, resetLink, revokeInvite, revokeSessions, updateMe, updateUser, users } from '../sdk.gen';
+import type { AnswerPracticeData, AnswerPracticeError, AnswerPracticeResponse, AuditLogData, AuditLogError, AuditLogResponse, BankSummaryData, BankSummaryResponse, ChangePasswordData, ChangePasswordError, ChangePasswordResponse, CreateInviteData, CreateInviteError, CreateInviteResponse, InviteInfoData, InviteInfoError, InviteInfoResponse, LoginData, LoginError, LoginResponse, LogoutData, LogoutResponse, MeData, MeResponse, NextQuestionData, NextQuestionError, NextQuestionResponse, OpenInvitesData, OpenInvitesResponse, PracticeAreasData, PracticeAreasResponse, PracticeQuestionData, PracticeQuestionError, PracticeQuestionResponse, RegisterData, RegisterError, RegisterResponse, ResetData, ResetError, ResetInfoData, ResetInfoError, ResetInfoResponse, ResetLinkData, ResetLinkError, ResetLinkResponse, ResetResponse, RevokeInviteData, RevokeInviteError, RevokeInviteResponse, RevokeSessionsData, RevokeSessionsError, RevokeSessionsResponse, UpdateMeData, UpdateMeError, UpdateMeResponse, UpdateUserData, UpdateUserError, UpdateUserResponse, UsersData, UsersResponse } from '../types.gen';
 
 /**
  * Login
@@ -349,3 +349,74 @@ export const bankSummaryOptions = (options?: Options<BankSummaryData>) => queryO
     },
     queryKey: bankSummaryQueryKey(options)
 });
+
+export const practiceAreasQueryKey = (options?: Options<PracticeAreasData>) => createQueryKey('practiceAreas', options);
+
+/**
+ * Practice Areas
+ */
+export const practiceAreasOptions = (options?: Options<PracticeAreasData>) => queryOptions<PracticeAreasResponse, DefaultError, PracticeAreasResponse, ReturnType<typeof practiceAreasQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await practiceAreas({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: practiceAreasQueryKey(options)
+});
+
+export const nextQuestionQueryKey = (options?: Options<NextQuestionData>) => createQueryKey('nextQuestion', options);
+
+/**
+ * Next Question
+ */
+export const nextQuestionOptions = (options?: Options<NextQuestionData>) => queryOptions<NextQuestionResponse, NextQuestionError, NextQuestionResponse, ReturnType<typeof nextQuestionQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await nextQuestion({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: nextQuestionQueryKey(options)
+});
+
+export const practiceQuestionQueryKey = (options: Options<PracticeQuestionData>) => createQueryKey('practiceQuestion', options);
+
+/**
+ * Practice Question
+ */
+export const practiceQuestionOptions = (options: Options<PracticeQuestionData>) => queryOptions<PracticeQuestionResponse, PracticeQuestionError, PracticeQuestionResponse, ReturnType<typeof practiceQuestionQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await practiceQuestion({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: practiceQuestionQueryKey(options)
+});
+
+/**
+ * Answer Practice
+ */
+export const answerPracticeMutation = (options?: Partial<Options<AnswerPracticeData>>): UseMutationOptions<AnswerPracticeResponse, AnswerPracticeError, Options<AnswerPracticeData>> => {
+    const mutationOptions: UseMutationOptions<AnswerPracticeResponse, AnswerPracticeError, Options<AnswerPracticeData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await answerPractice({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};

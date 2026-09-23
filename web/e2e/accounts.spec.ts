@@ -1,19 +1,7 @@
-import { expect, type Page, test } from '@playwright/test'
+import { expect, test } from '@playwright/test'
+import { ADMIN, signIn } from './helpers'
 
-// The admin is created before the run (see the e2e job in .github/workflows/ci.yml):
-//   printf '%s\n' "$E2E_ADMIN_PASSWORD" | ifs-tests create-admin --email e2e-admin@alu.comillas.edu --name "E2E Admin" --password-stdin
-const ADMIN = {
-  email: 'e2e-admin@alu.comillas.edu',
-  password: process.env.E2E_ADMIN_PASSWORD ?? 'pit wall strategy 2026',
-}
 const run = Date.now().toString(36)
-
-async function signIn(page: Page, email: string, password: string) {
-  await page.goto('/login')
-  await page.getByLabel('Email').fill(email)
-  await page.getByLabel('Password').fill(password)
-  await page.getByRole('button', { name: 'Sign in' }).click()
-}
 
 test('invite, join, hide from the board, get a reset link, sign back in', async ({ browser, page }, info) => {
   const name = `Marta ${run}${info.project.name[0]}`
@@ -76,7 +64,7 @@ test('invite, join, hide from the board, get a reset link, sign back in', async 
 
 test('pages never scroll sideways on a phone', async ({ page }) => {
   await signIn(page, ADMIN.email, ADMIN.password)
-  for (const path of ['/', '/profile', '/admin']) {
+  for (const path of ['/', '/practice', '/profile', '/admin']) {
     await page.goto(path)
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)

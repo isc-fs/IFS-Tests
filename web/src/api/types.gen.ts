@@ -42,6 +42,48 @@ export type AdminUser = {
 };
 
 /**
+ * AnswerIn
+ */
+export type AnswerIn = {
+    /**
+     * Options
+     */
+    options?: Array<number> | null;
+    /**
+     * Value
+     */
+    value?: string | null;
+};
+
+/**
+ * AreaProgress
+ */
+export type AreaProgress = {
+    /**
+     * Area
+     */
+    area: string;
+    /**
+     * Questions
+     */
+    questions: number;
+    /**
+     * Answered
+     */
+    answered: number;
+    /**
+     * Correct
+     */
+    correct: number;
+    /**
+     * Topics
+     */
+    topics: {
+        [key: string]: number;
+    };
+};
+
+/**
  * AuditEntry
  */
 export type AuditEntry = {
@@ -107,6 +149,30 @@ export type BankSummary = {
      * Imported At
      */
     imported_at: string | null;
+};
+
+/**
+ * Feedback
+ *
+ * What the player sees after answering: the official answer and any worked solution.
+ */
+export type Feedback = {
+    /**
+     * Correct
+     */
+    correct: boolean | null;
+    /**
+     * Official
+     */
+    official: string | null;
+    /**
+     * Correct Options
+     */
+    correct_options: Array<number>;
+    /**
+     * Solutions
+     */
+    solutions: Array<SolutionOut>;
 };
 
 /**
@@ -220,6 +286,20 @@ export type OpenInvite = {
 };
 
 /**
+ * Option
+ */
+export type Option = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Text
+     */
+    text: string;
+};
+
+/**
  * PasswordChangeIn
  */
 export type PasswordChangeIn = {
@@ -231,6 +311,60 @@ export type PasswordChangeIn = {
      * New Password
      */
     new_password: string;
+};
+
+/**
+ * PlayQuestion
+ *
+ * A question before it is answered: nothing here may reveal the answer.
+ */
+export type PlayQuestion = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Text
+     */
+    text: string;
+    /**
+     * Answer Kind
+     */
+    answer_kind: string;
+    /**
+     * Graded
+     */
+    graded: boolean;
+    /**
+     * Values
+     *
+     * How many values a list answer needs, when known
+     */
+    values: number | null;
+    /**
+     * Time S
+     */
+    time_s: number | null;
+    /**
+     * Area
+     */
+    area: string;
+    /**
+     * Topic
+     */
+    topic: string | null;
+    /**
+     * Images
+     */
+    images: Array<string>;
+    /**
+     * Options
+     */
+    options: Array<Option>;
+    /**
+     * Quizzes
+     */
+    quizzes: Array<string>;
 };
 
 /**
@@ -308,6 +442,20 @@ export const Role = {
  * Role
  */
 export type Role = typeof Role[keyof typeof Role];
+
+/**
+ * SolutionOut
+ */
+export type SolutionOut = {
+    /**
+     * Text
+     */
+    text: string | null;
+    /**
+     * Images
+     */
+    images: Array<string>;
+};
 
 /**
  * Status
@@ -822,3 +970,119 @@ export type BankSummaryResponses = {
 };
 
 export type BankSummaryResponse = BankSummaryResponses[keyof BankSummaryResponses];
+
+export type PracticeAreasData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/practice/areas';
+};
+
+export type PracticeAreasResponses = {
+    /**
+     * Response Practice Areas
+     *
+     * Successful Response
+     */
+    200: Array<AreaProgress>;
+};
+
+export type PracticeAreasResponse = PracticeAreasResponses[keyof PracticeAreasResponses];
+
+export type NextQuestionData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Area
+         */
+        area?: 'mech' | 'elec' | 'rules' | 'unclassified' | null;
+        /**
+         * Topic
+         */
+        topic?: string | null;
+        /**
+         * Skip
+         */
+        skip?: number | null;
+    };
+    url: '/api/practice/next';
+};
+
+export type NextQuestionErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type NextQuestionError = NextQuestionErrors[keyof NextQuestionErrors];
+
+export type NextQuestionResponses = {
+    /**
+     * Successful Response
+     */
+    200: PlayQuestion;
+};
+
+export type NextQuestionResponse = NextQuestionResponses[keyof NextQuestionResponses];
+
+export type PracticeQuestionData = {
+    body?: never;
+    path: {
+        /**
+         * Question Id
+         */
+        question_id: number;
+    };
+    query?: never;
+    url: '/api/practice/questions/{question_id}';
+};
+
+export type PracticeQuestionErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type PracticeQuestionError = PracticeQuestionErrors[keyof PracticeQuestionErrors];
+
+export type PracticeQuestionResponses = {
+    /**
+     * Successful Response
+     */
+    200: PlayQuestion;
+};
+
+export type PracticeQuestionResponse = PracticeQuestionResponses[keyof PracticeQuestionResponses];
+
+export type AnswerPracticeData = {
+    body: AnswerIn;
+    path: {
+        /**
+         * Question Id
+         */
+        question_id: number;
+    };
+    query?: never;
+    url: '/api/practice/questions/{question_id}/answer';
+};
+
+export type AnswerPracticeErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AnswerPracticeError = AnswerPracticeErrors[keyof AnswerPracticeErrors];
+
+export type AnswerPracticeResponses = {
+    /**
+     * Successful Response
+     */
+    200: Feedback;
+};
+
+export type AnswerPracticeResponse = AnswerPracticeResponses[keyof AnswerPracticeResponses];
