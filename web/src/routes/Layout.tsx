@@ -1,43 +1,36 @@
-import { useQueryClient } from '@tanstack/react-query'
 import { Suspense } from 'react'
-import { Link, NavLink, Navigate, Outlet, useLocation, useNavigate } from 'react-router'
-import { logout } from '../api/sdk.gen'
-import { useMe } from '../lib/api'
+import { Navigate, NavLink, Outlet, useLocation } from 'react-router'
+import { Notice } from '../components/Form'
+import { Brand, Shell } from '../components/Page'
+import { consumeSessionEnded, useMe } from '../lib/api'
 
-export function Shell({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="shell isc-light">
-      {children}
-      <footer className="footer">
-        Questions from <a href="https://fs-quiz.eu">FS-Quiz</a> (Yannik Ottens), licensed under the{' '}
-        <a href="https://opendatacommons.org/licenses/odbl/">ODbL</a>.
-      </footer>
-    </div>
-  )
-}
-
-export function Brand() {
-  return (
-    <Link to="/" className="brand">
-      IFS-Tests
-    </Link>
-  )
-}
-
-/** Pages that need a signed-in member. */
+/** Frame for pages that need a signed-in member. */
 export default function Layout() {
-  const { data: user, isPending } = useMe()
+  const { data: user, isPending, isError, error, refetch } = useMe()
   const location = useLocation()
-  const navigate = useNavigate()
-  const queryClient = useQueryClient()
 
-  if (isPending) return <Shell><main className="content" aria-busy="true" /></Shell>
-  if (!user) return <Navigate to={`/login?next=${encodeURIComponent(location.pathname)}`} replace />
-
-  const signOut = async () => {
-    await logout()
-    queryClient.clear()
-    navigate('/login')
+  if (isPending) {
+    return (
+      <Shell>
+        <main className="content" aria-busy="true" />
+      </Shell>
+    )
+  }
+  if (isError) {
+    return (
+      <Shell>
+        <main className="content narrow stack">
+          <Notice tone="error">{error.message} Your session is still there; try again in a moment.</Notice>
+          <button type="button" onClick={() => refetch()}>
+            Try again
+          </button>
+        </main>
+      </Shell>
+    )
+  }
+  if (!user) {
+    const expired = consumeSessionEnded() ? '&expired=1' : ''
+    return <Navigate to={`/login?next=${encodeURIComponent(location.pathname)}${expired}`} replace />
   }
 
   return (
@@ -45,13 +38,12 @@ export default function Layout() {
       <header className="topbar">
         <Brand />
         <nav aria-label="Main">
-          <NavLink to="/" end>Home</NavLink>
+          <NavLink to="/" end>
+            Home
+          </NavLink>
           <NavLink to="/profile">Profile</NavLink>
           {user.role === 'admin' && <NavLink to="/admin">Admin</NavLink>}
         </nav>
-        <button type="button" className="link-button" onClick={signOut}>
-          Sign out
-        </button>
       </header>
       <main className="content">
         <Suspense fallback={<p className="muted">Loading…</p>}>

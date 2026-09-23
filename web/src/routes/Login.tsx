@@ -1,55 +1,66 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { type FormEvent, useState } from 'react'
+import { useMutation } from '@tanstack/react-query'
+import { useState } from 'react'
 import { Navigate, useNavigate, useSearchParams } from 'react-router'
-import { login } from '../api/sdk.gen'
-import { Field, Notice } from '../components/Form'
-import { errorMessage, useMe } from '../lib/api'
-import { Brand, Shell } from './Layout'
+import { loginMutation } from '../api/@tanstack/react-query.gen'
+import { ErrorNotice, Field, Form, Notice } from '../components/Form'
+import { PublicPage } from '../components/Page'
+import { ME_KEY, queryClient, useMe } from '../lib/api'
 
-/** Only same-app paths, so a crafted ?next= can't send people to another site. */
+/** Only paths inside this app, so a crafted ?next= can't send people to another site. */
 export function safeNext(next: string | null): string {
-  return next && next.startsWith('/') && !next.startsWith('//') ? next : '/'
+  if (!next?.startsWith('/') || next.startsWith('//') || [...next].some((c) => c === '\\' || c < ' ')) return '/'
+  return next
 }
 
 export default function Login() {
   const [params] = useSearchParams()
   const next = safeNext(params.get('next'))
   const navigate = useNavigate()
-  const queryClient = useQueryClient()
   const { data: user } = useMe()
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-
+  const [form, setForm] = useState({ email: '', password: '' })
   const signIn = useMutation({
-    mutationFn: () => login({ body: { email, password } }),
-    onSuccess: ({ data }) => {
-      queryClient.setQueryData(['me'], data)
+    ...loginMutation(),
+    onSuccess: (me) => {
+      queryClient.setQueryData(ME_KEY, me)
       navigate(next, { replace: true })
     },
   })
 
   if (user) return <Navigate to={next} replace />
 
-  const submit = (e: FormEvent) => {
-    e.preventDefault()
-    signIn.mutate()
+  const edit = (key: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    setForm({ ...form, [key]: e.target.value })
+    signIn.reset()
   }
 
   return (
-    <Shell>
-      <header className="topbar"><Brand /></header>
-      <main className="content narrow">
-        <h1>Sign in</h1>
-        <form onSubmit={submit} className="stack">
-          <Field label="Email" name="email" type="email" autoComplete="username" required value={email} onChange={(e) => setEmail(e.target.value)} />
-          <Field label="Password" name="password" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
-          {signIn.isError && <Notice tone="error">{errorMessage(signIn.error)}</Notice>}
-          <button type="submit" disabled={signIn.isPending}>{signIn.isPending ? 'Signing in…' : 'Sign in'}</button>
-        </form>
-        <p className="muted">
-          New here? You need an invite link from a team admin. Forgot your password? Ask an admin for a reset link.
-        </p>
-      </main>
-    </Shell>
+    <PublicPage title="Sign in">
+      {params.get('expired') && <Notice tone="ok">Your session ended. Sign in to continue.</Notice>}
+      <Form onSubmit={() => signIn.mutate({ body: form })} className="stack">
+        <Field
+          label="Email"
+          type="email"
+          autoComplete="username"
+          required
+          value={form.email}
+          onChange={edit('email')}
+        />
+        <Field
+          label="Password"
+          type="password"
+          autoComplete="current-password"
+          required
+          value={form.password}
+          onChange={edit('password')}
+        />
+        <ErrorNotice error={signIn.error} />
+        <button type="submit" disabled={signIn.isPending}>
+          {signIn.isPending ? 'Signing in…' : 'Sign in'}
+        </button>
+      </Form>
+      <p className="muted">
+        New here? You need an invite link from a team admin. Forgot your password? Ask an admin for a reset link.
+      </p>
+    </PublicPage>
   )
 }

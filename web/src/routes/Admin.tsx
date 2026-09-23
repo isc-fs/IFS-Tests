@@ -1,193 +1,288 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { type FormEvent, useState } from 'react'
-import type { AdminUser, InviteIn } from '../api/types.gen'
-import { auditLog, createInvite, openInvites, resetLink, revokeInvite, updateUser, users } from '../api/sdk.gen'
-import { Notice } from '../components/Form'
-import { errorMessage, useMe, VERTICALS } from '../lib/api'
+import { type QueryKey, useMutation, useQuery } from '@tanstack/react-query'
+import { useEffect, useRef, useState } from 'react'
+import {
+  auditLogOptions,
+  auditLogQueryKey,
+  createInviteMutation,
+  openInvitesOptions,
+  openInvitesQueryKey,
+  resetLinkMutation,
+  revokeInviteMutation,
+  updateUserMutation,
+  usersOptions,
+  usersQueryKey,
+} from '../api/@tanstack/react-query.gen'
+import { type AdminUser, type InviteIn, Role, Status, Vertical } from '../api/types.gen'
+import { ErrorNotice, Field, Form, Notice, SelectField } from '../components/Form'
+import { Page } from '../components/Page'
+import { queryClient, useMe } from '../lib/api'
 
-const ROLES = ['member', 'reviewer', 'admin'] as const
-const STATUSES = ['active', 'alumni', 'disabled'] as const
+const when = (iso: string | null | undefined) =>
+  iso
+    ? new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+    : '—'
 
-function when(iso: string | null | undefined) {
-  return iso ? new Date(iso).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' }) : '—'
+/** Refetch what an admin action changed; the audit trail always changes. */
+function refresh(...keys: QueryKey[]) {
+  for (const queryKey of [...keys, auditLogQueryKey()]) queryClient.invalidateQueries({ queryKey })
 }
 
 export default function Admin() {
   const { data: me } = useMe()
   if (me?.role !== 'admin') {
     return (
-      <>
-        <h1>Admins only</h1>
+      <Page title="Admins only">
         <p className="muted">Ask a team admin if you need something changed.</p>
-      </>
+      </Page>
     )
   }
   return (
-    <>
-      <h1>Admin</h1>
+    <Page title="Admin">
       <InvitePanel />
-      <Members />
-    </>
+      <Members selfId={me.id} />
+      <AuditTrail />
+    </Page>
   )
 }
 
-function CopyLink({ url, label }: { url: string; label: string }) {
-  const [copied, setCopied] = useState(false)
+/** Shows a one-time link, focuses it for keyboard and screen-reader users, and copies it if allowed. */
+function OneTimeLink({ label, url, expires }: { label: string; url: string; expires: string }) {
+  const input = useRef<HTMLInputElement>(null)
+  const [copied, setCopied] = useState<'yes' | 'manual' | null>(null)
+  useEffect(() => input.current?.focus(), [url])
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(url)
+      setCopied('yes')
+    } catch {
+      input.current?.select()
+      setCopied('manual')
+    }
+  }
   return (
-    <div className="copy">
-      <code>{url}</code>
-      <button
-        type="button"
-        onClick={async () => {
-          await navigator.clipboard.writeText(url)
-          setCopied(true)
-        }}
-      >
-        {copied ? 'Copied' : label}
-      </button>
-    </div>
+    <Notice tone="ok">
+      <p>
+        {label} Send it privately: it works once and expires {when(expires)}.
+      </p>
+      <div className="copy">
+        <input ref={input} readOnly value={url} aria-label={label} onFocus={(e) => e.target.select()} />
+        <button type="button" onClick={copy}>
+          {copied === 'yes' ? 'Copied' : 'Copy'}
+        </button>
+      </div>
+      {copied === 'manual' && <p>Copying isn't allowed here: the link is selected, press Ctrl/⌘ + C.</p>}
+    </Notice>
   )
 }
 
 function InvitePanel() {
-  const queryClient = useQueryClient()
-  const [form, setForm] = useState<InviteIn>({ role: 'member', vertical: null, note: '' })
-  const open = useQuery({ queryKey: ['invites'], queryFn: async () => (await openInvites()).data })
-  const create = useMutation({
-    mutationFn: () => createInvite({ body: form }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['invites'] }),
-  })
-  const revoke = useMutation({
-    mutationFn: (id: number) => revokeInvite({ path: { invite_id: id } }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['invites'] }),
-  })
-
-  const submit = (e: FormEvent) => {
-    e.preventDefault()
-    create.mutate()
-  }
+  const [form, setForm] = useState<InviteIn>({ role: Role.MEMBER, vertical: null, note: '' })
+  const invites = useQuery(openInvitesOptions())
+  const create = useMutation({ ...createInviteMutation(), onSuccess: () => refresh(openInvitesQueryKey()) })
+  const revoke = useMutation({ ...revokeInviteMutation(), onSuccess: () => refresh(openInvitesQueryKey()) })
 
   return (
     <section className="panel stack" aria-labelledby="invite-title">
       <h2 id="invite-title">Invite a member</h2>
-      <form onSubmit={submit} className="row">
-        <label>
-          Role
-          <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as InviteIn['role'] })}>
-            {ROLES.map((r) => <option key={r}>{r}</option>)}
-          </select>
-        </label>
-        <label>
-          Vertical
-          <select value={form.vertical ?? ''} onChange={(e) => setForm({ ...form, vertical: (e.target.value || null) as InviteIn['vertical'] })}>
-            <option value="">Let them choose</option>
-            {VERTICALS.map((v) => <option key={v}>{v}</option>)}
-          </select>
-        </label>
-        <label className="grow">
-          Note (who it's for)
-          <input maxLength={80} value={form.note ?? ''} onChange={(e) => setForm({ ...form, note: e.target.value })} />
-        </label>
-        <button type="submit" disabled={create.isPending}>Create link</button>
-      </form>
-      {create.isError && <Notice tone="error">{errorMessage(create.error)}</Notice>}
-      {create.data?.data && (
-        <Notice tone="ok">
-          Send this link privately. It works once and expires {when(create.data.data.expires_at)}.
-          <CopyLink url={create.data.data.url} label="Copy link" />
-        </Notice>
+      <Form onSubmit={() => create.mutate({ body: form })} className="row">
+        <SelectField
+          label="Role"
+          value={form.role}
+          onChange={(e) => setForm({ ...form, role: e.target.value as Role })}
+        >
+          {Object.values(Role).map((r) => (
+            <option key={r}>{r}</option>
+          ))}
+        </SelectField>
+        <SelectField
+          label="Vertical"
+          value={form.vertical ?? ''}
+          onChange={(e) => setForm({ ...form, vertical: (e.target.value || null) as Vertical | null })}
+        >
+          <option value="">Let them choose</option>
+          {Object.values(Vertical).map((v) => (
+            <option key={v}>{v}</option>
+          ))}
+        </SelectField>
+        <div className="grow">
+          <Field
+            label="Who it's for"
+            required
+            maxLength={80}
+            value={form.note ?? ''}
+            onChange={(e) => setForm({ ...form, note: e.target.value })}
+          />
+        </div>
+        <button type="submit" disabled={create.isPending || !form.note?.trim()}>
+          Create link
+        </button>
+      </Form>
+      <ErrorNotice error={create.error} />
+      {create.data && (
+        <OneTimeLink label={`Invite for ${form.note}.`} url={create.data.url} expires={create.data.expires_at} />
       )}
-      {!!open.data?.length && (
-        <table>
-          <caption>Open invites</caption>
-          <thead><tr><th>Note</th><th>Role</th><th>Vertical</th><th>Expires</th><th><span className="sr-only">Actions</span></th></tr></thead>
-          <tbody>
-            {open.data.map((i) => (
-              <tr key={i.id}>
-                <td>{i.note ?? '—'}</td>
-                <td>{i.role}</td>
-                <td>{i.vertical ?? '—'}</td>
-                <td>{when(i.expires_at)}</td>
-                <td><button type="button" className="link-button" onClick={() => revoke.mutate(i.id)}>Revoke</button></td>
-              </tr>
+      {!!invites.data?.length && (
+        <>
+          <h3>Open invites</h3>
+          <ul className="list">
+            {invites.data.map((i) => (
+              <li key={i.id} className="item">
+                <span className="item-title">{i.note ?? 'No note'}</span>
+                <span className="muted">
+                  {i.role}
+                  {i.vertical && ` · ${i.vertical}`} · expires {when(i.expires_at)}
+                </span>
+                <button
+                  type="button"
+                  className="link-button"
+                  aria-label={`Revoke invite for ${i.note ?? 'unnamed'}`}
+                  onClick={() => revoke.mutate({ path: { invite_id: i.id } })}
+                >
+                  Revoke
+                </button>
+              </li>
             ))}
-          </tbody>
-        </table>
+          </ul>
+        </>
       )}
     </section>
   )
 }
 
-function Members() {
-  const { data: me } = useMe()
-  const queryClient = useQueryClient()
-  const list = useQuery({ queryKey: ['users'], queryFn: async () => (await users()).data })
-  const [link, setLink] = useState<{ name: string; url: string } | null>(null)
+const CONFIRM: Partial<Record<string, (name: string) => string>> = {
+  disabled: (n) => `Disable ${n}? They'll be signed out and can't sign in until re-enabled.`,
+  alumni: (n) => `Mark ${n} as alumni? They'll be signed out and leave the leaderboards.`,
+  admin: (n) => `Make ${n} an admin? Admins can invite people and change anyone's role.`,
+}
+
+function Members({ selfId }: { selfId: number }) {
+  const users = useQuery(usersOptions())
+  const [changed, setChanged] = useState('')
+  const [link, setLink] = useState<{ userId: number; url: string; expires: string } | null>(null)
   const update = useMutation({
-    mutationFn: ({ id, ...body }: { id: number; role?: AdminUser['role']; status?: AdminUser['status'] }) =>
-      updateUser({ path: { user_id: id }, body }),
-    onSettled: () => queryClient.invalidateQueries({ queryKey: ['users'] }),
+    ...updateUserMutation(),
+    onSuccess: (u) => setChanged(`${u.display_name} is now ${u.role}, ${u.status}.`),
+    onSettled: () => refresh(usersQueryKey()),
   })
   const reset = useMutation({
-    mutationFn: (u: AdminUser) => resetLink({ path: { user_id: u.id } }),
-    onSuccess: ({ data }, u) => data && setLink({ name: u.display_name, url: data.url }),
+    ...resetLinkMutation(),
+    onSuccess: (l, vars) => {
+      setLink({ userId: vars.path.user_id, url: l.url, expires: l.expires_at })
+      refresh()
+    },
   })
+
+  const change = (u: AdminUser, body: { role?: Role; status?: Status }) => {
+    const ask = CONFIRM[body.role ?? body.status ?? '']
+    if (ask && !window.confirm(ask(u.display_name))) return
+    update.mutate({ path: { user_id: u.id }, body })
+  }
 
   return (
     <section className="panel stack" aria-labelledby="members-title">
-      <h2 id="members-title">Members</h2>
-      {update.isError && <Notice tone="error">{errorMessage(update.error)}</Notice>}
-      {link && (
-        <Notice tone="ok">
-          Reset link for {link.name} (valid 24 h, works once):
-          <CopyLink url={link.url} label="Copy link" />
-        </Notice>
-      )}
-      <div className="table-scroll">
-        <table>
-          <thead><tr><th>Name</th><th>Email</th><th>Vertical</th><th>Role</th><th>Status</th><th>Last seen</th><th><span className="sr-only">Actions</span></th></tr></thead>
-          <tbody>
-            {list.data?.map((u) => {
-              const self = u.id === me?.id
-              return (
-                <tr key={u.id}>
-                  <td>{u.display_name}{u.leaderboard_opt_out && <span className="badge">hidden</span>}</td>
-                  <td>{u.email}</td>
-                  <td>{u.vertical ?? '—'}</td>
-                  <td>
-                    <select aria-label={`Role of ${u.display_name}`} value={u.role} disabled={self} onChange={(e) => update.mutate({ id: u.id, role: e.target.value as AdminUser['role'] })}>
-                      {ROLES.map((r) => <option key={r}>{r}</option>)}
-                    </select>
-                  </td>
-                  <td>
-                    <select aria-label={`Status of ${u.display_name}`} value={u.status} disabled={self} onChange={(e) => update.mutate({ id: u.id, status: e.target.value as AdminUser['status'] })}>
-                      {STATUSES.map((s) => <option key={s}>{s}</option>)}
-                    </select>
-                  </td>
-                  <td>{when(u.last_seen)}</td>
-                  <td><button type="button" className="link-button" onClick={() => reset.mutate(u)}>Reset link</button></td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
-      <AuditTrail />
+      <h2 id="members-title">Members ({users.data?.length ?? '…'})</h2>
+      <ErrorNotice error={update.error} />
+      <output className="sr-only">{changed}</output>
+      <ul className="list members">
+        {users.data?.map((u) => {
+          const self = u.id === selfId
+          const locked = u.locked_until && new Date(u.locked_until) > new Date()
+          return (
+            <li key={u.id} className="item member">
+              <div className="who">
+                <span className="item-title">
+                  {u.display_name}
+                  {self && <span className="badge">you</span>}
+                  {u.leaderboard_opt_out && <span className="badge">off leaderboard</span>}
+                  {locked && <span className="badge warn">locked until {when(u.locked_until)}</span>}
+                </span>
+                <span className="muted">
+                  {u.email} · {u.vertical ?? 'no vertical'} · seen {when(u.last_seen)}
+                </span>
+              </div>
+              <SelectField
+                label="Role"
+                value={u.role}
+                disabled={self}
+                onChange={(e) => change(u, { role: e.target.value as Role })}
+              >
+                {Object.values(Role).map((r) => (
+                  <option key={r}>{r}</option>
+                ))}
+              </SelectField>
+              <SelectField
+                label="Status"
+                value={u.status}
+                disabled={self}
+                onChange={(e) => change(u, { status: e.target.value as Status })}
+              >
+                {Object.values(Status).map((s) => (
+                  <option key={s}>{s}</option>
+                ))}
+              </SelectField>
+              <button
+                type="button"
+                className="secondary"
+                aria-label={`Reset link for ${u.display_name}`}
+                onClick={() => reset.mutate({ path: { user_id: u.id } })}
+              >
+                Reset link
+              </button>
+              {link?.userId === u.id && (
+                <div className="full">
+                  <OneTimeLink
+                    label={`Password reset link for ${u.display_name}.`}
+                    url={link.url}
+                    expires={link.expires}
+                  />
+                </div>
+              )}
+            </li>
+          )
+        })}
+      </ul>
     </section>
   )
 }
 
+const ACTIONS: Record<string, string> = {
+  'invite.create': 'created an invite',
+  'invite.revoke': 'revoked an invite',
+  'user.register': 'joined',
+  'user.bootstrap_admin': 'set up the first admin account',
+  'user.update': 'changed',
+  'user.revoke_sessions': 'signed out',
+  'reset.create': 'created a reset link for',
+  'password.reset': 'reset their password',
+  'password.change': 'changed their password',
+}
+
 function AuditTrail() {
-  const log = useQuery({ queryKey: ['audit'], queryFn: async () => (await auditLog({ query: { limit: 20 } })).data })
+  const log = useQuery(auditLogOptions({ query: { limit: 30 } }))
   return (
-    <details>
-      <summary>Recent admin activity</summary>
+    <details className="panel">
+      <summary>Recent activity</summary>
       <ul className="audit">
-        {log.data?.map((a) => (
-          <li key={a.id}>
-            <time>{when(a.at)}</time> {a.action} {a.target}
-          </li>
-        ))}
+        {log.data?.map((a) => {
+          const self = a.actor === a.target
+          if (a.action === 'user.locked') {
+            return (
+              <li key={a.id}>
+                <time dateTime={a.at}>{when(a.at)}</time> {a.target} was locked after 5 failed sign-ins
+              </li>
+            )
+          }
+          return (
+            <li key={a.id}>
+              <time dateTime={a.at}>{when(a.at)}</time> {a.actor ?? 'System'} {ACTIONS[a.action] ?? a.action}
+              {!self && a.target && !a.target.startsWith('invite:') && ` ${a.target}`}
+              {a.action === 'user.update' &&
+                ` (${Object.entries(a.details)
+                  .map(([k, v]) => `${k} → ${(v as string[])[1]}`)
+                  .join(', ')})`}
+            </li>
+          )
+        })}
       </ul>
     </details>
   )

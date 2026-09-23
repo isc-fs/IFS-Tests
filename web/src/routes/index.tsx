@@ -1,8 +1,9 @@
 import { lazy } from 'react'
-import type { RouteObject } from 'react-router'
+import { Link, type RouteObject } from 'react-router'
+import { PublicPage } from '../components/Page'
 import Home from './Home'
 import Invite from './Invite'
-import Layout, { Shell } from './Layout'
+import Layout from './Layout'
 import Login from './Login'
 import Profile from './Profile'
 import Reset from './Reset'
@@ -12,21 +13,21 @@ const Admin = lazy(() => import('./Admin'))
 
 function NotFound() {
   return (
-    <Shell>
-      <main className="content narrow">
-        <h1>Page not found</h1>
-        <p><a href="/">Back to the start</a></p>
-      </main>
-    </Shell>
+    <PublicPage title="Page not found">
+      <p>
+        <Link to="/">Back to the start</Link>
+      </p>
+    </PublicPage>
   )
 }
 
 export const routes: RouteObject[] = [
   { path: '/login', element: <Login /> },
-  { path: '/invite/:token', element: <Invite /> },
-  { path: '/reset/:token', element: <Reset /> },
+  { path: '/invite', element: <Invite /> },
+  { path: '/reset', element: <Reset /> },
   {
     element: <Layout />,
+    errorElement: <NotFound />,
     children: [
       { index: true, element: <Home /> },
       { path: 'profile', element: <Profile /> },

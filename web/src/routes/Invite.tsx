@@ -1,54 +1,99 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { type FormEvent, useState } from 'react'
-import { useNavigate, useParams } from 'react-router'
-import { inviteInfo, register } from '../api/sdk.gen'
-import { Field, Notice, PASSWORD_HINT } from '../components/Form'
-import { errorMessage } from '../lib/api'
-import { Brand, Shell } from './Layout'
+import { useMutation, useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
+import { Link, useNavigate } from 'react-router'
+import { registerMutation } from '../api/@tanstack/react-query.gen'
+import { inviteInfo } from '../api/sdk.gen'
+import { Vertical } from '../api/types.gen'
+import { ErrorNotice, Field, Form, Notice, PASSWORD_HINT, SelectField } from '../components/Form'
+import { PublicPage, tokenFromHash } from '../components/Page'
+import { errorMessage, fieldErrors, ME_KEY, queryClient } from '../lib/api'
 
 export default function Invite() {
-  const { token = '' } = useParams()
+  const token = tokenFromHash()
   const navigate = useNavigate()
-  const queryClient = useQueryClient()
-  const invite = useQuery({ queryKey: ['invite', token], queryFn: async () => (await inviteInfo({ path: { token } })).data, retry: false })
-  const [form, setForm] = useState({ email: '', display_name: '', password: '' })
-  const set = (key: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, [key]: e.target.value })
-
+  const invite = useQuery({
+    queryKey: ['invite', token],
+    queryFn: async () => (await inviteInfo({ body: { token } })).data,
+    retry: false,
+  })
+  const [form, setForm] = useState({ email: '', display_name: '', password: '', vertical: '' })
   const join = useMutation({
-    mutationFn: () => register({ body: { token, ...form } }),
-    onSuccess: ({ data }) => {
-      queryClient.setQueryData(['me'], data)
+    ...registerMutation(),
+    onSuccess: (me) => {
+      queryClient.setQueryData(ME_KEY, me)
       navigate('/', { replace: true })
     },
   })
-
-  const submit = (e: FormEvent) => {
-    e.preventDefault()
-    join.mutate()
+  const errors = fieldErrors(join.error)
+  const edit = (key: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    setForm({ ...form, [key]: e.target.value })
+    join.reset()
   }
+  const submit = () => join.mutate({ body: { token, ...form, vertical: (form.vertical || null) as Vertical | null } })
 
   return (
-    <Shell>
-      <header className="topbar"><Brand /></header>
-      <main className="content narrow">
-        <h1>Join IFS-Tests</h1>
-        {invite.isPending && <p className="muted">Checking your invite…</p>}
-        {invite.isError && <Notice tone="error">{errorMessage(invite.error)}</Notice>}
-        {invite.data && (
-          <>
-            <p className="lede">
-              You've been invited{invite.data.vertical ? ` to the ${invite.data.vertical} vertical` : ''}. Pick how you'll sign in and how others see you.
-            </p>
-            <form onSubmit={submit} className="stack">
-              <Field label="Email" name="email" type="email" autoComplete="email" required value={form.email} onChange={set('email')} hint="Only admins see it. You'll use it to sign in." />
-              <Field label="Display name" name="display_name" autoComplete="nickname" required minLength={2} maxLength={24} value={form.display_name} onChange={set('display_name')} hint="Shown on the leaderboard. You can hide yourself later." />
-              <Field label="Password" name="password" type="password" autoComplete="new-password" required minLength={10} value={form.password} onChange={set('password')} hint={PASSWORD_HINT} />
-              {join.isError && <Notice tone="error">{errorMessage(join.error)}</Notice>}
-              <button type="submit" disabled={join.isPending}>{join.isPending ? 'Creating account…' : 'Create account'}</button>
-            </form>
-          </>
-        )}
-      </main>
-    </Shell>
+    <PublicPage title="Join IFS-Tests">
+      {invite.isPending && <p className="muted">Checking your invite…</p>}
+      {invite.isError && (
+        <>
+          <Notice tone="error">{errorMessage(invite.error)}</Notice>
+          <p>
+            Already joined? <Link to="/login">Sign in</Link>
+          </p>
+        </>
+      )}
+      {invite.data && (
+        <>
+          <p className="lede">
+            You've been invited{invite.data.vertical ? ` to the ${invite.data.vertical} vertical` : ''}. Choose how
+            you'll sign in and how others see you.
+          </p>
+          <Form onSubmit={submit} className="stack">
+            <Field
+              label="Email"
+              type="email"
+              autoComplete="email"
+              required
+              value={form.email}
+              onChange={edit('email')}
+              hint="Only admins see it. You'll use it to sign in."
+              error={errors.email}
+            />
+            <Field
+              label="Display name"
+              autoComplete="nickname"
+              required
+              maxLength={24}
+              value={form.display_name}
+              onChange={edit('display_name')}
+              hint="Shown on the leaderboard. You can hide yourself later."
+              error={errors.display_name}
+            />
+            {!invite.data.vertical && (
+              <SelectField label="Vertical" value={form.vertical} onChange={edit('vertical')} error={errors.vertical}>
+                <option value="">Choose later</option>
+                {Object.values(Vertical).map((v) => (
+                  <option key={v}>{v}</option>
+                ))}
+              </SelectField>
+            )}
+            <Field
+              label="Password"
+              type="password"
+              autoComplete="new-password"
+              required
+              value={form.password}
+              onChange={edit('password')}
+              hint={PASSWORD_HINT}
+              error={errors.password}
+            />
+            <ErrorNotice error={join.error} />
+            <button type="submit" disabled={join.isPending}>
+              {join.isPending ? 'Creating account…' : 'Create account'}
+            </button>
+          </Form>
+        </>
+      )}
+    </PublicPage>
   )
 }

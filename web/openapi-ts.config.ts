@@ -4,5 +4,10 @@ import { defineConfig } from '@hey-api/openapi-ts'
 export default defineConfig({
   input: 'openapi.json',
   output: { path: 'src/api' },
-  plugins: ['@hey-api/client-fetch', '@hey-api/typescript', '@hey-api/sdk'],
+  plugins: [
+    '@hey-api/client-fetch',
+    { name: '@hey-api/typescript', enums: 'javascript' },
+    '@hey-api/sdk',
+    '@tanstack/react-query',
+  ],
 })

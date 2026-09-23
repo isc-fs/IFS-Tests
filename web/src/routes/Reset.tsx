@@ -1,42 +1,57 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { type FormEvent, useState } from 'react'
-import { Link, useParams } from 'react-router'
-import { reset, resetInfo } from '../api/sdk.gen'
-import { Field, Notice, PASSWORD_HINT } from '../components/Form'
-import { errorMessage } from '../lib/api'
-import { Brand, Shell } from './Layout'
+import { useState } from 'react'
+import { Link } from 'react-router'
+import { resetMutation } from '../api/@tanstack/react-query.gen'
+import { resetInfo } from '../api/sdk.gen'
+import { ErrorNotice, Field, Form, Notice, PASSWORD_HINT } from '../components/Form'
+import { PublicPage, tokenFromHash } from '../components/Page'
+import { errorMessage, fieldErrors } from '../lib/api'
 
 export default function Reset() {
-  const { token = '' } = useParams()
-  const link = useQuery({ queryKey: ['reset', token], queryFn: async () => (await resetInfo({ path: { token } })).data, retry: false })
+  const token = tokenFromHash()
+  const link = useQuery({
+    queryKey: ['reset', token],
+    queryFn: async () => (await resetInfo({ body: { token } })).data,
+    retry: false,
+  })
   const [password, setPassword] = useState('')
-  const save = useMutation({ mutationFn: () => reset({ body: { token, password } }) })
+  const save = useMutation(resetMutation())
 
-  const submit = (e: FormEvent) => {
-    e.preventDefault()
-    save.mutate()
+  if (save.isSuccess) {
+    return (
+      <PublicPage title="Password changed">
+        <p className="lede">You've been signed out on every device. Sign in with your new password.</p>
+        <Link to="/login" className="button">
+          Sign in
+        </Link>
+      </PublicPage>
+    )
   }
 
   return (
-    <Shell>
-      <header className="topbar"><Brand /></header>
-      <main className="content narrow">
-        <h1>Choose a new password</h1>
-        {link.isError && <Notice tone="error">{errorMessage(link.error)}</Notice>}
-        {save.isSuccess ? (
-          <Notice tone="ok">
-            Password changed. You've been signed out everywhere. <Link to="/login">Sign in</Link>
-          </Notice>
-        ) : (
-          link.data && (
-            <form onSubmit={submit} className="stack">
-              <Field label="New password" name="password" type="password" autoComplete="new-password" required minLength={10} value={password} onChange={(e) => setPassword(e.target.value)} hint={PASSWORD_HINT} />
-              {save.isError && <Notice tone="error">{errorMessage(save.error)}</Notice>}
-              <button type="submit" disabled={save.isPending}>Save password</button>
-            </form>
-          )
-        )}
-      </main>
-    </Shell>
+    <PublicPage title="Choose a new password">
+      {link.isError && <Notice tone="error">{errorMessage(link.error)}</Notice>}
+      {link.data && (
+        <Form onSubmit={() => save.mutate({ body: { token, password } })} className="stack">
+          <Field
+            label="New password"
+            type="password"
+            autoComplete="new-password"
+            required
+            value={password}
+            onChange={(e) => {
+              setPassword(e.target.value)
+              save.reset()
+            }}
+            hint={PASSWORD_HINT}
+            error={fieldErrors(save.error).password}
+          />
+          <ErrorNotice error={save.error} />
+          <button type="submit" disabled={save.isPending}>
+            Save password
+          </button>
+        </Form>
+      )}
+    </PublicPage>
   )
 }

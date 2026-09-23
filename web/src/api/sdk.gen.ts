@@ -38,7 +38,14 @@ export const logout = <ThrowOnError extends boolean = false>(options?: Options<L
 /**
  * Invite Info
  */
-export const inviteInfo = <ThrowOnError extends boolean = false>(options: Options<InviteInfoData, ThrowOnError>): RequestResult<InviteInfoResponses, InviteInfoErrors, ThrowOnError> => (options.client ?? client).get<InviteInfoResponses, InviteInfoErrors, ThrowOnError>({ url: '/auth/invites/{token}', ...options });
+export const inviteInfo = <ThrowOnError extends boolean = false>(options: Options<InviteInfoData, ThrowOnError>): RequestResult<InviteInfoResponses, InviteInfoErrors, ThrowOnError> => (options.client ?? client).post<InviteInfoResponses, InviteInfoErrors, ThrowOnError>({
+    url: '/auth/invites/lookup',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
 
 /**
  * Register
@@ -55,7 +62,14 @@ export const register = <ThrowOnError extends boolean = false>(options: Options<
 /**
  * Reset Info
  */
-export const resetInfo = <ThrowOnError extends boolean = false>(options: Options<ResetInfoData, ThrowOnError>): RequestResult<ResetInfoResponses, ResetInfoErrors, ThrowOnError> => (options.client ?? client).get<ResetInfoResponses, ResetInfoErrors, ThrowOnError>({ url: '/auth/resets/{token}', ...options });
+export const resetInfo = <ThrowOnError extends boolean = false>(options: Options<ResetInfoData, ThrowOnError>): RequestResult<ResetInfoResponses, ResetInfoErrors, ThrowOnError> => (options.client ?? client).post<ResetInfoResponses, ResetInfoErrors, ThrowOnError>({
+    url: '/auth/resets/lookup',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
 
 /**
  * Reset

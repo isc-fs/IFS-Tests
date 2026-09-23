@@ -11,7 +11,14 @@ export default defineConfig({
   },
   build: { assetsDir: 'assets', sourcemap: false },
   test: {
+    include: ['src/**/*.test.{ts,tsx}'],
     environment: 'jsdom',
+    coverage: {
+      provider: 'v8',
+      include: ['src/**/*.{ts,tsx}'],
+      exclude: ['src/api/**', 'src/main.tsx', 'src/test/**', '**/*.test.*'],
+      thresholds: { lines: 80, branches: 70, functions: 75 },
+    },
     setupFiles: ['./src/test-setup.ts'],
     css: false,
   },

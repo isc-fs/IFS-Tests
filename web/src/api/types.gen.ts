@@ -20,18 +20,9 @@ export type AdminUser = {
      * Display Name
      */
     display_name: string;
-    /**
-     * Vertical
-     */
-    vertical: 'Management' | 'Mechanical' | 'Tractive System' | 'Electronics' | 'Driverless' | 'Business' | 'Board' | null;
-    /**
-     * Role
-     */
-    role: 'member' | 'reviewer' | 'admin';
-    /**
-     * Status
-     */
-    status: 'active' | 'alumni' | 'disabled';
+    vertical: Vertical | null;
+    role: Role;
+    status: Status;
     /**
      * Leaderboard Opt Out
      */
@@ -63,13 +54,13 @@ export type AuditEntry = {
      */
     at: string;
     /**
-     * Actor Id
-     */
-    actor_id: number | null;
-    /**
      * Action
      */
     action: string;
+    /**
+     * Actor
+     */
+    actor: string | null;
     /**
      * Target
      */
@@ -93,31 +84,11 @@ export type HttpValidationError = {
 };
 
 /**
- * InviteCreated
- */
-export type InviteCreated = {
-    /**
-     * Url
-     */
-    url: string;
-    /**
-     * Expires At
-     */
-    expires_at: string;
-};
-
-/**
  * InviteIn
  */
 export type InviteIn = {
-    /**
-     * Role
-     */
-    role?: 'member' | 'reviewer' | 'admin';
-    /**
-     * Vertical
-     */
-    vertical?: 'Management' | 'Mechanical' | 'Tractive System' | 'Electronics' | 'Driverless' | 'Business' | 'Board' | null;
+    role?: Role;
+    vertical?: Vertical | null;
     /**
      * Note
      */
@@ -128,14 +99,22 @@ export type InviteIn = {
  * InviteInfo
  */
 export type InviteInfo = {
+    role: Role;
+    vertical: Vertical | null;
     /**
-     * Role
+     * Expires At
      */
-    role: 'member' | 'reviewer' | 'admin';
+    expires_at: string;
+};
+
+/**
+ * Link
+ */
+export type Link = {
     /**
-     * Vertical
+     * Url
      */
-    vertical: 'Management' | 'Mechanical' | 'Tractive System' | 'Electronics' | 'Driverless' | 'Business' | 'Board' | null;
+    url: string;
     /**
      * Expires At
      */
@@ -172,14 +151,8 @@ export type Me = {
      * Display Name
      */
     display_name: string;
-    /**
-     * Vertical
-     */
-    vertical: 'Management' | 'Mechanical' | 'Tractive System' | 'Electronics' | 'Driverless' | 'Business' | 'Board' | null;
-    /**
-     * Role
-     */
-    role: 'member' | 'reviewer' | 'admin';
+    vertical: Vertical | null;
+    role: Role;
     /**
      * Leaderboard Opt Out
      */
@@ -194,14 +167,8 @@ export type OpenInvite = {
      * Id
      */
     id: number;
-    /**
-     * Role
-     */
-    role: 'member' | 'reviewer' | 'admin';
-    /**
-     * Vertical
-     */
-    vertical: 'Management' | 'Mechanical' | 'Tractive System' | 'Electronics' | 'Driverless' | 'Business' | 'Board' | null;
+    role: Role;
+    vertical: Vertical | null;
     /**
      * Note
      */
@@ -238,14 +205,7 @@ export type ProfileIn = {
      * Display Name
      */
     display_name?: string | null;
-    /**
-     * Vertical
-     */
-    vertical?: 'Management' | 'Mechanical' | 'Tractive System' | 'Electronics' | 'Driverless' | 'Business' | 'Board' | null;
-    /**
-     * Clear Vertical
-     */
-    clear_vertical?: boolean;
+    vertical?: Vertical | null;
     /**
      * Leaderboard Opt Out
      */
@@ -272,6 +232,7 @@ export type RegisterIn = {
      * Password
      */
     password: string;
+    vertical?: Vertical | null;
 };
 
 /**
@@ -299,31 +260,49 @@ export type ResetInfo = {
 };
 
 /**
- * ResetLink
+ * Role
  */
-export type ResetLink = {
+export const Role = {
+    MEMBER: 'member',
+    REVIEWER: 'reviewer',
+    ADMIN: 'admin'
+} as const;
+
+/**
+ * Role
+ */
+export type Role = typeof Role[keyof typeof Role];
+
+/**
+ * Status
+ */
+export const Status = {
+    ACTIVE: 'active',
+    ALUMNI: 'alumni',
+    DISABLED: 'disabled'
+} as const;
+
+/**
+ * Status
+ */
+export type Status = typeof Status[keyof typeof Status];
+
+/**
+ * TokenIn
+ */
+export type TokenIn = {
     /**
-     * Url
+     * Token
      */
-    url: string;
-    /**
-     * Expires At
-     */
-    expires_at: string;
+    token: string;
 };
 
 /**
  * UserPatch
  */
 export type UserPatch = {
-    /**
-     * Role
-     */
-    role?: 'member' | 'reviewer' | 'admin' | null;
-    /**
-     * Status
-     */
-    status?: 'active' | 'alumni' | 'disabled' | null;
+    role?: Role | null;
+    status?: Status | null;
 };
 
 /**
@@ -353,6 +332,24 @@ export type ValidationError = {
         [key: string]: unknown;
     };
 };
+
+/**
+ * Vertical
+ */
+export const Vertical = {
+    MANAGEMENT: 'Management',
+    MECHANICAL: 'Mechanical',
+    TRACTIVE_SYSTEM: 'Tractive System',
+    ELECTRONICS: 'Electronics',
+    DRIVERLESS: 'Driverless',
+    BUSINESS: 'Business',
+    BOARD: 'Board'
+} as const;
+
+/**
+ * Vertical
+ */
+export type Vertical = typeof Vertical[keyof typeof Vertical];
 
 export type LoginData = {
     body: LoginIn;
@@ -396,15 +393,10 @@ export type LogoutResponses = {
 export type LogoutResponse = LogoutResponses[keyof LogoutResponses];
 
 export type InviteInfoData = {
-    body?: never;
-    path: {
-        /**
-         * Token
-         */
-        token: string;
-    };
+    body: TokenIn;
+    path?: never;
     query?: never;
-    url: '/auth/invites/{token}';
+    url: '/auth/invites/lookup';
 };
 
 export type InviteInfoErrors = {
@@ -451,15 +443,10 @@ export type RegisterResponses = {
 export type RegisterResponse = RegisterResponses[keyof RegisterResponses];
 
 export type ResetInfoData = {
-    body?: never;
-    path: {
-        /**
-         * Token
-         */
-        token: string;
-    };
+    body: TokenIn;
+    path?: never;
     query?: never;
-    url: '/auth/resets/{token}';
+    url: '/auth/resets/lookup';
 };
 
 export type ResetInfoErrors = {
@@ -644,7 +631,7 @@ export type ResetLinkResponses = {
     /**
      * Successful Response
      */
-    201: ResetLink;
+    201: Link;
 };
 
 export type ResetLinkResponse = ResetLinkResponses[keyof ResetLinkResponses];
@@ -717,7 +704,7 @@ export type CreateInviteResponses = {
     /**
      * Successful Response
      */
-    201: InviteCreated;
+    201: Link;
 };
 
 export type CreateInviteResponse = CreateInviteResponses[keyof CreateInviteResponses];

@@ -4,7 +4,8 @@ import { defineConfig, devices } from '@playwright/test'
 export default defineConfig({
   testDir: 'e2e',
   fullyParallel: false,
-  retries: process.env.CI ? 1 : 0,
+  retries: 0,
+  failOnFlakyTests: !!process.env.CI,
   reporter: process.env.CI ? 'github' : 'list',
   use: {
     baseURL: process.env.E2E_BASE_URL ?? 'http://localhost:8000',
