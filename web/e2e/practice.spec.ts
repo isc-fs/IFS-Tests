@@ -4,7 +4,7 @@ import { ADMIN, signIn } from './helpers'
 test('practise a few questions from the bank', async ({ page }) => {
   await signIn(page, ADMIN.email, ADMIN.password)
   await page.getByRole('link', { name: 'Practice' }).first().click()
-  await expect(page).toHaveTitle('Practice · IFS-Tests')
+  await expect(page).toHaveTitle('Practice · MingoQuiz')
 
   for (let i = 0; i < 3; i++) {
     const card = page.getByRole('article')

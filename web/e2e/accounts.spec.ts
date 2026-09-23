@@ -28,7 +28,7 @@ test('invite, join, hide from the board, get a reset link, sign back in', async 
   await guest.getByLabel('Password').fill('regen braking is free energy')
   await guest.getByRole('button', { name: 'Create account' }).click()
   await expect(guest.getByRole('heading', { level: 1 })).toHaveText(`Hi ${name}.`)
-  await expect(guest).toHaveTitle('Home · IFS-Tests')
+  await expect(guest).toHaveTitle('Home · MingoQuiz')
 
   await guest.goto('/admin')
   await expect(guest.getByRole('heading', { level: 1 })).toHaveText('Admins only')

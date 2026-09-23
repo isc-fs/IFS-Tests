@@ -37,7 +37,7 @@ export default function Invite() {
     })
 
   return (
-    <PublicPage title="Join" heading="Join IFS-Tests">
+    <PublicPage title="Join" heading="Join MingoQuiz">
       {invite.isPending && <p className="muted">Checking your invite…</p>}
       {invite.isError && (
         <>

@@ -2,7 +2,7 @@
 
 # IFS-Tests
 
-Practice system for the **Formula Student registration quizzes**, built on the public [FS-Quiz](https://fs-quiz.eu) question bank.
+**MingoQuiz**: the ISC team's practice system for the **Formula Student registration quizzes**, built on the public [FS-Quiz](https://fs-quiz.eu) question bank. (The site is MingoQuiz; this repository and the Python package keep the IFS-Tests name.)
 
 Most European events hand out their registration slots through a short, timed online quiz on the rules and on vehicle engineering. FSG is the most contested of them, and a few questions separate the teams that get a slot from the ones that don't. This repository exists so that ISC trains for those quizzes all season instead of cramming the week before, and gets back into FSG.
 

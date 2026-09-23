@@ -20,8 +20,8 @@ test('the token is read from the fragment and sent in the body', async () => {
   expect(sent('POST /auth/invites/lookup')[0].body).toEqual({ token: 'tok-123' })
   expect(screen.queryByLabelText('Vertical')).toBeNull()
   expect(window.location.hash).toBe('')
-  expect(document.title).toBe('Join · IFS-Tests')
-  expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Join IFS-Tests')
+  expect(document.title).toBe('Join · MingoQuiz')
+  expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Join MingoQuiz')
 })
 
 test('field problems are shown next to each field and linked for screen readers', async () => {

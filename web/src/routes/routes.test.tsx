@@ -51,7 +51,7 @@ test('successful sign in lands on the requested page with the page title set', a
   await userEvent.type(screen.getByLabelText('Password'), 'tractive system 900V!')
   await userEvent.click(screen.getByRole('button', { name: 'Sign in' }))
   await waitFor(() => expect(router.state.location.pathname).toBe('/profile'))
-  await waitFor(() => expect(document.title).toBe('Profile · IFS-Tests'))
+  await waitFor(() => expect(document.title).toBe('Profile · MingoQuiz'))
   expect(screen.getByRole('heading', { level: 1 })).toHaveFocus()
 })
 
