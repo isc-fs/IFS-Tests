@@ -4,6 +4,7 @@ import { ME_KEY, queryClient, useMe } from '../lib/api'
 import { AREAS, TOPICS } from '../lib/areas'
 import { changes, TOP_LEVEL, tierOf, xp } from '../lib/xp'
 import { Emblem } from './Emblem'
+import { QuestionDocs } from './QuestionDocs'
 import { Field, Form, Notice } from './Form'
 import { ReportProblem } from './ReportProblem'
 
@@ -177,6 +178,7 @@ export function QuestionCard({
     <article className="question panel stack" aria-labelledby={`${legend}-text`}>
       {clock && !answered && <div className="clock-bar">{clock}</div>}
       <QuestionMeta question={question} />
+      <QuestionDocs docs={question.documents} open={question.area === 'rules'} />
       <p className="question-text" id={`${legend}-text`} ref={text} tabIndex={-1}>
         {question.text}
       </p>

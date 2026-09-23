@@ -1037,3 +1037,28 @@ details[open] > summary::before {
   margin: 0;
   font-size: var(--isc-fs-caption);
 }
+
+/* The documents a question's quizzes were based on. */
+.question-docs {
+  font-size: var(--isc-fs-body-s);
+}
+.question-docs summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--isc-c-link);
+}
+.question-docs ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 2px;
+}
+.question-docs a {
+  overflow-wrap: anywhere;
+}
+.docs-newer {
+  margin: 6px 0 0;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: var(--isc-cream);
+}

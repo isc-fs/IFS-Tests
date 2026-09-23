@@ -13,6 +13,7 @@ from sqlalchemy import (
     ForeignKey,
     Identity,
     Index,
+    Integer,
     MetaData,
     String,
     Table,
@@ -204,6 +205,28 @@ class Quiz(Base):
     status: Mapped[str] = mapped_column(String(32))
     information: Mapped[str | None] = mapped_column(Text)
     last_qualifier: Mapped[dict[str, Any] | None]
+
+
+class Document(Base):
+    """A rulebook, handbook or other document a quiz was based on. Linked, never copied: FS-Quiz hosts it."""
+
+    __tablename__ = "documents"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=False)
+    type: Mapped[str] = mapped_column(String(64))
+    year: Mapped[int]
+    version: Mapped[str | None] = mapped_column(String(16))
+    path: Mapped[str] = mapped_column(String(255))
+    # Empty for documents that apply to every event, like the FS Rules.
+    event_ids: Mapped[list[int]] = mapped_column(ARRAY(Integer), server_default="{}")
+
+
+quiz_documents = Table(
+    "quiz_documents",
+    Base.metadata,
+    Column("quiz_id", ForeignKey("quizzes.id", ondelete="CASCADE"), primary_key=True),
+    Column("document_id", ForeignKey("documents.id", ondelete="CASCADE"), primary_key=True, index=True),
+)
 
 
 class Question(Base):

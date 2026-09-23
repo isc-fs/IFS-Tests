@@ -83,7 +83,7 @@ phases:
       - name: feat/13-xp-levels
         scope: XP by difficulty, streak bonus, levels and ranks, penalties that grow with level
       - name: feat/14-learning-aids
-        scope: Formulas, reading and hints beside the question, taken away level by level
+        scope: That year's rulebook and handbook on every question; formulas, reading and hints taken away level by level
 
   - number: 4
     title: Launch
@@ -110,5 +110,7 @@ phases:
         scope: Team-written questions, starting with Driverless
       - name: feat/21-quiz-day-drill
         scope: Full-team rehearsal under real registration-quiz conditions
+      - name: feat/22-rule-page-links
+        scope: Download each rulebook once (polite, cached), index rule numbers to pages, link references like EV 4.7.6 to their page
 
 sidequests: []

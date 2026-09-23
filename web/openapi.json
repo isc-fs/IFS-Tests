@@ -2142,6 +2142,36 @@
     ],
     "title": "DailyStatus"
    },
+   "DocLink": {
+    "properties": {
+     "title": {
+      "type": "string",
+      "title": "Title"
+     },
+     "type": {
+      "type": "string",
+      "title": "Type",
+      "description": "As FS-Quiz names it: Rulebook, Handbook, Additional Rules..."
+     },
+     "year": {
+      "type": "integer",
+      "title": "Year"
+     },
+     "url": {
+      "type": "string",
+      "title": "Url",
+      "description": "The PDF on doc.fs-quiz.eu"
+     }
+    },
+    "type": "object",
+    "required": [
+     "title",
+     "type",
+     "year",
+     "url"
+    ],
+    "title": "DocLink"
+   },
    "Feedback": {
     "properties": {
      "correct": {
@@ -3007,6 +3037,9 @@
       },
       "type": "array",
       "title": "Quizzes"
+     },
+     "documents": {
+      "$ref": "#/components/schemas/QuestionDocs"
      }
     },
     "type": "object",
@@ -3021,7 +3054,8 @@
      "topic",
      "images",
      "options",
-     "quizzes"
+     "quizzes",
+     "documents"
     ],
     "title": "PlayQuestion",
     "description": "A question before it is answered: nothing here may reveal the answer."
@@ -3153,6 +3187,45 @@
     ],
     "title": "Progress",
     "description": "Level, title and what help the player still gets. XP always refers to lifetime XP."
+   },
+   "QuestionDocs": {
+    "properties": {
+     "year": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Year",
+      "description": "Year of the newest of them"
+     },
+     "used": {
+      "items": {
+       "$ref": "#/components/schemas/DocLink"
+      },
+      "type": "array",
+      "title": "Used"
+     },
+     "newer": {
+      "items": {
+       "$ref": "#/components/schemas/DocLink"
+      },
+      "type": "array",
+      "title": "Newer",
+      "description": "Later editions of those rulebooks and handbooks: rules may have changed"
+     }
+    },
+    "type": "object",
+    "required": [
+     "year",
+     "used",
+     "newer"
+    ],
+    "title": "QuestionDocs",
+    "description": "The rulebook, handbook and other documents the question's quizzes were based on."
    },
    "Rank": {
     "type": "string",

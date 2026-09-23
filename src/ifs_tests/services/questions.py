@@ -5,15 +5,44 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urlsplit
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DB
 
-from ..db.models import AnswerKey, AnswerOption, Event, Question, Quiz, QuizQuestion, Solution, quiz_events
+from ..db.models import (
+    AnswerKey,
+    AnswerOption,
+    Document,
+    Event,
+    Question,
+    Quiz,
+    QuizQuestion,
+    Solution,
+    quiz_documents,
+    quiz_events,
+)
 from ..domain.grading import grade
 from .errors import UserError
 
 MAX_QUIZ_LABELS = 4
+
+
+@dataclass
+class Doc:
+    title: str
+    type: str
+    year: int
+    path: str
+
+
+@dataclass
+class Documents:
+    """What the quizzes a question came from were based on, and newer versions of those documents."""
+
+    year: int | None
+    used: list[Doc]
+    newer: list[Doc]
 
 
 @dataclass
@@ -22,6 +51,7 @@ class Shown:
     options: list[AnswerOption]
     quizzes: list[str]
     values: int | None
+    documents: Documents
 
 
 @dataclass
@@ -53,6 +83,54 @@ def _quiz_labels(db: DB, ids: list[int]) -> dict[int, list[str]]:
     return labels
 
 
+ORDER = {"Rulebook": 0, "Additional Rules": 1, "Handbook": 2}
+SUPERSEDED = ("Rulebook", "Handbook")  # kinds where a later year replaces an earlier one
+
+
+def _successor(d: Document, o: Document) -> bool:
+    """`o` is a later edition of `d`: same kind, later year, and the same events (or both for every event)."""
+    same_scope = bool(set(o.event_ids) & set(d.event_ids)) if d.event_ids else not o.event_ids
+    return o.type == d.type and o.year > d.year and same_scope
+
+
+def _doc(d: Document) -> Doc:
+    """Titled from the file name, which says more than the type: "FSG23 Competition Handbook v1.0". A few
+    documents are a web page rather than a file; those are titled by kind, year and site."""
+    if "://" in d.path:
+        return Doc(f"{d.type} {d.year} ({urlsplit(d.path).hostname})", d.type, d.year, d.path)
+    name = d.path.rsplit("/", 1)[-1].rsplit(".", 1)[0]
+    return Doc(" ".join(name.replace("_", " ").replace("-", " ").split()), d.type, d.year, d.path)
+
+
+def _documents(db: DB, ids: list[int]) -> dict[int, Documents]:
+    rows = db.execute(
+        select(QuizQuestion.question_id, Document)
+        .join(quiz_documents, quiz_documents.c.quiz_id == QuizQuestion.quiz_id)
+        .join(Document, Document.id == quiz_documents.c.document_id)
+        .where(QuizQuestion.question_id.in_(ids))
+    ).all()
+    if not rows:
+        return {i: Documents(None, [], []) for i in ids}
+    everything = db.scalars(select(Document)).all()
+    used: dict[int, dict[int, Document]] = defaultdict(dict)
+    for qid, d in rows:
+        used[qid][d.id] = d
+    out = {}
+    for qid in ids:
+        docs = sorted(used[qid].values(), key=lambda d: (-d.year, ORDER.get(d.type, 9), d.path))
+        newer: dict[int, Document] = {}
+        for d in docs:
+            later = [o for o in everything if _successor(d, o)] if d.type in SUPERSEDED else []
+            if later:
+                latest = max(later, key=lambda o: (o.year, o.version or ""))
+                if latest.id not in used[qid]:
+                    newer[latest.id] = latest
+        year = docs[0].year if docs else None
+        newest = sorted(newer.values(), key=lambda d: (ORDER.get(d.type, 9), d.path))
+        out[qid] = Documents(year, [_doc(d) for d in docs], [_doc(d) for d in newest])
+    return out
+
+
 def _value_count(key: dict[str, Any] | None) -> int | None:
     """How many values a "numbers" answer needs, when every accepted answer agrees."""
     if not key or key["kind"] != "numbers":
@@ -71,7 +149,10 @@ def show(db: DB, questions: list[Question]) -> list[Shown]:
     found = db.scalars(select(AnswerKey).where(AnswerKey.question_id.in_(ids)))
     keys = {k.question_id: k.effective for k in found}
     labels = _quiz_labels(db, ids)
-    return [Shown(q, options[q.id], labels[q.id], _value_count(keys.get(q.id))) for q in questions]
+    docs = _documents(db, ids)
+    return [
+        Shown(q, options[q.id], labels[q.id], _value_count(keys.get(q.id)), docs[q.id]) for q in questions
+    ]
 
 
 def playable(db: DB, question_id: int) -> Question:

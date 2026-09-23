@@ -209,3 +209,44 @@ test('questions without an official answer have no "I\'m not sure"', async () =>
   expect(await screen.findByRole('button', { name: 'Check answer' })).toBeInTheDocument()
   expect(screen.queryByRole('button', { name: "I'm not sure" })).toBeNull()
 })
+
+test("a rules question opens with that year's rulebook and says when the rules have moved on", async () => {
+  const doc = (title: string, type: string, year: number) => ({
+    title,
+    type,
+    year,
+    url: `https://doc.fs-quiz.eu/${title}.pdf`,
+  })
+  const rules = {
+    ...QUESTION,
+    area: 'rules',
+    documents: {
+      year: 2023,
+      used: [doc('FS Rules 2023 v1.1', 'Rulebook', 2023), doc('FSG23 Competition Handbook v1.0', 'Handbook', 2023)],
+      newer: [doc('FS Rules 2026 v1.1', 'Rulebook', 2026)],
+    },
+  }
+  renderApp('/practice', { ...practice({}), 'GET /api/practice/next': { body: rules } })
+  const panel = (await screen.findByText('Rules and handbooks from 2023')).closest('details')
+  expect(panel).toHaveAttribute('open')
+  const link = within(panel as HTMLElement).getByRole('link', { name: 'FS Rules 2023 v1.1' })
+  expect(link).toHaveAttribute('href', 'https://doc.fs-quiz.eu/FS Rules 2023 v1.1.pdf')
+  expect(link).toHaveAttribute('target', '_blank')
+  expect(panel).toHaveTextContent('Handbook, PDF')
+  expect(panel).toHaveTextContent('The rules may have changed since 2023. Latest: FS Rules 2026 v1.1')
+})
+
+test('other questions keep the documents one click away', async () => {
+  const mech = {
+    ...QUESTION,
+    documents: {
+      year: 2025,
+      used: [{ title: 'FS Rules 2025 v1.0', type: 'Rulebook', year: 2025, url: 'https://doc.fs-quiz.eu/x.pdf' }],
+      newer: [],
+    },
+  }
+  renderApp('/practice', { ...practice({}), 'GET /api/practice/next': { body: mech } })
+  const panel = (await screen.findByText('Rules and handbooks from 2025')).closest('details')
+  expect(panel).not.toHaveAttribute('open')
+  expect(panel).not.toHaveTextContent('may have changed')
+})

@@ -265,6 +265,32 @@ export type DailyStatus = {
 };
 
 /**
+ * DocLink
+ */
+export type DocLink = {
+    /**
+     * Title
+     */
+    title: string;
+    /**
+     * Type
+     *
+     * As FS-Quiz names it: Rulebook, Handbook, Additional Rules...
+     */
+    type: string;
+    /**
+     * Year
+     */
+    year: number;
+    /**
+     * Url
+     *
+     * The PDF on doc.fs-quiz.eu
+     */
+    url: string;
+};
+
+/**
  * Feedback
  *
  * What the player sees after answering: the official answer and any worked solution.
@@ -755,6 +781,7 @@ export type PlayQuestion = {
      * Quizzes
      */
     quizzes: Array<string>;
+    documents: QuestionDocs;
 };
 
 /**
@@ -824,6 +851,30 @@ export type Progress = {
      * Ladder
      */
     ladder: Array<Step>;
+};
+
+/**
+ * QuestionDocs
+ *
+ * The rulebook, handbook and other documents the question's quizzes were based on.
+ */
+export type QuestionDocs = {
+    /**
+     * Year
+     *
+     * Year of the newest of them
+     */
+    year: number | null;
+    /**
+     * Used
+     */
+    used: Array<DocLink>;
+    /**
+     * Newer
+     *
+     * Later editions of those rulebooks and handbooks: rules may have changed
+     */
+    newer: Array<DocLink>;
 };
 
 /**
