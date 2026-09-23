@@ -1,21 +1,17 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
-from ifs_tests.bank.mirror import load_bank
-from ifs_tests.bank.sample import SAMPLE_DIR
-from ifs_tests.db.models import AnswerOption, Attempt, Question, User
+from ifs_tests.db.models import Attempt, Question, User
 from ifs_tests.domain.xp import award, level_for
-from ifs_tests.services.bank import import_bank
 
 from ..conftest import Clock
-from .helpers import login, member
+from .helpers import login, member, options
 
 pytestmark = pytest.mark.integration
 NewClient = Callable[[], TestClient]
@@ -25,26 +21,11 @@ REPEAT = award(True, 3, "practice", 0, repeat=True)  # one already got right bef
 
 
 @pytest.fixture
-def bank(db: Session, clock: Clock, tmp_path: Path) -> dict[int, int]:
-    """Loads the sample bank; returns FS-Quiz ID -> our question ID."""
-    import_bank(db, load_bank(SAMPLE_DIR), SAMPLE_DIR / "img", tmp_path, clock.now)
-    db.execute(update(Question).values(difficulty=3))
-    db.commit()
-    return {fsquiz_id: qid for fsquiz_id, qid in db.execute(select(Question.fsquiz_id, Question.id))}
-
-
-@pytest.fixture
 def player(app_client: TestClient, admin: User, new_client: NewClient) -> TestClient:
     login(app_client)
     c = new_client()
     member(app_client, c, "marta@alu.comillas.edu", "Marta")
     return c
-
-
-def options(db: Session, qid: int) -> list[int]:
-    return list(
-        db.scalars(select(AnswerOption.id).where(AnswerOption.question_id == qid).order_by("position"))
-    )
 
 
 def test_questions_never_reveal_the_answer(player: TestClient, bank: dict[int, int]) -> None:

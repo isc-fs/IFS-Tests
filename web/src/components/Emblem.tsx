@@ -10,7 +10,7 @@ const SHAPES = {
 
 const TOPS: Record<string, string> = { 'Gigante Noble': 'gigante', Villano: 'villano', Leyenda: 'leyenda' }
 
-/** A rank emblem: the tier sets the shape and metal, pips count the division. The top has its own art. */
+/** A level emblem: the tier sets the shape and metal, pips count the division. The top has its own art. */
 export function Emblem({ level, title, size = 48 }: { level: number; title: string | null; size?: number }) {
   const id = useId()
   const tier = tierOf(level)

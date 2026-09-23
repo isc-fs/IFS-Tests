@@ -12,16 +12,14 @@ import {
 import type { AnswerIn, LiveConfig, LiveState } from '../api/types.gen'
 import { Countdown } from '../components/Countdown'
 import { ErrorNotice, Field, Form, Notice, SelectField } from '../components/Form'
-import { Reveal, Results, RoomScore, Tables } from '../components/LiveParts'
+import { answerText, Reveal, Results, RoomScore, Tables } from '../components/LiveParts'
 import { Page } from '../components/Page'
 import { Qr } from '../components/Qr'
 import { QuestionCard } from '../components/QuestionCard'
 import { errorMessage, queryClient, useMe } from '../lib/api'
 import { AREAS, TOPICS } from '../lib/areas'
-import { refresh, tableName, useLive } from '../lib/live'
+import { joinUrl, refresh, tableName, toggle, useLive } from '../lib/live'
 import { HostControls } from './LiveHost'
-
-const joinUrl = (code: string) => `${window.location.origin}/live/${code}`
 
 export default function LiveHome() {
   const me = useMe().data
@@ -91,8 +89,6 @@ export function ConfigForm({
   const [c, setC] = useState<LiveConfig>(initial)
   const quizzes = useQuery({ ...mockQuizzesOptions(), enabled: c.questions === 'quiz' })
   const set = (patch: Partial<LiveConfig>) => setC({ ...c, ...patch })
-  const toggle = (list: string[] | undefined, value: string) =>
-    list?.includes(value) ? list.filter((v) => v !== value) : [...(list ?? []), value]
   return (
     <Form onSubmit={() => onSave(c)} error={error} className="stack live-config">
       <fieldset className="stack">
@@ -116,7 +112,7 @@ export function ConfigForm({
                   <input
                     type="checkbox"
                     checked={!!c.areas?.includes(a)}
-                    onChange={() => set({ areas: toggle(c.areas, a) as LiveConfig['areas'] })}
+                    onChange={() => set({ areas: toggle(c.areas, a) })}
                   />
                   {AREAS[a]}
                 </label>
@@ -274,7 +270,7 @@ function PlayerView({ s }: { s: LiveState }) {
     <div className="stack">
       {seat}
       <p className="muted" aria-live="polite">
-        Question {s.position + 1} of {s.total} · for {tableName(s, s.question_table_id ?? null)}
+        Question {s.position + 1} of {s.total} · for {tableName(s, s.question_table_id)}
       </p>
       {s.state === 'open' && s.question ? <Answering s={s} key={s.position} /> : <Closed s={s} />}
     </div>
@@ -308,20 +304,19 @@ function Answering({ s }: { s: LiveState }) {
   if (s.my_answer) {
     return (
       <Notice tone="ok">
-        {tableName(s, target ?? null)} has answered.{' '}
+        {tableName(s, target)} has answered.{' '}
         {s.config.feedback === 'each' ? 'The answer shows when the question closes.' : 'Results at the end.'}
       </Notice>
     )
   }
-  if (target === null || target === undefined)
-    return <Notice tone="info">Watch the screen: you'll be seated soon.</Notice>
+  if (target == null) return <Notice tone="info">Watch the screen: you'll be seated soon.</Notice>
   return (
     <div className="stack">
       <QuestionCard
         key={`${s.position}-${preset.n}`}
         question={question}
         pending={send.isPending || propose.isPending}
-        expired={answering ? expired : false}
+        expired={answering && expired}
         clock={clock}
         preset={preset.answer}
         submitLabel={answering ? 'Send the table’s answer' : `Propose to ${tableName(s, target)}'s captain`}
@@ -340,12 +335,7 @@ function Answering({ s }: { s: LiveState }) {
           <ul className="proposals">
             {s.proposals?.map((p) => (
               <li key={p.user_id}>
-                <strong>{p.name}:</strong>{' '}
-                {p.value ||
-                  question.options
-                    .filter((o) => p.options?.includes(o.id))
-                    .map((o) => o.text)
-                    .join(', ')}
+                <strong>{p.name}:</strong> {answerText(question, p)}
                 {answering && (
                   <button
                     type="button"
@@ -385,7 +375,7 @@ export function LiveScreen() {
       {(s.state === 'open' || s.state === 'closed') && s.question && (
         <>
           <p className="muted">
-            Question {s.position + 1} of {s.total} · for {tableName(s, s.question_table_id ?? null)}
+            Question {s.position + 1} of {s.total} · for {tableName(s, s.question_table_id)}
           </p>
           {s.state === 'open' && s.deadline_at && (
             <Countdown deadline={s.deadline_at} serverNow={s.server_now} onExpire={() => refresh(s.code)} />

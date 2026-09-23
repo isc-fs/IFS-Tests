@@ -6,9 +6,9 @@ from __future__ import annotations
 import csv
 import io
 import random
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, Literal
 
 from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
@@ -71,17 +71,30 @@ def _session(db: DB, code: str, lock: bool = False) -> LiveSession:
     return s
 
 
-def _hosted(db: DB, user: User, code: str) -> LiveSession:
-    s = _session(db, code, lock=True)
-    if s.host_id != user.id and user.role != "admin":
-        raise UserError("Only the host runs the session.", 403)
+def _runs(user: User, s: LiveSession) -> bool:
+    return s.host_id == user.id or user.role == "admin"
+
+
+def _not_finished(s: LiveSession) -> None:
     if s.state == "finished":
         raise UserError("This live quiz has finished.", 409)
+
+
+def _hosted(db: DB, user: User, code: str) -> LiveSession:
+    s = _session(db, code, lock=True)
+    if not _runs(user, s):
+        raise UserError("Only the host runs the session.", 403)
+    _not_finished(s)
     return s
 
 
 def _touch(s: LiveSession) -> None:
     s.version += 1
+
+
+def _finish(s: LiveSession, now: datetime) -> None:
+    s.state, s.finished_at = "finished", now
+    _touch(s)
 
 
 def _expired(s: LiveSession, now: datetime) -> bool:
@@ -102,8 +115,7 @@ def refresh(db: DB, code: str, now: datetime) -> int:
 
 def join(db: DB, user: User, code: str, now: datetime) -> LiveSession:
     s = _session(db, code, lock=True)
-    if s.state == "finished":
-        raise UserError("This live quiz has finished.", 409)
+    _not_finished(s)
     if user.id != s.host_id:
         added = db.execute(
             insert(LivePlayer)
@@ -172,7 +184,7 @@ def seat_by_subdepartment(db: DB, host: User, code: str) -> None:
     )
     players = [rules.Player(uid, tuple(subs or ()), xp_rules.level_for(total)) for uid, subs, total in rows]
     tables = rules.seat_by_subdepartment(players)
-    seat(db, host, code, [t.__dict__ for t in tables])
+    seat(db, host, code, [asdict(t) for t in tables])
 
 
 def move(db: DB, host: User, code: str, user_id: int, table_id: int | None) -> None:
@@ -266,8 +278,7 @@ def advance(db: DB, host: User, code: str, now: datetime) -> None:
     else:
         nxt = db.get(LiveQuestion, (s.id, s.position + 1))
         if nxt is None:
-            s.state, s.finished_at = "finished", now
-            _touch(s)
+            _finish(s, now)
         else:
             _open(s, nxt.position, nxt.budget_s, now)
     db.commit()
@@ -298,9 +309,7 @@ def _start(db: DB, s: LiveSession, now: datetime) -> None:
 
 
 def end(db: DB, host: User, code: str, now: datetime) -> None:
-    s = _hosted(db, host, code)
-    s.state, s.finished_at = "finished", now
-    _touch(s)
+    _finish(_hosted(db, host, code), now)
     db.commit()
 
 
@@ -433,7 +442,7 @@ class Reveal:
 class View:
     session: LiveSession
     host_name: str
-    role: str  # "host" or "player"
+    role: Literal["host", "player"]
     my_table_id: int | None
     captain: bool
     players: list[tuple[int, str, int | None]]
@@ -459,7 +468,7 @@ def view(db: DB, user: User, code: str, now: datetime) -> View:
     refresh(db, code, now)
     s = _session(db, code)
     players = _players(db, s)
-    if user.id != s.host_id and user.role != "admin" and user.id not in players:
+    if not _runs(user, s) and user.id not in players:
         raise UserError("Join the live quiz first.", 403)
     names = dict(
         db.execute(select(User.id, User.display_name).where(User.id.in_([*players, s.host_id])))
@@ -545,18 +554,13 @@ def _score(
     specialists = s.config["routing"] == "owners"
     out.room_asked = len(closed)
     out.room_right = right if specialists else max((t.right for t in out.tables), default=0)
-    shown_positions = closed if s.state == "finished" else [s.position]
-    qs = {
-        q.id: q
-        for q in db.scalars(
-            select(Question).where(Question.id.in_([questions[p].question_id for p in shown_positions]))
-        )
-    }
-    for p in shown_positions:
-        lq = questions[p]
-        q = qs[lq.question_id]
+    positions = closed if s.state == "finished" else [s.position]
+    ids = [questions[p].question_id for p in positions]
+    found = {q.id: q for q in db.scalars(select(Question).where(Question.id.in_(ids)))}
+    qs = [found[i] for i in ids]
+    for p, q, shown in zip(positions, qs, show(db, qs), strict=True):
         out.reveals.append(
-            Reveal(p, show(db, [q])[0], lq.table_id, check(db, q, None, None), answers.get(p, {}))
+            Reveal(p, shown, questions[p].table_id, check(db, q, None, None), answers.get(p, {}))
         )
 
 
@@ -568,7 +572,7 @@ def _cell(value: object) -> str:
 
 def results_csv(db: DB, user: User, code: str) -> str:
     s = _session(db, code)
-    if s.host_id != user.id and user.role != "admin":
+    if not _runs(user, s):
         raise UserError("Only the host downloads the results.", 403)
     tables = {t.id: t.name for t in _tables(db, s)}
     rows = db.execute(
@@ -587,27 +591,10 @@ def results_csv(db: DB, user: User, code: str) -> str:
     w = csv.writer(out)
     w.writerow(["question", "text", "answered by", "table", "captain", "answer", "right", "points"])
     for pos, text, owner, a, captain in rows:
-        if a is None:
-            w.writerow(
-                [pos + 1, _cell(text[:120]), _cell(tables.get(owner, "every table")), "", "", "", "", ""]
-            )
-            continue
-        sent = (
-            "not sure"
-            if a.passed
-            else a.answer.get("value") or ",".join(map(str, a.answer.get("options") or []))
-        )
-        right = "" if a.correct is None else "yes" if a.correct else "no"
-        w.writerow(
-            [
-                pos + 1,
-                _cell(text[:120]),
-                _cell(tables.get(owner, "every table")),
-                _cell(tables.get(a.table_id, "")),
-                _cell(captain or ""),
-                _cell(sent),
-                right,
-                a.points,
-            ]
-        )
+        row = [text[:120], tables.get(owner, "every table"), "", "", ""]
+        if a is not None:
+            sent = a.answer.get("value") or ",".join(map(str, a.answer.get("options") or []))
+            row[2:] = [tables.get(a.table_id, ""), captain or "", "not sure" if a.passed else sent]
+        right = "" if a is None or a.correct is None else "yes" if a.correct else "no"
+        w.writerow([pos + 1, *map(_cell, row), right, a.points if a else ""])
     return out.getvalue()

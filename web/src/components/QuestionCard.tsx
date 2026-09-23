@@ -80,24 +80,17 @@ function Earned({ feedback }: { feedback: Feedback }) {
 }
 
 function Result({ feedback }: { feedback: Feedback }) {
-  if (feedback.passed)
+  const verdict = feedback.passed ? (
+    <Notice tone="ok">You weren't sure, so here is the answer. Nothing gained or lost.</Notice>
+  ) : feedback.correct === true ? (
+    <Notice tone="ok">Correct.</Notice>
+  ) : feedback.correct === false ? (
+    <Notice tone="error">Not quite.</Notice>
+  ) : null
+  if (verdict)
     return (
       <>
-        <Notice tone="ok">You weren't sure, so here is the answer. Nothing gained or lost.</Notice>
-        <Earned feedback={feedback} />
-      </>
-    )
-  if (feedback.correct === true)
-    return (
-      <>
-        <Notice tone="ok">Correct.</Notice>
-        <Earned feedback={feedback} />
-      </>
-    )
-  if (feedback.correct === false)
-    return (
-      <>
-        <Notice tone="error">Not quite.</Notice>
+        {verdict}
         <Earned feedback={feedback} />
       </>
     )
@@ -151,7 +144,9 @@ export function QuestionCard({
   const [hint, setHint] = useState<HintOut>()
   const [hintError, setHintError] = useState<string>()
   const { data: me } = useMe()
-  const hintable = !!onHint && !!me?.progress?.aids.hint && question.graded && question.answer_kind !== 'self'
+  const gradable = question.graded && question.answer_kind !== 'self'
+  const hintable = !!onHint && !!me?.progress?.aids.hint && gradable
+  const unsure = allowUnsure && gradable
   const askHint = () => onHint?.().then(setHint, (e: unknown) => setHintError(errorMessage(e)))
   const after = useRef<HTMLDivElement>(null)
   const text = useRef<HTMLParagraphElement>(null)
@@ -263,7 +258,7 @@ export function QuestionCard({
                 Hint (halves the XP)
               </button>
             )}
-            {allowUnsure && question.graded && kind !== 'self' && (
+            {unsure && (
               <button
                 type="button"
                 className="secondary"
@@ -282,7 +277,7 @@ export function QuestionCard({
           </Notice>
         )}
         {hintError && <Notice tone="error">{hintError}</Notice>}
-        {allowUnsure && !answered && !expired && question.graded && kind !== 'self' && (
+        {unsure && !answered && !expired && (
           <p className="muted answer-note" id={`${legend}-unsure`}>
             Not sure? You see the answer and nothing is gained or lost. A wrong answer can cost XP.
           </p>

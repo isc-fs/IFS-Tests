@@ -21,5 +21,10 @@ export function useLive(code: string) {
 export const refresh = (code: string) =>
   queryClient.invalidateQueries({ queryKey: sessionStateQueryKey({ path: { code } }) })
 
-export const tableName = (s: LiveState, tableId: number | null) =>
-  tableId === null ? 'every table' : (s.tables.find((t) => t.id === tableId)?.name ?? 'a table')
+export const tableName = (s: LiveState, tableId: number | null | undefined) =>
+  tableId == null ? 'every table' : (s.tables.find((t) => t.id === tableId)?.name ?? 'a table')
+
+export const joinUrl = (code: string) => `${window.location.origin}/live/${code}`
+
+export const toggle = <T>(list: T[] | undefined, value: T) =>
+  list?.includes(value) ? list.filter((v) => v !== value) : [...(list ?? []), value]

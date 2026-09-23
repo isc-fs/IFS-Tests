@@ -1,10 +1,23 @@
-import type { LiveReveal, LiveState } from '../api/types.gen'
+import type { LiveReveal, LiveState, PlayQuestion } from '../api/types.gen'
 import { tableName } from '../lib/live'
 import { QuestionMeta } from './QuestionCard'
 
+/** What a table sent or a teammate proposed, in words. */
+export const answerText = (
+  q: PlayQuestion,
+  a: { options?: number[] | null; value?: string | null; passed?: boolean },
+) =>
+  a.passed
+    ? 'not sure'
+    : a.value ||
+      q.options
+        .filter((o) => a.options?.includes(o.id))
+        .map((o) => o.text)
+        .join(', ')
+
 /** The room's headline number: right answers out of the questions asked, against the bar to beat. */
 export function RoomScore({ s }: { s: LiveState }) {
-  if (s.room_right === null || s.room_right === undefined) return null
+  if (s.room_right == null) return null
   return (
     <output className="room-score">
       <strong>
@@ -45,15 +58,6 @@ export function Tables({ s, showScore }: { s: LiveState; showScore?: boolean }) 
 /** A closed question: the official answer and what each table sent. */
 export function Reveal({ s, r }: { s: LiveState; r: LiveReveal }) {
   const q = r.question
-  const text = (a: { options?: number[] | null; value?: string | null; passed: boolean }) =>
-    a.passed
-      ? 'not sure'
-      : a.value ||
-        q.options
-          .filter((o) => a.options?.includes(o.id))
-          .map((o) => o.text)
-          .join(', ') ||
-        'nothing'
   return (
     <article className="question panel stack reveal">
       <QuestionMeta question={q} />
@@ -79,7 +83,7 @@ export function Reveal({ s, r }: { s: LiveState; r: LiveReveal }) {
       <ul className="live-answers">
         {r.answers.map((a) => (
           <li key={a.table_id} className={a.correct ? 'right' : 'wrong'}>
-            <strong>{tableName(s, a.table_id)}:</strong> {text(a)} {a.correct ? '✓' : '✗'}
+            <strong>{tableName(s, a.table_id)}:</strong> {answerText(q, a) || 'nothing'} {a.correct ? '✓' : '✗'}
             {s.config.speed_points && a.points > 0 && <span className="muted"> {a.points} pts</span>}
           </li>
         ))}

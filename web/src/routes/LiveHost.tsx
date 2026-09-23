@@ -15,7 +15,7 @@ import { ErrorNotice, Notice } from '../components/Form'
 import { Reveal, Results, RoomScore, Tables } from '../components/LiveParts'
 import { Qr } from '../components/Qr'
 import { TOPICS } from '../lib/areas'
-import { refresh, tableName } from '../lib/live'
+import { joinUrl, refresh, tableName, toggle } from '../lib/live'
 import { ConfigForm } from './Live'
 
 const STEP: Record<LiveState['state'], string> = {
@@ -34,7 +34,7 @@ export function HostControls({ s }: { s: LiveState }) {
   return (
     <div className="stack">
       <div className="panel host-bar">
-        <Qr text={`${window.location.origin}/live/${s.code}`} size={120} label={`QR code to join ${s.code}`} />
+        <Qr text={joinUrl(s.code)} size={120} label={`QR code to join ${s.code}`} />
         <div className="stack">
           <p>
             Code <span className="screen-code small">{s.code}</span> · {s.players.length} joined
@@ -50,7 +50,7 @@ export function HostControls({ s }: { s: LiveState }) {
           <h2 id="running-title">
             Question {s.position + 1} of {s.total}
           </h2>
-          <p className="muted">For {tableName(s, s.question_table_id ?? null)}.</p>
+          <p className="muted">For {tableName(s, s.question_table_id)}.</p>
           {s.state === 'open' && s.deadline_at && (
             <Countdown deadline={s.deadline_at} serverNow={s.server_now} onExpire={() => refresh(s.code)} />
           )}
@@ -172,11 +172,7 @@ function Lobby({ s }: { s: LiveState }) {
                     <input
                       type="checkbox"
                       checked={t.topics.includes(topic)}
-                      onChange={() =>
-                        edit(i, {
-                          topics: t.topics.includes(topic) ? t.topics.filter((x) => x !== topic) : [...t.topics, topic],
-                        })
-                      }
+                      onChange={() => edit(i, { topics: toggle(t.topics, topic) })}
                     />
                     {label}
                   </label>

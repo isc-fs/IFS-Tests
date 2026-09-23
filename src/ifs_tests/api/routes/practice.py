@@ -47,5 +47,4 @@ def answer_practice(question_id: Id, body: AnswerIn, user: Member, db: Db, now: 
 
 @router.post("/questions/{question_id}/hint")
 def practice_hint(question_id: Id, user: Member, db: Db, now: Now) -> HintOut:
-    h = hints.practice(db, user, question_id, now)
-    return HintOut(text=h.text, removed_options=h.removed_options)
+    return HintOut.model_validate(hints.practice(db, user, question_id, now))

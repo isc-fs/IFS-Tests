@@ -57,7 +57,10 @@ class ResetInfo(Out):
     expires_at: datetime
 
 
-class Aids(BaseModel):
+Tier = Literal["Mingo", "Jefe", "DT", "Top"]
+
+
+class Aids(Out):
     formulas: bool
     learn_more: bool
     hint: bool
@@ -67,7 +70,7 @@ class Step(BaseModel):
     """One level of the ladder and what it changes."""
 
     level: int
-    tier: Literal["Mingo", "Jefe", "DT", "Top"]
+    tier: Tier
     title: str | None = Field(description="Null for the top until the player reaches DT V: a surprise")
     xp: int = Field(description="Lifetime XP that reaches it")
     aids: Aids
@@ -79,7 +82,7 @@ class Progress(BaseModel):
 
     level: int
     title: str
-    tier: Literal["Mingo", "Jefe", "DT", "Top"]
+    tier: Tier
     level_xp: int = Field(description="Lifetime XP at which the current level started")
     next_level_xp: int | None = Field(description="Null at the top")
     penalty: int = Field(description="Percentage of a right answer's XP a wrong answer costs")
@@ -214,7 +217,7 @@ class PlayQuestion(BaseModel):
     documents: QuestionDocs
 
 
-class HintOut(BaseModel):
+class HintOut(Out):
     """A nudge, never the answer: taking it halves the XP for the question."""
 
     text: str
@@ -448,7 +451,7 @@ class LeaderRow(BaseModel):
     vertical: Vertical | None
     xp: int
     me: bool
-    level: int = Field(description="Lifetime level, for the rank emblem")
+    level: int = Field(description="Lifetime level, for the level emblem")
     title: str
 
 

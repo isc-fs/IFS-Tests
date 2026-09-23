@@ -27,16 +27,16 @@ def madrid_midnight(day: date) -> datetime:
 
 
 def ranks(xp: Sequence[int]) -> list[int]:
-    """Competition ranking of xp sorted high to low: 30, 20, 20, 10 -> 1, 2, 2, 4."""
+    """Competition ranking of XP sorted high to low: 30, 20, 20, 10 -> 1, 2, 2, 4."""
     out: list[int] = []
-    for i, p in enumerate(xp):
-        out.append(out[-1] if i and p == xp[i - 1] else i + 1)
+    for i, x in enumerate(xp):
+        out.append(out[-1] if i and x == xp[i - 1] else i + 1)
     return out
 
 
 def rank_among(xp: int, others: Iterable[int]) -> int:
     """Where someone with `xp` would stand among `others`, sharing the rank of anyone level."""
-    return 1 + sum(1 for p in others if p > xp)
+    return 1 + sum(1 for x in others if x > xp)
 
 
 @dataclass(frozen=True)
@@ -55,7 +55,7 @@ class VerticalScore:
 
 
 def vertical_board(members: Iterable[Member]) -> list[VerticalScore]:
-    """Average xp per member and the share who played this week, best average first.
+    """Average XP per member and the share who played this week, best average first.
     Verticals with too few members to average fairly are left out."""
     by_vertical: dict[str, list[Member]] = {}
     for m in members:

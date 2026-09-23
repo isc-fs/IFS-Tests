@@ -3319,7 +3319,7 @@
      "level": {
       "type": "integer",
       "title": "Level",
-      "description": "Lifetime level, for the rank emblem"
+      "description": "Lifetime level, for the level emblem"
      },
      "title": {
       "type": "string",

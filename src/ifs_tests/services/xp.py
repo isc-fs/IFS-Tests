@@ -113,7 +113,8 @@ def grant(
         .values(xp=func.greatest(rules.floor_for(position), User.xp + amount))
         .returning(User.xp)
     ).scalar_one()
-    return Grant(amount, rules.level_for(total), rules.level_for(total) > rules.level_for(before))
+    after = rules.level_for(total)
+    return Grant(amount, after, after > rules.level_for(before))
 
 
 def recalibrate(db: DB) -> int:

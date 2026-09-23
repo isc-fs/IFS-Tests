@@ -84,6 +84,7 @@ def board(db: DB, user: User, area: str | None, period: str, now: datetime) -> B
     scores = _scores(db, period, now, area)
     shown = sorted((s for s in scores if not s[3]), key=lambda s: (-s[4], s[1].casefold()))
     ranks = rules.ranks([s[4] for s in shown])
+    # Everyone tied at the cut stays, so nobody ranked in the top 50 is missing from it.
     top = [(rank, s) for rank, s in zip(ranks, shown, strict=True) if rank <= rules.TOP]
     lifetime = dict(
         db.execute(select(User.id, User.xp).where(User.id.in_([s[0] for _, s in top]))).tuples().all()
@@ -97,7 +98,6 @@ def board(db: DB, user: User, area: str | None, period: str, now: datetime) -> B
     if mine is not None:  # XP won and lost can net to zero; they still played
         others = (s[4] for s in shown if s[0] != user.id)
         me = Mine(rules.rank_among(mine, others), mine, user.leaderboard_opt_out)
-    # Everyone tied at the cut stays, so nobody ranked in the top 50 is missing from it.
     return Board(rows, me, len(shown))
 
 
@@ -112,7 +112,7 @@ def verticals(db: DB, period: str, now: datetime) -> list[rules.VerticalScore]:
         )
     )
     # People who opted out are left out entirely: counting them in an average lets anyone subtract the
-    # named members' xp and recover theirs.
+    # named members' XP and recover theirs.
     members = db.execute(
         select(User.id, User.vertical).where(User.status == "active", User.leaderboard_opt_out.is_(False))
     )

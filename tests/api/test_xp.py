@@ -12,25 +12,17 @@ from sqlalchemy.orm import Session
 
 from ifs_tests.bank.mirror import load_bank
 from ifs_tests.bank.sample import SAMPLE_DIR
-from ifs_tests.db.models import AnswerOption, Attempt, AuditLog, Question, User
+from ifs_tests.db.models import Attempt, AuditLog, Question, User
 from ifs_tests.domain import daily as daily_rules
 from ifs_tests.domain.xp import START_LEVEL, TOP, award, difficulty, floor_for, level_for, xp_for_level
 from ifs_tests.services import maintenance, xp
 from ifs_tests.services.bank import import_bank
 
 from ..conftest import Clock
-from .helpers import invite, login, register, right_answer
+from .helpers import invite, options, register, right_answer
 
 pytestmark = pytest.mark.integration
 NewClient = Callable[[], TestClient]
-
-
-@pytest.fixture
-def bank(db: Session, clock: Clock, tmp_path: Path) -> dict[int, int]:
-    import_bank(db, load_bank(SAMPLE_DIR), SAMPLE_DIR / "img", tmp_path, clock.now)
-    db.execute(update(Question).values(difficulty=3))
-    db.commit()
-    return {fsquiz_id: qid for fsquiz_id, qid in db.execute(select(Question.fsquiz_id, Question.id))}
 
 
 def join(
@@ -42,23 +34,11 @@ def join(
     return dict(r.json())
 
 
-@pytest.fixture
-def signed_in(app_client: TestClient, admin: User) -> TestClient:
-    login(app_client)
-    return app_client
-
-
 def cost(db: Session, qid: int, mode: str, level: int, **kwargs: Any) -> int:
     """What a wrong answer to this question costs, from its own area, kind and number of options."""
     q = db.get_one(Question, qid)
     n = len(options(db, qid))
     return award(False, 3, mode, level, area=q.area, answer_kind=q.answer_kind, options=n, **kwargs)
-
-
-def options(db: Session, qid: int) -> list[int]:
-    return list(
-        db.scalars(select(AnswerOption.id).where(AnswerOption.question_id == qid).order_by("position"))
-    )
 
 
 @pytest.mark.parametrize(

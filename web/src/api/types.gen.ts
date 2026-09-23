@@ -452,7 +452,7 @@ export type LeaderRow = {
     /**
      * Level
      *
-     * Lifetime level, for the rank emblem
+     * Lifetime level, for the level emblem
      */
     level: number;
     /**

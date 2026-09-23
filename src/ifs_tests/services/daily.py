@@ -194,6 +194,7 @@ def answer(
     )
     if a is None or a.day is None or a.deadline_at is None:
         raise UserError("Start the question first.", 404)
+    level_up = False
     if a.submitted_at is None:
         q = db.get_one(Question, a.question_id)
         checked = check(db, q, options, value, unsure)
@@ -225,14 +226,12 @@ def answer(
                 hint=a.hint_used,
             )
             db.execute(update(Attempt).where(Attempt.id == a.id).values(xp=granted.xp))
-            db.commit()
-            db.refresh(a)
-            result = review_attempt(db, user, a)
-            result.checked.level_up = granted.level_up
-            return result
+            level_up = granted.level_up
         db.commit()
         db.refresh(a)
-    return review_attempt(db, user, a)
+    result = review_attempt(db, user, a)
+    result.checked.level_up = level_up
+    return result
 
 
 def close_expired(db: DB, now: datetime, user_id: int | None = None) -> int:

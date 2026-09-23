@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator
+from dataclasses import asdict
 from datetime import UTC, datetime
 from typing import Annotated
 
@@ -55,11 +56,11 @@ def _state(v: View, now: datetime) -> LiveState:
         server_now=now,
         version=s.version,
         players=[LivePlayerOut(user_id=u, name=n, table_id=t) for u, n, t in v.players],
-        tables=[LiveTableOut.model_validate(t.__dict__) for t in v.tables],
+        tables=[LiveTableOut.model_validate(asdict(t)) for t in v.tables],
         question=play_question(v.current) if v.current else None,
         question_table_id=v.current_table_id,
         budget_s=v.budget_s,
-        my_answer=KeyIn.model_validate({k: v.my_answer.get(k) for k in ("options", "value")})
+        my_answer=KeyIn(options=v.my_answer.get("options"), value=v.my_answer.get("value"))
         if v.my_answer
         else None,
         proposals=[
@@ -189,9 +190,8 @@ def results(code: Code, user: Member, db: Db) -> Response:
 async def events(code: Code, request: Request, user: Member, db: Db) -> StreamingResponse:
     """A version number whenever the session changes (and when a question's time runs out), so screens know
     to fetch the state again. No state travels here, so nobody sees more than their own GET shows them."""
-    await run_in_threadpool(
-        live.view, db, user, code, datetime.now(UTC)
-    )  # the same access check as the state
+    # The same access check as the state.
+    await run_in_threadpool(live.view, db, user, code, datetime.now(UTC))
 
     async def stream() -> AsyncIterator[str]:
         last, quiet = -1, 0

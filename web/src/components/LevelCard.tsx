@@ -18,6 +18,7 @@ export function LevelCard({ me, road = true }: { me: Me; road?: boolean }) {
     p.aids.hint && 'a hint per question',
   ].filter(Boolean)
   const ahead = next ? changes(next, p.ladder[p.level]) : []
+  const nextTitle = next?.title ?? 'the top'
   return (
     <section className={`panel stack level-card tier-${p.tier.toLowerCase()}`} aria-labelledby="level-title">
       <div className="level-head">
@@ -27,21 +28,16 @@ export function LevelCard({ me, road = true }: { me: Me; road?: boolean }) {
           <h2 id="level-title">{p.title}</h2>
           <p className="muted">
             {n(me.xp)} XP
-            {next && p.next_level_xp != null && ` · ${n(p.next_level_xp - me.xp)} XP to ${next.title ?? 'the top'}`}
+            {next && p.next_level_xp != null && ` · ${n(p.next_level_xp - me.xp)} XP to ${nextTitle}`}
           </p>
         </div>
       </div>
       {next ? (
         <>
-          <progress
-            className="level-progress"
-            max={span}
-            value={done}
-            aria-label={`Progress to ${next.title ?? 'the top'}`}
-          />
+          <progress className="level-progress" max={span} value={done} aria-label={`Progress to ${nextTitle}`} />
           {ahead.length > 0 && (
             <p className="level-next">
-              At {next.title ?? 'the top'}: {ahead.join(', ').toLowerCase()}.
+              At {nextTitle}: {ahead.join(', ').toLowerCase()}.
             </p>
           )}
         </>
