@@ -6,7 +6,7 @@ import pytest
 
 from ifs_tests.domain.xp import (
     LEVELS,
-    RANKS,
+    START_LEVEL,
     TOP,
     at,
     award,
@@ -90,8 +90,8 @@ def test_each_aid_once_removed_stays_removed_and_penalties_only_grow() -> None:
     assert [lv.penalty for lv in LEVELS] == sorted(lv.penalty for lv in LEVELS)
 
 
-def test_ranks_start_at_the_bottom_of_their_band() -> None:
-    assert {r: title(level, None) for r, level in RANKS.items()} == {
+def test_positions_start_at_the_bottom_of_their_band() -> None:
+    assert {p: title(level, None) for p, level in START_LEVEL.items()} == {
         "mingo": "Mingo I",
         "member": "Mingo IV",
         "department_head": "Jefe I",

@@ -79,7 +79,7 @@ export const MEMBER = {
   vertical: 'Driverless',
   role: 'member',
   leaderboard_opt_out: false,
-  rank: 'mingo',
+  position: 'mingo',
   xp: 1200,
   progress: {
     level: 1,

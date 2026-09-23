@@ -1,15 +1,15 @@
-import type { Rank } from '../api/types.gen'
+import type { Position } from '../api/types.gen'
 
-/** Where someone is on the team, as admins see it. */
-export const RANK_NAMES: Record<Rank, string> = {
+/** Someone's job on the team (not their XP level: a DT on the ladder is not a Technical Director). */
+export const POSITION_NAMES: Record<Position, string> = {
   mingo: 'Mingo',
   member: 'Returning member',
   department_head: 'Department Head',
   technical_director: 'Technical Director',
 }
 
-/** The same, with where each starts on the ladder, for people choosing their own. */
-export const RANKS: Record<Rank, string> = {
+/** The same, with where each starts on the ladder, for people choosing theirs when they join. */
+export const POSITIONS: Record<Position, string> = {
   mingo: 'Mingo: new this season',
   member: 'Returning member: starts at Mingo IV',
   department_head: 'Department Head: starts at Jefe I',

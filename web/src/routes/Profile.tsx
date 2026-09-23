@@ -2,13 +2,13 @@ import { useMutation } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
 import { changePasswordMutation, logoutMutation, updateMeMutation } from '../api/@tanstack/react-query.gen'
-import { type Me, type Rank, Vertical } from '../api/types.gen'
+import { type Me, Vertical } from '../api/types.gen'
 import { ErrorNotice, Field, Form, Notice, PASSWORD_HINT, SelectField, useFieldErrors } from '../components/Form'
 import { LevelCard } from '../components/LevelCard'
 import { RankRoad } from '../components/RankRoad'
 import { Page } from '../components/Page'
 import { ME_KEY, queryClient, useMe } from '../lib/api'
-import { RANKS } from '../lib/xp'
+import { POSITION_NAMES } from '../lib/xp'
 
 export default function Profile() {
   const { data: user } = useMe()
@@ -42,7 +42,6 @@ function ProfileForm({ user }: { user: Me }) {
     display_name: user.display_name,
     vertical: user.vertical ?? '',
     leaderboard_opt_out: user.leaderboard_opt_out,
-    rank: user.rank,
   })
   const save = useMutation({
     ...updateMeMutation(),
@@ -54,17 +53,7 @@ function ProfileForm({ user }: { user: Me }) {
     Object.keys(patch).forEach(touch)
     if (save.isSuccess) save.reset()
   }
-  // Only send the rank when it changed, so an old form never undoes an admin's correction.
-  const submit = () =>
-    save.mutate({
-      body: {
-        ...form,
-        vertical: (form.vertical || null) as Vertical | null,
-        rank: form.rank === user.rank ? undefined : (form.rank as Rank),
-      },
-    })
-  const ranks = Object.keys(RANKS) as Rank[]
-  const higher = ranks.slice(ranks.indexOf(user.rank))
+  const submit = () => save.mutate({ body: { ...form, vertical: (form.vertical || null) as Vertical | null } })
 
   return (
     <Form onSubmit={submit} error={save.error} className="stack panel" aria-labelledby="profile-title">
@@ -89,19 +78,10 @@ function ProfileForm({ user }: { user: Me }) {
           <option key={v}>{v}</option>
         ))}
       </SelectField>
-      <SelectField
-        label="Where are you on the team?"
-        value={form.rank}
-        onChange={(e) => edit({ rank: e.target.value as Rank })}
-        hint="Moving up raises your level to where that rank starts. Only an admin can lower it."
-        error={errors.rank}
-      >
-        {higher.map((r) => (
-          <option key={r} value={r}>
-            {RANKS[r]}
-          </option>
-        ))}
-      </SelectField>
+      <p className="position">
+        <strong>Position on the team:</strong> {POSITION_NAMES[user.position]}.{' '}
+        <span className="muted">Only an admin can change it.</span>
+      </p>
       <label className="check">
         <input
           type="checkbox"

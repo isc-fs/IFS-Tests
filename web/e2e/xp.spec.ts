@@ -30,7 +30,7 @@ test('a Department Head starts at Jefe I, earns XP by practising and sees the ro
   }
   await page.goto('/')
   await expect(page.getByRole('region', { name: /^(Jefe|DT) / })).toBeVisible()
-  expect(await lifetime()).toBeGreaterThanOrEqual(floor) // wrong answers never take you below your rank
+  expect(await lifetime()).toBeGreaterThanOrEqual(floor) // wrong answers never take you below your position's start
 
   await page.getByRole('link', { name: 'Your road to the top' }).click()
   const road = page.getByRole('region', { name: 'Your road to the top' })

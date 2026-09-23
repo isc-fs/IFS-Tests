@@ -1732,8 +1732,8 @@
      "status": {
       "$ref": "#/components/schemas/Status"
      },
-     "rank": {
-      "$ref": "#/components/schemas/Rank"
+     "position": {
+      "$ref": "#/components/schemas/Position"
      },
      "xp": {
       "type": "integer",
@@ -1781,7 +1781,7 @@
      "vertical",
      "role",
      "status",
-     "rank",
+     "position",
      "xp",
      "leaderboard_opt_out",
      "last_seen",
@@ -2538,8 +2538,8 @@
       "type": "boolean",
       "title": "Leaderboard Opt Out"
      },
-     "rank": {
-      "$ref": "#/components/schemas/Rank"
+     "position": {
+      "$ref": "#/components/schemas/Position"
      },
      "xp": {
       "type": "integer",
@@ -2564,7 +2564,7 @@
      "vertical",
      "role",
      "leaderboard_opt_out",
-     "rank",
+     "position",
      "xp"
     ],
     "title": "Me"
@@ -3060,6 +3060,17 @@
     "title": "PlayQuestion",
     "description": "A question before it is answered: nothing here may reveal the answer."
    },
+   "Position": {
+    "type": "string",
+    "enum": [
+     "mingo",
+     "member",
+     "department_head",
+     "technical_director"
+    ],
+    "title": "Position",
+    "description": "Someone's job on the team. Not their XP level: a DT on the ladder is not a Technical Director."
+   },
    "ProfileIn": {
     "properties": {
      "display_name": {
@@ -3073,16 +3084,6 @@
        }
       ],
       "title": "Display Name"
-     },
-     "rank": {
-      "anyOf": [
-       {
-        "$ref": "#/components/schemas/Rank"
-       },
-       {
-        "type": "null"
-       }
-      ]
      },
      "vertical": {
       "anyOf": [
@@ -3227,16 +3228,6 @@
     "title": "QuestionDocs",
     "description": "The rulebook, handbook and other documents the question's quizzes were based on."
    },
-   "Rank": {
-    "type": "string",
-    "enum": [
-     "mingo",
-     "member",
-     "department_head",
-     "technical_director"
-    ],
-    "title": "Rank"
-   },
    "RegisterIn": {
     "properties": {
      "token": {
@@ -3269,8 +3260,9 @@
        }
       ]
      },
-     "rank": {
-      "$ref": "#/components/schemas/Rank",
+     "position": {
+      "$ref": "#/components/schemas/Position",
+      "description": "Job on the team; sets the starting level",
       "default": "mingo"
      }
     },
@@ -3933,10 +3925,10 @@
        }
       ]
      },
-     "rank": {
+     "position": {
       "anyOf": [
        {
-        "$ref": "#/components/schemas/Rank"
+        "$ref": "#/components/schemas/Position"
        },
        {
         "type": "null"
