@@ -143,7 +143,7 @@ function Verticals({ period }: { period: Period }) {
       <h2 id="board-title">Verticals, {PERIODS[period].toLowerCase()}</h2>
       <p className="muted">
         Average points per active member and the share who answered a daily question in the last 7 days. People who hide
-        themselves from the leaderboard aren't counted, and only verticals with at least 3 other members are shown.
+        themselves from the leaderboard aren't counted, and only verticals with at least 3 counted members are shown.
       </p>
       <p className={q.isPending || q.isPlaceholderData ? 'muted' : 'sr-only'} aria-live="polite">
         {q.isPending || q.isPlaceholderData ? 'Loading the board…' : ''}
