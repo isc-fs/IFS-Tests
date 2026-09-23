@@ -1,21 +1,25 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy.orm import Session
+from sqlalchemy import Engine
+from sqlalchemy.orm import Session, sessionmaker
 
+from ifs_tests.api.app import create_app
+from ifs_tests.api.deps import get_db, get_now
 from ifs_tests.auth.passwords import hash_password
-from ifs_tests.auth.sessions import COOKIE
 from ifs_tests.db.models import User
 from ifs_tests.services.accounts import LOGIN_FAILED
+from ifs_tests.settings import Settings
 
 from ..conftest import Clock
 from .helpers import ADMIN, PASSWORD, invite, login, member, register
 
 pytestmark = pytest.mark.integration
 NewClient = Callable[[], TestClient]
+COOKIE = "__Host-sid"  # the test app is served over https
 
 
 def test_login_sets_a_hardened_cookie_and_rotates_it(app_client: TestClient, admin: User) -> None:
@@ -29,6 +33,27 @@ def test_login_sets_a_hardened_cookie_and_rotates_it(app_client: TestClient, adm
     assert app_client.cookies[COOKIE] != old
     stale = TestClient(app_client.app, base_url="https://testserver", cookies={COOKIE: old})
     assert stale.get("/api/me").status_code == 401
+
+
+def test_plain_http_development_gets_a_cookie_browsers_keep(
+    app_engine: Engine, clock: Clock, admin: User
+) -> None:
+    """Safari drops Secure cookies over http://localhost, which made every page after sign-in bounce back."""
+    app = create_app(Settings(env="local", public_origin="http://localhost:8000"))
+    make = sessionmaker(app_engine, expire_on_commit=False)
+
+    def _db() -> Iterator[Session]:
+        with make() as s:
+            yield s
+
+    app.dependency_overrides[get_db] = _db
+    app.dependency_overrides[get_now] = lambda: clock.now
+    with TestClient(app, base_url="http://localhost:8000", headers={"X-CSRF": "1"}) as c:
+        cookie = c.post("/auth/login", json=ADMIN).headers["set-cookie"]
+        assert cookie.startswith("sid=") and "Secure" not in cookie and "HttpOnly" in cookie
+        assert c.get("/api/me").status_code == 200
+        assert c.post("/auth/logout").status_code == 204
+        assert c.get("/api/me").status_code == 401
 
 
 def test_invite_register_and_single_use(app_client: TestClient, admin: User, new_client: NewClient) -> None:

@@ -7,7 +7,7 @@ from typing import Annotated
 from fastapi import Depends, HTTPException, Request
 from sqlalchemy.orm import Session as DB
 
-from ..auth.sessions import COOKIE, resolve_session
+from ..auth.sessions import resolve_session
 from ..db.models import User
 from ..db.session import get_session
 from ..settings import Settings
@@ -32,7 +32,7 @@ AppSettings = Annotated[Settings, Depends(get_app_settings)]
 
 
 def current_user(request: Request, db: Db, now: Now) -> User | None:
-    token = request.cookies.get(COOKIE)
+    token = request.cookies.get(get_app_settings(request).session_cookie)
     return resolve_session(db, token, now) if token else None
 
 
