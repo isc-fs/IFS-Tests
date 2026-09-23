@@ -1,7 +1,7 @@
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { expect, test } from 'vitest'
-import { MEMBER, renderApp, signedOut } from '../test/render'
+import { MEMBER, renderApp, session, signedOut } from '../test/render'
 
 const openInvite = (vertical: string | null) => ({
   'POST /auth/invites/lookup': { body: { role: 'member', vertical, expires_at: '2026-10-08T10:00:00Z' } },
@@ -48,9 +48,8 @@ test('field problems are shown next to each field and linked for screen readers'
 
 test('members choose a vertical when the invite has none, then land home', async () => {
   const { router, sent } = renderApp('/invite#tok', {
-    ...signedOut,
     ...openInvite(null),
-    'POST /auth/register': { status: 201, body: { ...MEMBER, vertical: 'Electronics' } },
+    ...session('POST /auth/register', { ...MEMBER, vertical: 'Electronics' }, 201),
   })
   await userEvent.selectOptions(await screen.findByLabelText('Vertical'), 'Electronics')
   await fill('m@alu.comillas.edu', 'Marta', 'regen braking is free energy')

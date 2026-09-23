@@ -35,19 +35,25 @@ export function consumeSessionEnded(): boolean {
   return ended
 }
 
+async function fetchMe(): Promise<Me | null> {
+  const { data, response } = await me({ throwOnError: false })
+  if (response?.status === 401) return null
+  if (!response?.ok || !data) throw new Error('The server is not answering right now.')
+  return data
+}
+
 /** The signed-in user, `null` when signed out. Other failures (500, offline) are errors, not sign-outs. */
 export function useMe() {
-  return useQuery({
-    queryKey: ME_KEY,
-    queryFn: async (): Promise<Me | null> => {
-      const { data, response } = await me({ throwOnError: false })
-      if (response?.status === 401) return null
-      if (!response?.ok || !data) throw new Error('The server is not answering right now.')
-      return data
-    },
-    staleTime: 60_000,
-    retryDelay: 500,
-  })
+  return useQuery({ queryKey: ME_KEY, queryFn: fetchMe, staleTime: 60_000, retryDelay: 500 })
+}
+
+export const COOKIE_REFUSED =
+  "You signed in, but this browser didn't keep the sign-in cookie, so every page would send you back here. " +
+  'Allow cookies for this site, or try another browser.'
+
+/** After signing in: true once the browser really sends the session back (it may refuse the cookie). */
+export async function sessionWorks(): Promise<boolean> {
+  return !!(await queryClient.fetchQuery({ queryKey: ME_KEY, queryFn: fetchMe, staleTime: 0 }))
 }
 
 type ApiError = { detail?: unknown; fields?: Record<string, string> }

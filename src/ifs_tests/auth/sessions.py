@@ -10,8 +10,6 @@ from ..db.session import rowcount
 from ..domain.accounts import SESSION_ABSOLUTE, SESSION_IDLE, SessionState, session_state
 from .tokens import new_token, token_hash
 
-COOKIE = "__Host-sid"
-
 
 def create_session(db: DB, user: User, now: datetime) -> str:
     token = new_token()

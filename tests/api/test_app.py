@@ -19,7 +19,7 @@ def dist(tmp_path: Path) -> Path:
 
 
 def client(dist: Path, env: str = "test") -> TestClient:
-    return TestClient(create_app(Settings(env=env, web_dist=dist)))
+    return TestClient(create_app(Settings(env=env, web_dist=dist, public_origin="https://quiz.example")))
 
 
 def test_healthz_and_security_headers(dist: Path) -> None:

@@ -52,3 +52,15 @@ export const MEMBER = {
 }
 export const ADMIN = { ...MEMBER, id: 1, display_name: 'Chief', role: 'admin' }
 export const signedOut = { 'GET /api/me': { status: 401, body: { detail: 'Sign in first.' } } }
+
+/** A server whose session starts at `path` (login or register): /api/me answers 401 until then. */
+export function session(path: string, user: object, status = 200): Api {
+  let signedIn = false
+  return {
+    'GET /api/me': () => (signedIn ? { body: user } : signedOut['GET /api/me']),
+    [path]: () => {
+      signedIn = true
+      return { status, body: user }
+    },
+  }
+}
