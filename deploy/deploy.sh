@@ -76,14 +76,14 @@ sys.exit(0 if all(checks.values()) else 1)
 PY
 }
 
-if compose "$tag" up -d --remove-orphans --wait --wait-timeout 90 api && smoke; then
+if compose "$tag" up -d --remove-orphans --wait --wait-timeout 90 api scheduler && smoke; then
   echo "$tag" > "$dir/deployed-tag"
   echo "$(date -u +%FT%TZ) $env $tag $(whoami)" >> "$dir/deploy-history"
   log "done: $env is on $tag"
 else
   if [[ -n $previous ]]; then
     log "rolling back to $previous"
-    compose "$previous" up -d --remove-orphans --wait --wait-timeout 90 api
+    compose "$previous" up -d --remove-orphans --wait --wait-timeout 90 api scheduler
   fi
   die "$tag failed to start or failed the smoke test"
 fi

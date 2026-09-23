@@ -21,6 +21,14 @@ class Settings(BaseSettings):
     def is_deployed(self) -> bool:
         return self.env in ("staging", "prod")
 
+    @property
+    def allowed_origins(self) -> frozenset[str]:
+        """Origins allowed to make state-changing requests (CSRF check). Vite's dev server is added locally."""
+        origins = {self.public_origin.rstrip("/")}
+        if self.env in ("local", "test"):
+            origins |= {"http://localhost:5173", "http://127.0.0.1:5173", "https://testserver"}
+        return frozenset(origins)
+
 
 @lru_cache
 def get_settings() -> Settings:

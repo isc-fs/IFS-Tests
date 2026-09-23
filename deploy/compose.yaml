@@ -30,6 +30,27 @@ services:
     depends_on:
       db: { condition: service_healthy }
 
+  scheduler:
+    image: ghcr.io/isc-fs/ifs-tests:${IMAGE_TAG:?set IMAGE_TAG}
+    command: ["ifs-tests", "scheduler"]
+    restart: unless-stopped
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    mem_limit: 256m
+    cpus: 0.5
+    logging: *logging
+    healthcheck:
+      disable: true
+    environment:
+      IFS_ENV: ${QUIZ_ENV}
+      IFS_DATABASE_URL: postgresql+psycopg://app_rt:${APP_PASSWORD:?}@db:5432/quiz
+      IFS_PUBLIC_ORIGIN: https://${QUIZ_HOST:?}
+    networks: [internal]
+    depends_on:
+      db: { condition: service_healthy }
+
   db:
     image: postgres:17-alpine
     restart: unless-stopped

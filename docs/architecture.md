@@ -10,7 +10,7 @@ Internet ──443──> Nginx (shared on the team server, TLS, rate limit on /
                     ▼                                    ▼
    compose project quiz-prod                        compose project quiz-staging
    ├─ api        FastAPI + built SPA (one container, one origin)
-   ├─ scheduler  same image: daily question, session clean-up (from feat/6)
+   ├─ scheduler  same image: nightly clean-up (later: daily question)
    ├─ backup     nightly pg_dump, 14 days (postgres image)
    └─ db         PostgreSQL (internal network only)
 ```

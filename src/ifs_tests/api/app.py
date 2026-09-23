@@ -8,7 +8,8 @@ from starlette.staticfiles import StaticFiles
 
 from .. import __version__
 from ..settings import Settings, get_settings
-from .security import SecurityHeaders
+from .routes import admin, auth, me
+from .security import CSRFGuard, SecurityHeaders
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -20,8 +21,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         docs_url="/api/docs" if docs else None,
         redoc_url=None,
         openapi_url="/api/openapi.json" if docs else None,
+        generate_unique_id_function=lambda route: route.name,
     )
+    app.add_middleware(CSRFGuard, allowed_origins=settings.allowed_origins)
     app.add_middleware(SecurityHeaders)
+    for router in (auth.router, me.router, admin.router):
+        app.include_router(router)
 
     @app.api_route("/healthz", methods=["GET", "HEAD"], include_in_schema=False)
     def healthz() -> dict[str, str]:
