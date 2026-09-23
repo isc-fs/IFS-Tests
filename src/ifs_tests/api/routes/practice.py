@@ -42,4 +42,4 @@ def practice_question(question_id: Id, _: Member, db: Db) -> PlayQuestion:
 
 @router.post("/questions/{question_id}/answer")
 def answer_practice(question_id: Id, body: AnswerIn, user: Member, db: Db, now: Now) -> Feedback:
-    return feedback(practice.answer(db, user, question_id, body.options, body.value, now))
+    return feedback(practice.answer(db, user, question_id, body.options, body.value, now, body.unsure))

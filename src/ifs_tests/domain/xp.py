@@ -17,6 +17,8 @@ REPEAT = 0.1  # a question you already had graded this season, or a mock replay
 HINT = 0.5
 STREAK_STEP, STREAK_CAP = 0.05, 10  # +5 % per day of streak after the first, up to +50 %
 MIN_SAMPLE = 20  # answers before success rates start to move a question's difficulty
+# Outside the rules, wrong answers cost less: a slip in a calculation isn't not knowing a rule.
+MANY_SHARE, TYPED_SHARE = 0.5, 0.25
 
 TIERS = ("Mingo", "Jefe", "DT")
 DIVISIONS = ("I", "II", "III", "IV", "V")
@@ -116,6 +118,20 @@ def difficulty(answer_kind: str, time_s: int | None, answered: int = 0, right: i
     return round((prior + 2 * observed) / 3)
 
 
+def penalty(level: int, area: str | None, answer_kind: str, options: int = 4) -> float:
+    """Share of a right answer's XP that a wrong one costs. Rules questions take the level's full share: you
+    know the rule or you don't. Elsewhere a single choice never costs more than makes a blind guess break
+    even (1/(options - 1)), multiple choice half the share and typed answers a quarter."""
+    share = at(level).penalty
+    if area == "rules":
+        return share
+    if answer_kind == "choice-one":
+        return min(share, 1 / (options - 1)) if options > 1 else 0.0
+    if answer_kind == "choice-many":
+        return share * MANY_SHARE
+    return share * TYPED_SHARE
+
+
 def streak_multiplier(streak_days: int) -> float:
     return 1 + STREAK_STEP * min(max(streak_days - 1, 0), STREAK_CAP)
 
@@ -130,15 +146,23 @@ def award(
     repeat: bool = False,
     late: bool = False,
     again_today: bool = False,
+    *,
+    area: str | None = "rules",
+    answer_kind: str = "choice-one",
+    options: int = 4,
+    passed: bool = False,
 ) -> int:
-    """XP for one answer: positive when right, zero or negative when wrong depending on your tier.
-    A late answer (or one left to run out) counts as wrong, so waiting out the clock never beats trying.
+    """XP for one answer: positive when right, zero or negative when wrong depending on the level and the kind
+    of question (the defaults describe a rules question). Saying "I'm not sure" in time gives nothing either
+    way. A late answer (or one left to run out) counts as wrong, so waiting out the clock never beats trying.
     Ungraded questions give nothing either way; a question already got right again today gives nothing."""
     if correct is None:
+        return 0
+    if passed and not late:
         return 0
     if correct and again_today and not late:
         return 0
     base = BASE_XP[difficulty] * MODE[mode] * (REPEAT if repeat else 1)
     if correct and not late:
         return max(1, round(base * streak_multiplier(streak_days) * (HINT if hint else 1)))
-    return -round(base * at(level).penalty)
+    return -round(base * penalty(level, area, answer_kind, options))

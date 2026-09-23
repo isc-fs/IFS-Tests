@@ -91,6 +91,7 @@ test('a DT V sees no help, what wrong answers cost, and what waits at the top', 
   expect(card).toHaveTextContent('Wrong answers: cost 70 % of what a right one earns.')
   const top = screen.getByRole('region', { name: 'The top' })
   expect(within(top).getByRole('img', { name: 'Villano' })).toHaveClass('emblem-villano')
+  expect(within(top).getByRole('listitem')).toHaveClass('locked', 'revealed') // in colour, still to reach
   expect(screen.getByLabelText('Where are you on the team?')).toHaveValue('technical_director')
 })
 
@@ -183,4 +184,28 @@ test("admins can correct someone's rank", async () => {
   await userEvent.selectOptions(within(marta).getByLabelText('Rank'), 'member')
   await waitFor(() => expect(sent('PATCH /api/admin/users/2')[0].body).toEqual({ rank: 'member' }))
   expect(await screen.findByRole('status')).toHaveTextContent('Marta is now member, active, Returning member.')
+})
+
+test('"I\'m not sure" shows the answer for nothing', async () => {
+  const { sent } = renderApp('/practice', {
+    ...practice({}),
+    'POST /api/practice/questions/7/answer': {
+      body: { correct: false, passed: true, official: '0.713 m', correct_options: [70], solutions: [], xp: 0 },
+    },
+  })
+  const button = await screen.findByRole('button', { name: "I'm not sure" })
+  expect(button).toHaveAccessibleDescription(/nothing is gained or lost\. A wrong answer can cost XP\./)
+  await userEvent.click(button)
+  await waitFor(() => expect(sent('POST /api/practice/questions/7/answer')[0].body).toEqual({ unsure: true }))
+  expect(
+    await screen.findByText("You weren't sure, so here is the answer. Nothing gained or lost."),
+  ).toBeInTheDocument()
+  expect(screen.getByText('0.713 m').closest('label')).toHaveTextContent('Correct answer')
+  expect(screen.queryByText('Not quite.')).toBeNull()
+})
+
+test('questions without an official answer have no "I\'m not sure"', async () => {
+  renderApp('/practice', { ...practice({}), 'GET /api/practice/next': { body: { ...QUESTION, graded: false } } })
+  expect(await screen.findByRole('button', { name: 'Check answer' })).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: "I'm not sure" })).toBeNull()
 })

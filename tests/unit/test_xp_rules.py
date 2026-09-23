@@ -13,6 +13,7 @@ from ifs_tests.domain.xp import (
     difficulty,
     floor_for,
     level_for,
+    penalty,
     streak_multiplier,
     title,
     xp_for_level,
@@ -168,6 +169,42 @@ def test_award(kwargs: dict[str, object], xp: int) -> None:
     assert award(**kwargs) == xp  # type: ignore[arg-type]
 
 
+@pytest.mark.parametrize(
+    ("level", "area", "kind", "options", "share"),
+    [
+        (15, "rules", "choice-one", 4, 0.75),  # rules: the level's full share, whatever the type
+        (15, "rules", "number", 0, 0.75),
+        (15, "mech", "choice-one", 4, 1 / 3),  # no worse than a blind guess breaking even
+        (15, "elec", "choice-one", 3, 0.5),
+        (10, "elec", "choice-one", 3, 0.45),  # the level's share when it is lower
+        (15, "mech", "choice-one", 1, 0.0),
+        (15, "elec", "choice-many", 6, 0.375),
+        (15, "mech", "number", 0, 0.1875),
+        (15, None, "text", 0, 0.1875),
+        (2, "rules", "choice-one", 4, 0.0),  # Mingo III and below: never
+    ],
+)
+def test_wrong_answers_cost_less_outside_the_rules(
+    level: int, area: str | None, kind: str, options: int, share: float
+) -> None:
+    assert penalty(level, area, kind, options) == pytest.approx(share)
+
+
+def test_im_not_sure_in_time_costs_nothing_but_late_it_counts_as_wrong() -> None:
+    assert award(False, 3, "daily", TOP, passed=True) == 0
+    assert award(False, 3, "daily", TOP, passed=True, late=True) == award(False, 3, "daily", TOP) == -38
+    assert award(None, 3, "daily", TOP, passed=True, late=True) == 0
+
+
+# The graded bank's mix, in twentieths: about a sixth rules; mostly single choice, a sixth typed.
+MIX = (
+    [("rules", "choice-one")] * 3
+    + [("mech", "choice-one")] * 12
+    + [("elec", "choice-many")]
+    + [("mech", "number")] * 4
+)
+
+
 def _days_to(start: int, active: float, practice: int, mock_every: int, skill: float) -> dict[int, int]:
     """A seeded season (September to August) of play: dailies, some practice, a mock now and then; skill
     improves slowly."""
@@ -184,7 +221,11 @@ def _days_to(start: int, active: float, practice: int, mock_every: int, skill: f
                 for _ in range(n):
                     d = rng.choice([1, 2, 2, 3, 3, 3, 4, 4, 5])
                     right = rng.random() < min(0.88, skill + day * 0.0015) - 0.06 * (d - 3)
-                    xp = max(xp_for_level(start), xp + award(right, d, mode, level, streak))
+                    area, kind = rng.choice(MIX)
+                    xp = max(
+                        xp_for_level(start),
+                        xp + award(right, d, mode, level, streak, area=area, answer_kind=kind),
+                    )
         for mark in (5, 10, 15):
             if level_for(xp) >= mark:
                 reached.setdefault(mark, day)

@@ -33,6 +33,7 @@ class Checked:
     xp: int = 0  # set by the mode that scored the answer
     level: int | None = None
     level_up: bool = False
+    passed: bool = False
 
 
 def _quiz_labels(db: DB, ids: list[int]) -> dict[int, list[str]]:
@@ -80,18 +81,21 @@ def playable(db: DB, question_id: int) -> Question:
     return q
 
 
-def check(db: DB, q: Question, options: list[int] | None, value: str | None) -> Checked:
-    """Grade an answer and return everything needed to explain it. Never call before the player answered."""
+def check(db: DB, q: Question, options: list[int] | None, value: str | None, unsure: bool = False) -> Checked:
+    """Grade an answer and return everything needed to explain it. Never call before the player answered.
+    `unsure` is "I'm not sure": no answer, marked not right, the official answer shown."""
     choices = db.scalars(select(AnswerOption.id).where(AnswerOption.question_id == q.id)).all()
     if options and not set(options) <= set(choices):
         raise UserError("Pick one of the listed answers.")
     key = db.get(AnswerKey, q.id)
     k = key.effective if key else None
-    correct = grade(k, options=options, value=value) if q.graded else None
+    passed = unsure and q.graded
+    correct = (False if passed else grade(k, options=options, value=value)) if q.graded else None
     solutions = db.scalars(select(Solution).where(Solution.question_id == q.id).order_by(Solution.id)).all()
     return Checked(
         correct=correct,
         official=key.shown if key else None,
         correct_options=list(k["options"]) if k and k["kind"] == "choice" else [],
         solutions=[(s.text, list(s.images)) for s in solutions],
+        passed=passed,
     )

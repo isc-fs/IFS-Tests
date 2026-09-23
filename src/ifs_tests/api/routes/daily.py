@@ -50,7 +50,7 @@ def start_daily(area: Area, user: Member, db: Db, now: Now) -> TimedQuestion:
 
 @router.post("/attempts/{attempt_id}/answer")
 def answer_daily(attempt_id: Id, body: AnswerIn, user: Member, db: Db, now: Now) -> DailyResult:
-    return _result(db, daily.answer(db, user, attempt_id, body.options, body.value, now))
+    return _result(db, daily.answer(db, user, attempt_id, body.options, body.value, now, body.unsure))
 
 
 @router.get("/{area}/review")

@@ -73,26 +73,41 @@ def next_question(
 
 
 def answer(
-    db: DB, user: User, question_id: int, options: list[int] | None, value: str | None, now: datetime
+    db: DB,
+    user: User,
+    question_id: int,
+    options: list[int] | None,
+    value: str | None,
+    now: datetime,
+    unsure: bool = False,
 ) -> Checked:
     q = playable(db, question_id)
-    result = check(db, q, options, value)
+    result = check(db, q, options, value, unsure)
     xp.lock(db, user.id)  # so two tabs can't both score the first answer
     last = xp.last_seen(db, user.id, q.id, now)
     again_today = last is not None and madrid_day(last) == madrid_day(now)
     granted = xp.grant(
-        db, user.id, q, "practice", result.correct, now, repeat=last is not None, again_today=again_today
+        db,
+        user.id,
+        q,
+        "practice",
+        result.correct,
+        now,
+        repeat=last is not None,
+        again_today=again_today,
+        passed=result.passed,
     )
     db.add(
         Attempt(
             user_id=user.id,
             question_id=q.id,
             mode="practice",
-            answer={"options": options, "value": value},
+            answer={"options": options, "value": value, "unsure": result.passed},
             correct=result.correct,
             created_at=now,
             area=q.area,
             xp=granted.xp,
+            passed=result.passed,
         )
     )
     db.commit()

@@ -322,6 +322,8 @@ class Attempt(Base):
     )
     xp: Mapped[int] = mapped_column(server_default="0")
     hint_used: Mapped[bool] = mapped_column(server_default="false")
+    # "I'm not sure": no answer given, the official one shown. Stored as not right.
+    passed: Mapped[bool] = mapped_column(server_default="false")
 
 
 Index(
