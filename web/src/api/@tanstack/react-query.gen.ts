@@ -3,8 +3,8 @@
 import { type DefaultError, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { answerPractice, auditLog, bankSummary, changePassword, createInvite, inviteInfo, login, logout, me, nextQuestion, openInvites, type Options, practiceAreas, practiceQuestion, register, reset, resetInfo, resetLink, revokeInvite, revokeSessions, updateMe, updateUser, users } from '../sdk.gen';
-import type { AnswerPracticeData, AnswerPracticeError, AnswerPracticeResponse, AuditLogData, AuditLogError, AuditLogResponse, BankSummaryData, BankSummaryResponse, ChangePasswordData, ChangePasswordError, ChangePasswordResponse, CreateInviteData, CreateInviteError, CreateInviteResponse, InviteInfoData, InviteInfoError, InviteInfoResponse, LoginData, LoginError, LoginResponse, LogoutData, LogoutResponse, MeData, MeResponse, NextQuestionData, NextQuestionError, NextQuestionResponse, OpenInvitesData, OpenInvitesResponse, PracticeAreasData, PracticeAreasResponse, PracticeQuestionData, PracticeQuestionError, PracticeQuestionResponse, RegisterData, RegisterError, RegisterResponse, ResetData, ResetError, ResetInfoData, ResetInfoError, ResetInfoResponse, ResetLinkData, ResetLinkError, ResetLinkResponse, ResetResponse, RevokeInviteData, RevokeInviteError, RevokeInviteResponse, RevokeSessionsData, RevokeSessionsError, RevokeSessionsResponse, UpdateMeData, UpdateMeError, UpdateMeResponse, UpdateUserData, UpdateUserError, UpdateUserResponse, UsersData, UsersResponse } from '../types.gen';
+import { answerDaily, answerPractice, auditLog, bankSummary, changePassword, createInvite, dailyStatus, inviteInfo, login, logout, me, nextQuestion, openInvites, type Options, practiceAreas, practiceQuestion, register, reset, resetInfo, resetLink, reviewDaily, revokeInvite, revokeSessions, startDaily, updateMe, updateUser, users } from '../sdk.gen';
+import type { AnswerDailyData, AnswerDailyError, AnswerDailyResponse, AnswerPracticeData, AnswerPracticeError, AnswerPracticeResponse, AuditLogData, AuditLogError, AuditLogResponse, BankSummaryData, BankSummaryResponse, ChangePasswordData, ChangePasswordError, ChangePasswordResponse, CreateInviteData, CreateInviteError, CreateInviteResponse, DailyStatusData, DailyStatusResponse, InviteInfoData, InviteInfoError, InviteInfoResponse, LoginData, LoginError, LoginResponse, LogoutData, LogoutResponse, MeData, MeResponse, NextQuestionData, NextQuestionError, NextQuestionResponse, OpenInvitesData, OpenInvitesResponse, PracticeAreasData, PracticeAreasResponse, PracticeQuestionData, PracticeQuestionError, PracticeQuestionResponse, RegisterData, RegisterError, RegisterResponse, ResetData, ResetError, ResetInfoData, ResetInfoError, ResetInfoResponse, ResetLinkData, ResetLinkError, ResetLinkResponse, ResetResponse, ReviewDailyData, ReviewDailyError, ReviewDailyResponse, RevokeInviteData, RevokeInviteError, RevokeInviteResponse, RevokeSessionsData, RevokeSessionsError, RevokeSessionsResponse, StartDailyData, StartDailyError, StartDailyResponse, UpdateMeData, UpdateMeError, UpdateMeResponse, UpdateUserData, UpdateUserError, UpdateUserResponse, UsersData, UsersResponse } from '../types.gen';
 
 /**
  * Login
@@ -420,3 +420,73 @@ export const answerPracticeMutation = (options?: Partial<Options<AnswerPracticeD
     };
     return mutationOptions;
 };
+
+export const dailyStatusQueryKey = (options?: Options<DailyStatusData>) => createQueryKey('dailyStatus', options);
+
+/**
+ * Daily Status
+ */
+export const dailyStatusOptions = (options?: Options<DailyStatusData>) => queryOptions<DailyStatusResponse, DefaultError, DailyStatusResponse, ReturnType<typeof dailyStatusQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await dailyStatus({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: dailyStatusQueryKey(options)
+});
+
+/**
+ * Start Daily
+ */
+export const startDailyMutation = (options?: Partial<Options<StartDailyData>>): UseMutationOptions<StartDailyResponse, StartDailyError, Options<StartDailyData>> => {
+    const mutationOptions: UseMutationOptions<StartDailyResponse, StartDailyError, Options<StartDailyData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await startDaily({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Answer Daily
+ */
+export const answerDailyMutation = (options?: Partial<Options<AnswerDailyData>>): UseMutationOptions<AnswerDailyResponse, AnswerDailyError, Options<AnswerDailyData>> => {
+    const mutationOptions: UseMutationOptions<AnswerDailyResponse, AnswerDailyError, Options<AnswerDailyData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await answerDaily({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+export const reviewDailyQueryKey = (options: Options<ReviewDailyData>) => createQueryKey('reviewDaily', options);
+
+/**
+ * Review Daily
+ */
+export const reviewDailyOptions = (options: Options<ReviewDailyData>) => queryOptions<ReviewDailyResponse, ReviewDailyError, ReviewDailyResponse, ReturnType<typeof reviewDailyQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await reviewDaily({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: reviewDailyQueryKey(options)
+});

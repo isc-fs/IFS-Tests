@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Annotated, Any
+from datetime import date, datetime
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -166,6 +166,40 @@ class Feedback(BaseModel):
     official: str | None
     correct_options: list[int]
     solutions: list[SolutionOut]
+
+
+class DailyArea(BaseModel):
+    area: str
+    budget_s: int
+    state: Literal["new", "started", "done"]
+    deadline_at: datetime | None
+    correct: bool | None
+    late: bool | None
+    points: int
+
+
+class DailyStatus(BaseModel):
+    day: date
+    streak: int
+    points_today: int
+    areas: list[DailyArea]
+
+
+class TimedQuestion(BaseModel):
+    """A question whose clock is running. `server_now` lets the browser correct for its own clock."""
+
+    attempt_id: int
+    question: PlayQuestion
+    deadline_at: datetime
+    server_now: datetime
+
+
+class DailyResult(BaseModel):
+    question: PlayQuestion
+    feedback: Feedback
+    late: bool
+    points: int
+    streak: int
 
 
 class AreaProgress(BaseModel):

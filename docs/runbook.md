@@ -103,7 +103,7 @@ Staging then holds real member data: restore a staging dump again afterwards, or
 | Database shell (read-only) | `docker exec -it quiz-prod-db-1 psql -U backup_ro -d quiz` |
 | Disk used by the app | `docker system df -v \| grep quiz-` |
 
-- The server reboots itself at 04:00 when security updates need it. Containers restart on their own; nightly jobs run earlier (clean-up 03:00, backup 03:30).
+- The server reboots itself at 04:00 when security updates need it. Containers restart on their own; nightly jobs run earlier (daily questions 00:01, clean-up 03:00, backup 03:30).
 - Logs rotate automatically (3 × 10 MB per container).
 
 ## 6. Secrets rotation

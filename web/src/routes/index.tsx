@@ -1,6 +1,7 @@
 import { lazy } from 'react'
 import { Link, type RouteObject } from 'react-router'
 import { PublicPage } from '../components/Page'
+import Daily from './Daily'
 import Home from './Home'
 import Invite from './Invite'
 import Layout from './Layout'
@@ -42,6 +43,7 @@ export const routes: RouteObject[] = [
     errorElement: <Crashed />,
     children: [
       { index: true, element: <Home /> },
+      { path: 'daily', element: <Daily /> },
       { path: 'practice', element: <Practice /> },
       { path: 'profile', element: <Profile /> },
       { path: 'admin', element: <Admin /> },

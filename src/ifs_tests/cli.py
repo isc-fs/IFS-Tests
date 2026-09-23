@@ -109,7 +109,16 @@ def _app_command(args: argparse.Namespace) -> None:
             with make_db() as db:
                 return maintenance.run(db, at)
 
-        run_forever([Job("maintenance", clock_time(3, 0), nightly)])
+        def daily_questions(at: datetime) -> dict[str, int]:
+            from .domain.daily import madrid_day
+            from .services.daily import ensure_daily
+
+            with make_db() as db:
+                return ensure_daily(db, madrid_day(at))
+
+        run_forever(
+            [Job("daily", clock_time(0, 1), daily_questions), Job("maintenance", clock_time(3, 0), nightly)]
+        )
         return
 
     with make_db() as db:
