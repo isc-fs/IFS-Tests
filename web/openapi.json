@@ -854,6 +854,175 @@
      }
     }
    }
+  },
+  "/api/daily": {
+   "get": {
+    "tags": [
+     "daily"
+    ],
+    "summary": "Daily Status",
+    "operationId": "daily_status",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/DailyStatus"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/daily/{area}/start": {
+   "post": {
+    "tags": [
+     "daily"
+    ],
+    "summary": "Start Daily",
+    "operationId": "start_daily",
+    "parameters": [
+     {
+      "name": "area",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "enum": [
+        "mech",
+        "elec",
+        "rules"
+       ],
+       "type": "string",
+       "title": "Area"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/TimedQuestion"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/daily/attempts/{attempt_id}/answer": {
+   "post": {
+    "tags": [
+     "daily"
+    ],
+    "summary": "Answer Daily",
+    "operationId": "answer_daily",
+    "parameters": [
+     {
+      "name": "attempt_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "maximum": 9223372036854775807,
+       "minimum": 1,
+       "title": "Attempt Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/AnswerIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/DailyResult"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/daily/{area}/review": {
+   "get": {
+    "tags": [
+     "daily"
+    ],
+    "summary": "Review Daily",
+    "operationId": "review_daily",
+    "parameters": [
+     {
+      "name": "area",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "enum": [
+        "mech",
+        "elec",
+        "rules"
+       ],
+       "type": "string",
+       "title": "Area"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/DailyResult"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
   }
  },
  "components": {
@@ -1116,6 +1285,139 @@
      "imported_at"
     ],
     "title": "BankSummary"
+   },
+   "DailyArea": {
+    "properties": {
+     "area": {
+      "type": "string",
+      "title": "Area"
+     },
+     "budget_s": {
+      "type": "integer",
+      "title": "Budget S"
+     },
+     "state": {
+      "type": "string",
+      "enum": [
+       "new",
+       "started",
+       "done"
+      ],
+      "title": "State"
+     },
+     "deadline_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Deadline At"
+     },
+     "correct": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Correct"
+     },
+     "late": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Late"
+     },
+     "points": {
+      "type": "integer",
+      "title": "Points"
+     }
+    },
+    "type": "object",
+    "required": [
+     "area",
+     "budget_s",
+     "state",
+     "deadline_at",
+     "correct",
+     "late",
+     "points"
+    ],
+    "title": "DailyArea"
+   },
+   "DailyResult": {
+    "properties": {
+     "question": {
+      "$ref": "#/components/schemas/PlayQuestion"
+     },
+     "feedback": {
+      "$ref": "#/components/schemas/Feedback"
+     },
+     "late": {
+      "type": "boolean",
+      "title": "Late"
+     },
+     "points": {
+      "type": "integer",
+      "title": "Points"
+     },
+     "streak": {
+      "type": "integer",
+      "title": "Streak"
+     }
+    },
+    "type": "object",
+    "required": [
+     "question",
+     "feedback",
+     "late",
+     "points",
+     "streak"
+    ],
+    "title": "DailyResult"
+   },
+   "DailyStatus": {
+    "properties": {
+     "day": {
+      "type": "string",
+      "format": "date",
+      "title": "Day"
+     },
+     "streak": {
+      "type": "integer",
+      "title": "Streak"
+     },
+     "points_today": {
+      "type": "integer",
+      "title": "Points Today"
+     },
+     "areas": {
+      "items": {
+       "$ref": "#/components/schemas/DailyArea"
+      },
+      "type": "array",
+      "title": "Areas"
+     }
+    },
+    "type": "object",
+    "required": [
+     "day",
+     "streak",
+     "points_today",
+     "areas"
+    ],
+    "title": "DailyStatus"
    },
    "Feedback": {
     "properties": {
@@ -1673,6 +1975,36 @@
      "disabled"
     ],
     "title": "Status"
+   },
+   "TimedQuestion": {
+    "properties": {
+     "attempt_id": {
+      "type": "integer",
+      "title": "Attempt Id"
+     },
+     "question": {
+      "$ref": "#/components/schemas/PlayQuestion"
+     },
+     "deadline_at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Deadline At"
+     },
+     "server_now": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Server Now"
+     }
+    },
+    "type": "object",
+    "required": [
+     "attempt_id",
+     "question",
+     "deadline_at",
+     "server_now"
+    ],
+    "title": "TimedQuestion",
+    "description": "A question whose clock is running. `server_now` lets the browser correct for its own clock."
    },
    "TokenIn": {
     "properties": {

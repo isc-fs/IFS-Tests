@@ -481,6 +481,35 @@ button.secondary:hover {
   max-width: 320px;
 }
 
+.countdown {
+  margin-left: auto;
+  font-family: var(--isc-font-mono);
+  font-size: var(--isc-fs-body);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: var(--isc-green);
+  color: var(--isc-white);
+}
+.countdown.urgent {
+  background: var(--isc-c-error);
+}
+.daily-areas {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+.daily-areas .panel {
+  margin-top: 0;
+}
+.daily-area button {
+  margin-top: auto;
+}
+
 .stats {
   list-style: none;
   margin: 0;

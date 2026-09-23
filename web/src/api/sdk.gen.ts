@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { AnswerPracticeData, AnswerPracticeErrors, AnswerPracticeResponses, AuditLogData, AuditLogErrors, AuditLogResponses, BankSummaryData, BankSummaryResponses, ChangePasswordData, ChangePasswordErrors, ChangePasswordResponses, CreateInviteData, CreateInviteErrors, CreateInviteResponses, InviteInfoData, InviteInfoErrors, InviteInfoResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutResponses, MeData, MeResponses, NextQuestionData, NextQuestionErrors, NextQuestionResponses, OpenInvitesData, OpenInvitesResponses, PracticeAreasData, PracticeAreasResponses, PracticeQuestionData, PracticeQuestionErrors, PracticeQuestionResponses, RegisterData, RegisterErrors, RegisterResponses, ResetData, ResetErrors, ResetInfoData, ResetInfoErrors, ResetInfoResponses, ResetLinkData, ResetLinkErrors, ResetLinkResponses, ResetResponses, RevokeInviteData, RevokeInviteErrors, RevokeInviteResponses, RevokeSessionsData, RevokeSessionsErrors, RevokeSessionsResponses, UpdateMeData, UpdateMeErrors, UpdateMeResponses, UpdateUserData, UpdateUserErrors, UpdateUserResponses, UsersData, UsersResponses } from './types.gen';
+import type { AnswerDailyData, AnswerDailyErrors, AnswerDailyResponses, AnswerPracticeData, AnswerPracticeErrors, AnswerPracticeResponses, AuditLogData, AuditLogErrors, AuditLogResponses, BankSummaryData, BankSummaryResponses, ChangePasswordData, ChangePasswordErrors, ChangePasswordResponses, CreateInviteData, CreateInviteErrors, CreateInviteResponses, DailyStatusData, DailyStatusResponses, InviteInfoData, InviteInfoErrors, InviteInfoResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutResponses, MeData, MeResponses, NextQuestionData, NextQuestionErrors, NextQuestionResponses, OpenInvitesData, OpenInvitesResponses, PracticeAreasData, PracticeAreasResponses, PracticeQuestionData, PracticeQuestionErrors, PracticeQuestionResponses, RegisterData, RegisterErrors, RegisterResponses, ResetData, ResetErrors, ResetInfoData, ResetInfoErrors, ResetInfoResponses, ResetLinkData, ResetLinkErrors, ResetLinkResponses, ResetResponses, ReviewDailyData, ReviewDailyErrors, ReviewDailyResponses, RevokeInviteData, RevokeInviteErrors, RevokeInviteResponses, RevokeSessionsData, RevokeSessionsErrors, RevokeSessionsResponses, StartDailyData, StartDailyErrors, StartDailyResponses, UpdateMeData, UpdateMeErrors, UpdateMeResponses, UpdateUserData, UpdateUserErrors, UpdateUserResponses, UsersData, UsersResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -197,3 +197,30 @@ export const answerPractice = <ThrowOnError extends boolean = false>(options: Op
         ...options.headers
     }
 });
+
+/**
+ * Daily Status
+ */
+export const dailyStatus = <ThrowOnError extends boolean = false>(options?: Options<DailyStatusData, ThrowOnError>): RequestResult<DailyStatusResponses, unknown, ThrowOnError> => (options?.client ?? client).get<DailyStatusResponses, unknown, ThrowOnError>({ url: '/api/daily', ...options });
+
+/**
+ * Start Daily
+ */
+export const startDaily = <ThrowOnError extends boolean = false>(options: Options<StartDailyData, ThrowOnError>): RequestResult<StartDailyResponses, StartDailyErrors, ThrowOnError> => (options.client ?? client).post<StartDailyResponses, StartDailyErrors, ThrowOnError>({ url: '/api/daily/{area}/start', ...options });
+
+/**
+ * Answer Daily
+ */
+export const answerDaily = <ThrowOnError extends boolean = false>(options: Options<AnswerDailyData, ThrowOnError>): RequestResult<AnswerDailyResponses, AnswerDailyErrors, ThrowOnError> => (options.client ?? client).post<AnswerDailyResponses, AnswerDailyErrors, ThrowOnError>({
+    url: '/api/daily/attempts/{attempt_id}/answer',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Review Daily
+ */
+export const reviewDaily = <ThrowOnError extends boolean = false>(options: Options<ReviewDailyData, ThrowOnError>): RequestResult<ReviewDailyResponses, ReviewDailyErrors, ThrowOnError> => (options.client ?? client).get<ReviewDailyResponses, ReviewDailyErrors, ThrowOnError>({ url: '/api/daily/{area}/review', ...options });

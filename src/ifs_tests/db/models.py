@@ -281,3 +281,30 @@ class Attempt(Base):
     # None when the question isn't graded automatically (the official answer was only shown).
     correct: Mapped[bool | None]
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # Timed modes: the row is created when the clock starts and completed on submit.
+    day: Mapped[date | None] = mapped_column(Date)
+    area: Mapped[str | None] = mapped_column(String(16))
+    deadline_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    late: Mapped[bool | None]
+    points: Mapped[int] = mapped_column(server_default="0")
+
+
+Index(
+    "uq_attempts_daily",
+    Attempt.user_id,
+    Attempt.day,
+    Attempt.area,
+    unique=True,
+    postgresql_where=Attempt.mode == "daily",
+)
+
+
+class DailyQuestion(Base):
+    """The question of the day for each area, fixed once chosen."""
+
+    __tablename__ = "daily_questions"
+
+    day: Mapped[date] = mapped_column(Date, primary_key=True)
+    area: Mapped[str] = mapped_column(String(16), primary_key=True)
+    question_id: Mapped[int] = mapped_column(ForeignKey("questions.id", ondelete="CASCADE"), index=True)

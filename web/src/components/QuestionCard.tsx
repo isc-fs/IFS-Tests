@@ -55,12 +55,18 @@ export function QuestionCard({
   pending,
   onAnswer,
   next,
+  clock,
+  expired,
 }: {
   question: PlayQuestion
   feedback?: Feedback
   pending?: boolean
   onAnswer: (answer: AnswerIn) => void
   next?: ReactNode
+  /** Shown next to the question while it is open. */
+  clock?: ReactNode
+  /** When time runs out, whatever is entered is sent as the answer. */
+  expired?: boolean
 }) {
   const [chosen, setChosen] = useState<number[]>([])
   const [value, setValue] = useState('')
@@ -70,10 +76,18 @@ export function QuestionCard({
   const kind = question.answer_kind
   const choice = kind.startsWith('choice')
   const answered = !!feedback
+  const locked = answered || !!expired
 
   useEffect(() => {
     if (feedback) after.current?.querySelector<HTMLElement>('button')?.focus()
   }, [feedback])
+
+  const sent = useRef(false)
+  useEffect(() => {
+    if (!expired || answered || sent.current) return
+    sent.current = true
+    onAnswer(choice ? { options: chosen } : kind === 'self' ? {} : { value })
+  }, [expired, answered, choice, chosen, kind, value, onAnswer])
 
   const submit = () => {
     if (kind === 'self') return onAnswer({})
@@ -93,7 +107,7 @@ export function QuestionCard({
 
   return (
     <article className="question panel stack" aria-labelledby={`${legend}-text`}>
-      <QuestionMeta question={question} />
+      <QuestionMeta question={question}>{!answered && clock}</QuestionMeta>
       <p className="question-text" id={`${legend}-text`}>
         {question.text}
       </p>
@@ -116,7 +130,7 @@ export function QuestionCard({
                     type={kind === 'choice-one' ? 'radio' : 'checkbox'}
                     name={`q${question.id}`}
                     checked={picked}
-                    disabled={answered}
+                    disabled={locked}
                     aria-invalid={!!missing}
                     onChange={() => toggle(o.id)}
                   />
@@ -139,7 +153,7 @@ export function QuestionCard({
             inputMode={kind === 'text' ? 'text' : 'decimal'}
             autoComplete="off"
             value={value}
-            readOnly={answered}
+            readOnly={locked}
             maxLength={200}
             onChange={(e) => {
               setValue(e.target.value)
@@ -149,7 +163,8 @@ export function QuestionCard({
             error={missing}
           />
         )}
-        {!answered && (
+        {expired && !answered && <Notice tone="error">Time's up. Sending your answer…</Notice>}
+        {!answered && !expired && (
           <button type="submit" disabled={pending}>
             {kind === 'self' ? 'Show the official answer' : 'Check answer'}
           </button>

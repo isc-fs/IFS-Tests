@@ -152,6 +152,82 @@ export type BankSummary = {
 };
 
 /**
+ * DailyArea
+ */
+export type DailyArea = {
+    /**
+     * Area
+     */
+    area: string;
+    /**
+     * Budget S
+     */
+    budget_s: number;
+    /**
+     * State
+     */
+    state: 'new' | 'started' | 'done';
+    /**
+     * Deadline At
+     */
+    deadline_at: string | null;
+    /**
+     * Correct
+     */
+    correct: boolean | null;
+    /**
+     * Late
+     */
+    late: boolean | null;
+    /**
+     * Points
+     */
+    points: number;
+};
+
+/**
+ * DailyResult
+ */
+export type DailyResult = {
+    question: PlayQuestion;
+    feedback: Feedback;
+    /**
+     * Late
+     */
+    late: boolean;
+    /**
+     * Points
+     */
+    points: number;
+    /**
+     * Streak
+     */
+    streak: number;
+};
+
+/**
+ * DailyStatus
+ */
+export type DailyStatus = {
+    /**
+     * Day
+     */
+    day: string;
+    /**
+     * Streak
+     */
+    streak: number;
+    /**
+     * Points Today
+     */
+    points_today: number;
+    /**
+     * Areas
+     */
+    areas: Array<DailyArea>;
+};
+
+/**
  * Feedback
  *
  * What the player sees after answering: the official answer and any worked solution.
@@ -470,6 +546,27 @@ export const Status = {
  * Status
  */
 export type Status = typeof Status[keyof typeof Status];
+
+/**
+ * TimedQuestion
+ *
+ * A question whose clock is running. `server_now` lets the browser correct for its own clock.
+ */
+export type TimedQuestion = {
+    /**
+     * Attempt Id
+     */
+    attempt_id: number;
+    question: PlayQuestion;
+    /**
+     * Deadline At
+     */
+    deadline_at: string;
+    /**
+     * Server Now
+     */
+    server_now: string;
+};
 
 /**
  * TokenIn
@@ -1086,3 +1183,109 @@ export type AnswerPracticeResponses = {
 };
 
 export type AnswerPracticeResponse = AnswerPracticeResponses[keyof AnswerPracticeResponses];
+
+export type DailyStatusData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/daily';
+};
+
+export type DailyStatusResponses = {
+    /**
+     * Successful Response
+     */
+    200: DailyStatus;
+};
+
+export type DailyStatusResponse = DailyStatusResponses[keyof DailyStatusResponses];
+
+export type StartDailyData = {
+    body?: never;
+    path: {
+        /**
+         * Area
+         */
+        area: 'mech' | 'elec' | 'rules';
+    };
+    query?: never;
+    url: '/api/daily/{area}/start';
+};
+
+export type StartDailyErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type StartDailyError = StartDailyErrors[keyof StartDailyErrors];
+
+export type StartDailyResponses = {
+    /**
+     * Successful Response
+     */
+    200: TimedQuestion;
+};
+
+export type StartDailyResponse = StartDailyResponses[keyof StartDailyResponses];
+
+export type AnswerDailyData = {
+    body: AnswerIn;
+    path: {
+        /**
+         * Attempt Id
+         */
+        attempt_id: number;
+    };
+    query?: never;
+    url: '/api/daily/attempts/{attempt_id}/answer';
+};
+
+export type AnswerDailyErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AnswerDailyError = AnswerDailyErrors[keyof AnswerDailyErrors];
+
+export type AnswerDailyResponses = {
+    /**
+     * Successful Response
+     */
+    200: DailyResult;
+};
+
+export type AnswerDailyResponse = AnswerDailyResponses[keyof AnswerDailyResponses];
+
+export type ReviewDailyData = {
+    body?: never;
+    path: {
+        /**
+         * Area
+         */
+        area: 'mech' | 'elec' | 'rules';
+    };
+    query?: never;
+    url: '/api/daily/{area}/review';
+};
+
+export type ReviewDailyErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ReviewDailyError = ReviewDailyErrors[keyof ReviewDailyErrors];
+
+export type ReviewDailyResponses = {
+    /**
+     * Successful Response
+     */
+    200: DailyResult;
+};
+
+export type ReviewDailyResponse = ReviewDailyResponses[keyof ReviewDailyResponses];

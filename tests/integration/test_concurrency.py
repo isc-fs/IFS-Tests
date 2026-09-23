@@ -4,15 +4,20 @@ from __future__ import annotations
 
 import threading
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 import pytest
 from sqlalchemy import Engine, func, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from ifs_tests.db.models import User
-from ifs_tests.services import accounts
+from ifs_tests.bank.mirror import load_bank
+from ifs_tests.bank.sample import SAMPLE_DIR
+from ifs_tests.db.models import AnswerOption, Attempt, DailyQuestion, User
+from ifs_tests.domain.daily import madrid_day
+from ifs_tests.services import accounts, daily
+from ifs_tests.services.bank import import_bank
 
 pytestmark = pytest.mark.integration
 NOW = datetime(2026, 10, 1, tzinfo=UTC)
@@ -94,3 +99,48 @@ def test_parallel_wrong_current_passwords_cannot_beat_the_lockout(db: Session, a
     assert len(statuses) == 20 and statuses.count(403) <= 5 and 429 in statuses
     db.expire_all()
     assert db.get_one(User, admin.id).locked_until is not None
+
+
+@pytest.fixture
+def daily_player(db: Session, tmp_path: Path) -> User:
+    import_bank(db, load_bank(SAMPLE_DIR), SAMPLE_DIR / "img", tmp_path, NOW)
+    user = User(email="p@x.com", password_hash="x", display_name="Player")
+    db.add(user)
+    db.commit()
+    return user
+
+
+def test_many_first_visitors_of_the_day_get_the_same_questions(
+    db: Session, app_engine: Engine, daily_player: User
+) -> None:
+    day = madrid_day(NOW)
+    results = race(app_engine, *[lambda s: daily.ensure_daily(s, day)] * 6)
+    assert all(r == results[0] for r in results), results
+    assert db.scalar(select(func.count()).select_from(DailyQuestion)) == 3
+
+
+def test_a_double_start_gives_one_attempt_and_one_deadline(
+    db: Session, app_engine: Engine, daily_player: User
+) -> None:
+    results = race(
+        app_engine, *[lambda s: daily.start(s, s.get_one(User, daily_player.id), "mech", NOW)[1]] * 4
+    )
+    assert len({(a.id, a.deadline_at) for a in results}) == 1, results
+    assert db.scalar(select(func.count()).select_from(Attempt)) == 1
+
+
+def test_a_double_submit_is_graded_once(db: Session, app_engine: Engine, daily_player: User) -> None:
+    _, attempt = daily.start(db, daily_player, "rules", NOW)
+    options = list(db.scalars(select(AnswerOption.id).where(AnswerOption.question_id == attempt.question_id)))
+    later = NOW + timedelta(seconds=10)
+    results = race(
+        app_engine,
+        *[
+            (lambda s, o=o: daily.answer(s, s.get_one(User, daily_player.id), attempt.id, [o], None, later))
+            for o in options
+        ],
+    )
+    assert len({(r.checked.correct, r.points) for r in results}) == 1, results
+    row = db.get_one(Attempt, attempt.id)
+    db.refresh(row)
+    assert row.submitted_at == later and row.answer["options"][0] in options

@@ -2,10 +2,7 @@ import { Link } from 'react-router'
 import { Page } from '../components/Page'
 import { useMe } from '../lib/api'
 
-const NEXT = [
-  { title: 'Daily question', text: 'One question per area every day, against the clock. Keep your streak.' },
-  { title: 'Mock quizzes', text: 'Replay FSG, FSA and more with the real time budget per question.' },
-]
+const NEXT = [{ title: 'Mock quizzes', text: 'Replay FSG, FSA and more with the real time budget per question.' }]
 
 export default function Home() {
   const { data: user } = useMe()
@@ -20,6 +17,15 @@ export default function Home() {
           First step: <Link to="/profile">set your vertical</Link> so your answers count for your team on the board.
         </p>
       )}
+      <section className="panel stack" aria-labelledby="daily-title">
+        <h2 id="daily-title">Daily question</h2>
+        <p>One mechanical, one electrical and one rules question every day, against the clock. Keep your streak.</p>
+        <p>
+          <Link to="/daily" className="button">
+            Today's questions
+          </Link>
+        </p>
+      </section>
       <section className="panel stack" aria-labelledby="practice-title">
         <h2 id="practice-title">Practice by topic</h2>
         <p>Mechanical, electrical and rules questions from every past quiz, graded on the spot.</p>
