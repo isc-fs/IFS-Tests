@@ -1,7 +1,7 @@
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { expect, test } from 'vitest'
-import { MEMBER, renderApp, signedOut } from '../test/render'
+import { MEMBER, renderApp, session, signedOut } from '../test/render'
 
 test('protected pages send signed-out visitors to the login page and back', async () => {
   const { router } = renderApp('/profile', signedOut)
@@ -46,13 +46,22 @@ test('an empty sign-in form says what is missing and sends nothing', async () =>
 })
 
 test('successful sign in lands on the requested page with the page title set', async () => {
-  const { router } = renderApp('/login?next=/profile', { ...signedOut, 'POST /auth/login': { body: MEMBER } })
+  const { router } = renderApp('/login?next=/profile', session('POST /auth/login', MEMBER))
   await userEvent.type(await screen.findByLabelText('Email'), MEMBER.email)
   await userEvent.type(screen.getByLabelText('Password'), 'tractive system 900V!')
   await userEvent.click(screen.getByRole('button', { name: 'Sign in' }))
   await waitFor(() => expect(router.state.location.pathname).toBe('/profile'))
   await waitFor(() => expect(document.title).toBe('Profile · IFS-Tests'))
   expect(screen.getByRole('heading', { level: 1 })).toHaveFocus()
+})
+
+test('a browser that refuses the session cookie gets an explanation, not a sign-in loop', async () => {
+  const { router } = renderApp('/login?next=/daily', { ...signedOut, 'POST /auth/login': { body: MEMBER } })
+  await userEvent.type(await screen.findByLabelText('Email'), MEMBER.email)
+  await userEvent.type(screen.getByLabelText('Password'), 'tractive system 900V!')
+  await userEvent.click(screen.getByRole('button', { name: 'Sign in' }))
+  expect(await screen.findByRole('alert')).toHaveTextContent("didn't keep the sign-in cookie")
+  expect(router.state.location.pathname).toBe('/login')
 })
 
 test('an API 401 while signed in means the session ended', async () => {
