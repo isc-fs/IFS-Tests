@@ -5,11 +5,13 @@ returns its questions with answers, images and solutions embedded. Raw
 responses are cached under data/fsquiz/raw so re-runs only fetch what is
 missing.
 """
+
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from .client import FSQuiz, NotFound
 from .normalize import build_bank
@@ -22,7 +24,7 @@ def _dump(path: Path, obj: object) -> None:
     path.write_text(json.dumps(obj, ensure_ascii=False, indent=1))
 
 
-def _load(path: Path) -> object:
+def _load(path: Path) -> Any:
     return json.loads(path.read_text())
 
 
@@ -33,7 +35,7 @@ def mirror(
     question_index: bool = False,
     images: bool = False,
     log=print,
-) -> dict:
+) -> dict[str, Any]:
     raw = data_dir / "raw"
 
     events = api.events_all()
@@ -86,7 +88,7 @@ def mirror(
         documents=_load(raw / "documents.json"),
         last_qualifiers=_load(raw / "last_qualifiers.json"),
     )
-    bank["fetched_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    bank["fetched_at"] = datetime.now(UTC).isoformat(timespec="seconds")
     _dump(data_dir / "bank.json", bank)
 
     if images:
@@ -103,8 +105,9 @@ def mirror(
     return bank
 
 
-def load_bank(data_dir: Path = DATA_DIR) -> dict:
+def load_bank(data_dir: Path = DATA_DIR) -> dict[str, Any]:
     path = data_dir / "bank.json"
     if not path.exists():
         raise SystemExit(f"{path} not found. Run `uv run ifs-tests mirror` first.")
-    return _load(path)
+    bank: dict[str, Any] = _load(path)
+    return bank

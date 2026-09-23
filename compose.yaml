@@ -1,0 +1,31 @@
+# Local development stack: `docker compose up --build`, then http://localhost:8000
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ifs_tests
+      POSTGRES_USER: ifs
+      POSTGRES_PASSWORD: ifs
+    ports:
+      # 55432 on the host: 5432 is often taken by other local Postgres containers.
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ifs -d ifs_tests"]
+      interval: 5s
+      retries: 10
+
+  api:
+    build: .
+    environment:
+      IFS_ENV: local
+      IFS_DATABASE_URL: postgresql+psycopg://ifs:ifs@db:5432/ifs_tests
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:

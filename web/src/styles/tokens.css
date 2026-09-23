@@ -1,0 +1,171 @@
+/* Copied verbatim from isc-fs/IFS-Web code/src/styles/tokens.css — keep in sync, don't redefine the brand core. */
+/* ISC Formula Student — design tokens.
+ * Values are taken verbatim from the ISC design system. Never redefine the
+ * brand core: --isc-green is RAL 6005, --isc-gold is RAL 1003.
+ */
+
+:root {
+  /* Brand core */
+  --isc-green: #064229;
+  --isc-gold: #ffb81d;
+  --isc-graphite: #404040;
+  --isc-white: #ffffff;
+
+  /* Green ramp */
+  --isc-green-900: #04311e;
+  --isc-green-800: #054228;
+  --isc-green-700: #064229;
+  --isc-green-600: #0a5334;
+  --isc-green-500: #0d6b43;
+  --isc-ink: #07130d;
+
+  /* Gold ramp */
+  --isc-gold-400: #ffc94f;
+  --isc-gold-500: #ffb81d;
+  --isc-gold-600: #e6a61a;
+  --isc-gold-700: #c88a00; /* display only on light */
+  --isc-gold-ink: #8c6510; /* the only gold that may set text on light */
+
+  /* Warm neutrals */
+  --isc-paper: #f7f5f1;
+  --isc-cream: #f2efe6;
+  --isc-sand: #dfdbd2;
+  --isc-stone: #8c8983;
+  --isc-graphite-600: #5d5d5d;
+  --isc-graphite-400: #828282;
+
+  /* Semantic — dark ground (the default ISC surface) */
+  --isc-d-bg: var(--isc-green);
+  --isc-d-bg-deep: var(--isc-ink);
+  --isc-d-surface: var(--isc-green-600);
+  --isc-d-text: var(--isc-white);
+  --isc-d-text-mut: rgba(255, 255, 255, 0.66);
+  --isc-d-accent: var(--isc-gold);
+  --isc-d-border: rgba(255, 255, 255, 0.16);
+  --isc-d-border-st: rgba(255, 255, 255, 0.32);
+
+  /* Semantic — light ground */
+  --isc-l-bg: var(--isc-paper);
+  --isc-l-bg-alt: var(--isc-cream);
+  --isc-l-surface: var(--isc-white);
+  --isc-l-text: var(--isc-graphite);
+  --isc-l-text-mut: var(--isc-graphite-600);
+  --isc-l-accent: var(--isc-green);
+  --isc-l-border: var(--isc-sand);
+  --isc-l-link: var(--isc-green-500);
+
+  /* Type families */
+  --isc-font-display: 'Jost', 'Futura', 'Century Gothic', sans-serif;
+  --isc-font-body: 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif;
+  --isc-font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+
+  /* Type scale */
+  --isc-fs-display-xl: 72px;
+  --isc-fs-display-l: 56px;
+  --isc-fs-display-m: 40px;
+  --isc-fs-h1: 32px;
+  --isc-fs-h2: 24px;
+  --isc-fs-h3: 20px;
+  --isc-fs-h4: 17px;
+  --isc-fs-body-l: 18px;
+  --isc-fs-body: 16px;
+  --isc-fs-body-s: 14px;
+  --isc-fs-caption: 13px;
+  --isc-fs-micro: 11px;
+
+  /* Type mechanics */
+  --isc-lh-display: 1.05;
+  --isc-lh-heading: 1.18;
+  --isc-lh-body: 1.55;
+  --isc-lh-dense: 1.35;
+  --isc-ls-display: -0.02em;
+  --isc-ls-heading: -0.01em;
+  --isc-ls-label: 0.16em;
+  --isc-ls-mono: 0.02em;
+  --isc-fw-display: 600;
+  --isc-fw-body: 400;
+  --isc-fw-strong: 600;
+
+  /* Spacing — 4px base, 8px rhythm */
+  --isc-space-1: 4px;
+  --isc-space-2: 8px;
+  --isc-space-3: 12px;
+  --isc-space-4: 16px;
+  --isc-space-5: 24px;
+  --isc-space-6: 32px;
+  --isc-space-7: 48px;
+  --isc-space-8: 64px;
+  --isc-space-9: 96px;
+  --isc-space-10: 128px;
+
+  /* Shape — square is the default */
+  --isc-radius-0: 0;
+  --isc-radius-sm: 2px;
+  --isc-radius-pill: 999px;
+  --isc-border-w: 1px;
+  --isc-rule-w: 2px;
+  --isc-rule: 2px solid var(--isc-gold);
+
+  /* Elevation */
+  --isc-shadow-0: none;
+  --isc-shadow-pop: 0 8px 32px rgba(4, 49, 30, 0.28);
+
+  /* Motion */
+  --isc-dur-fast: 120ms;
+  --isc-dur-base: 200ms;
+  --isc-dur-slow: 320ms;
+  --isc-ease: cubic-bezier(0.2, 0.6, 0.2, 1);
+
+  /* Layout */
+  --isc-maxw-prose: 68ch;
+  --isc-maxw-content: 1240px;
+  --isc-page-pad: 40px;
+}
+
+/* Grounds. Put .isc-dark or .isc-light on any container; components read only
+ * the contextual --isc-c-* variables, so grounds nest to any depth. */
+.isc-dark {
+  --isc-c-bg: var(--isc-d-bg);
+  --isc-c-bg-deep: var(--isc-d-bg-deep);
+  --isc-c-surface: var(--isc-d-surface);
+  --isc-c-text: var(--isc-d-text);
+  --isc-c-text-mut: var(--isc-d-text-mut);
+  --isc-c-accent: var(--isc-gold);
+  --isc-c-label: var(--isc-gold);
+  --isc-c-border: var(--isc-d-border);
+  --isc-c-border-strong: var(--isc-d-border-st);
+  --isc-c-num: var(--isc-gold);
+  --isc-c-link: var(--isc-gold);
+  --isc-c-input-bg: rgba(255, 255, 255, 0.06);
+  --isc-c-badge-outline: var(--isc-gold);
+  --isc-c-header-bg: var(--isc-green-900);
+  --isc-c-nav: rgba(255, 255, 255, 0.78);
+  --isc-c-nav-active: var(--isc-white);
+  --isc-c-nav-underline: var(--isc-gold);
+  --isc-c-error: #ff8a7a;
+  background: var(--isc-c-bg);
+  color: var(--isc-c-text);
+}
+
+.isc-light {
+  --isc-c-bg: var(--isc-l-bg);
+  --isc-c-bg-deep: var(--isc-l-bg-alt);
+  --isc-c-surface: var(--isc-l-surface);
+  --isc-c-text: var(--isc-l-text);
+  --isc-c-text-mut: var(--isc-l-text-mut);
+  --isc-c-accent: var(--isc-green);
+  --isc-c-label: var(--isc-green);
+  --isc-c-border: var(--isc-l-border);
+  --isc-c-border-strong: var(--isc-stone);
+  --isc-c-num: var(--isc-green);
+  --isc-c-link: var(--isc-l-link);
+  --isc-c-input-bg: var(--isc-white);
+  --isc-c-badge-outline: var(--isc-green);
+  --isc-c-header-bg: var(--isc-white);
+  --isc-c-nav: var(--isc-graphite-600);
+  --isc-c-nav-active: var(--isc-green);
+  --isc-c-nav-underline: var(--isc-gold);
+  --isc-c-error: #b3261e;
+  background: var(--isc-c-bg);
+  color: var(--isc-c-text);
+}

@@ -7,26 +7,27 @@
 
 # IFS-Tests roadmap
 
-Plan for the team's Formula Student quiz practice system. Each phase
+Plan for the team's Formula Student quiz training platform. Each phase
 is a cluster of feat branches cut from `dev`; a milestone tag on `main`
 closes the phase once every branch in it has merged. Branch status
 badges (✅ / 🔄 / 🔜 / ⏸) are derived from each branch's tracking issue
 state in GitHub Issues.
 
-Phases 1 and 2 are the groundwork: understand the FS-Quiz data, mirror
-it, sort it into mechanical and electrical topics, and make it
-practicable. Phases 3 and 4 (web app, daily question, leaderboard,
-Notion tracking) are **deferred until the team decides the format**;
-the options are laid out in `docs/proposals/`.
+Phase 1 is the groundwork (FS-Quiz mirror, proposal). Phases 2–4 build
+the web app on the team's own server: invite + password accounts,
+practice, mock quizzes, a daily question and a leaderboard. The design
+is in `docs/architecture.md` and `docs/adr/`. Phase 5 collects ideas for
+after launch.
 
 ## Phase summary
 
 | Phase | Title | Branches | Milestone tag |
 |:---:|---|---|---|
 | 1 | Foundations | ✅ done `feat/1-project-scope` · ✅ done `feat/2-fsquiz-client` · ✅ done `feat/3-team-proposal` | `v0.1.0` |
-| 2 | Question bank & practice<br><sub>Offline, no accounts: usable by anyone with the repo</sub> | 🔜 planned `feat/4-topic-taxonomy` · 🔜 planned `feat/5-mock-quiz` · 🔜 planned `feat/6-bank-export` | `v0.2.0` |
-| 3 | Team platform _(deferred)_<br><sub>Pending team decision: format, hosting, sign-in (see docs/proposals)</sub> | ⏸ deferred `feat/7-web-app` · ⏸ deferred `feat/8-uni-sign-in` · ⏸ deferred `feat/9-daily-question` · ⏸ deferred `feat/10-leaderboard` | `v0.3.0` |
-| 4 | Tracking & quiz day _(deferred)_<br><sub>Pending team decision: what we track and where</sub> | ⏸ deferred `feat/11-notion-sync` · ⏸ deferred `feat/12-quiz-day-drill` | `v0.4.0` |
+| 2 | Platform foundation<br><sub>Staging live on the team server, accounts and the question bank in place</sub> | 🔜 planned `feat/4-platform-skeleton` · 🔜 planned `feat/5-server-deploy` · 🔜 planned `feat/6-accounts-auth` · 🔜 planned `feat/7-bank-push` | `v0.2.0` |
+| 3 | Training MVP | 🔜 planned `feat/8-practice` · 🔜 planned `feat/9-admin-taxonomy` · 🔜 planned `feat/10-daily-question` · 🔜 planned `feat/11-mock-quiz` · 🔜 planned `feat/12-leaderboard` | `v0.3.0` |
+| 4 | Launch | 🔜 planned `feat/13-privacy-account` · 🔜 planned `feat/14-launch` | `v1.0.0` |
+| 5 | After launch _(deferred)_<br><sub>Ideas to prioritise with the team once the MVP is in use</sub> | ⏸ deferred `feat/15-admin-totp` · ⏸ deferred `feat/16-notion-sync` · ⏸ deferred `feat/17-solution-bounty` · ⏸ deferred `feat/18-team-questions` · ⏸ deferred `feat/19-quiz-day-drill` | `v1.1.0` |
 
 ## Branch diagram
 
@@ -44,7 +45,7 @@ gitGraph
     checkout dev
     merge feat/1-project-scope
     branch feat/2-fsquiz-client
-    commit id: "✔ FS-Quiz API v2 client, polite full mirror and API reference"
+    commit id: "✔ FS-Quiz API v2 client, polite full mirror, bank stats and API reference"
     checkout dev
     merge feat/2-fsquiz-client
     branch feat/3-team-proposal
@@ -55,21 +56,63 @@ gitGraph
     merge dev tag: "v0.1.0"
     checkout dev
 
-    %% Phase 2 — Question bank & practice
-    branch feat/4-topic-taxonomy
-    commit id: "○ Reviewed mech / elec (HV, DV, electronics) / rules labels for every question"
+    %% Phase 2 — Platform foundation
+    branch feat/4-platform-skeleton
+    commit id: "○ ADRs, FastAPI app, Alembic, SPA shell, local compose, CI, CodeQL"
     checkout dev
-    merge feat/4-topic-taxonomy
-    branch feat/5-mock-quiz
-    commit id: "○ Timed mock quiz that replays a real event quiz or a topic mix"
+    merge feat/4-platform-skeleton
+    branch feat/5-server-deploy
+    commit id: "○ Hardened production compose, scheduler, backups, deploy script, Nginx snippet"
     checkout dev
-    merge feat/5-mock-quiz
-    branch feat/6-bank-export
-    commit id: "○ Versioned export of the labelled bank for the app and for study sessions"
+    merge feat/5-server-deploy
+    branch feat/6-accounts-auth
+    commit id: "○ Invite links, Argon2id passwords, sessions, CSRF, roles, admin users, audit"
     checkout dev
-    merge feat/6-bank-export
+    merge feat/6-accounts-auth
+    branch feat/7-bank-push
+    commit id: "○ Bank tables, answer-key normaliser, idempotent import, mirrored images"
+    checkout dev
+    merge feat/7-bank-push
     checkout main
     merge dev tag: "v0.2.0"
+    checkout dev
+
+    %% Phase 3 — Training MVP
+    branch feat/8-practice
+    commit id: "○ Practice by topic with server-side grading and answer reveal"
+    checkout dev
+    merge feat/8-practice
+    branch feat/9-admin-taxonomy
+    commit id: "○ Reviewer tools for topic labels, answer keys and exclusions"
+    checkout dev
+    merge feat/9-admin-taxonomy
+    branch feat/10-daily-question
+    commit id: "○ One question per area per day, time-boxed, with streaks"
+    checkout dev
+    merge feat/10-daily-question
+    branch feat/11-mock-quiz
+    commit id: "○ Replay a real past quiz against its original clock"
+    checkout dev
+    merge feat/11-mock-quiz
+    branch feat/12-leaderboard
+    commit id: "○ Season leaderboards per person, area and vertical, with opt-out"
+    checkout dev
+    merge feat/12-leaderboard
+    checkout main
+    merge dev tag: "v0.3.0"
+    checkout dev
+
+    %% Phase 4 — Launch
+    branch feat/13-privacy-account
+    commit id: "○ Privacy notice, data export and deletion, season rollover, attribution"
+    checkout dev
+    merge feat/13-privacy-account
+    branch feat/14-launch
+    commit id: "○ Load test, restore drill, handover documentation, launch checklist"
+    checkout dev
+    merge feat/14-launch
+    checkout main
+    merge dev tag: "v1.0.0"
     checkout dev
 
 ```
