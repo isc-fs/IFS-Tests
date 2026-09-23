@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { AuditLogData, AuditLogErrors, AuditLogResponses, ChangePasswordData, ChangePasswordErrors, ChangePasswordResponses, CreateInviteData, CreateInviteErrors, CreateInviteResponses, InviteInfoData, InviteInfoErrors, InviteInfoResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutResponses, MeData, MeResponses, OpenInvitesData, OpenInvitesResponses, RegisterData, RegisterErrors, RegisterResponses, ResetData, ResetErrors, ResetInfoData, ResetInfoErrors, ResetInfoResponses, ResetLinkData, ResetLinkErrors, ResetLinkResponses, ResetResponses, RevokeInviteData, RevokeInviteErrors, RevokeInviteResponses, RevokeSessionsData, RevokeSessionsErrors, RevokeSessionsResponses, UpdateMeData, UpdateMeErrors, UpdateMeResponses, UpdateUserData, UpdateUserErrors, UpdateUserResponses, UsersData, UsersResponses } from './types.gen';
+import type { AuditLogData, AuditLogErrors, AuditLogResponses, BankSummaryData, BankSummaryResponses, ChangePasswordData, ChangePasswordErrors, ChangePasswordResponses, CreateInviteData, CreateInviteErrors, CreateInviteResponses, InviteInfoData, InviteInfoErrors, InviteInfoResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutResponses, MeData, MeResponses, OpenInvitesData, OpenInvitesResponses, RegisterData, RegisterErrors, RegisterResponses, ResetData, ResetErrors, ResetInfoData, ResetInfoErrors, ResetInfoResponses, ResetLinkData, ResetLinkErrors, ResetLinkResponses, ResetResponses, RevokeInviteData, RevokeInviteErrors, RevokeInviteResponses, RevokeSessionsData, RevokeSessionsErrors, RevokeSessionsResponses, UpdateMeData, UpdateMeErrors, UpdateMeResponses, UpdateUserData, UpdateUserErrors, UpdateUserResponses, UsersData, UsersResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -165,3 +165,8 @@ export const revokeInvite = <ThrowOnError extends boolean = false>(options: Opti
  * Audit Log
  */
 export const auditLog = <ThrowOnError extends boolean = false>(options?: Options<AuditLogData, ThrowOnError>): RequestResult<AuditLogResponses, AuditLogErrors, ThrowOnError> => (options?.client ?? client).get<AuditLogResponses, AuditLogErrors, ThrowOnError>({ url: '/api/admin/audit', ...options });
+
+/**
+ * Bank Summary
+ */
+export const bankSummary = <ThrowOnError extends boolean = false>(options?: Options<BankSummaryData, ThrowOnError>): RequestResult<BankSummaryResponses, unknown, ThrowOnError> => (options?.client ?? client).get<BankSummaryResponses, unknown, ThrowOnError>({ url: '/api/admin/bank', ...options });

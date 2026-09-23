@@ -57,6 +57,14 @@ The script pulls the image, dumps the database, runs migrations as `migrator`, r
 
 History: `/srv/quiz/<env>/deploy-history`. Current version: `/srv/quiz/<env>/deployed-tag`.
 
+### Question bank
+
+The bank lives in the database; images live in the `media` volume. Load it after the first deploy, and refresh it once a season after the January–February quizzes are published:
+```bash
+deploy/refresh-bank.sh staging     # then the same for prod
+```
+It mirrors FS-Quiz into the `fsquiz` volume (about 130 requests plus one per new image, one per second; only what is missing is fetched) and loads it into the database. Safe to repeat: unchanged questions are skipped, and a question whose official answer changed upstream is flagged under Admin → Question bank. Images FS-Quiz can't serve are skipped; questions that need a missing image stay hidden until it arrives. The mirror needs outbound HTTPS from the api container (through the `proxy` network).
+
 ## 3. Roll back
 
 ```bash

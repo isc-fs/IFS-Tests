@@ -4,9 +4,9 @@ from typing import Annotated
 
 from fastapi import APIRouter, Path, Query
 
-from ...services import accounts
+from ...services import accounts, bank
 from ..deps import Admin, AppSettings, Db, Now
-from ..schemas import AdminUser, AuditEntry, InviteIn, Link, OpenInvite, UserPatch
+from ..schemas import AdminUser, AuditEntry, BankSummary, InviteIn, Link, OpenInvite, UserPatch
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 Id = Annotated[int, Path(ge=1, le=2**31 - 1)]
@@ -56,3 +56,8 @@ def revoke_invite(invite_id: Id, admin: Admin, db: Db, now: Now) -> None:
 @router.get("/audit")
 def audit_log(_: Admin, db: Db, limit: Annotated[int, Query(ge=1, le=500)] = 100) -> list[AuditEntry]:
     return [AuditEntry.model_validate(e) for e in accounts.recent_audit(db, limit)]
+
+
+@router.get("/bank")
+def bank_summary(_: Admin, db: Db) -> BankSummary:
+    return BankSummary.model_validate(bank.summary(db))

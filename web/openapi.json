@@ -620,6 +620,27 @@
      }
     }
    }
+  },
+  "/api/admin/bank": {
+   "get": {
+    "tags": [
+     "admin"
+    ],
+    "summary": "Bank Summary",
+    "operationId": "bank_summary",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/BankSummary"
+        }
+       }
+      }
+     }
+    }
+   }
   }
  },
  "components": {
@@ -756,6 +777,60 @@
      "details"
     ],
     "title": "AuditEntry"
+   },
+   "BankSummary": {
+    "properties": {
+     "questions": {
+      "type": "integer",
+      "title": "Questions"
+     },
+     "playable": {
+      "type": "integer",
+      "title": "Playable"
+     },
+     "graded": {
+      "type": "integer",
+      "title": "Graded"
+     },
+     "by_area": {
+      "additionalProperties": {
+       "type": "integer"
+      },
+      "type": "object",
+      "title": "By Area"
+     },
+     "quizzes": {
+      "type": "integer",
+      "title": "Quizzes"
+     },
+     "key_changes": {
+      "type": "integer",
+      "title": "Key Changes"
+     },
+     "imported_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Imported At"
+     }
+    },
+    "type": "object",
+    "required": [
+     "questions",
+     "playable",
+     "graded",
+     "by_area",
+     "quizzes",
+     "key_changes",
+     "imported_at"
+    ],
+    "title": "BankSummary"
    },
    "HTTPValidationError": {
     "properties": {

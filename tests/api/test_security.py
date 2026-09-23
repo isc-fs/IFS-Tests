@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 
 import pytest
@@ -18,7 +19,7 @@ def test_every_api_route_needs_a_member_and_admin_routes_an_admin(
 ) -> None:
     paths = app_client.get("/api/openapi.json").json()["paths"]
     routes = [
-        (method.upper(), path.replace("{user_id}", "1").replace("{invite_id}", "1"))
+        (method.upper(), re.sub(r"\{[^}]+\}", "1", path))
         for path, ops in paths.items()
         if path.startswith("/api/")
         for method in ops

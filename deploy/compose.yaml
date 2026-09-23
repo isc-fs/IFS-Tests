@@ -30,6 +30,7 @@ services:
     cpus: 1.0
     volumes:
       - media:/data/media
+      - fsquiz:/data/fsquiz
     networks:
       internal: {}
       proxy:
@@ -109,4 +110,5 @@ networks:
 volumes:
   pgdata:
   media:
+  fsquiz:
   backups:

@@ -1,0 +1,458 @@
+{
+ "source": "IFS-Tests sample bank (made up for development and tests; not FS-Quiz data)",
+ "license": null,
+ "events": [
+  {
+   "event_id": 9001,
+   "short_name": "FS Demo",
+   "name": "Formula Student Demo",
+   "country": "Spain",
+   "website": null
+  },
+  {
+   "event_id": 9002,
+   "short_name": "FS Sample",
+   "name": "Formula Student Sample",
+   "country": "Spain",
+   "website": null
+  }
+ ],
+ "quizzes": [
+  {
+   "quiz_id": 9001,
+   "year": 2025,
+   "class": "ev",
+   "date": "2025-01-18",
+   "status": "complete",
+   "information": null,
+   "event_ids": [
+    9001
+   ],
+   "question_ids": [
+    90001,
+    90003,
+    90004,
+    90005,
+    90007,
+    90008,
+    90009,
+    90010
+   ],
+   "document_ids": [],
+   "last_qualifier": {
+    "method": "score",
+    "time_s": null,
+    "score": 5,
+    "correct_answers": 5
+   }
+  },
+  {
+   "quiz_id": 9002,
+   "year": 2025,
+   "class": "cv",
+   "date": "2025-01-25",
+   "status": "complete",
+   "information": null,
+   "event_ids": [
+    9001
+   ],
+   "question_ids": [
+    90001,
+    90002,
+    90006,
+    90008,
+    90012
+   ],
+   "document_ids": [],
+   "last_qualifier": null
+  },
+  {
+   "quiz_id": 9003,
+   "year": 2026,
+   "class": "dv",
+   "date": "2026-01-17",
+   "status": "complete",
+   "information": null,
+   "event_ids": [
+    9002
+   ],
+   "question_ids": [
+    90011,
+    90003,
+    90010
+   ],
+   "document_ids": [],
+   "last_qualifier": null
+  }
+ ],
+ "questions": [
+  {
+   "question_id": 90001,
+   "type": "single-choice",
+   "text": "A car with a 1.55 m wheelbase carries 46 % of its static weight on the front axle. How far behind the front axle is the centre of gravity?",
+   "time": 180,
+   "answers": [
+    {
+     "answer_id": 1,
+     "text": "0.713 m",
+     "is_correct": true
+    },
+    {
+     "answer_id": 2,
+     "text": "0.837 m",
+     "is_correct": false
+    },
+    {
+     "answer_id": 3,
+     "text": "0.775 m",
+     "is_correct": false
+    },
+    {
+     "answer_id": 4,
+     "text": "0.620 m",
+     "is_correct": false
+    }
+   ],
+   "images": [],
+   "solutions": [],
+   "quizzes": [
+    {
+     "quiz_id": 9001,
+     "position": 1
+    },
+    {
+     "quiz_id": 9002,
+     "position": 1
+    }
+   ]
+  },
+  {
+   "question_id": 90002,
+   "type": "input",
+   "text": "A steel tube (E = 210 GPa), 600 mm long with a 400 mm² cross-section, is loaded in tension with 45 kN. By how many millimetres does it lengthen? Give two decimals.",
+   "time": 240,
+   "answers": [
+    {
+     "answer_id": 5,
+     "text": "0.32",
+     "is_correct": true
+    }
+   ],
+   "images": [],
+   "solutions": [
+    {
+     "solution_id": 1,
+     "text": "δ = F·L / (A·E) = 45 000 N × 600 mm / (400 mm² × 210 000 N/mm²) = 0.32 mm",
+     "images": []
+    }
+   ],
+   "quizzes": [
+    {
+     "quiz_id": 9002,
+     "position": 2
+    }
+   ]
+  },
+  {
+   "question_id": 90003,
+   "type": "multi-choice",
+   "text": "Which of these must open when the shutdown circuit is opened? Select all that apply.",
+   "time": 150,
+   "answers": [
+    {
+     "answer_id": 6,
+     "text": "Both accumulator isolation relays (AIRs)",
+     "is_correct": true
+    },
+    {
+     "answer_id": 7,
+     "text": "The precharge relay",
+     "is_correct": true
+    },
+    {
+     "answer_id": 8,
+     "text": "The LV master switch",
+     "is_correct": false
+    },
+    {
+     "answer_id": 9,
+     "text": "The brake light",
+     "is_correct": false
+    }
+   ],
+   "images": [],
+   "solutions": [],
+   "quizzes": [
+    {
+     "quiz_id": 9001,
+     "position": 2
+    },
+    {
+     "quiz_id": 9003,
+     "position": 2
+    }
+   ]
+  },
+  {
+   "question_id": 90004,
+   "type": "input",
+   "text": "An accumulator has 144 cells in series, 3.6 V nominal and 4.2 V fully charged. Give the nominal and the maximum pack voltage in volts, separated by a semicolon.",
+   "time": 180,
+   "answers": [
+    {
+     "answer_id": 10,
+     "text": "518.4; 604.8",
+     "is_correct": true
+    }
+   ],
+   "images": [],
+   "solutions": [],
+   "quizzes": [
+    {
+     "quiz_id": 9001,
+     "position": 3
+    }
+   ]
+  },
+  {
+   "question_id": 90005,
+   "type": "input-range",
+   "text": "A 10 kΩ and a 4.7 kΩ resistor form a voltage divider on a 12 V supply. What voltage is across the 4.7 kΩ resistor, in volts?",
+   "time": 120,
+   "answers": [
+    {
+     "answer_id": 11,
+     "text": "3.8-3.9",
+     "is_correct": true
+    }
+   ],
+   "images": [],
+   "solutions": [],
+   "quizzes": [
+    {
+     "quiz_id": 9001,
+     "position": 4
+    }
+   ]
+  },
+  {
+   "question_id": 90006,
+   "type": "single-choice",
+   "text": "The beam in the figure is simply supported and loaded at mid-span. What is the maximum bending moment?",
+   "time": 180,
+   "answers": [
+    {
+     "answer_id": 12,
+     "text": "0.6 kNm",
+     "is_correct": true
+    },
+    {
+     "answer_id": 13,
+     "text": "1.2 kNm",
+     "is_correct": false
+    },
+    {
+     "answer_id": 14,
+     "text": "2.4 kNm",
+     "is_correct": false
+    },
+    {
+     "answer_id": 15,
+     "text": "0.3 kNm",
+     "is_correct": false
+    }
+   ],
+   "images": [
+    "sample/beam.png"
+   ],
+   "solutions": [],
+   "quizzes": [
+    {
+     "quiz_id": 9002,
+     "position": 3
+    }
+   ]
+  },
+  {
+   "question_id": 90007,
+   "type": "input",
+   "text": "Which three-letter acronym names the system that monitors the accumulator's cell voltages and temperatures?",
+   "time": 60,
+   "answers": [
+    {
+     "answer_id": 16,
+     "text": "AMS",
+     "is_correct": true
+    }
+   ],
+   "images": [],
+   "solutions": [],
+   "quizzes": [
+    {
+     "quiz_id": 9001,
+     "position": 5
+    }
+   ]
+  },
+  {
+   "question_id": 90008,
+   "type": "single-choice",
+   "text": "In the endurance event, what is the time penalty for each cone down or out?",
+   "time": 60,
+   "answers": [
+    {
+     "answer_id": 17,
+     "text": "1 s",
+     "is_correct": false
+    },
+    {
+     "answer_id": 18,
+     "text": "2 s",
+     "is_correct": true
+    },
+    {
+     "answer_id": 19,
+     "text": "5 s",
+     "is_correct": false
+    },
+    {
+     "answer_id": 20,
+     "text": "10 s",
+     "is_correct": false
+    }
+   ],
+   "images": [],
+   "solutions": [],
+   "quizzes": [
+    {
+     "quiz_id": 9001,
+     "position": 6
+    },
+    {
+     "quiz_id": 9002,
+     "position": 4
+    }
+   ]
+  },
+  {
+   "question_id": 90009,
+   "type": "drag_sort",
+   "text": "Sort from the lowest to the highest voltage: 60 V DC, 12 V, 600 V DC, 24 V.",
+   "time": 90,
+   "answers": [
+    {
+     "answer_id": 21,
+     "text": "12 V, 24 V, 60 V DC, 600 V DC",
+     "is_correct": true
+    }
+   ],
+   "images": [],
+   "solutions": [],
+   "quizzes": [
+    {
+     "quiz_id": 9001,
+     "position": 7
+    }
+   ]
+  },
+  {
+   "question_id": 90010,
+   "type": "single-choice",
+   "text": "Which document takes precedence when the rules and the event handbook disagree?",
+   "time": 60,
+   "answers": [
+    {
+     "answer_id": 22,
+     "text": "The rules",
+     "is_correct": false
+    },
+    {
+     "answer_id": 23,
+     "text": "The event handbook",
+     "is_correct": false
+    },
+    {
+     "answer_id": 24,
+     "text": "The latest published document",
+     "is_correct": false
+    }
+   ],
+   "images": [],
+   "solutions": [],
+   "quizzes": [
+    {
+     "quiz_id": 9001,
+     "position": 8
+    },
+    {
+     "quiz_id": 9003,
+     "position": 3
+    }
+   ]
+  },
+  {
+   "question_id": 90011,
+   "type": "single-choice",
+   "text": "Which state must the autonomous system reach after the emergency brake system has been triggered?",
+   "time": 90,
+   "answers": [
+    {
+     "answer_id": 25,
+     "text": "AS Emergency",
+     "is_correct": true
+    },
+    {
+     "answer_id": 26,
+     "text": "AS Finished",
+     "is_correct": false
+    },
+    {
+     "answer_id": 27,
+     "text": "AS Off",
+     "is_correct": false
+    },
+    {
+     "answer_id": 28,
+     "text": "AS Ready",
+     "is_correct": false
+    }
+   ],
+   "images": [],
+   "solutions": [],
+   "quizzes": [
+    {
+     "quiz_id": 9003,
+     "position": 1
+    }
+   ]
+  },
+  {
+   "question_id": 90012,
+   "type": "input",
+   "text": "A 300 kg car accelerates from 0 to 100 km/h in 3.0 s at a constant rate. What is the average tractive force, in newtons, to the nearest newton?",
+   "time": 150,
+   "answers": [
+    {
+     "answer_id": 29,
+     "text": "2778",
+     "is_correct": true
+    }
+   ],
+   "images": [],
+   "solutions": [
+    {
+     "solution_id": 2,
+     "text": "a = (100 / 3.6) / 3.0 = 9.26 m/s², F = m·a = 300 × 9.26 = 2778 N",
+     "images": []
+    }
+   ],
+   "quizzes": [
+    {
+     "quiz_id": 9002,
+     "position": 5
+    }
+   ]
+  }
+ ],
+ "documents": []
+}

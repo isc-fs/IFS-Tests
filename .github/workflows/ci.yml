@@ -68,6 +68,7 @@ jobs:
         run: |
           docker compose up -d --build --wait
           docker compose run --rm api alembic upgrade head
+          docker compose run --rm api ifs-tests push --sample
           printf '%s\n' "$E2E_ADMIN_PASSWORD" | docker compose exec -T api \
             ifs-tests create-admin --email e2e-admin@alu.comillas.edu --name "E2E Admin" --password-stdin
       - working-directory: web
@@ -108,7 +109,7 @@ jobs:
         run: >
           docker run --rm -v "$PWD:/mnt" -w /mnt
           koalaman/shellcheck:v0.11.0@sha256:61862eba1fcf09a484ebcc6feea46f1782532571a34ed51fedf90dd25f925a8d
-          deploy/deploy.sh deploy/restore.sh deploy/db/init-roles.sh deploy/db/backup.sh
+          deploy/deploy.sh deploy/restore.sh deploy/refresh-bank.sh deploy/db/init-roles.sh deploy/db/backup.sh
       - name: compose file is valid
         run: >
           QUIZ_ENV=staging IMAGE_TAG=sha-0000000 QUIZ_HOST=x APP_PASSWORD=x POSTGRES_PASSWORD=x

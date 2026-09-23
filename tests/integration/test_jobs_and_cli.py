@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 from collections.abc import Iterator
 from datetime import timedelta
+from pathlib import Path
 
 import pytest
 from sqlalchemy import Engine, func, select
@@ -83,3 +84,15 @@ def test_cli_bootstrap_invite_and_reset(cli_db: None, db: Session) -> None:
         run(["reset-link", "--email", "ghost@x.com"])
     assert "sessions" in run(["maintenance"])
     assert db.scalar(select(func.count()).select_from(User)) == 1
+
+
+def test_cli_push_loads_the_sample_bank_once(
+    cli_db: None, db: Session, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("IFS_MEDIA_DIR", str(tmp_path))
+    get_settings.cache_clear()
+    assert "added=12" in run(["push", "--sample"])
+    assert "unchanged=12" in run(["push", "--sample"])
+    assert len(list(tmp_path.glob("*.webp"))) == 1
+    with pytest.raises(SystemExit, match="not found"):
+        run(["--data", str(tmp_path / "nowhere"), "push"])

@@ -1,0 +1,136 @@
+"""Answer keys: turn FS-Quiz's free-text correct answers into something the server can grade.
+
+FS-Quiz stores every answer as text. Input answers mix decimal points and commas, lists separated by
+"," or ";", ranges written "lo-hi", zero-width spaces and the odd garbled value. A key is plain JSON:
+
+    {"kind": "choice", "mode": "one" | "all", "options": [option ids]}
+    {"kind": "number" | "numbers" | "range" | "text", "accept": [alternative, ...]}
+    {"kind": "self"}      an official answer exists but can't be graded automatically: shown, not scored
+
+Numbers keep their decimals so a key of "82.9" accepts what rounds to it (see grading.py).
+"""
+
+from __future__ import annotations
+
+import re
+import unicodedata
+from typing import Any
+
+Key = dict[str, Any]
+
+_JUNK = {0x200B: None, 0x200C: None, 0x200D: None, 0xFEFF: None, 0xA0: " ", 0x202F: " ", 0x2009: " "}
+_DASHES = {0x2212: "-", 0x2013: "-", 0x2014: "-"}
+_NUMBER = re.compile(r"^[+-]?\d+(?:[.,]\d+)?$")
+_RANGE = re.compile(r"^([+-]?\d+(?:[.,]\d+)?)\s*-\s*([+-]?\d+(?:[.,]\d+)?)$")
+_SEQUENCE = re.compile(r"^\d+(?:-\d+){2,}$")
+MAX_TEXT = 24
+
+
+def clean(text: str) -> str:
+    return unicodedata.normalize("NFKC", text.translate(_JUNK).translate(_DASHES)).strip()
+
+
+def number(text: str) -> dict[str, Any] | None:
+    """'82,9' -> {'v': 82.9, 'd': 1}: the value and how many decimals it was given with."""
+    text = clean(text).replace(" ", "")
+    if not _NUMBER.match(text):
+        return None
+    decimals = len(re.split(r"[.,]", text)[1]) if re.search(r"[.,]", text) else 0
+    return {"v": float(text.replace(",", ".")), "d": decimals}
+
+
+def split_values(text: str, expected: int | None = None) -> list[str]:
+    """Split a list of numbers. ';' wins, then ', ' or spaces; a bare ',' only splits when it can't be a
+    decimal comma: several of them, points elsewhere, or more than one value expected."""
+    text = clean(text)
+    if ";" in text:
+        parts = text.split(";")
+    elif re.search(r"\s", text):
+        parts = re.split(r"\s*,\s+|\s+", text)
+    elif "," in text and ("." in text or text.count(",") > 1 or (expected or 1) > 1):
+        parts = text.split(",")
+    elif _SEQUENCE.match(text):
+        parts = text.split("-")
+    else:
+        parts = [text]
+    return [p.strip() for p in parts if p.strip()]
+
+
+def numbers(text: str, expected: int | None = None) -> list[dict[str, Any]] | None:
+    parts = [number(p) for p in split_values(text, expected)]
+    if len(parts) < 2 or any(p is None for p in parts):
+        return None
+    return [p for p in parts if p is not None]
+
+
+def value_range(text: str) -> dict[str, float] | None:
+    m = _RANGE.match(clean(text).replace(" ", ""))
+    if not m:
+        return None
+    lo, hi = (float(x.replace(",", ".")) for x in m.groups())
+    return {"lo": min(lo, hi), "hi": max(lo, hi)}
+
+
+def normal_text(text: str) -> str:
+    return re.sub(r"\s+", "", clean(text).casefold())
+
+
+def _alternative(qtype: str, text: str) -> tuple[str, Any] | None:
+    if qtype == "input-range" or (
+        value_range(text) and not number(text) and not _SEQUENCE.match(clean(text))
+    ):
+        r = value_range(text)
+        return ("range", r) if r else None
+    if n := number(text):
+        return "number", n
+    if ns := numbers(text):
+        # Ascending whole numbers read as "which of these" sets, where order doesn't matter.
+        whole = all(x["d"] == 0 for x in ns)
+        ascending = all(a["v"] < b["v"] for a, b in zip(ns, ns[1:], strict=False))
+        return "numbers", {"values": ns, "ordered": not (whole and ascending)}
+    short = clean(text)
+    if 0 < len(short) <= MAX_TEXT and "," not in short:
+        return "text", normal_text(short)
+    return None
+
+
+def build_key(qtype: str, answers: list[dict[str, Any]], option_ids: list[int] | None = None) -> Key | None:
+    """The key for one question, or None when FS-Quiz has no correct answer for it.
+
+    `answers` are normalised FS-Quiz answers ({"text", "is_correct"}); `option_ids` are our IDs for them,
+    in the same order (only needed for choice questions)."""
+    correct = [i for i, a in enumerate(answers) if a["is_correct"]]
+    if not correct:
+        return None
+    if qtype in ("single-choice", "multi-choice"):
+        ids = option_ids if option_ids is not None else list(range(len(answers)))
+        return {
+            "kind": "choice",
+            "mode": "one" if qtype == "single-choice" else "all",
+            "options": [ids[i] for i in correct],
+        }
+    if qtype in ("input", "input-range"):
+        alternatives = [_alternative(qtype, answers[i]["text"] or "") for i in correct]
+        kinds = {a[0] for a in alternatives if a}
+        if None not in alternatives and len(kinds) == 1:
+            return {"kind": kinds.pop(), "accept": [a[1] for a in alternatives if a]}
+    return {"kind": "self"}
+
+
+def answer_kind(qtype: str, key: Key | None) -> str:
+    """How the answer is entered, shown to players before they answer (so it must not reveal the key)."""
+    if qtype == "single-choice":
+        return "choice-one"
+    if qtype == "multi-choice":
+        return "choice-many"
+    if key is None or key["kind"] == "self":
+        return "self"
+    return str(key["kind"])
+
+
+def display(qtype: str, answers: list[dict[str, Any]]) -> str | None:
+    """The official answer as people should read it."""
+    correct = [clean(a["text"] or "") for a in answers if a["is_correct"]]
+    if not correct:
+        return None
+    return "\n".join(correct) if qtype in ("single-choice", "multi-choice") else " or ".join(correct)

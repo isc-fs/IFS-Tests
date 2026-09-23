@@ -114,6 +114,16 @@ class UserPatch(In):
     status: Status | None = None
 
 
+class BankSummary(BaseModel):
+    questions: int
+    playable: int
+    graded: int
+    by_area: dict[str, int]
+    quizzes: int
+    key_changes: int
+    imported_at: datetime | None
+
+
 class AuditEntry(BaseModel):
     id: int
     at: datetime

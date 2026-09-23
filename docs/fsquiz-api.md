@@ -73,6 +73,7 @@ List endpoints return **at most 25 items** and are paginated with `start_id` (se
 | 8 | Some texts contain a literal backslash-n instead of a newline; solutions use `\r\n`; non-breaking spaces appear | `clean_text()` |
 | 9 | Undocumented values: question type `drag_sort`, quiz status `missing_correct_answer`, document types `Hydrogen Rules`, `EV/CV Hydrogen Concept Challenge`. Filter enums in the spec (`missing_questions`, `planned`...) don't match the stored statuses | Treat enums as open strings |
 | 10 | `time` is `0` for most older questions | `None` = unknown budget |
+| 12 | A quiz can list the same question twice (quiz 82, question 771) | The import keeps the first position |
 | 11 | `/quiz/{id}/info` declares `quiz_id` as a query parameter in the spec; it is a path parameter | — |
 
 ## Extraction strategy

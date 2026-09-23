@@ -74,6 +74,42 @@ export type AuditEntry = {
 };
 
 /**
+ * BankSummary
+ */
+export type BankSummary = {
+    /**
+     * Questions
+     */
+    questions: number;
+    /**
+     * Playable
+     */
+    playable: number;
+    /**
+     * Graded
+     */
+    graded: number;
+    /**
+     * By Area
+     */
+    by_area: {
+        [key: string]: number;
+    };
+    /**
+     * Quizzes
+     */
+    quizzes: number;
+    /**
+     * Key Changes
+     */
+    key_changes: number;
+    /**
+     * Imported At
+     */
+    imported_at: string | null;
+};
+
+/**
  * HTTPValidationError
  */
 export type HttpValidationError = {
@@ -770,3 +806,19 @@ export type AuditLogResponses = {
 };
 
 export type AuditLogResponse = AuditLogResponses[keyof AuditLogResponses];
+
+export type BankSummaryData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/admin/bank';
+};
+
+export type BankSummaryResponses = {
+    /**
+     * Successful Response
+     */
+    200: BankSummary;
+};
+
+export type BankSummaryResponse = BankSummaryResponses[keyof BankSummaryResponses];

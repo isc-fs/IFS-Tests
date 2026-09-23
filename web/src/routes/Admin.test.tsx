@@ -131,3 +131,31 @@ test('the audit trail reads as sentences', async () => {
   await userEvent.click(await screen.findByText('Recent activity'))
   expect(await screen.findByText(/Chief created a reset link for Marta/)).toBeInTheDocument()
 })
+
+const BANK = {
+  questions: 1072,
+  playable: 1070,
+  graded: 990,
+  by_area: { mech: 403, elec: 325, rules: 170, unclassified: 172 },
+  quizzes: 121,
+  key_changes: 2,
+  imported_at: '2026-09-23T10:00:00Z',
+}
+
+test('the question bank panel summarises what is loaded and flags changed answers', async () => {
+  renderApp('/admin', { ...base, 'GET /api/admin/bank': { body: BANK } })
+  const panel = await screen.findByRole('region', { name: 'Question bank' })
+  expect(within(panel).getByText(/1070 questions from 121 past quizzes, 990 of them graded/)).toBeInTheDocument()
+  expect(within(panel).getByText('Mechanical').parentElement).toHaveTextContent('403 Mechanical')
+  expect(within(panel).getByText(/2 are hidden until their images/)).toBeInTheDocument()
+  expect(within(panel).getByRole('alert')).toHaveTextContent('changed the official answer of 2 questions')
+})
+
+test('an empty bank says how to load one', async () => {
+  renderApp('/admin', {
+    ...base,
+    'GET /api/admin/bank': { body: { ...BANK, questions: 0, playable: 0, graded: 0, by_area: {}, quizzes: 0 } },
+  })
+  const panel = await screen.findByRole('region', { name: 'Question bank' })
+  expect(panel).toHaveTextContent('No questions yet')
+})

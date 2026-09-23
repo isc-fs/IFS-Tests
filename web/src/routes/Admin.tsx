@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import {
   auditLogOptions,
   auditLogQueryKey,
+  bankSummaryOptions,
   createInviteMutation,
   openInvitesOptions,
   openInvitesQueryKey,
@@ -16,6 +17,7 @@ import { type AdminUser, type InviteIn, Role, Status, Vertical } from '../api/ty
 import { ErrorNotice, Field, Form, Notice, SelectField } from '../components/Form'
 import { Page } from '../components/Page'
 import { queryClient, useMe } from '../lib/api'
+import { AREAS } from '../lib/areas'
 
 const when = (iso: string | null | undefined) =>
   iso
@@ -40,6 +42,7 @@ export default function Admin() {
     <Page title="Admin" eyebrow="Team">
       <InvitePanel />
       <Members selfId={me.id} />
+      <BankPanel />
       <AuditTrail />
     </Page>
   )
@@ -276,6 +279,45 @@ function Members({ selfId }: { selfId: number }) {
   )
 }
 
+function BankPanel() {
+  const { data: bank } = useQuery(bankSummaryOptions())
+  if (!bank) return null
+  return (
+    <section className="panel stack" aria-labelledby="bank-title">
+      <h2 id="bank-title">Question bank</h2>
+      {bank.questions === 0 ? (
+        <p className="muted">
+          No questions yet. On the server run <code>deploy/refresh-bank.sh</code>; locally,{' '}
+          <code>ifs-tests push --sample</code> loads a small made-up bank.
+        </p>
+      ) : (
+        <>
+          <p>
+            {bank.playable} questions from {bank.quizzes} past quizzes, {bank.graded} of them graded automatically. Last
+            loaded {when(bank.imported_at)}.
+          </p>
+          <ul className="stats">
+            {Object.entries(AREAS).map(([area, label]) => (
+              <li key={area}>
+                <strong>{bank.by_area[area] ?? 0}</strong> {label}
+              </li>
+            ))}
+          </ul>
+          {bank.questions > bank.playable && (
+            <p className="muted">{bank.questions - bank.playable} are hidden until their images are available.</p>
+          )}
+          {bank.key_changes > 0 && (
+            <Notice tone="error">
+              FS-Quiz changed the official answer of {bank.key_changes} question{bank.key_changes > 1 ? 's' : ''} since
+              it was first loaded. Reviewer tools to check them are on the roadmap.
+            </Notice>
+          )}
+        </>
+      )}
+    </section>
+  )
+}
+
 const ACTIONS: Record<string, string> = {
   'invite.create': 'created an invite',
   'invite.revoke': 'revoked an invite',
@@ -286,6 +328,7 @@ const ACTIONS: Record<string, string> = {
   'reset.create': 'created a reset link for',
   'password.reset': 'reset their password',
   'password.change': 'changed their password',
+  'bank.import': 'loaded the question bank',
 }
 
 function AuditTrail() {
@@ -306,7 +349,7 @@ function AuditTrail() {
           return (
             <li key={a.id}>
               <time dateTime={a.at}>{when(a.at)}</time> {a.actor ?? 'System'} {ACTIONS[a.action] ?? a.action}
-              {!self && a.target && !a.target.startsWith('invite:') && ` ${a.target}`}
+              {!self && a.target && a.actor !== null && !a.target.startsWith('invite:') && ` ${a.target}`}
               {a.action === 'user.update' &&
                 ` (${Object.entries(a.details)
                   .map(([k, v]) => `${k} → ${(v as string[])[1]}`)
