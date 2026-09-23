@@ -6,7 +6,7 @@ import { inviteInfo } from '../api/sdk.gen'
 import { Vertical } from '../api/types.gen'
 import { ErrorNotice, Field, Form, Notice, PASSWORD_HINT, SelectField, useFieldErrors } from '../components/Form'
 import { PublicPage, useFragmentToken } from '../components/Page'
-import { errorMessage, ME_KEY, queryClient } from '../lib/api'
+import { COOKIE_REFUSED, errorMessage, sessionWorks } from '../lib/api'
 
 export default function Invite() {
   const token = useFragmentToken()
@@ -17,11 +17,12 @@ export default function Invite() {
     retry: false,
   })
   const [form, setForm] = useState({ email: '', display_name: '', password: '', vertical: '' })
+  const [refused, setRefused] = useState(false)
   const join = useMutation({
     ...registerMutation(),
-    onSuccess: (me) => {
-      queryClient.setQueryData(ME_KEY, me)
-      navigate('/', { replace: true })
+    onSuccess: async () => {
+      if (await sessionWorks()) navigate('/', { replace: true })
+      else setRefused(true)
     },
   })
   const { errors, touch } = useFieldErrors(join.error)
@@ -88,6 +89,7 @@ export default function Invite() {
               error={errors.password}
             />
             <ErrorNotice error={join.error} />
+            {refused && <Notice tone="error">{COOKIE_REFUSED}</Notice>}
             <button type="submit" disabled={join.isPending}>
               {join.isPending ? 'Creating account…' : 'Create account'}
             </button>

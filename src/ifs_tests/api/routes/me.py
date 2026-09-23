@@ -2,9 +2,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Request
 
-from ...auth.sessions import COOKIE
 from ...services import accounts
-from ..deps import Db, Member, Now
+from ..deps import AppSettings, Db, Member, Now
 from ..schemas import Me, PasswordChangeIn, ProfileIn
 
 router = APIRouter(prefix="/api/me", tags=["me"])
@@ -21,5 +20,8 @@ def update_me(body: ProfileIn, user: Member, db: Db) -> Me:
 
 
 @router.post("/password", status_code=204)
-def change_password(body: PasswordChangeIn, request: Request, user: Member, db: Db, now: Now) -> None:
-    accounts.change_password(db, user, body.current_password, body.new_password, request.cookies[COOKIE], now)
+def change_password(
+    body: PasswordChangeIn, request: Request, user: Member, db: Db, now: Now, settings: AppSettings
+) -> None:
+    keep = request.cookies[settings.session_cookie]
+    accounts.change_password(db, user, body.current_password, body.new_password, keep, now)

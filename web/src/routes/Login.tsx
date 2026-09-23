@@ -4,7 +4,7 @@ import { Navigate, useNavigate, useSearchParams } from 'react-router'
 import { loginMutation } from '../api/@tanstack/react-query.gen'
 import { ErrorNotice, Field, Form, Notice } from '../components/Form'
 import { PublicPage } from '../components/Page'
-import { ME_KEY, queryClient, useMe } from '../lib/api'
+import { COOKIE_REFUSED, sessionWorks, useMe } from '../lib/api'
 
 /** Only paths inside this app, so a crafted ?next= can't send people to another site. */
 export function safeNext(next: string | null): string {
@@ -19,11 +19,12 @@ export default function Login() {
   const { data: user } = useMe()
   const [form, setForm] = useState({ email: '', password: '' })
   const [missing, setMissing] = useState<Partial<Record<keyof typeof form, string>>>({})
+  const [refused, setRefused] = useState(false)
   const signIn = useMutation({
     ...loginMutation(),
-    onSuccess: (me) => {
-      queryClient.setQueryData(ME_KEY, me)
-      navigate(next, { replace: true })
+    onSuccess: async () => {
+      if (await sessionWorks()) navigate(next, { replace: true })
+      else setRefused(true)
     },
   })
 
@@ -66,6 +67,7 @@ export default function Login() {
           error={missing.password}
         />
         <ErrorNotice error={signIn.error} />
+        {refused && <Notice tone="error">{COOKIE_REFUSED}</Notice>}
         <button type="submit" disabled={signIn.isPending}>
           {signIn.isPending ? 'Signing in…' : 'Sign in'}
         </button>
