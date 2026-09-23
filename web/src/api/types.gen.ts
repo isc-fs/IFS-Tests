@@ -904,6 +904,12 @@ export type ReviewQuestion = {
      * Right
      */
     right: number;
+    /**
+     * Answer Hidden
+     *
+     * The reviewer's own live question: answers withheld until answered
+     */
+    answer_hidden: boolean;
 };
 
 /**
@@ -1917,7 +1923,7 @@ export type ReviewQuestionsData = {
         /**
          * Area
          */
-        area?: string | null;
+        area?: 'mech' | 'elec' | 'rules' | 'unclassified' | null;
         /**
          * Topic
          */

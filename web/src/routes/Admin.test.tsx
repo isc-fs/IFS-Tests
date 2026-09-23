@@ -132,6 +132,49 @@ test('the audit trail reads as sentences', async () => {
   expect(await screen.findByText(/Chief created a reset link for Marta/)).toBeInTheDocument()
 })
 
+test('review actions in the audit trail say what changed', async () => {
+  const entry = (id: number, action: string, details: object) => ({
+    id,
+    at: '2026-09-30T09:00:00Z',
+    action,
+    actor: 'Chief',
+    target: 'question:12',
+    details,
+  })
+  renderApp('/admin', {
+    ...base,
+    'GET /api/admin/audit': {
+      body: [
+        entry(1, 'question.update', { area: ['elec', 'mech'], topic: ['hv', 'powertrain'] }),
+        entry(2, 'question.update', {
+          labels_reviewed: [false, true],
+          excluded: [false, true],
+          exclusion_note: [null, 'Old rules'],
+          upstream_change: ['flagged', 'checked'],
+        }),
+        entry(3, 'question.update', { topic: ['hv', null], excluded: [true, false] }),
+        entry(4, 'question.answer', { answer: '0.5', before: '0.32' }),
+        entry(5, 'question.answer_cleared', { removed: '0.5' }),
+        entry(6, 'report.resolve', { message: 'The figure is missing' }),
+        { ...entry(7, 'user.update', { role: ['member', 'reviewer'] }), target: 'Marta' },
+      ],
+    },
+  })
+  await userEvent.click(await screen.findByText('Recent activity'))
+  await screen.findByText(/Chief handled a report/)
+  const lines = [...document.querySelectorAll('.audit li')].map((li) => li.textContent?.replace(/^.*?\d{2}:\d{2} /, ''))
+  expect(lines).toEqual([
+    'Chief reviewed question 12 (area → mech, topic → powertrain)',
+    'Chief reviewed question 12 (labels confirmed, hidden, note → Old rules, upstream change checked)',
+    'Chief reviewed question 12 (topic → none, shown again)',
+    'Chief corrected the answer of question 12 (0.32 → 0.5)',
+    'Chief removed the correction of question 12 (was 0.5)',
+    'Chief handled a report on question 12',
+    'Chief changed Marta (role → reviewer)',
+  ])
+  expect(screen.queryByText(/The figure is missing/)).toBeNull()
+})
+
 const BANK = {
   questions: 1072,
   playable: 1070,

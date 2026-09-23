@@ -70,3 +70,50 @@ def test_validation_errors_do_not_echo_passwords(app_client: TestClient) -> None
 def test_unknown_api_paths_are_404_for_every_method(app_client: TestClient) -> None:
     for method, path in [("GET", "/api"), ("HEAD", "/api/me"), ("GET", "/auth/nope"), ("PUT", "/api/me")]:
         assert app_client.request(method, path, headers={"X-CSRF": "1"}).status_code == 404, (method, path)
+
+
+ANSWER_FIELDS = {"official", "correct_options", "correction", "is_correct", "key", "feedback", "summary"}
+# Responses allowed to carry answers: a player's own submission, a finished run, and the reviewer tools.
+MAY_REVEAL = {
+    ("post", "/api/practice/questions/{question_id}/answer"),
+    ("post", "/api/daily/attempts/{attempt_id}/answer"),
+    ("get", "/api/daily/{area}/review"),
+    ("post", "/api/mock/quizzes/{quiz_id}/start"),
+    ("get", "/api/mock/sessions/{session_id}"),
+    ("post", "/api/mock/sessions/{session_id}/answer"),
+}
+
+
+def _fields(schema: dict[str, object], components: dict[str, dict[str, object]], seen: set[str]) -> set[str]:
+    ref = schema.get("$ref")
+    if isinstance(ref, str):
+        name = ref.rsplit("/", 1)[1]
+        if name in seen:
+            return set()
+        return _fields(components[name], components, seen | {name})
+    found: set[str] = set()
+    props = schema.get("properties")
+    if isinstance(props, dict):
+        found |= set(props)
+        for sub in props.values():
+            found |= _fields(sub, components, seen)
+    for key in ("items", "additionalProperties"):
+        if isinstance(schema.get(key), dict):
+            found |= _fields(schema[key], components, seen)  # type: ignore[arg-type]
+    for key in ("anyOf", "allOf", "oneOf"):
+        for sub in schema.get(key, []) or []:  # type: ignore[attr-defined]
+            found |= _fields(sub, components, seen)
+    return found
+
+
+def test_answers_only_travel_in_the_responses_meant_for_them(app_client: TestClient) -> None:
+    spec = app_client.get("/api/openapi.json").json()
+    components = spec["components"]["schemas"]
+    for path, ops in spec["paths"].items():
+        for method, op in ops.items():
+            if (method, path) in MAY_REVEAL or path.startswith("/api/review/"):
+                continue
+            for response in op.get("responses", {}).values():
+                schema = response.get("content", {}).get("application/json", {}).get("schema", {})
+                leaked = _fields(schema, components, set()) & ANSWER_FIELDS
+                assert not leaked, (method, path, leaked)

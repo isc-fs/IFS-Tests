@@ -16,3 +16,11 @@ export const TOPICS: Record<string, string> = {
   electronics: 'Electronics',
   scoring: 'Scoring and events',
 }
+
+/** Topics each area can have; mirrors `AREAS` in the backend's `bank/topics.py`. */
+export const AREA_TOPICS: Record<string, string[]> = {
+  mech: ['dynamics', 'aero', 'structures', 'powertrain'],
+  elec: ['hv', 'dv', 'electronics'],
+  rules: ['scoring'],
+  unclassified: [],
+}

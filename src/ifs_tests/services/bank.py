@@ -140,7 +140,8 @@ def _write_question(db: DB, q: Question, raw: dict[str, Any], media: _Media, now
     if previous is None:
         db.add(AnswerKey(question_id=q.id, key=key, display=shown))
     else:
-        changed = previous.display != shown or previous.override is not None
+        # A hidden question that changed upstream may have been fixed: ask a reviewer to look again.
+        changed = previous.display != shown or previous.override is not None or q.excluded
         previous.key, previous.display = key, shown
         previous.override = previous.override_display = None
     if changed:
@@ -159,7 +160,9 @@ def import_bank(
     report = ImportReport()
     media = _Media(image_dir, media_dir)
     _upsert_events_and_quizzes(db, bank)
-    existing = {q.fsquiz_id: q for q in db.scalars(select(Question).where(Question.fsquiz_id.is_not(None)))}
+    # Locked, so a reviewer hiding or relabelling a question mid-import isn't undone by stale values.
+    locked = db.scalars(select(Question).where(Question.fsquiz_id.is_not(None)).with_for_update())
+    existing = {q.fsquiz_id: q for q in locked}
     # Media files can be lost independently of the database (a restore on a new server): rewrite those.
     lost_solution_media = {
         qid

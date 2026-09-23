@@ -82,13 +82,47 @@ test('players can report a problem once they have answered', async () => {
   })
   await userEvent.click(await screen.findByRole('radio', { name: '0.837 m' }))
   await userEvent.click(screen.getByRole('button', { name: 'Check answer' }))
-  await userEvent.click(await screen.findByRole('button', { name: 'Report a problem with this question' }))
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Next question' })).toHaveFocus())
+  const report = screen.getByRole('button', { name: 'Report a problem with this question' })
+  expect(report.closest('[aria-live]')).toBeNull()
+  await userEvent.click(report)
+  const field = screen.getByLabelText("What's wrong?")
+  expect(field).toHaveFocus()
+  expect(field.closest('[aria-live]')).toBeNull()
   const send = screen.getByRole('button', { name: 'Send report' })
   expect(send).toBeDisabled()
-  await userEvent.type(screen.getByLabelText("What's wrong?"), 'The figure is missing')
+  await userEvent.type(field, 'The figure is missing')
   await userEvent.click(send)
-  expect(await screen.findByText('Thanks. A reviewer will take a look.')).toBeInTheDocument()
+  const thanks = await screen.findByText('Thanks. A reviewer will take a look.')
+  expect(thanks).toHaveFocus()
   expect(sent('POST /api/questions/7/report')[0].body).toEqual({ message: 'The figure is missing' })
+})
+
+test('cancelling a report returns focus, and a rejected message is explained next to the field', async () => {
+  renderApp('/practice', {
+    ...api(CHOICE, { correct: false, official: '0.713 m', correct_options: [70], solutions: [] }),
+    'POST /api/questions/7/report': {
+      status: 400,
+      body: { detail: 'Check the message.', fields: { message: 'Say a bit more about what is wrong.' } },
+    },
+  })
+  await userEvent.click(await screen.findByRole('radio', { name: '0.837 m' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Check answer' }))
+  await userEvent.click(await screen.findByRole('button', { name: 'Report a problem with this question' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+  const report = screen.getByRole('button', { name: 'Report a problem with this question' })
+  expect(report).toHaveFocus()
+
+  await userEvent.click(report)
+  const field = screen.getByLabelText("What's wrong?")
+  await userEvent.type(field, 'bad')
+  await userEvent.click(screen.getByRole('button', { name: 'Send report' }))
+  await waitFor(() => expect(field).toHaveAttribute('aria-invalid', 'true'))
+  expect(field).toHaveAccessibleDescription(/Say a bit more about what is wrong\./)
+  expect(field).toHaveFocus()
+  await userEvent.type(field, 'ly drawn figure')
+  expect(field).toHaveAttribute('aria-invalid', 'false')
+  expect(screen.queryByText('Say a bit more about what is wrong.')).toBeNull()
 })
 
 test('a list answer explains the format and shows the official answer', async () => {

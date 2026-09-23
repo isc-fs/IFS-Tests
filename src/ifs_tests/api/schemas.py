@@ -314,6 +314,9 @@ class ReviewQuestion(BaseModel):
     reports: list[ReviewReport]
     answered: int
     right: int
+    answer_hidden: bool = Field(
+        description="The reviewer's own live question: answers withheld until answered"
+    )
 
 
 class ReviewPatch(In):

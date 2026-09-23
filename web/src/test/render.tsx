@@ -6,9 +6,12 @@ import { queryClient } from '../lib/api'
 import { routes } from '../routes'
 
 type Reply = { status?: number; body?: unknown }
-export type Api = Record<string, Reply | ((body: unknown) => Reply)>
+export type Api = Record<string, Reply | ((body: unknown) => Reply | Promise<Reply>)>
 
-/** Mocks fetch by "METHOD /path" and renders the app at `path` (use `#token` for invite/reset links). */
+/**
+ * Mocks fetch by "METHOD /path" and renders the app at `path` (use `#token` for invite/reset links).
+ * A handler may return a promise to hold its reply.
+ */
 export function renderApp(path: string, api: Api) {
   const calls: { key: string; body: unknown; headers: Headers; url: URL }[] = []
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
@@ -24,7 +27,7 @@ export function renderApp(path: string, api: Api) {
     calls.push({ key, body, headers: request.headers, url: new URL(request.url) })
     const handler = api[key]
     const reply =
-      typeof handler === 'function' ? handler(body) : (handler ?? { status: 404, body: { detail: 'Not Found' } })
+      typeof handler === 'function' ? await handler(body) : (handler ?? { status: 404, body: { detail: 'Not Found' } })
     return new Response(reply.body === undefined ? null : JSON.stringify(reply.body), {
       status: reply.status ?? 200,
       headers: { 'content-type': 'application/json' },

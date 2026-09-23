@@ -11,14 +11,25 @@ from sqlalchemy import Select, case, exists, func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session as DB
 
-from ..db.models import AnswerKey, AnswerOption, Attempt, Question, Report, User
+from ..bank.topics import AREAS as TOPICS_BY_AREA
+from ..db.models import (
+    AnswerKey,
+    AnswerOption,
+    Attempt,
+    DailyQuestion,
+    MockSession,
+    Question,
+    QuizQuestion,
+    Report,
+    User,
+)
 from ..domain import keys
+from ..domain.daily import madrid_day
 from .accounts import audit
 from .errors import UserError
 
 Queue = Literal["all", "reports", "changed", "unclassified", "ungraded", "excluded"]
 PAGE = 30
-TOPICS = ("dynamics", "aero", "structures", "powertrain", "hv", "dv", "electronics", "scoring")
 
 
 def _open_reports() -> Any:
@@ -85,6 +96,32 @@ class Detail:
     reports: list[tuple[Report, str | None]]
     answered: int
     right: int
+    # The reviewer is playing this question right now (today's daily or an open mock run): answers withheld.
+    answer_hidden: bool
+
+
+def live_for(db: DB, user: User, question_id: int, now: datetime) -> bool:
+    """Whether `user` still has to answer this question in a scored mode: today's daily question for its
+    area, or a question in one of their open mock runs. Reviewers must not read those answers early."""
+    day = madrid_day(now)
+    answered = select(Attempt.id).where(
+        Attempt.user_id == user.id, Attempt.question_id == question_id, Attempt.submitted_at.is_not(None)
+    )
+    daily = exists().where(DailyQuestion.day == day, DailyQuestion.question_id == question_id)
+    in_run = (
+        select(MockSession.id)
+        .join(QuizQuestion, QuizQuestion.quiz_id == MockSession.quiz_id)
+        .where(
+            MockSession.user_id == user.id,
+            MockSession.finished_at.is_(None),
+            QuizQuestion.question_id == question_id,
+            ~exists(answered.where(Attempt.session_id == MockSession.id)),
+        )
+    )
+    daily_open = db.scalar(select(daily)) and not db.scalar(
+        select(exists(answered.where(Attempt.mode == "daily", Attempt.day == day)))
+    )
+    return bool(daily_open or db.scalar(select(exists(in_run))))
 
 
 def _question(db: DB, question_id: int) -> Question:
@@ -94,7 +131,7 @@ def _question(db: DB, question_id: int) -> Question:
     return q
 
 
-def detail(db: DB, question_id: int) -> Detail:
+def detail(db: DB, reviewer: User, question_id: int, now: datetime) -> Detail:
     q = db.get(Question, question_id)
     if q is None:
         raise UserError("That question doesn't exist.", 404)
@@ -112,7 +149,10 @@ def detail(db: DB, question_id: int) -> Detail:
             Attempt.question_id == q.id, Attempt.submitted_at.is_not(None) | (Attempt.mode == "practice")
         )
     ).one()
-    return Detail(q, db.get(AnswerKey, q.id), list(options), [(r, n) for r, n in reports], answered, right)
+    hidden = live_for(db, reviewer, q.id, now)
+    return Detail(
+        q, db.get(AnswerKey, q.id), list(options), [(r, n) for r, n in reports], answered, right, hidden
+    )
 
 
 def _serve(q: Question) -> None:
@@ -121,12 +161,20 @@ def _serve(q: Question) -> None:
 
 def update(db: DB, reviewer: User, question_id: int, changes: dict[str, Any], now: datetime) -> Question:
     """Labels, exclusion and "I've checked the upstream change". Only the fields in `changes` are touched."""
+    # null means "leave as is", except for topic and note, where it clears them.
+    changes = {k: v for k, v in changes.items() if v is not None or k in ("topic", "exclusion_note")}
     q = _question(db, question_id)
     before = {k: getattr(q, k) for k in ("area", "topic", "labels_reviewed", "excluded", "exclusion_note")}
     if "area" in changes or "topic" in changes:
-        area, topic = changes.get("area", q.area), changes.get("topic", q.topic)
-        if area not in ("mech", "elec", "rules", "unclassified") or (topic and topic not in TOPICS):
-            raise UserError("Pick an area and topic from the lists.")
+        area = changes.get("area", q.area)
+        allowed = TOPICS_BY_AREA.get(area, [])
+        topic = changes.get("topic", q.topic if q.topic in allowed else None)
+        if area not in ("mech", "elec", "rules", "unclassified"):
+            raise UserError("Pick an area from the list.", fields={"area": "Pick an area from the list."})
+        if topic and topic not in allowed:
+            raise UserError(
+                "That topic isn't part of that area.", fields={"topic": "Pick a topic of this area."}
+            )
         q.area, q.topic, q.labels_reviewed = area, topic or None, True
     if "labels_reviewed" in changes:
         q.labels_reviewed = bool(changes["labels_reviewed"])
@@ -134,12 +182,13 @@ def update(db: DB, reviewer: User, question_id: int, changes: dict[str, Any], no
         q.excluded = bool(changes["excluded"])
         note = (changes.get("exclusion_note") or "").strip()[:200]
         q.exclusion_note = (note or None) if q.excluded else None
-    if changes.get("acknowledge_change"):
+    acknowledged = bool(changes.get("acknowledge_change")) and q.key_changed_at is not None
+    if acknowledged:
         q.key_changed_at = None
     _serve(q)
     after = {k: getattr(q, k) for k in before}
     diff = {k: [before[k], after[k]] for k in before if before[k] != after[k]}
-    if changes.get("acknowledge_change"):
+    if acknowledged:
         diff["upstream_change"] = ["flagged", "checked"]
     if diff:
         q.updated_at = now
@@ -185,9 +234,10 @@ def set_answer(
             )
         override, shown = parsed, keys.clean(text)
         q.answer_kind = override["kind"]
+    previous = key.shown
     key.override, key.override_display = override, shown
     q.graded, q.updated_at = True, now
-    audit(db, reviewer, "question.answer", f"question:{q.id}", answer=shown, before=key.display)
+    audit(db, reviewer, "question.answer", f"question:{q.id}", answer=shown, before=previous)
     db.commit()
     return q
 
@@ -197,11 +247,12 @@ def clear_answer(db: DB, reviewer: User, question_id: int, now: datetime) -> Que
     key = db.get(AnswerKey, q.id)
     if key is None or key.override is None:
         raise UserError("There is no correction to remove.", 409)
+    removed = key.override_display
     key.override = key.override_display = None
     q.answer_kind = keys.answer_kind(q.type, key.key)
     q.graded = key.key is not None and key.key["kind"] != "self"
     q.updated_at = now
-    audit(db, reviewer, "question.answer_cleared", f"question:{q.id}")
+    audit(db, reviewer, "question.answer_cleared", f"question:{q.id}", removed=removed)
     db.commit()
     return q
 
@@ -214,7 +265,9 @@ def report(db: DB, user: User, question_id: int, message: str, now: datetime) ->
     text = " ".join(message.split())
     if not 3 <= len(text) <= 500:
         raise UserError("Say briefly what's wrong (up to 500 characters).", fields={"message": "Too short."})
-    if db.get(Question, question_id) is None:
+    seen = select(Attempt.id).where(Attempt.user_id == user.id, Attempt.question_id == question_id)
+    if not db.scalar(select(exists(seen))):
+        # Only questions this player has answered; the same reply as for a missing one reveals nothing.
         raise UserError("That question doesn't exist.", 404)
     open_ = (
         db.scalar(select(func.count()).where(Report.user_id == user.id, Report.resolved_at.is_(None))) or 0

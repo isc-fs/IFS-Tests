@@ -85,13 +85,20 @@ test('queues, search and more results', async () => {
   expect(calls.at(-1)?.url.searchParams.get('queue')).toBe('changed')
 })
 
-test('a question: confirm labels, acknowledge the upstream change, correct the answer, handle a report', async () => {
+test('a question: confirm labels, acknowledge the upstream change, correct the answer, keeping focus', async () => {
   const { sent } = renderApp('/review/7', {
     'GET /api/me': { body: ADMIN },
     'GET /api/review/questions/7': { body: DETAIL },
     'PATCH /api/review/questions/7': (body) => {
-      const b = body as { acknowledge_change?: boolean }
-      return { body: { ...DETAIL, ...b, key_changed_at: b.acknowledge_change ? null : DETAIL.key_changed_at } }
+      const b = body as { acknowledge_change?: boolean; area?: string }
+      return {
+        body: {
+          ...DETAIL,
+          ...b,
+          labels_reviewed: !!b.area,
+          key_changed_at: b.acknowledge_change ? null : DETAIL.key_changed_at,
+        },
+      }
     },
     'PUT /api/review/questions/7/answer': {
       body: {
@@ -103,31 +110,213 @@ test('a question: confirm labels, acknowledge the upstream change, correct the a
         ],
       },
     },
-    'POST /api/review/reports/5/resolve': { status: 204 },
   })
   expect(await screen.findByText('Which relay must open?')).toBeInTheDocument()
   expect(screen.getByText(/Answered 8 times, 25% right\. FS-Quiz #811\./)).toBeInTheDocument()
   expect(screen.getByText('The answer is the precharge relay')).toBeInTheDocument()
 
-  await userEvent.selectOptions(screen.getAllByLabelText('Topic')[0], 'electronics')
-  await userEvent.click(screen.getByRole('button', { name: 'Confirm labels' }))
-  await waitFor(() =>
-    expect(sent('PATCH /api/review/questions/7')[0].body).toEqual({ area: 'elec', topic: 'electronics' }),
-  )
+  const labels = screen.getByRole('form', { name: 'Area and topic' })
+  await userEvent.selectOptions(within(labels).getByLabelText('Topic'), 'electronics')
+  const confirm = within(labels).getByRole('button', { name: 'Confirm labels' })
+  await userEvent.click(confirm)
+  expect(await screen.findByText('Labels saved.')).toBeInTheDocument()
+  expect(sent('PATCH /api/review/questions/7')[0].body).toEqual({ area: 'elec', topic: 'electronics' })
+  expect(confirm).toHaveTextContent('Save labels')
+  expect(confirm).toHaveFocus()
 
   await userEvent.click(screen.getByRole('button', { name: "I've checked it" }))
-  await waitFor(() => expect(sent('PATCH /api/review/questions/7')[1].body).toEqual({ acknowledge_change: true }))
+  expect(await screen.findByText('Marked as checked.')).toHaveFocus()
+  expect(sent('PATCH /api/review/questions/7')[1].body).toEqual({ acknowledge_change: true })
+  expect(screen.queryByRole('heading', { name: 'Changed upstream' })).toBeNull()
 
   const answer = screen.getByRole('group', { name: 'The correct option' })
   await userEvent.click(within(answer).getByRole('radio', { name: 'Precharge' }))
-  await userEvent.click(screen.getByRole('button', { name: 'Save correction' }))
+  const save = screen.getByRole('button', { name: 'Save correction' })
+  await userEvent.click(save)
   expect(await screen.findByText('Answer corrected.')).toBeInTheDocument()
+  expect(screen.queryByText('Marked as checked.')).toBeNull()
   expect(sent('PUT /api/review/questions/7/answer')[0].body).toEqual({ options: [71] })
   const shown = screen.getByRole('article', { name: 'Question' })
   expect(within(shown).getByText('Precharge').closest('li')).toHaveTextContent('Corrected answer')
+  expect(save).toHaveFocus()
+})
 
-  await userEvent.click(screen.getByRole('button', { name: 'Mark handled' }))
-  await waitFor(() => expect(sent('POST /api/review/reports/5/resolve')).toHaveLength(1))
+test('removing a correction goes back to the FS-Quiz answer and keeps focus in the form', async () => {
+  const corrected = {
+    ...DETAIL,
+    reports: [],
+    key_changed_at: null,
+    correction: 'Precharge',
+    options: [
+      { ...DETAIL.options[0], corrected: false },
+      { ...DETAIL.options[1], corrected: true },
+    ],
+  }
+  const { sent } = renderApp('/review/7', {
+    'GET /api/me': { body: REVIEWER },
+    'GET /api/review/questions/7': { body: corrected },
+    'DELETE /api/review/questions/7/answer': { body: { ...DETAIL, reports: [], key_changed_at: null } },
+  })
+  const answer = await screen.findByRole('group', { name: 'The correct option' })
+  expect(within(answer).getByRole('radio', { name: 'Precharge' })).toBeChecked()
+  await userEvent.click(screen.getByRole('button', { name: "Use FS-Quiz's answer again" }))
+  expect(await screen.findByText('Correction removed.')).toBeInTheDocument()
+  expect(sent('DELETE /api/review/questions/7/answer')).toHaveLength(1)
+  expect(within(answer).getByRole('radio', { name: 'AIR' })).toBeChecked()
+  expect(screen.queryByRole('button', { name: "Use FS-Quiz's answer again" })).toBeNull()
+  expect(screen.getByRole('button', { name: 'Save correction' })).toHaveFocus()
+})
+
+test('each form shows its own error, and a new save clears the last notice', async () => {
+  const quiet = { ...DETAIL, reports: [], key_changed_at: null }
+  renderApp('/review/7', {
+    'GET /api/me': { body: REVIEWER },
+    'GET /api/review/questions/7': { body: quiet },
+    'PATCH /api/review/questions/7': (body) =>
+      (body as { excluded?: boolean }).excluded
+        ? { status: 409, body: { detail: 'Someone else just changed it.' } }
+        : { body: { ...quiet, labels_reviewed: true } },
+    'PUT /api/review/questions/7/answer': { status: 503, body: { detail: 'Try again in a minute.' } },
+  })
+  const labels = await screen.findByRole('form', { name: 'Area and topic' })
+  await userEvent.click(within(labels).getByRole('button', { name: 'Confirm labels' }))
+  expect(await screen.findByText('Labels saved.')).toBeInTheDocument()
+
+  const visibility = screen.getByRole('form', { name: 'Who sees it' })
+  await userEvent.click(within(visibility).getByRole('button', { name: 'Hide from players' }))
+  expect(await within(visibility).findByRole('alert')).toHaveTextContent('Someone else just changed it.')
+  expect(screen.queryByText('Labels saved.')).toBeNull()
+
+  const answer = screen.getByRole('form', { name: 'Correct answer' })
+  await userEvent.click(within(answer).getByRole('button', { name: 'Save correction' }))
+  expect(await within(answer).findByRole('alert')).toHaveTextContent('Try again in a minute.')
+  expect(within(labels).queryByRole('alert')).toBeNull()
+  expect(screen.getAllByRole('alert')).toHaveLength(2)
+})
+
+test('a rejected choice correction marks the options and focuses the first', async () => {
+  renderApp('/review/7', {
+    'GET /api/me': { body: REVIEWER },
+    'GET /api/review/questions/7': { body: { ...DETAIL, reports: [], key_changed_at: null } },
+    'PUT /api/review/questions/7/answer': {
+      status: 400,
+      body: { detail: 'Pick an option.', fields: { options: 'Pick exactly one option.' } },
+    },
+  })
+  await userEvent.click(await screen.findByRole('button', { name: 'Save correction' }))
+  const air = screen.getByRole('radio', { name: 'AIR' })
+  await waitFor(() => expect(air).toHaveAttribute('aria-invalid', 'true'))
+  expect(screen.getByRole('radio', { name: 'Precharge' })).toHaveAttribute('aria-invalid', 'true')
+  expect(air).toHaveAccessibleDescription('Pick exactly one option.')
+  expect(air).toHaveFocus()
+})
+
+test('reports are handled once, with a named button that waits for the server', async () => {
+  let release = () => {}
+  let handled = false
+  const { sent } = renderApp('/review/7', {
+    'GET /api/me': { body: REVIEWER },
+    'GET /api/review/questions/7': () => ({ body: { ...DETAIL, reports: handled ? [] : DETAIL.reports } }),
+    'POST /api/review/reports/5/resolve': () =>
+      new Promise((resolve) => {
+        release = () => {
+          handled = true
+          resolve({ status: 204 })
+        }
+      }),
+  })
+  const button = await screen.findByRole('button', { name: 'Mark handled: The answer is the precharge relay' })
+  await userEvent.click(button)
+  await waitFor(() => expect(button).toBeDisabled())
+  await userEvent.click(button)
+  expect(sent('POST /api/review/reports/5/resolve')).toHaveLength(1)
+  release()
+  expect(await screen.findByText('Report marked as handled.')).toHaveFocus()
+  expect(screen.queryByRole('heading', { name: 'Reports from players' })).toBeNull()
+  expect(screen.queryByRole('alert')).toBeNull()
+})
+
+test('long report messages are shortened in the button name', async () => {
+  const message = 'The official answer uses last year rules for the accumulator'
+  renderApp('/review/7', {
+    'GET /api/me': { body: REVIEWER },
+    'GET /api/review/questions/7': { body: { ...DETAIL, reports: [{ ...DETAIL.reports[0], message }] } },
+  })
+  expect(await screen.findByRole('button', { name: `Mark handled: ${message.slice(0, 40)}` })).toBeInTheDocument()
+})
+
+test('topics follow the area, and changing the area drops a topic from another area', async () => {
+  const { sent } = renderApp('/review/7', {
+    'GET /api/me': { body: REVIEWER },
+    'GET /api/review/questions/7': { body: { ...DETAIL, reports: [], key_changed_at: null } },
+    'PATCH /api/review/questions/7': {
+      body: { ...DETAIL, reports: [], key_changed_at: null, area: 'mech', topic: 'aero' },
+    },
+  })
+  const labels = await screen.findByRole('form', { name: 'Area and topic' })
+  const topic = within(labels).getByLabelText('Topic')
+  const options = () =>
+    within(topic)
+      .getAllByRole('option')
+      .map((o) => o.textContent)
+  expect(topic).toHaveValue('hv')
+  expect(options()).toEqual(['No topic', 'High voltage', 'Driverless', 'Electronics'])
+
+  await userEvent.selectOptions(within(labels).getByLabelText('Area'), 'mech')
+  expect(topic).toHaveValue('')
+  expect(options()).toEqual(['No topic', 'Vehicle dynamics', 'Aerodynamics', 'Structures', 'Powertrain'])
+  await userEvent.selectOptions(topic, 'aero')
+
+  await userEvent.selectOptions(within(labels).getByLabelText('Area'), 'unclassified')
+  expect(options()).toEqual(['No topic'])
+  await userEvent.selectOptions(within(labels).getByLabelText('Area'), 'mech')
+  await userEvent.selectOptions(topic, 'aero')
+  await userEvent.click(within(labels).getByRole('button', { name: 'Confirm labels' }))
+  await waitFor(() => expect(sent('PATCH /api/review/questions/7')[0].body).toEqual({ area: 'mech', topic: 'aero' }))
+})
+
+test('the list says it is loading until the first page arrives', async () => {
+  let release = () => {}
+  renderApp('/review', {
+    'GET /api/me': { body: REVIEWER },
+    'GET /api/review/questions': () =>
+      new Promise((resolve) => {
+        release = () => resolve({ body: { rows: [row(1)], total: 1, queues: QUEUES } })
+      }),
+  })
+  expect(await screen.findByText('Loading questions…')).toBeInTheDocument()
+  release()
+  expect(await screen.findByText('1 question')).toBeInTheDocument()
+  expect(screen.queryByText('Loading questions…')).toBeNull()
+})
+
+test("a reviewer's own live question keeps its answer hidden", async () => {
+  renderApp('/review/7', {
+    'GET /api/me': { body: REVIEWER },
+    'GET /api/review/questions/7': {
+      body: { ...DETAIL, reports: [], key_changed_at: null, answer_hidden: true },
+    },
+  })
+  expect(await screen.findByText(/This is one of your live questions/)).toHaveTextContent(
+    "Its answer stays hidden until you've answered it.",
+  )
+  const shown = screen.getByRole('article', { name: 'Question' })
+  expect(within(shown).queryByText(/FS-Quiz's answer/)).toBeNull()
+  expect(within(shown).getByText('AIR').closest('li')).not.toHaveClass('right')
+  expect(screen.queryByRole('heading', { name: 'Correct answer' })).toBeNull()
+  expect(screen.getByRole('heading', { name: 'Area and topic' })).toBeInTheDocument()
+})
+
+test('a typed answer stays hidden too', async () => {
+  renderApp('/review/7', {
+    'GET /api/me': { body: REVIEWER },
+    'GET /api/review/questions/7': {
+      body: { ...DETAIL, options: [], reports: [], key_changed_at: null, answer_hidden: true, correction: '0.5' },
+    },
+  })
+  expect(await screen.findByText(/This is one of your live questions/)).toBeInTheDocument()
+  expect(screen.queryByText('AIR')).toBeNull()
+  expect(screen.queryByText('0.5')).toBeNull()
 })
 
 test('a typed correction that cannot be graded is explained next to the field', async () => {
@@ -157,15 +346,26 @@ test('a typed correction that cannot be graded is explained next to the field', 
   expect(field).toHaveFocus()
 })
 
-test('hiding a question keeps the reason', async () => {
+test('hiding a question keeps the reason, and focus stays on the button', async () => {
+  const quiet = { ...DETAIL, reports: [], key_changed_at: null }
   const { sent } = renderApp('/review/7', {
     'GET /api/me': { body: REVIEWER },
-    'GET /api/review/questions/7': { body: { ...DETAIL, reports: [], key_changed_at: null } },
-    'PATCH /api/review/questions/7': { body: { ...DETAIL, reports: [], excluded: true, exclusion_note: 'Old rules' } },
+    'GET /api/review/questions/7': { body: quiet },
+    'PATCH /api/review/questions/7': (body) => {
+      const b = body as { excluded: boolean; exclusion_note?: string }
+      return { body: { ...quiet, excluded: b.excluded, exclusion_note: b.exclusion_note ?? null } }
+    },
   })
   await userEvent.type(await screen.findByLabelText('Why (optional)'), 'Old rules')
-  await userEvent.click(screen.getByRole('button', { name: 'Hide from players' }))
+  const button = screen.getByRole('button', { name: 'Hide from players' })
+  await userEvent.click(button)
   expect(await screen.findByText('Hidden from players: Old rules')).toBeInTheDocument()
   expect(sent('PATCH /api/review/questions/7')[0].body).toEqual({ excluded: true, exclusion_note: 'Old rules' })
-  expect(screen.getByRole('button', { name: 'Show to players again' })).toBeInTheDocument()
+  expect(button).toHaveAccessibleName('Show to players again')
+  expect(button).toHaveFocus()
+
+  await userEvent.click(button)
+  await waitFor(() => expect(button).toHaveAccessibleName('Hide from players'))
+  expect(sent('PATCH /api/review/questions/7')[1].body).toEqual({ excluded: false })
+  expect(button).toHaveFocus()
 })
