@@ -3,13 +3,16 @@
 Returns the JSON exactly as the server sends it; `normalize.py` fixes the
 inconsistencies. See docs/fsquiz-api.md for the endpoint reference.
 """
+
 from __future__ import annotations
 
 import time
 from collections.abc import Iterator
-from typing import Any
+from typing import Any, cast
 
 import httpx
+
+Json = dict[str, Any]
 
 BASE_URL = "https://api.fs-quiz.eu/2"
 IMG_URL = "https://img.fs-quiz.eu"
@@ -76,7 +79,7 @@ class FSQuiz:
         self._last = time.monotonic()
         self.calls += 1
 
-    def paginate(self, path: str, key: str, **params: Any) -> Iterator[dict]:
+    def paginate(self, path: str, key: str, **params: Any) -> Iterator[Json]:
         # Despite its name, start_id is a 1-based row offset, not an ID: stepping
         # by last_id + 1 skips one row per gap in the IDs. start_id=0 gives HTTP 500.
         start = 1
@@ -91,43 +94,55 @@ class FSQuiz:
             start += len(page)
 
     # Bulk index: every event with its quizzes, in one call.
-    def events_all(self) -> list[dict]:
-        return self.get("/event/all")["events"]
+    def events_all(self) -> list[Json]:
+        return cast(list[Json], self.get("/event/all")["events"])
 
-    def events(self) -> list[dict]:
+    def events(self) -> list[Json]:
         return list(self.paginate("/event", "events"))
 
-    def event(self, event_id: int) -> dict:
-        return self.get(f"/event/{event_id}")
+    def event(self, event_id: int) -> Json:
+        return cast(Json, self.get(f"/event/{event_id}"))
 
-    def quizzes(self, event_id=None, year=None, cls=None, status=None) -> list[dict]:
-        return list(self.paginate(
-            "/quiz", "quizzes",
-            event_id=event_id, year=year, status=status, **{"class": cls},
-        ))
+    def quizzes(self, event_id=None, year=None, cls=None, status=None) -> list[Json]:
+        return list(
+            self.paginate(
+                "/quiz",
+                "quizzes",
+                event_id=event_id,
+                year=year,
+                status=status,
+                **{"class": cls},
+            )
+        )
 
     # Full quiz: questions with answers, images and solutions embedded.
-    def quiz(self, quiz_id: int) -> dict:
-        return self.get(f"/quiz/{quiz_id}")
+    def quiz(self, quiz_id: int) -> Json:
+        return cast(Json, self.get(f"/quiz/{quiz_id}"))
 
-    def question(self, question_id: int) -> dict:
-        return self.get(f"/question/{question_id}")
+    def question(self, question_id: int) -> Json:
+        return cast(Json, self.get(f"/question/{question_id}"))
 
     # Lists return question headers only (id, text, type, time).
-    def questions(self, qtype: str | None = None) -> list[dict]:
+    def questions(self, qtype: str | None = None) -> list[Json]:
         return list(self.paginate("/question", "questions", type=qtype))
 
-    def documents(self, year=None, event_id=None, dtype=None) -> list[dict]:
-        return list(self.paginate(
-            "/document", "documents", year=year, event_id=event_id, type=dtype,
-        ))
+    def documents(self, year=None, event_id=None, dtype=None) -> list[Json]:
+        return list(
+            self.paginate(
+                "/document",
+                "documents",
+                year=year,
+                event_id=event_id,
+                type=dtype,
+            )
+        )
 
-    def last_qualifiers(self, method: str | None = None) -> list[dict]:
+    def last_qualifiers(self, method: str | None = None) -> list[Json]:
         # The server uses the key "last-qualifier", not "last_qualifiers" as documented.
         return list(self.paginate("/last-qualifier", "last-qualifier", method=method))
 
-    def statistics(self, days: int | None = None) -> list[dict]:
-        return self.get("/statistic", days=days)["statistics"]
+    def statistics(self, days: int | None = None) -> list[Json]:
+        return cast(list[Json], self.get("/statistic", days=days)["statistics"])
 
     def image(self, path: str) -> bytes:
         self._throttle()

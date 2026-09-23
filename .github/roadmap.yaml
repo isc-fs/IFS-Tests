@@ -27,17 +27,17 @@
 title: IFS-Tests roadmap
 
 intro: |
-  Plan for the team's Formula Student quiz practice system. Each phase
+  Plan for the team's Formula Student quiz training platform. Each phase
   is a cluster of feat branches cut from `dev`; a milestone tag on `main`
   closes the phase once every branch in it has merged. Branch status
   badges (✅ / 🔄 / 🔜 / ⏸) are derived from each branch's tracking issue
   state in GitHub Issues.
 
-  Phases 1 and 2 are the groundwork: understand the FS-Quiz data, mirror
-  it, sort it into mechanical and electrical topics, and make it
-  practicable. Phases 3 and 4 (web app, daily question, leaderboard,
-  Notion tracking) are **deferred until the team decides the format**;
-  the options are laid out in `docs/proposals/`.
+  Phase 1 is the groundwork (FS-Quiz mirror, proposal). Phases 2–4 build
+  the web app on the team's own server: invite + password accounts,
+  practice, mock quizzes, a daily question and a leaderboard. The design
+  is in `docs/architecture.md` and `docs/adr/`. Phase 5 collects ideas for
+  after launch.
 
 phases:
   - number: 1
@@ -47,46 +47,63 @@ phases:
       - name: feat/1-project-scope
         scope: README, roadmap and agent instructions for the quiz practice system
       - name: feat/2-fsquiz-client
-        scope: FS-Quiz API v2 client, polite full mirror and API reference
+        scope: FS-Quiz API v2 client, polite full mirror, bank stats and API reference
       - name: feat/3-team-proposal
         scope: Gamification options deck and ideas doc for the team decision
 
   - number: 2
-    title: Question bank & practice
+    title: Platform foundation
     tag: v0.2.0
-    note: "Offline, no accounts: usable by anyone with the repo"
+    note: "Staging live on the team server, accounts and the question bank in place"
     branches:
-      - name: feat/4-topic-taxonomy
-        scope: Reviewed mech / elec (HV, DV, electronics) / rules labels for every question
-      - name: feat/5-mock-quiz
-        scope: Timed mock quiz that replays a real event quiz or a topic mix
-      - name: feat/6-bank-export
-        scope: Versioned export of the labelled bank for the app and for study sessions
+      - name: feat/4-platform-skeleton
+        scope: ADRs, FastAPI app, Alembic, SPA shell, local compose, CI, CodeQL
+      - name: feat/5-server-deploy
+        scope: Hardened production compose, scheduler, backups, deploy script, Nginx snippet
+      - name: feat/6-accounts-auth
+        scope: Invite links, Argon2id passwords, sessions, CSRF, roles, admin users, audit
+      - name: feat/7-bank-push
+        scope: Bank tables, answer-key normaliser, idempotent import, mirrored images
 
   - number: 3
-    title: Team platform
+    title: Training MVP
     tag: v0.3.0
-    deferred: true
-    note: "Pending team decision: format, hosting, sign-in (see docs/proposals)"
     branches:
-      - name: feat/7-web-app
-        scope: Web app to practise by topic and replay past quizzes
-      - name: feat/8-uni-sign-in
-        scope: Sign-in restricted to university email addresses
-      - name: feat/9-daily-question
-        scope: One question a day per area, with streaks
-      - name: feat/10-leaderboard
-        scope: Individual and department leaderboards
+      - name: feat/8-practice
+        scope: Practice by topic with server-side grading and answer reveal
+      - name: feat/9-admin-taxonomy
+        scope: Reviewer tools for topic labels, answer keys and exclusions
+      - name: feat/10-daily-question
+        scope: One question per area per day, time-boxed, with streaks
+      - name: feat/11-mock-quiz
+        scope: Replay a real past quiz against its original clock
+      - name: feat/12-leaderboard
+        scope: Season leaderboards per person, area and vertical, with opt-out
 
   - number: 4
-    title: Tracking & quiz day
-    tag: v0.4.0
-    deferred: true
-    note: "Pending team decision: what we track and where"
+    title: Launch
+    tag: v1.0.0
     branches:
-      - name: feat/11-notion-sync
-        scope: Match users to the Notion members database and push progress
-      - name: feat/12-quiz-day-drill
+      - name: feat/13-privacy-account
+        scope: Privacy notice, data export and deletion, season rollover, attribution
+      - name: feat/14-launch
+        scope: Load test, restore drill, handover documentation, launch checklist
+
+  - number: 5
+    title: After launch
+    tag: v1.1.0
+    deferred: true
+    note: "Ideas to prioritise with the team once the MVP is in use"
+    branches:
+      - name: feat/15-admin-totp
+        scope: Second factor for admin accounts
+      - name: feat/16-notion-sync
+        scope: Push scores and streaks to the Notion Team Directory
+      - name: feat/17-solution-bounty
+        scope: Members write worked solutions, reviewers approve, points awarded
+      - name: feat/18-team-questions
+        scope: Team-written questions, starting with Driverless
+      - name: feat/19-quiz-day-drill
         scope: Full-team rehearsal under real registration-quiz conditions
 
 sidequests: []

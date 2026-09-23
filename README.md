@@ -19,10 +19,33 @@ Most European events hand out their registration slots through a short, timed on
    | **Electrical** | batteries & HV (accumulator, TS, IMD, AMS), driverless (DV rules, ASMS, EBS, missions), general electronics (circuits, LV, sensors, CAN) |
    | **Rules & scoring** | points calculations, penalties, event procedures: everyone needs these |
 
-3. **Lets the team practise.** By topic, or by replaying a real past quiz against its clock.
-4. **Later, makes it a habit.** Web app, daily question and leaderboard, signed in with the university email, and optionally linked to the team's Notion. This part is **not decided yet**: the options are in [`docs/proposals/`](docs/proposals/) for the team to choose from.
+3. **Lets the team practise** in a web app on the team's server: by topic, by replaying a real past quiz against its clock, and with a daily question per area, streaks and a leaderboard. Members join through an invite link. How it's built: [`docs/architecture.md`](docs/architecture.md) and the decisions in [`docs/adr/`](docs/adr/).
 
 See [ROADMAP.md](ROADMAP.md) for the phase plan and branch status.
+
+---
+
+## Run it locally
+
+Needs [uv](https://docs.astral.sh/uv/), Node 24 and Docker.
+
+```bash
+uv sync                                  # Python dependencies
+uv run ifs-tests mirror                  # download the FS-Quiz bank into data/ (≈2 min, cached)
+uv run ifs-tests stats                   # what's in it
+
+docker compose up --build                # app + database on http://localhost:8000
+docker compose run --rm api alembic upgrade head
+```
+
+For frontend work, run the API with `uv run uvicorn ifs_tests.api.app:app --reload` and the SPA with `cd web && npm install && npm run dev` (Vite proxies API calls to port 8000).
+
+Checks that CI runs:
+
+```bash
+uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pytest
+cd web && npm run typecheck && npm run lint && npm test && npm run build && npm run size
+```
 
 ---
 
@@ -61,7 +84,7 @@ dev   ──────●───●───●───●───●─�
 All work is done on a branch cut from `dev`, merged back through a Pull Request, then deleted. There are two branch types, each with its own counter:
 
 ```
-feat/<n>[-short-title]   →  new functionality  (feat/4-topic-taxonomy, feat/5 ...)
+feat/<n>[-short-title]   →  new functionality  (feat/7-bank-push, feat/8 ...)
 fix/<n>[-short-title]    →  bug fix            (fix/1, fix/2-mirror-retry ...)
 ```
 
@@ -77,10 +100,10 @@ Every branch has one tracking issue, labelled `feat` or `fix` and titled `[feat/
 # 1. Branch from an up-to-date dev
 git checkout dev
 git pull origin dev
-git checkout -b feat/4-topic-taxonomy
+git checkout -b feat/8-practice
 
 # 2. Push it: the tracking issue opens by itself
-git push -u origin feat/4-topic-taxonomy
+git push -u origin feat/8-practice
 
 # 3. Work and commit (the first commit message becomes the issue description)
 git commit -m "short description of what this commit does"

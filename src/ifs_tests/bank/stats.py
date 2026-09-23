@@ -1,16 +1,17 @@
 from __future__ import annotations
 
 from collections import Counter
+from typing import Any
 
 from .client import IMG_URL
 
 
-def _table(counter: Counter, title: str, sort_keys: bool = False) -> str:
+def _table(counter: Counter[Any], title: str, sort_keys: bool = False) -> str:
     items = sorted(counter.items()) if sort_keys else counter.most_common()
     return f"{title}\n" + "\n".join(f"  {k!s:<24}{v:>5}" for k, v in items)
 
 
-def report(bank: dict) -> str:
+def report(bank: dict[str, Any]) -> str:
     qs, quizzes = bank["questions"], bank["quizzes"]
     events = {e["event_id"]: e["short_name"] for e in bank["events"]}
     per_event = Counter(events.get(e, e) for z in quizzes for e in z["event_ids"])
@@ -32,11 +33,16 @@ def report(bank: dict) -> str:
     return "\n".join(parts)
 
 
-def show(bank: dict, question_id: int) -> str:
+def show(bank: dict[str, Any], question_id: int) -> str:
     q = next((q for q in bank["questions"] if q["question_id"] == question_id), None)
     if q is None:
         return f"question {question_id} not in the local bank"
-    lines = [f"#{q['question_id']} [{q['type']}]" + (f" {q['time']} s" if q["time"] else ""), "", q["text"], ""]
+    lines = [
+        f"#{q['question_id']} [{q['type']}]" + (f" {q['time']} s" if q["time"] else ""),
+        "",
+        q["text"],
+        "",
+    ]
     lines += [f"  {'*' if a['is_correct'] else ' '} {a['text']}" for a in q["answers"]]
     lines += [f"  image: {IMG_URL}/{p}" for p in q["images"]]
     for s in q["solutions"]:

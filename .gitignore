@@ -14,3 +14,13 @@ data/
 .DS_Store
 .vscode/
 .idea/
+
+# Web
+node_modules/
+web/dist/
+*.tsbuildinfo
+
+# Local env and secrets (never commit)
+.env
+.env.*
+!.env.example

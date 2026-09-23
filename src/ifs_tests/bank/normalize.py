@@ -6,9 +6,11 @@ instead of `solutions`, events use `event_id` or `id` depending on the
 endpoint, some texts hold a literal backslash-n instead of a newline,
 and `time: 0` means "not recorded".
 """
+
 from __future__ import annotations
 
 import re
+from typing import Any
 
 LICENSE = "ODbL-1.0"
 SOURCE = "FS-Quiz (https://fs-quiz.eu), by Yannik Ottens, via API v2"
@@ -25,7 +27,7 @@ def clean_text(s: str | None) -> str | None:
     return s.replace("\xa0", " ").strip()
 
 
-def event(e: dict) -> dict:
+def event(e: dict[str, Any]) -> dict[str, Any]:
     return {
         "event_id": _int(e.get("event_id", e.get("id"))),
         "short_name": e["short_name"],
@@ -35,7 +37,7 @@ def event(e: dict) -> dict:
     }
 
 
-def solution(s: dict) -> dict:
+def solution(s: dict[str, Any]) -> dict[str, Any]:
     return {
         "solution_id": _int(s["solution_id"]),
         "text": clean_text(s.get("text")),
@@ -43,9 +45,13 @@ def solution(s: dict) -> dict:
     }
 
 
-def question(q: dict) -> dict:
+def question(q: dict[str, Any]) -> dict[str, Any]:
     answers = [
-        {"answer_id": _int(a["answer_id"]), "text": clean_text(a["answer_text"]), "is_correct": bool(a["is_correct"])}
+        {
+            "answer_id": _int(a["answer_id"]),
+            "text": clean_text(a["answer_text"]),
+            "is_correct": bool(a["is_correct"]),
+        }
         for a in q.get("answers") or []
     ]
     return {
@@ -71,7 +77,7 @@ def parse_range(text: str) -> tuple[float, float] | None:
     return (min(lo, hi), max(lo, hi))
 
 
-def document(d: dict) -> dict:
+def document(d: dict[str, Any]) -> dict[str, Any]:
     return {
         "doc_id": _int(d["doc_id"]),
         "type": d["type"],
@@ -82,9 +88,9 @@ def document(d: dict) -> dict:
     }
 
 
-def build_bank(events, quizzes, orphans, documents, last_qualifiers) -> dict:
+def build_bank(events, quizzes, orphans, documents, last_qualifiers) -> dict[str, Any]:
     lq_by_quiz = {_int(lq["quiz_id"]): lq for lq in last_qualifiers}
-    questions: dict[int, dict] = {}
+    questions: dict[int, dict[str, Any]] = {}
     quiz_rows = []
 
     for quiz in sorted(quizzes, key=lambda q: _int(q["quiz_id"])):
@@ -94,23 +100,27 @@ def build_bank(events, quizzes, orphans, documents, last_qualifiers) -> dict:
             q = questions.setdefault(_int(raw["question_id"]), question(raw) | {"quizzes": []})
             q["quizzes"].append({"quiz_id": qid, "position": _int(raw.get("position_index"))})
         lq = quiz.get("last_qualifier") or lq_by_quiz.get(qid)
-        quiz_rows.append({
-            "quiz_id": qid,
-            "year": _int(quiz["year"]),
-            "class": quiz["class"],
-            "date": quiz.get("date"),
-            "status": quiz["status"],
-            "information": clean_text(quiz.get("information")) or None,
-            "event_ids": sorted({_int(e.get("event_id", e.get("id"))) for e in quiz.get("event") or []}),
-            "question_ids": [_int(q["question_id"]) for q in ordered],
-            "document_ids": [_int(d["doc_id"]) for d in quiz.get("documents") or []],
-            "last_qualifier": {
-                "method": lq["method"],
-                "time_s": _int(lq.get("time")),
-                "score": _int(lq.get("score")),
-                "correct_answers": _int(lq.get("correct_answers")),
-            } if lq else None,
-        })
+        quiz_rows.append(
+            {
+                "quiz_id": qid,
+                "year": _int(quiz["year"]),
+                "class": quiz["class"],
+                "date": quiz.get("date"),
+                "status": quiz["status"],
+                "information": clean_text(quiz.get("information")) or None,
+                "event_ids": sorted({_int(e.get("event_id", e.get("id"))) for e in quiz.get("event") or []}),
+                "question_ids": [_int(q["question_id"]) for q in ordered],
+                "document_ids": [_int(d["doc_id"]) for d in quiz.get("documents") or []],
+                "last_qualifier": {
+                    "method": lq["method"],
+                    "time_s": _int(lq.get("time")),
+                    "score": _int(lq.get("score")),
+                    "correct_answers": _int(lq.get("correct_answers")),
+                }
+                if lq
+                else None,
+            }
+        )
 
     for raw in orphans:
         questions.setdefault(_int(raw["question_id"]), question(raw) | {"quizzes": []})

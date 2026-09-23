@@ -3,8 +3,8 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from .client import FSQuiz
-from .mirror import DATA_DIR, load_bank, mirror
+from .bank.client import FSQuiz
+from .bank.mirror import DATA_DIR, load_bank, mirror
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -14,7 +14,11 @@ def main(argv: list[str] | None = None) -> None:
 
     m = sub.add_parser("mirror", help="download the FS-Quiz bank (cached; only fetches what is missing)")
     m.add_argument("--refresh", action="store_true", help="re-fetch every quiz, ignoring the cache")
-    m.add_argument("--question-index", action="store_true", help="also page /question to find questions outside any quiz (~45 extra calls)")
+    m.add_argument(
+        "--question-index",
+        action="store_true",
+        help="also page /question to find questions outside any quiz (~45 extra calls)",
+    )
     m.add_argument("--images", action="store_true", help="also download question and solution images")
     m.add_argument("--delay", type=float, default=1.0, help="seconds between requests (default 1.0)")
 
@@ -29,13 +33,18 @@ def main(argv: list[str] | None = None) -> None:
     args = p.parse_args(argv)
     if args.cmd == "mirror":
         with FSQuiz(delay=args.delay) as api:
-            mirror(api, args.data, refresh=args.refresh, question_index=args.question_index, images=args.images)
+            mirror(
+                api, args.data, refresh=args.refresh, question_index=args.question_index, images=args.images
+            )
     elif args.cmd == "stats":
-        from .stats import report
-        print(report(load_bank(args.data)))
+        from .bank.stats import report as stats_report
+
+        print(stats_report(load_bank(args.data)))
     elif args.cmd == "show":
-        from .stats import show
+        from .bank.stats import show
+
         print(show(load_bank(args.data), args.question_id))
     elif args.cmd == "topics":
-        from .topics import report
-        print(report(load_bank(args.data), args.csv))
+        from .bank.topics import report as topics_report
+
+        print(topics_report(load_bank(args.data), args.csv))
