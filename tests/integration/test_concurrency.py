@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from sqlalchemy import Engine, func, select
+from sqlalchemy import Engine, func, select, update
 from sqlalchemy.orm import Session, sessionmaker
 
 from ifs_tests.bank import images
@@ -17,7 +17,8 @@ from ifs_tests.bank.mirror import load_bank
 from ifs_tests.bank.sample import SAMPLE_DIR
 from ifs_tests.db.models import AnswerOption, Attempt, DailyQuestion, MockSession, Question, User
 from ifs_tests.domain.daily import madrid_day
-from ifs_tests.services import accounts, daily, mock, review
+from ifs_tests.domain.xp import award, floor_for, level_for
+from ifs_tests.services import accounts, daily, mock, practice, review
 from ifs_tests.services import bank as bank_service
 from ifs_tests.services.bank import import_bank
 
@@ -106,6 +107,7 @@ def test_parallel_wrong_current_passwords_cannot_beat_the_lockout(db: Session, a
 @pytest.fixture
 def daily_player(db: Session, tmp_path: Path) -> User:
     import_bank(db, load_bank(SAMPLE_DIR), SAMPLE_DIR / "img", tmp_path, NOW)
+    db.execute(update(Question).values(difficulty=3))
     user = User(email="p@x.com", password_hash="x", display_name="Player")
     db.add(user)
     db.commit()
@@ -132,6 +134,10 @@ def test_a_double_start_gives_one_attempt_and_one_deadline(
 
 
 def test_a_double_submit_is_graded_once(db: Session, app_engine: Engine, daily_player: User) -> None:
+    # A returning member well above their floor, so a wrong answer costs XP too and a double grant shows.
+    start = floor_for("member") + 1000
+    daily_player.rank, daily_player.xp = "member", start
+    db.commit()
     _, attempt = daily.start(db, daily_player, "rules", NOW)
     options = list(db.scalars(select(AnswerOption.id).where(AnswerOption.question_id == attempt.question_id)))
     later = NOW + timedelta(seconds=10)
@@ -142,10 +148,13 @@ def test_a_double_submit_is_graded_once(db: Session, app_engine: Engine, daily_p
             for o in options
         ],
     )
-    assert len({(r.checked.correct, r.points) for r in results}) == 1, results
+    assert len({(r.checked.correct, r.xp) for r in results}) == 1, results
     row = db.get_one(Attempt, attempt.id)
     db.refresh(row)
     assert row.submitted_at == later and row.answer["options"][0] in options
+    assert row.xp == award(row.correct, 3, "daily", level_for(start)) != 0
+    db.refresh(daily_player)
+    assert daily_player.xp == start + row.xp
 
 
 def test_a_double_start_of_a_mock_quiz_opens_one_run(
@@ -221,3 +230,18 @@ def test_hiding_a_question_during_an_import_sticks(
     q = db.get_one(Question, beam)
     db.refresh(q)
     assert (q.excluded, q.images_missing, q.playable) == (True, False, False)
+
+
+def test_two_tabs_cannot_both_score_the_first_right_answer(
+    db: Session, app_engine: Engine, daily_player: User
+) -> None:
+    qid = db.scalars(select(Question.id).where(Question.answer_kind == "choice-one")).first()
+    assert qid is not None
+    right = list(db.scalars(select(AnswerOption.id).where(AnswerOption.question_id == qid).limit(1)))
+    results = race(
+        app_engine,
+        *[lambda s: practice.answer(s, s.get_one(User, daily_player.id), qid, right, None, NOW)] * 4,
+    )
+    assert sorted(r.xp for r in results) == [0, 0, 0, award(True, 3, "practice", 0)], results
+    db.refresh(daily_player)
+    assert daily_player.xp == award(True, 3, "practice", 0)

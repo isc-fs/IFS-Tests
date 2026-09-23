@@ -25,6 +25,8 @@ def play_question(shown: Shown) -> PlayQuestion:
 
 def feedback(checked: Checked) -> Feedback:
     return Feedback(
+        xp=checked.xp,
+        level=checked.level,
         correct=checked.correct,
         official=checked.official,
         correct_options=checked.correct_options,

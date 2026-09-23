@@ -14,11 +14,12 @@ import {
   usersOptions,
   usersQueryKey,
 } from '../api/@tanstack/react-query.gen'
-import { type AdminUser, type InviteIn, Role, Status, Vertical } from '../api/types.gen'
+import { type AdminUser, type InviteIn, type Rank, Role, Status, Vertical } from '../api/types.gen'
 import { ErrorNotice, Field, Form, Notice, SelectField } from '../components/Form'
 import { Page } from '../components/Page'
 import { queryClient, useMe } from '../lib/api'
 import { AREAS } from '../lib/areas'
+import { RANKS } from '../lib/xp'
 
 const when = (iso: string | null | undefined) =>
   iso
@@ -180,7 +181,7 @@ function Members({ selfId }: { selfId: number }) {
   const [link, setLink] = useState<{ userId: number; url: string; expires: string } | null>(null)
   const update = useMutation({
     ...updateUserMutation(),
-    onSuccess: (u) => setChanged(`${u.display_name} is now ${u.role}, ${u.status}.`),
+    onSuccess: (u) => setChanged(`${u.display_name} is now ${u.role}, ${u.status}, ${RANKS[u.rank]}.`),
     onSettled: () => refresh(usersQueryKey()),
   })
   const reset = useMutation({
@@ -191,7 +192,7 @@ function Members({ selfId }: { selfId: number }) {
     },
   })
 
-  const change = (u: AdminUser, body: { role?: Role; status?: Status }) => {
+  const change = (u: AdminUser, body: { role?: Role; status?: Status; rank?: Rank }) => {
     const ask = CONFIRM[body.role ?? body.status ?? '']
     if (ask && !window.confirm(ask(u.display_name))) return
     setChanged('')
@@ -252,6 +253,13 @@ function Members({ selfId }: { selfId: number }) {
                 >
                   {Object.values(Status).map((s) => (
                     <option key={s}>{s}</option>
+                  ))}
+                </SelectField>
+                <SelectField label="Rank" value={u.rank} onChange={(e) => change(u, { rank: e.target.value as Rank })}>
+                  {Object.entries(RANKS).map(([r, label]) => (
+                    <option key={r} value={r}>
+                      {label}
+                    </option>
                   ))}
                 </SelectField>
                 <button

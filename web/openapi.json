@@ -1732,6 +1732,13 @@
      "status": {
       "$ref": "#/components/schemas/Status"
      },
+     "rank": {
+      "$ref": "#/components/schemas/Rank"
+     },
+     "xp": {
+      "type": "integer",
+      "title": "Xp"
+     },
      "leaderboard_opt_out": {
       "type": "boolean",
       "title": "Leaderboard Opt Out"
@@ -1774,12 +1781,37 @@
      "vertical",
      "role",
      "status",
+     "rank",
+     "xp",
      "leaderboard_opt_out",
      "last_seen",
      "created_at",
      "locked_until"
     ],
     "title": "AdminUser"
+   },
+   "Aids": {
+    "properties": {
+     "formulas": {
+      "type": "boolean",
+      "title": "Formulas"
+     },
+     "learn_more": {
+      "type": "boolean",
+      "title": "Learn More"
+     },
+     "hint": {
+      "type": "boolean",
+      "title": "Hint"
+     }
+    },
+    "type": "object",
+    "required": [
+     "formulas",
+     "learn_more",
+     "hint"
+    ],
+    "title": "Aids"
    },
    "AnswerIn": {
     "properties": {
@@ -2024,9 +2056,9 @@
       ],
       "title": "Late"
      },
-     "points": {
+     "xp": {
       "type": "integer",
-      "title": "Points"
+      "title": "Xp"
      }
     },
     "type": "object",
@@ -2037,7 +2069,7 @@
      "deadline_at",
      "correct",
      "late",
-     "points"
+     "xp"
     ],
     "title": "DailyArea"
    },
@@ -2053,9 +2085,9 @@
       "type": "boolean",
       "title": "Late"
      },
-     "points": {
+     "xp": {
       "type": "integer",
-      "title": "Points"
+      "title": "Xp"
      },
      "streak": {
       "type": "integer",
@@ -2067,7 +2099,7 @@
      "question",
      "feedback",
      "late",
-     "points",
+     "xp",
      "streak"
     ],
     "title": "DailyResult"
@@ -2083,9 +2115,9 @@
       "type": "integer",
       "title": "Streak"
      },
-     "points_today": {
+     "xp_today": {
       "type": "integer",
-      "title": "Points Today"
+      "title": "Xp Today"
      },
      "areas": {
       "items": {
@@ -2099,7 +2131,7 @@
     "required": [
      "day",
      "streak",
-     "points_today",
+     "xp_today",
      "areas"
     ],
     "title": "DailyStatus"
@@ -2141,6 +2173,24 @@
       },
       "type": "array",
       "title": "Solutions"
+     },
+     "xp": {
+      "type": "integer",
+      "title": "Xp",
+      "description": "XP this answer earned (negative when it cost XP)",
+      "default": 0
+     },
+     "level": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Level",
+      "description": "Your level after this answer"
      }
     },
     "type": "object",
@@ -2248,9 +2298,9 @@
        }
       ]
      },
-     "points": {
+     "xp": {
       "type": "integer",
-      "title": "Points"
+      "title": "Xp"
      },
      "me": {
       "type": "boolean",
@@ -2262,7 +2312,7 @@
      "rank",
      "display_name",
      "vertical",
-     "points",
+     "xp",
      "me"
     ],
     "title": "LeaderRow"
@@ -2391,6 +2441,23 @@
      "leaderboard_opt_out": {
       "type": "boolean",
       "title": "Leaderboard Opt Out"
+     },
+     "rank": {
+      "$ref": "#/components/schemas/Rank"
+     },
+     "xp": {
+      "type": "integer",
+      "title": "Xp"
+     },
+     "progress": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Progress"
+       },
+       {
+        "type": "null"
+       }
+      ]
      }
     },
     "type": "object",
@@ -2400,7 +2467,9 @@
      "display_name",
      "vertical",
      "role",
-     "leaderboard_opt_out"
+     "leaderboard_opt_out",
+     "rank",
+     "xp"
     ],
     "title": "Me"
    },
@@ -2636,9 +2705,9 @@
       "type": "integer",
       "title": "Graded"
      },
-     "points": {
+     "xp": {
       "type": "integer",
-      "title": "Points"
+      "title": "Xp"
      },
      "counted": {
       "type": "boolean",
@@ -2667,7 +2736,7 @@
     "required": [
      "correct",
      "graded",
-     "points",
+     "xp",
      "counted",
      "bar_to_beat",
      "items"
@@ -2680,9 +2749,9 @@
       "type": "integer",
       "title": "Rank"
      },
-     "points": {
+     "xp": {
       "type": "integer",
-      "title": "Points"
+      "title": "Xp"
      },
      "hidden": {
       "type": "boolean",
@@ -2693,7 +2762,7 @@
     "type": "object",
     "required": [
      "rank",
-     "points",
+     "xp",
      "hidden"
     ],
     "title": "MyRank",
@@ -2899,6 +2968,16 @@
       ],
       "title": "Display Name"
      },
+     "rank": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Rank"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
      "vertical": {
       "anyOf": [
        {
@@ -2924,6 +3003,67 @@
     "additionalProperties": false,
     "type": "object",
     "title": "ProfileIn"
+   },
+   "Progress": {
+    "properties": {
+     "level": {
+      "type": "integer",
+      "title": "Level"
+     },
+     "title": {
+      "type": "string",
+      "title": "Title"
+     },
+     "level_xp": {
+      "type": "integer",
+      "title": "Level Xp",
+      "description": "Lifetime XP at which the current level started"
+     },
+     "next_level_xp": {
+      "type": "integer",
+      "title": "Next Level Xp"
+     },
+     "penalty": {
+      "type": "integer",
+      "title": "Penalty",
+      "description": "Percentage of a right answer's XP a wrong answer costs"
+     },
+     "streak": {
+      "type": "integer",
+      "title": "Streak"
+     },
+     "streak_bonus": {
+      "type": "integer",
+      "title": "Streak Bonus",
+      "description": "Extra XP on gains, in percent"
+     },
+     "aids": {
+      "$ref": "#/components/schemas/Aids"
+     }
+    },
+    "type": "object",
+    "required": [
+     "level",
+     "title",
+     "level_xp",
+     "next_level_xp",
+     "penalty",
+     "streak",
+     "streak_bonus",
+     "aids"
+    ],
+    "title": "Progress",
+    "description": "Level, title and what help the player still gets. XP always refers to lifetime XP."
+   },
+   "Rank": {
+    "type": "string",
+    "enum": [
+     "mingo",
+     "member",
+     "department_head",
+     "technical_director"
+    ],
+    "title": "Rank"
    },
    "RegisterIn": {
     "properties": {
@@ -2956,6 +3096,10 @@
         "type": "null"
        }
       ]
+     },
+     "rank": {
+      "$ref": "#/components/schemas/Rank",
+      "default": "mingo"
      }
     },
     "additionalProperties": false,
@@ -3562,6 +3706,16 @@
         "type": "null"
        }
       ]
+     },
+     "rank": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Rank"
+       },
+       {
+        "type": "null"
+       }
+      ]
      }
     },
     "additionalProperties": false,
@@ -3655,9 +3809,9 @@
       "type": "integer",
       "title": "Members"
      },
-     "points_per_member": {
+     "xp_per_member": {
       "type": "number",
-      "title": "Points Per Member"
+      "title": "Xp Per Member"
      },
      "participation": {
       "type": "number",
@@ -3669,7 +3823,7 @@
     "required": [
      "vertical",
      "members",
-     "points_per_member",
+     "xp_per_member",
      "participation"
     ],
     "title": "VerticalRow"

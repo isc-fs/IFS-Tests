@@ -15,8 +15,8 @@ test('score in a mock quiz, find yourself on the leaderboard, then hide', async 
     else await card.getByLabel('Your answer').fill('1')
     await card.getByRole('button', { name: 'Check answer' }).click()
   }
-  const summary = await page.getByText(/points for the season\./).textContent()
-  const scored = Number(summary?.match(/(\d+) points/)?.[1]) > 0
+  const summary = await page.getByText(/XP for the season\./).textContent()
+  const scored = Number(summary?.match(/(\d+) XP/)?.[1]) > 0
 
   await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Leaderboard' }).click()
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Leaderboard')

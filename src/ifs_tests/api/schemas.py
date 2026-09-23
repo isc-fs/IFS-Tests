@@ -7,7 +7,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from ..db.models import Role, Status, Vertical
+from ..db.models import Rank, Role, Status, Vertical
 
 
 class In(BaseModel):
@@ -40,6 +40,7 @@ class RegisterIn(TokenIn):
     display_name: str = Field(max_length=64)
     password: str = Field(max_length=256)
     vertical: Vertical | None = None
+    rank: Rank = Rank.mingo
 
 
 class ResetIn(TokenIn):
@@ -56,6 +57,25 @@ class ResetInfo(Out):
     expires_at: datetime
 
 
+class Aids(BaseModel):
+    formulas: bool
+    learn_more: bool
+    hint: bool
+
+
+class Progress(BaseModel):
+    """Level, title and what help the player still gets. XP always refers to lifetime XP."""
+
+    level: int
+    title: str
+    level_xp: int = Field(description="Lifetime XP at which the current level started")
+    next_level_xp: int
+    penalty: int = Field(description="Percentage of a right answer's XP a wrong answer costs")
+    streak: int
+    streak_bonus: int = Field(description="Extra XP on gains, in percent")
+    aids: Aids
+
+
 class Me(Out):
     id: int
     email: str
@@ -63,10 +83,14 @@ class Me(Out):
     vertical: Vertical | None
     role: Role
     leaderboard_opt_out: bool
+    rank: Rank
+    xp: int
+    progress: Progress | None = None
 
 
 class ProfileIn(In):
     display_name: str | None = Field(default=None, max_length=64)
+    rank: Rank | None = None
     vertical: Vertical | None = None
     leaderboard_opt_out: bool | None = None
 
@@ -103,6 +127,8 @@ class AdminUser(Out):
     vertical: Vertical | None
     role: Role
     status: Status
+    rank: Rank
+    xp: int
     leaderboard_opt_out: bool
     last_seen: datetime | None
     created_at: datetime
@@ -112,6 +138,7 @@ class AdminUser(Out):
 class UserPatch(In):
     role: Role | None = None
     status: Status | None = None
+    rank: Rank | None = None
 
 
 class BankSummary(BaseModel):
@@ -168,6 +195,8 @@ class Feedback(BaseModel):
     official: str | None
     correct_options: list[int]
     solutions: list[SolutionOut]
+    xp: int = Field(default=0, description="XP this answer earned (negative when it cost XP)")
+    level: int | None = Field(default=None, description="Your level after this answer")
 
 
 class DailyArea(BaseModel):
@@ -177,13 +206,13 @@ class DailyArea(BaseModel):
     deadline_at: datetime | None
     correct: bool | None
     late: bool | None
-    points: int
+    xp: int
 
 
 class DailyStatus(BaseModel):
     day: date
     streak: int
-    points_today: int
+    xp_today: int
     areas: list[DailyArea]
 
 
@@ -200,7 +229,7 @@ class DailyResult(BaseModel):
     question: PlayQuestion
     feedback: Feedback
     late: bool
-    points: int
+    xp: int
     streak: int
 
 
@@ -231,7 +260,7 @@ class MockItem(BaseModel):
 class MockSummary(BaseModel):
     correct: int
     graded: int
-    points: int
+    xp: int
     counted: bool
     bar_to_beat: str | None
     items: list[MockItem]
@@ -345,7 +374,7 @@ class LeaderRow(BaseModel):
     rank: int
     display_name: str
     vertical: Vertical | None
-    points: int
+    xp: int
     me: bool
 
 
@@ -353,7 +382,7 @@ class MyRank(BaseModel):
     """The requesting member's own place, shown even when they are hidden or outside the top rows."""
 
     rank: int
-    points: int
+    xp: int
     hidden: bool = Field(description="Opted out: others don't see them on the board")
 
 
@@ -368,7 +397,7 @@ class Leaderboard(BaseModel):
 class VerticalRow(BaseModel):
     vertical: Vertical
     members: int
-    points_per_member: float
+    xp_per_member: float
     participation: float = Field(
         description="Share of members who answered a daily question in the last 7 days"
     )

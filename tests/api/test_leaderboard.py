@@ -7,12 +7,14 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from ifs_tests.bank.mirror import load_bank
 from ifs_tests.bank.sample import SAMPLE_DIR
-from ifs_tests.db.models import Question, User
-from ifs_tests.services import daily, mock
+from ifs_tests.db.models import Attempt, Question, User
+from ifs_tests.domain.xp import award
+from ifs_tests.services import daily, mock, practice
 from ifs_tests.services.bank import import_bank
 
 from ..conftest import Clock
@@ -20,12 +22,19 @@ from .helpers import PASSWORD, login, member, right_answer
 
 pytestmark = pytest.mark.integration
 NewClient = Callable[[], TestClient]
-CV = 9002  # sample quiz, all graded: 3 mech, 1 rules, 1 unclassified -> 10 points in a counted run
+CV = 9002  # sample quiz, all graded: 3 mech, 1 rules, 1 unclassified
+DAILY = award(True, 3, "daily", 0)  # a right daily answer without a streak
+MOCK = award(True, 3, "mock", 0)  # a right answer in a counted mock run
+RUN = 5 * MOCK  # a counted run of CV, all right
+REPLAY = 5 * award(True, 3, "mock", 0, repeat=True)  # the same run again in the season
+PRACTICE = award(True, 3, "practice", 0)  # a right practice answer to a question not yet got right
 
 
 @pytest.fixture
 def team(app_client: TestClient, admin: User, db: Session, clock: Clock, tmp_path: Path) -> None:
     import_bank(db, load_bank(SAMPLE_DIR), SAMPLE_DIR / "img", tmp_path, clock.now)
+    db.execute(update(Question).values(difficulty=3))
+    db.commit()
     login(app_client)
 
 
@@ -56,7 +65,7 @@ def play_daily(db: Session, u: User, area: str, now: datetime, late: bool = Fals
     q, a = daily.start(db, u, area, now)
     body = right_answer(db, q.id)
     when = now + timedelta(hours=1) if late else now
-    return daily.answer(db, u, a.id, body.get("options"), body.get("value"), when).points
+    return daily.answer(db, u, a.id, body.get("options"), body.get("value"), when).xp
 
 
 def play_mock(db: Session, u: User, now: datetime, quiz: int = CV) -> int:
@@ -67,7 +76,17 @@ def play_mock(db: Session, u: User, now: datetime, quiz: int = CV) -> int:
         body = right_answer(db, q.id)
         state = mock.answer(db, u, s.id, a.id, body.get("options"), body.get("value"), now)
     assert state.summary
-    return state.summary.points
+    return state.summary.xp
+
+
+def practise(db: Session, u: User, now: datetime) -> int:
+    """Answer right a graded question `u` hasn't got right yet."""
+    done = select(Attempt.question_id).where(Attempt.user_id == u.id, Attempt.correct.is_(True))
+    graded = select(Question.id).where(Question.graded, Question.playable, Question.id.not_in(done))
+    qid = db.scalars(graded.order_by(Question.id)).first()
+    assert qid is not None
+    body = right_answer(db, qid)
+    return practice.answer(db, u, qid, body.get("options"), body.get("value"), now).xp
 
 
 def board(c: TestClient, **params: str) -> dict[str, Any]:
@@ -78,31 +97,45 @@ def board(c: TestClient, **params: str) -> dict[str, Any]:
 
 
 def rows(b: dict[str, Any]) -> list[tuple[int, str, int, bool]]:
-    return [(r["rank"], r["display_name"], r["points"], r["me"]) for r in b["rows"]]
+    return [(r["rank"], r["display_name"], r["xp"], r["me"]) for r in b["rows"]]
 
 
-def test_points_come_from_daily_questions_and_mock_quizzes_only(
+def test_xp_comes_from_every_mode_with_practice_at_half_rate(
     team: None, app_client: TestClient, new_client: NewClient, db: Session, clock: Clock
 ) -> None:
     marta = join(app_client, new_client, "Marta")
     pau = join(app_client, new_client, "Pau")
-    assert play_daily(db, user(db, "Marta"), "mech", clock.now) == 10
-    assert play_mock(db, add(db, "Leo", "Driverless"), clock.now) == 10
+    assert play_daily(db, user(db, "Marta"), "mech", clock.now) == DAILY
+    assert play_mock(db, add(db, "Leo", "Driverless"), clock.now) == RUN
     graded = 1  # a graded mechanical question in the sample bank
     practised = pau.post(f"/api/practice/questions/{graded}/answer", json=right_answer(db, graded))
-    assert practised.json()["correct"] is True
+    assert (practised.json()["correct"], practised.json()["xp"]) == (True, PRACTICE)
+    join(app_client, new_client, "Idle")
 
     seen_by_pau = board(pau)
-    assert (seen_by_pau["period"], seen_by_pau["board"], seen_by_pau["players"]) == ("season", "everyone", 2)
-    assert rows(seen_by_pau) == [(1, "Leo", 10, False), (1, "Marta", 10, False)]
+    assert (seen_by_pau["period"], seen_by_pau["board"], seen_by_pau["players"]) == ("season", "everyone", 3)
+    assert rows(seen_by_pau) == [
+        (1, "Leo", RUN, False),
+        (2, "Marta", DAILY, False),
+        (3, "Pau", PRACTICE, True),
+    ]
     assert seen_by_pau["rows"][0]["vertical"] == "Driverless"
-    assert seen_by_pau["me"] is None
+    assert seen_by_pau["me"] == {"rank": 3, "xp": PRACTICE, "hidden": False}
+    assert rows(board(pau, board="mech")) == [
+        (1, "Leo", 3 * MOCK, False),
+        (2, "Marta", DAILY, False),
+        (3, "Pau", PRACTICE, True),
+    ]
     seen_by_marta = board(marta)
-    assert rows(seen_by_marta) == [(1, "Leo", 10, False), (1, "Marta", 10, True)]
-    assert seen_by_marta["me"] == {"rank": 1, "points": 10, "hidden": False}
+    assert rows(seen_by_marta) == [
+        (1, "Leo", RUN, False),
+        (2, "Marta", DAILY, True),
+        (3, "Pau", PRACTICE, False),
+    ]
+    assert seen_by_marta["me"] == {"rank": 2, "xp": DAILY, "hidden": False}
 
 
-def test_area_boards_split_points_by_the_question_area(
+def test_area_boards_split_xp_by_the_question_area(
     team: None, app_client: TestClient, new_client: NewClient, db: Session, clock: Clock
 ) -> None:
     c = join(app_client, new_client, "Marta")
@@ -110,11 +143,11 @@ def test_area_boards_split_points_by_the_question_area(
     play_daily(db, marta, "mech", clock.now)
     play_daily(db, marta, "elec", clock.now)
     play_mock(db, add(db, "Leo"), clock.now)
-    assert rows(board(c)) == [(1, "Marta", 20, True), (2, "Leo", 10, False)]
-    assert rows(board(c, board="mech")) == [(1, "Marta", 10, True), (2, "Leo", 6, False)]
-    assert rows(board(c, board="elec")) == [(1, "Marta", 10, True)]
+    assert rows(board(c)) == [(1, "Leo", RUN, False), (2, "Marta", 2 * DAILY, True)]
+    assert rows(board(c, board="mech")) == [(1, "Leo", 3 * MOCK, False), (2, "Marta", DAILY, True)]
+    assert rows(board(c, board="elec")) == [(1, "Marta", DAILY, True)]
     rules = board(c, board="rules")
-    assert (rows(rules), rules["me"], rules["board"]) == ([(1, "Leo", 2, False)], None, "rules")
+    assert (rows(rules), rules["me"], rules["board"]) == ([(1, "Leo", MOCK, False)], None, "rules")
 
 
 def test_people_who_opt_out_are_hidden_from_others_but_see_their_own_rank(
@@ -130,13 +163,13 @@ def test_people_who_opt_out_are_hidden_from_others_but_see_their_own_rank(
     assert marta.patch("/api/me", json={"leaderboard_opt_out": True}).status_code == 200
 
     seen_by_leo = board(leo)
-    assert rows(seen_by_leo) == [(1, "Pau", 20, False), (2, "Leo", 10, True)]
+    assert rows(seen_by_leo) == [(1, "Leo", RUN, True), (2, "Pau", 2 * DAILY, False)]
     assert seen_by_leo["players"] == 2 and "Marta" not in str(seen_by_leo)
     seen_by_marta = board(marta)
-    assert rows(seen_by_marta) == [(1, "Pau", 20, False), (2, "Leo", 10, False)]
-    assert seen_by_marta["me"] == {"rank": 2, "points": 10, "hidden": True}
-    assert rows(board(leo, board="mech")) == [(1, "Pau", 10, False), (2, "Leo", 6, True)]
-    assert board(marta, board="mech")["me"] == {"rank": 1, "points": 10, "hidden": True}
+    assert rows(seen_by_marta) == [(1, "Leo", RUN, False), (2, "Pau", 2 * DAILY, False)]
+    assert seen_by_marta["me"] == {"rank": 3, "xp": DAILY, "hidden": True}
+    assert rows(board(leo, board="mech")) == [(1, "Leo", 3 * MOCK, True), (2, "Pau", DAILY, False)]
+    assert board(marta, board="mech")["me"] == {"rank": 2, "xp": DAILY, "hidden": True}  # level with Pau
 
 
 def test_alumni_and_disabled_accounts_never_appear(
@@ -163,18 +196,20 @@ def test_the_week_is_the_last_seven_madrid_days_and_seasons_start_on_1_september
         login(c, email("Marta"), PASSWORD)
         return rows(board(c, **params))
 
-    play_daily(db, user(db, "Marta"), "mech", clock.now)
+    marta = user(db, "Marta")
+    play_daily(db, marta, "mech", clock.now)
     clock.advance(days=7)
     play_daily(db, leo, "mech", clock.now)
-    assert look(period="week") == [(1, "Leo", 10, False)]
-    assert look(period="season") == [(1, "Leo", 10, False), (1, "Marta", 10, True)]
+    assert look(period="week") == [(1, "Leo", DAILY, False)]
+    assert look(period="season") == [(1, "Leo", DAILY, False), (1, "Marta", DAILY, True)]
 
     clock.now = datetime(2027, 8, 31, 21, 30, tzinfo=UTC)  # 23:30 in Madrid
     play_daily(db, leo, "mech", clock.now)
-    assert look() == [(1, "Leo", 20, False), (2, "Marta", 10, True)]
+    assert practise(db, marta, clock.now) == PRACTICE  # practice belongs to the Madrid day it was done
+    assert look() == [(1, "Leo", 2 * DAILY, False), (2, "Marta", DAILY + PRACTICE, True)]
     clock.now = datetime(2027, 8, 31, 22, 30, tzinfo=UTC)  # 00:30 on 1 September in Madrid
     assert look() == []
-    assert look(period="week") == [(1, "Leo", 10, False)]
+    assert look(period="week") == [(1, "Leo", DAILY, False), (2, "Marta", PRACTICE, True)]
 
 
 def test_the_board_shows_the_top_fifty_and_your_own_rank_below(
@@ -190,18 +225,18 @@ def test_the_board_shows_the_top_fifty_and_your_own_rank_below(
     b = board(c)
     assert len(b["rows"]) == 51 and b["players"] == 52  # all 51 tied at the top, past the usual 50
     assert {r["rank"] for r in b["rows"]} == {1} and not any(r["me"] for r in b["rows"])
-    assert b["me"] == {"rank": 52, "points": 10, "hidden": False}
+    assert b["me"] == {"rank": 52, "xp": DAILY, "hidden": False}
 
 
-def test_late_answers_and_replays_do_not_score(
+def test_late_answers_earn_nothing_and_replays_a_tenth(
     team: None, app_client: TestClient, new_client: NewClient, db: Session, clock: Clock
 ) -> None:
     c = join(app_client, new_client, "Marta")
     marta = user(db, "Marta")
     assert play_daily(db, marta, "mech", clock.now, late=True) == 0
-    assert play_mock(db, marta, clock.now) == 10
-    assert play_mock(db, marta, clock.now) == 0
-    assert board(c)["me"] == {"rank": 1, "points": 10, "hidden": False}
+    assert play_mock(db, marta, clock.now) == RUN
+    assert play_mock(db, marta, clock.now) == REPLAY
+    assert board(c)["me"] == {"rank": 1, "xp": RUN + REPLAY, "hidden": False}
 
 
 def test_vertical_board(
@@ -222,7 +257,14 @@ def test_vertical_board(
     assert r.status_code == 200
     assert r.json() == {
         "period": "season",
-        "rows": [{"vertical": "Driverless", "members": 3, "points_per_member": 3.3, "participation": 0.333}],
+        "rows": [
+            {
+                "vertical": "Driverless",
+                "members": 3,
+                "xp_per_member": round(DAILY / 3, 1),
+                "participation": 0.333,
+            }
+        ],
     }
     assert not any(name in r.text for name in ("Leo", "Marta", "Pau", "@"))
 
@@ -230,7 +272,7 @@ def test_vertical_board(
     login(c, email("Marta"), PASSWORD)
     week = c.get("/api/leaderboard/verticals", params={"period": "week"}).json()
     assert week["rows"] == [
-        {"vertical": "Driverless", "members": 3, "points_per_member": 0.0, "participation": 0.0}
+        {"vertical": "Driverless", "members": 3, "xp_per_member": 0.0, "participation": 0.0}
     ]
 
 
@@ -243,7 +285,7 @@ def test_unknown_boards_and_periods_are_refused(team: None, app_client: TestClie
 def test_opted_out_members_stay_out_of_vertical_averages(
     team: None, app_client: TestClient, new_client: NewClient, db: Session, clock: Clock
 ) -> None:
-    """Counting them would let anyone subtract the named members' points and recover theirs."""
+    """Counting them would let anyone subtract the named members' XP and recover theirs."""
     c = join(app_client, new_client, "Marta")
     assert c.patch("/api/me", json={"vertical": "Driverless"}).status_code == 200
     play_daily(db, user(db, "Marta"), "mech", clock.now)
@@ -253,7 +295,7 @@ def test_opted_out_members_stay_out_of_vertical_averages(
     play_daily(db, leo, "elec", clock.now)
     play_mock(db, leo, clock.now)
     [v] = c.get("/api/leaderboard/verticals").json()["rows"]
-    assert (v["members"], v["points_per_member"]) == (3, round(10 / 3, 1))
+    assert (v["members"], v["xp_per_member"]) == (3, round(DAILY / 3, 1))
     add(db, "Pol", "Electronics")
     add(db, "Ona", "Electronics")
     add(db, "Hid", "Electronics", leaderboard_opt_out=True)
@@ -285,24 +327,24 @@ def test_a_mock_run_started_before_the_season_turns_scores_in_the_old_one(
         q, a = st.current
         body = right_answer(db, q.id)
         st = mock.answer(db, marta, s.id, a.id, body.get("options"), body.get("value"), after)
-    assert st.summary and st.summary.points == 10
+    assert st.summary and st.summary.xp == RUN
     later = after + timedelta(hours=1)
-    assert play_mock(db, marta, later) == 10  # the first run of the new season counts
+    assert play_mock(db, marta, later) == RUN  # the first run of the new season counts in full
     clock.now = later
     login(c, email("Marta"), PASSWORD)
-    assert board(c)["me"]["points"] == 10
+    assert board(c)["me"]["xp"] == RUN
 
 
-def test_relabelling_a_question_moves_no_points_between_areas(
+def test_relabelling_a_question_moves_no_xp_between_areas(
     team: None, app_client: TestClient, new_client: NewClient, db: Session, clock: Clock
 ) -> None:
     c = join(app_client, new_client, "Marta")
     play_mock(db, user(db, "Marta"), clock.now)
-    before = board(c, board="rules")["me"]["points"]
+    before = board(c, board="rules")["me"]["xp"]
     for q in db.query(Question).filter_by(area="mech"):
         q.area = "rules"
     db.commit()
-    assert board(c, board="rules")["me"]["points"] == before
+    assert board(c, board="rules")["me"]["xp"] == before
 
 
 def test_both_boards_need_a_member(team: None, new_client: NewClient) -> None:

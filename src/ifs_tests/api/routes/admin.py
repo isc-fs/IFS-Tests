@@ -20,7 +20,7 @@ def users(_: Admin, db: Db) -> list[AdminUser]:
 @router.patch("/users/{user_id}")
 def update_user(user_id: Id, body: UserPatch, admin: Admin, db: Db) -> AdminUser:
     return AdminUser.model_validate(
-        accounts.update_user(db, admin, user_id, role=body.role, status=body.status)
+        accounts.update_user(db, admin, user_id, role=body.role, status=body.status, rank=body.rank)
     )
 
 

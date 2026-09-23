@@ -1,6 +1,8 @@
 import { type ReactNode, useEffect, useId, useRef, useState } from 'react'
 import type { AnswerIn, Feedback, PlayQuestion } from '../api/types.gen'
+import { ME_KEY, queryClient, useMe } from '../lib/api'
 import { AREAS, TOPICS } from '../lib/areas'
+import { xp } from '../lib/xp'
 import { Field, Form, Notice } from './Form'
 import { ReportProblem } from './ReportProblem'
 
@@ -37,9 +39,39 @@ export function QuestionMeta({ question, children }: { question: PlayQuestion; c
   )
 }
 
+function Earned({ feedback }: { feedback: Feedback }) {
+  const { data: me } = useMe()
+  // The level before this answer: /api/me is refetched below and would hide the level-up otherwise.
+  const [before] = useState(() => me?.progress?.level)
+  const up = feedback.level != null && before != null && feedback.level > before
+  useEffect(() => {
+    if (feedback.level != null) queryClient.invalidateQueries({ queryKey: ME_KEY })
+  }, [feedback.level])
+  const amount = feedback.xp ?? 0
+  if (!amount && !up) return null
+  return (
+    <p className="earned">
+      {amount !== 0 && <span className={amount > 0 ? 'xp gain' : 'xp loss'}>{xp(amount)}</span>}
+      {up && <strong> Level up! You're level {feedback.level} now.</strong>}
+    </p>
+  )
+}
+
 function Result({ feedback }: { feedback: Feedback }) {
-  if (feedback.correct === true) return <Notice tone="ok">Correct.</Notice>
-  if (feedback.correct === false) return <Notice tone="error">Not quite.</Notice>
+  if (feedback.correct === true)
+    return (
+      <>
+        <Notice tone="ok">Correct.</Notice>
+        <Earned feedback={feedback} />
+      </>
+    )
+  if (feedback.correct === false)
+    return (
+      <>
+        <Notice tone="error">Not quite.</Notice>
+        <Earned feedback={feedback} />
+      </>
+    )
   return (
     <Notice tone="ok">
       {feedback.official

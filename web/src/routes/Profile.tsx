@@ -2,10 +2,12 @@ import { useMutation } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
 import { changePasswordMutation, logoutMutation, updateMeMutation } from '../api/@tanstack/react-query.gen'
-import { type Me, Vertical } from '../api/types.gen'
+import { type Me, type Rank, Vertical } from '../api/types.gen'
 import { ErrorNotice, Field, Form, Notice, PASSWORD_HINT, SelectField, useFieldErrors } from '../components/Form'
+import { LevelCard } from '../components/LevelCard'
 import { Page } from '../components/Page'
 import { ME_KEY, queryClient, useMe } from '../lib/api'
+import { RANKS } from '../lib/xp'
 
 export default function Profile() {
   const { data: user } = useMe()
@@ -21,6 +23,7 @@ export default function Profile() {
   return (
     <Page title="Profile" eyebrow="Your account">
       <p className="muted">Signed in as {user.email}</p>
+      <LevelCard me={user} />
       <ProfileForm user={user} />
       <PasswordForm />
       <section className="panel" aria-label="Session">
@@ -37,6 +40,7 @@ function ProfileForm({ user }: { user: Me }) {
     display_name: user.display_name,
     vertical: user.vertical ?? '',
     leaderboard_opt_out: user.leaderboard_opt_out,
+    rank: user.rank,
   })
   const save = useMutation({
     ...updateMeMutation(),
@@ -48,7 +52,8 @@ function ProfileForm({ user }: { user: Me }) {
     Object.keys(patch).forEach(touch)
     if (save.isSuccess) save.reset()
   }
-  const submit = () => save.mutate({ body: { ...form, vertical: (form.vertical || null) as Vertical | null } })
+  const submit = () =>
+    save.mutate({ body: { ...form, vertical: (form.vertical || null) as Vertical | null, rank: form.rank as Rank } })
 
   return (
     <Form onSubmit={submit} error={save.error} className="stack panel" aria-labelledby="profile-title">
@@ -71,6 +76,19 @@ function ProfileForm({ user }: { user: Me }) {
         <option value="">Not set</option>
         {Object.values(Vertical).map((v) => (
           <option key={v}>{v}</option>
+        ))}
+      </SelectField>
+      <SelectField
+        label="Where are you on the team?"
+        value={form.rank}
+        onChange={(e) => edit({ rank: e.target.value as Rank })}
+        hint="Moving up raises your level to where that rank starts; your XP never goes down from a change."
+        error={errors.rank}
+      >
+        {Object.entries(RANKS).map(([r, label]) => (
+          <option key={r} value={r}>
+            {label}
+          </option>
         ))}
       </SelectField>
       <label className="check">

@@ -12,8 +12,9 @@ from sqlalchemy.orm import Session as DB
 from ..auth.passwords import dummy_hash, hash_password, needs_rehash, password_problem, verify_password
 from ..auth.sessions import create_session, end_all_sessions, end_session
 from ..auth.tokens import new_token, token_hash
-from ..db.models import ROLES, STATUSES, VERTICALS, AuditLog, Invite, PasswordReset, User
+from ..db.models import RANKS, ROLES, STATUSES, VERTICALS, AuditLog, Invite, PasswordReset, User
 from ..domain import accounts as rules
+from ..domain import xp as xp_rules
 from .errors import UserError
 
 INVITE_TTL = timedelta(days=7)
@@ -133,7 +134,10 @@ def register(
     password: str,
     now: datetime,
     vertical: str | None = None,
+    rank: str = "mingo",
 ) -> tuple[User, str]:
+    if rank not in RANKS:
+        raise AccountError("Unknown rank.", fields={"rank": "Pick where you are on the team."})
     open_invite(db, token, now)
     email, name = _check_new_user(db, email, display_name, password)
     vertical = _check_vertical(vertical)
@@ -147,6 +151,8 @@ def register(
             display_name=name,
             vertical=invite.vertical or vertical,
             role=invite.role,
+            rank=rank,
+            xp=xp_rules.floor_for(rank),
             created_at=now,
         )
         db.add(user)
@@ -302,6 +308,8 @@ def update_profile(db: DB, user: User, changes: dict[str, Any]) -> User:
         user.display_name = name
     if "vertical" in changes:
         user.vertical = _check_vertical(changes["vertical"])
+    if changes.get("rank") is not None:
+        _set_rank(user, changes["rank"])
     if changes.get("leaderboard_opt_out") is not None:
         user.leaderboard_opt_out = changes["leaderboard_opt_out"]
     with _unique(db):
@@ -317,10 +325,23 @@ def _active_admin_ids(db: DB, lock: bool = True) -> list[int]:
     return list(db.scalars(stmt.with_for_update() if lock else stmt))
 
 
+def _set_rank(user: User, rank: str) -> None:
+    """A new rank moves the starting level; XP only ever goes up to meet it."""
+    if rank not in RANKS:
+        raise AccountError("Unknown rank.", fields={"rank": "Pick where you are on the team."})
+    user.rank = rank
+    user.xp = max(user.xp, xp_rules.floor_for(rank))
+
+
 def update_user(
-    db: DB, actor: User, user_id: int, role: str | None = None, status: str | None = None
+    db: DB,
+    actor: User,
+    user_id: int,
+    role: str | None = None,
+    status: str | None = None,
+    rank: str | None = None,
 ) -> User:
-    if user_id == actor.id:
+    if user_id == actor.id and (role is not None or status is not None):
         raise AccountError("You can't change your own role or status.", 403)
     if role is not None and role not in ROLES:
         raise AccountError("Unknown role.")
@@ -337,6 +358,9 @@ def update_user(
     if role is not None and role != user.role:
         changes["role"] = [user.role, role]
         user.role = role
+    if rank is not None and rank != user.rank:
+        changes["rank"] = [user.rank, rank]
+        _set_rank(user, rank)
     if status is not None and status != user.status:
         changes["status"] = [user.status, status]
         user.status = status

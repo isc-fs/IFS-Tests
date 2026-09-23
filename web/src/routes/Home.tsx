@@ -1,4 +1,5 @@
 import { Link } from 'react-router'
+import { LevelCard } from '../components/LevelCard'
 import { Page } from '../components/Page'
 import { useMe } from '../lib/api'
 
@@ -15,6 +16,7 @@ export default function Home() {
           First step: <Link to="/profile">set your vertical</Link> so your answers count for your team on the board.
         </p>
       )}
+      {user && <LevelCard me={user} />}
       <section className="panel stack" aria-labelledby="daily-title">
         <h2 id="daily-title">Daily question</h2>
         <p>One mechanical, one electrical and one rules question every day, against the clock. Keep your streak.</p>

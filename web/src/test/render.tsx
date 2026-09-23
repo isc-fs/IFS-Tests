@@ -52,6 +52,18 @@ export const MEMBER = {
   vertical: 'Driverless',
   role: 'member',
   leaderboard_opt_out: false,
+  rank: 'mingo',
+  xp: 120,
+  progress: {
+    level: 1,
+    title: 'Mingo',
+    level_xp: 25,
+    next_level_xp: 123,
+    penalty: 0,
+    streak: 2,
+    streak_bonus: 5,
+    aids: { formulas: true, learn_more: true, hint: true },
+  },
 }
 export const ADMIN = { ...MEMBER, id: 1, display_name: 'Chief', role: 'admin' }
 export const signedOut = { 'GET /api/me': { status: 401, body: { detail: 'Sign in first.' } } }

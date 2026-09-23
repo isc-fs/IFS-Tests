@@ -1,4 +1,4 @@
-"""Daily question rules: which question, how long you get, whether you were late, streaks and points."""
+"""Daily question rules: which question, how long you get, whether you were late, and streaks."""
 
 from __future__ import annotations
 
@@ -13,7 +13,6 @@ GRACE = timedelta(seconds=3)
 MIN_BUDGET, MAX_BUDGET = 60, 600
 DEFAULT_BUDGET = {"choice-one": 120, "choice-many": 150}
 TYPED_BUDGET = 240
-BASE_POINTS, MAX_STREAK_BONUS = 10, 5
 
 
 def madrid_day(now: datetime) -> date:
@@ -61,10 +60,3 @@ def streak(days: set[date], today: date) -> int:
         count += 1
         day -= timedelta(days=1)
     return count
-
-
-def points(correct: bool, late: bool, streak_days: int) -> int:
-    """10 for a correct answer in time, plus a point per day of streak beyond the first (up to 5)."""
-    if not correct or late:
-        return 0
-    return BASE_POINTS + min(max(streak_days - 1, 0), MAX_STREAK_BONUS)

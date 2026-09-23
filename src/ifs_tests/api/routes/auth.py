@@ -53,7 +53,7 @@ def invite_info(body: TokenIn, db: Db, now: Now) -> InviteInfo:
 @router.post("/register", status_code=201)
 def register(body: RegisterIn, response: Response, db: Db, now: Now, settings: AppSettings) -> Me:
     user, token = accounts.register(
-        db, body.token, body.email, body.display_name, body.password, now, body.vertical
+        db, body.token, body.email, body.display_name, body.password, now, body.vertical, body.rank
     )
     _set_cookie(response, settings, token)
     return Me.model_validate(user)

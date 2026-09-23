@@ -31,6 +31,7 @@ from ..db.models import (
     quiz_events,
 )
 from ..domain import keys
+from ..domain import xp as xp_rules
 
 log = logging.getLogger(__name__)
 CHOICE = ("single-choice", "multi-choice")
@@ -116,6 +117,7 @@ def _write_question(db: DB, q: Question, raw: dict[str, Any], media: _Media, now
     q.type, q.text, q.time_s = raw["type"], raw["text"] or "", raw["time"]
     q.source_hash = source_hash(raw)
     q.answer_kind = keys.answer_kind(raw["type"], keys.build_key(raw["type"], raw["answers"]))
+    q.difficulty = xp_rules.difficulty(q.answer_kind, q.time_s)  # nightly recalibration refines it
     if fresh:
         db.add(q)
         db.flush()

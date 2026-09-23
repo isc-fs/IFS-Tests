@@ -30,6 +30,8 @@ class Checked:
     official: str | None
     correct_options: list[int]
     solutions: list[tuple[str | None, list[str]]]
+    xp: int = 0  # set by the mode that scored the answer
+    level: int | None = None
 
 
 def _quiz_labels(db: DB, ids: list[int]) -> dict[int, list[str]]:

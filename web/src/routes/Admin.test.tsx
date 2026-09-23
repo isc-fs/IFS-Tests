@@ -67,7 +67,7 @@ test('revoking an invite asks first', async () => {
 test('a role change is confirmed on screen', async () => {
   renderApp('/admin', { ...base, 'PATCH /api/admin/users/2': { body: { ...USERS[1], role: 'reviewer' } } })
   await userEvent.selectOptions(within(await row('Marta')).getByLabelText('Role'), 'reviewer')
-  expect(await screen.findByRole('status')).toHaveTextContent('Marta is now reviewer, active.')
+  expect(await screen.findByRole('status')).toHaveTextContent('Marta is now reviewer, active, Mingo (new this season).')
 })
 
 test('the member list can be filtered once the team grows', async () => {

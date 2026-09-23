@@ -14,7 +14,12 @@ test('clearing the vertical sends null and the saved notice appears', async () =
   await userEvent.click(screen.getByLabelText(/Hide me from the leaderboard/))
   await userEvent.click(screen.getByRole('button', { name: 'Save profile' }))
   expect(await screen.findByText('Saved.')).toBeInTheDocument()
-  expect(sent('PATCH /api/me')[0].body).toEqual({ display_name: 'Marta', vertical: null, leaderboard_opt_out: true })
+  expect(sent('PATCH /api/me')[0].body).toEqual({
+    display_name: 'Marta',
+    vertical: null,
+    leaderboard_opt_out: true,
+    rank: 'mingo',
+  })
 })
 
 test('a taken name is shown on the field and disappears when edited', async () => {

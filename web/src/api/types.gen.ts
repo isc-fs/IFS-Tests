@@ -23,6 +23,11 @@ export type AdminUser = {
     vertical: Vertical | null;
     role: Role;
     status: Status;
+    rank: Rank;
+    /**
+     * Xp
+     */
+    xp: number;
     /**
      * Leaderboard Opt Out
      */
@@ -39,6 +44,24 @@ export type AdminUser = {
      * Locked Until
      */
     locked_until: string | null;
+};
+
+/**
+ * Aids
+ */
+export type Aids = {
+    /**
+     * Formulas
+     */
+    formulas: boolean;
+    /**
+     * Learn More
+     */
+    learn_more: boolean;
+    /**
+     * Hint
+     */
+    hint: boolean;
 };
 
 /**
@@ -188,9 +211,9 @@ export type DailyArea = {
      */
     late: boolean | null;
     /**
-     * Points
+     * Xp
      */
-    points: number;
+    xp: number;
 };
 
 /**
@@ -204,9 +227,9 @@ export type DailyResult = {
      */
     late: boolean;
     /**
-     * Points
+     * Xp
      */
-    points: number;
+    xp: number;
     /**
      * Streak
      */
@@ -226,9 +249,9 @@ export type DailyStatus = {
      */
     streak: number;
     /**
-     * Points Today
+     * Xp Today
      */
-    points_today: number;
+    xp_today: number;
     /**
      * Areas
      */
@@ -257,6 +280,18 @@ export type Feedback = {
      * Solutions
      */
     solutions: Array<SolutionOut>;
+    /**
+     * Xp
+     *
+     * XP this answer earned (negative when it cost XP)
+     */
+    xp?: number;
+    /**
+     * Level
+     *
+     * Your level after this answer
+     */
+    level?: number | null;
 };
 
 /**
@@ -307,9 +342,9 @@ export type LeaderRow = {
     display_name: string;
     vertical: Vertical | null;
     /**
-     * Points
+     * Xp
      */
-    points: number;
+    xp: number;
     /**
      * Me
      */
@@ -394,6 +429,12 @@ export type Me = {
      * Leaderboard Opt Out
      */
     leaderboard_opt_out: boolean;
+    rank: Rank;
+    /**
+     * Xp
+     */
+    xp: number;
+    progress?: Progress | null;
 };
 
 /**
@@ -521,9 +562,9 @@ export type MockSummary = {
      */
     graded: number;
     /**
-     * Points
+     * Xp
      */
-    points: number;
+    xp: number;
     /**
      * Counted
      */
@@ -549,9 +590,9 @@ export type MyRank = {
      */
     rank: number;
     /**
-     * Points
+     * Xp
      */
-    points: number;
+    xp: number;
     /**
      * Hidden
      *
@@ -674,12 +715,71 @@ export type ProfileIn = {
      * Display Name
      */
     display_name?: string | null;
+    rank?: Rank | null;
     vertical?: Vertical | null;
     /**
      * Leaderboard Opt Out
      */
     leaderboard_opt_out?: boolean | null;
 };
+
+/**
+ * Progress
+ *
+ * Level, title and what help the player still gets. XP always refers to lifetime XP.
+ */
+export type Progress = {
+    /**
+     * Level
+     */
+    level: number;
+    /**
+     * Title
+     */
+    title: string;
+    /**
+     * Level Xp
+     *
+     * Lifetime XP at which the current level started
+     */
+    level_xp: number;
+    /**
+     * Next Level Xp
+     */
+    next_level_xp: number;
+    /**
+     * Penalty
+     *
+     * Percentage of a right answer's XP a wrong answer costs
+     */
+    penalty: number;
+    /**
+     * Streak
+     */
+    streak: number;
+    /**
+     * Streak Bonus
+     *
+     * Extra XP on gains, in percent
+     */
+    streak_bonus: number;
+    aids: Aids;
+};
+
+/**
+ * Rank
+ */
+export const Rank = {
+    MINGO: 'mingo',
+    MEMBER: 'member',
+    DEPARTMENT_HEAD: 'department_head',
+    TECHNICAL_DIRECTOR: 'technical_director'
+} as const;
+
+/**
+ * Rank
+ */
+export type Rank = typeof Rank[keyof typeof Rank];
 
 /**
  * RegisterIn
@@ -702,6 +802,7 @@ export type RegisterIn = {
      */
     password: string;
     vertical?: Vertical | null;
+    rank?: Rank;
 };
 
 /**
@@ -1063,6 +1164,7 @@ export type TokenIn = {
 export type UserPatch = {
     role?: Role | null;
     status?: Status | null;
+    rank?: Rank | null;
 };
 
 /**
@@ -1135,9 +1237,9 @@ export type VerticalRow = {
      */
     members: number;
     /**
-     * Points Per Member
+     * Xp Per Member
      */
-    points_per_member: number;
+    xp_per_member: number;
     /**
      * Participation
      *
