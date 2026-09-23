@@ -57,6 +57,7 @@ export function QuestionCard({
   next,
   clock,
   expired,
+  focusOnShow,
 }: {
   question: PlayQuestion
   feedback?: Feedback
@@ -67,11 +68,14 @@ export function QuestionCard({
   clock?: ReactNode
   /** When time runs out, whatever is entered is sent as the answer. */
   expired?: boolean
+  /** Move focus to the question when it appears (it replaced the previous one). */
+  focusOnShow?: boolean
 }) {
   const [chosen, setChosen] = useState<number[]>([])
   const [value, setValue] = useState('')
   const [missing, setMissing] = useState<string>()
   const after = useRef<HTMLDivElement>(null)
+  const text = useRef<HTMLParagraphElement>(null)
   const legend = useId()
   const kind = question.answer_kind
   const choice = kind.startsWith('choice')
@@ -81,6 +85,9 @@ export function QuestionCard({
   useEffect(() => {
     if (feedback) after.current?.querySelector<HTMLElement>('button')?.focus()
   }, [feedback])
+  useEffect(() => {
+    if (focusOnShow) text.current?.focus()
+  }, [focusOnShow])
 
   const sent = useRef(false)
   useEffect(() => {
@@ -107,8 +114,9 @@ export function QuestionCard({
 
   return (
     <article className="question panel stack" aria-labelledby={`${legend}-text`}>
-      <QuestionMeta question={question}>{!answered && clock}</QuestionMeta>
-      <p className="question-text" id={`${legend}-text`}>
+      {clock && !answered && <div className="clock-bar">{clock}</div>}
+      <QuestionMeta question={question} />
+      <p className="question-text" id={`${legend}-text`} ref={text} tabIndex={-1}>
         {question.text}
       </p>
       {question.images.map((src) => (

@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { AnswerDailyData, AnswerDailyErrors, AnswerDailyResponses, AnswerPracticeData, AnswerPracticeErrors, AnswerPracticeResponses, AuditLogData, AuditLogErrors, AuditLogResponses, BankSummaryData, BankSummaryResponses, ChangePasswordData, ChangePasswordErrors, ChangePasswordResponses, CreateInviteData, CreateInviteErrors, CreateInviteResponses, DailyStatusData, DailyStatusResponses, InviteInfoData, InviteInfoErrors, InviteInfoResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutResponses, MeData, MeResponses, NextQuestionData, NextQuestionErrors, NextQuestionResponses, OpenInvitesData, OpenInvitesResponses, PracticeAreasData, PracticeAreasResponses, PracticeQuestionData, PracticeQuestionErrors, PracticeQuestionResponses, RegisterData, RegisterErrors, RegisterResponses, ResetData, ResetErrors, ResetInfoData, ResetInfoErrors, ResetInfoResponses, ResetLinkData, ResetLinkErrors, ResetLinkResponses, ResetResponses, ReviewDailyData, ReviewDailyErrors, ReviewDailyResponses, RevokeInviteData, RevokeInviteErrors, RevokeInviteResponses, RevokeSessionsData, RevokeSessionsErrors, RevokeSessionsResponses, StartDailyData, StartDailyErrors, StartDailyResponses, UpdateMeData, UpdateMeErrors, UpdateMeResponses, UpdateUserData, UpdateUserErrors, UpdateUserResponses, UsersData, UsersResponses } from './types.gen';
+import type { AnswerDailyData, AnswerDailyErrors, AnswerDailyResponses, AnswerMockData, AnswerMockErrors, AnswerMockResponses, AnswerPracticeData, AnswerPracticeErrors, AnswerPracticeResponses, AuditLogData, AuditLogErrors, AuditLogResponses, BankSummaryData, BankSummaryResponses, ChangePasswordData, ChangePasswordErrors, ChangePasswordResponses, CreateInviteData, CreateInviteErrors, CreateInviteResponses, DailyStatusData, DailyStatusResponses, InviteInfoData, InviteInfoErrors, InviteInfoResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutResponses, MeData, MeResponses, MockQuizzesData, MockQuizzesResponses, MockStateData, MockStateErrors, MockStateResponses, NextQuestionData, NextQuestionErrors, NextQuestionResponses, OpenInvitesData, OpenInvitesResponses, PracticeAreasData, PracticeAreasResponses, PracticeQuestionData, PracticeQuestionErrors, PracticeQuestionResponses, RegisterData, RegisterErrors, RegisterResponses, ResetData, ResetErrors, ResetInfoData, ResetInfoErrors, ResetInfoResponses, ResetLinkData, ResetLinkErrors, ResetLinkResponses, ResetResponses, ReviewDailyData, ReviewDailyErrors, ReviewDailyResponses, RevokeInviteData, RevokeInviteErrors, RevokeInviteResponses, RevokeSessionsData, RevokeSessionsErrors, RevokeSessionsResponses, StartDailyData, StartDailyErrors, StartDailyResponses, StartMockData, StartMockErrors, StartMockResponses, UpdateMeData, UpdateMeErrors, UpdateMeResponses, UpdateUserData, UpdateUserErrors, UpdateUserResponses, UsersData, UsersResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -224,3 +224,30 @@ export const answerDaily = <ThrowOnError extends boolean = false>(options: Optio
  * Review Daily
  */
 export const reviewDaily = <ThrowOnError extends boolean = false>(options: Options<ReviewDailyData, ThrowOnError>): RequestResult<ReviewDailyResponses, ReviewDailyErrors, ThrowOnError> => (options.client ?? client).get<ReviewDailyResponses, ReviewDailyErrors, ThrowOnError>({ url: '/api/daily/{area}/review', ...options });
+
+/**
+ * Mock Quizzes
+ */
+export const mockQuizzes = <ThrowOnError extends boolean = false>(options?: Options<MockQuizzesData, ThrowOnError>): RequestResult<MockQuizzesResponses, unknown, ThrowOnError> => (options?.client ?? client).get<MockQuizzesResponses, unknown, ThrowOnError>({ url: '/api/mock/quizzes', ...options });
+
+/**
+ * Start Mock
+ */
+export const startMock = <ThrowOnError extends boolean = false>(options: Options<StartMockData, ThrowOnError>): RequestResult<StartMockResponses, StartMockErrors, ThrowOnError> => (options.client ?? client).post<StartMockResponses, StartMockErrors, ThrowOnError>({ url: '/api/mock/quizzes/{quiz_id}/start', ...options });
+
+/**
+ * Mock State
+ */
+export const mockState = <ThrowOnError extends boolean = false>(options: Options<MockStateData, ThrowOnError>): RequestResult<MockStateResponses, MockStateErrors, ThrowOnError> => (options.client ?? client).get<MockStateResponses, MockStateErrors, ThrowOnError>({ url: '/api/mock/sessions/{session_id}', ...options });
+
+/**
+ * Answer Mock
+ */
+export const answerMock = <ThrowOnError extends boolean = false>(options: Options<AnswerMockData, ThrowOnError>): RequestResult<AnswerMockResponses, AnswerMockErrors, ThrowOnError> => (options.client ?? client).post<AnswerMockResponses, AnswerMockErrors, ThrowOnError>({
+    url: '/api/mock/sessions/{session_id}/answer',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});

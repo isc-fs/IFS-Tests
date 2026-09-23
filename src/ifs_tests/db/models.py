@@ -288,6 +288,9 @@ class Attempt(Base):
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     late: Mapped[bool | None]
     points: Mapped[int] = mapped_column(server_default="0")
+    session_id: Mapped[int | None] = mapped_column(
+        ForeignKey("mock_sessions.id", ondelete="CASCADE"), index=True
+    )
 
 
 Index(
@@ -308,3 +311,28 @@ class DailyQuestion(Base):
     day: Mapped[date] = mapped_column(Date, primary_key=True)
     area: Mapped[str] = mapped_column(String(16), primary_key=True)
     question_id: Mapped[int] = mapped_column(ForeignKey("questions.id", ondelete="CASCADE"), index=True)
+
+
+class MockSession(Base):
+    """One run through a past quiz, one question at a time."""
+
+    __tablename__ = "mock_sessions"
+
+    id: Mapped[int] = mapped_column(Identity(), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    quiz_id: Mapped[int] = mapped_column(ForeignKey("quizzes.id", ondelete="CASCADE"))
+    season: Mapped[int]
+    # Only the first run of a quiz in a season scores points.
+    counted: Mapped[bool]
+    position: Mapped[int] = mapped_column(server_default="0")
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+Index(
+    "uq_mock_sessions_open",
+    MockSession.user_id,
+    MockSession.quiz_id,
+    unique=True,
+    postgresql_where=MockSession.finished_at.is_(None),
+)

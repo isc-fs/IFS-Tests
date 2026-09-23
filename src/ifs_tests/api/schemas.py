@@ -202,6 +202,49 @@ class DailyResult(BaseModel):
     streak: int
 
 
+class MockQuiz(BaseModel):
+    id: int
+    label: str
+    year: int
+    vehicle_class: str
+    held_on: date | None
+    questions: int
+    graded: int
+    total_time_s: int | None
+    bar_to_beat: str | None
+    best: int | None = Field(description="Most correct answers in a finished run")
+    open_session: int | None
+
+
+class MockAnswerIn(AnswerIn):
+    attempt_id: int = Field(ge=1, le=2**63 - 1)
+
+
+class MockItem(BaseModel):
+    question: PlayQuestion
+    feedback: Feedback
+    late: bool
+
+
+class MockSummary(BaseModel):
+    correct: int
+    graded: int
+    points: int
+    counted: bool
+    bar_to_beat: str | None
+    items: list[MockItem]
+
+
+class MockState(BaseModel):
+    session_id: int
+    quiz_id: int
+    label: str
+    position: int = Field(description="Questions already answered")
+    total: int
+    current: TimedQuestion | None
+    summary: MockSummary | None
+
+
 class AreaProgress(BaseModel):
     area: str
     questions: int

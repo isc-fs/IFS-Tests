@@ -14,9 +14,9 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from ifs_tests.bank.mirror import load_bank
 from ifs_tests.bank.sample import SAMPLE_DIR
-from ifs_tests.db.models import AnswerOption, Attempt, DailyQuestion, User
+from ifs_tests.db.models import AnswerOption, Attempt, DailyQuestion, MockSession, User
 from ifs_tests.domain.daily import madrid_day
-from ifs_tests.services import accounts, daily
+from ifs_tests.services import accounts, daily, mock
 from ifs_tests.services.bank import import_bank
 
 pytestmark = pytest.mark.integration
@@ -144,3 +144,32 @@ def test_a_double_submit_is_graded_once(db: Session, app_engine: Engine, daily_p
     row = db.get_one(Attempt, attempt.id)
     db.refresh(row)
     assert row.submitted_at == later and row.answer["options"][0] in options
+
+
+def test_a_double_start_of_a_mock_quiz_opens_one_run(
+    db: Session, app_engine: Engine, daily_player: User
+) -> None:
+    results = race(app_engine, *[lambda s: mock.start(s, s.get_one(User, daily_player.id), 9002, NOW).id] * 4)
+    assert len(set(results)) == 1, results
+    assert db.scalar(select(func.count()).select_from(MockSession)) == 1
+
+
+def test_a_double_submit_in_a_mock_quiz_moves_on_once(
+    db: Session, app_engine: Engine, daily_player: User
+) -> None:
+    run = mock.start(db, daily_player, 9002, NOW)
+    current = mock.state(db, daily_player, run.id, NOW).current
+    assert current is not None
+    attempt = current[1].id
+    results = race(
+        app_engine,
+        *[
+            lambda s: (
+                mock.answer(
+                    s, s.get_one(User, daily_player.id), run.id, attempt, [], None, NOW
+                ).session.position
+            )
+        ]
+        * 4,
+    )
+    assert results == [1, 1, 1, 1], results

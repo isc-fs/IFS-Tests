@@ -64,7 +64,7 @@ test('invite, join, hide from the board, get a reset link, sign back in', async 
 
 test('pages never scroll sideways on a phone', async ({ page }) => {
   await signIn(page, ADMIN.email, ADMIN.password)
-  for (const path of ['/', '/daily', '/practice', '/profile', '/admin']) {
+  for (const path of ['/', '/daily', '/practice', '/mock', '/profile', '/admin']) {
     await page.goto(path)
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)

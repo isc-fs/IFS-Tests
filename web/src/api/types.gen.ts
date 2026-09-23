@@ -338,6 +338,148 @@ export type Me = {
 };
 
 /**
+ * MockAnswerIn
+ */
+export type MockAnswerIn = {
+    /**
+     * Options
+     */
+    options?: Array<number> | null;
+    /**
+     * Value
+     */
+    value?: string | null;
+    /**
+     * Attempt Id
+     */
+    attempt_id: number;
+};
+
+/**
+ * MockItem
+ */
+export type MockItem = {
+    question: PlayQuestion;
+    feedback: Feedback;
+    /**
+     * Late
+     */
+    late: boolean;
+};
+
+/**
+ * MockQuiz
+ */
+export type MockQuiz = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Year
+     */
+    year: number;
+    /**
+     * Vehicle Class
+     */
+    vehicle_class: string;
+    /**
+     * Held On
+     */
+    held_on: string | null;
+    /**
+     * Questions
+     */
+    questions: number;
+    /**
+     * Graded
+     */
+    graded: number;
+    /**
+     * Total Time S
+     */
+    total_time_s: number | null;
+    /**
+     * Bar To Beat
+     */
+    bar_to_beat: string | null;
+    /**
+     * Best
+     *
+     * Most correct answers in a finished run
+     */
+    best: number | null;
+    /**
+     * Open Session
+     */
+    open_session: number | null;
+};
+
+/**
+ * MockState
+ */
+export type MockState = {
+    /**
+     * Session Id
+     */
+    session_id: number;
+    /**
+     * Quiz Id
+     */
+    quiz_id: number;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Position
+     *
+     * Questions already answered
+     */
+    position: number;
+    /**
+     * Total
+     */
+    total: number;
+    current: TimedQuestion | null;
+    summary: MockSummary | null;
+};
+
+/**
+ * MockSummary
+ */
+export type MockSummary = {
+    /**
+     * Correct
+     */
+    correct: number;
+    /**
+     * Graded
+     */
+    graded: number;
+    /**
+     * Points
+     */
+    points: number;
+    /**
+     * Counted
+     */
+    counted: boolean;
+    /**
+     * Bar To Beat
+     */
+    bar_to_beat: string | null;
+    /**
+     * Items
+     */
+    items: Array<MockItem>;
+};
+
+/**
  * OpenInvite
  */
 export type OpenInvite = {
@@ -1289,3 +1431,111 @@ export type ReviewDailyResponses = {
 };
 
 export type ReviewDailyResponse = ReviewDailyResponses[keyof ReviewDailyResponses];
+
+export type MockQuizzesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/mock/quizzes';
+};
+
+export type MockQuizzesResponses = {
+    /**
+     * Response Mock Quizzes
+     *
+     * Successful Response
+     */
+    200: Array<MockQuiz>;
+};
+
+export type MockQuizzesResponse = MockQuizzesResponses[keyof MockQuizzesResponses];
+
+export type StartMockData = {
+    body?: never;
+    path: {
+        /**
+         * Quiz Id
+         */
+        quiz_id: number;
+    };
+    query?: never;
+    url: '/api/mock/quizzes/{quiz_id}/start';
+};
+
+export type StartMockErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type StartMockError = StartMockErrors[keyof StartMockErrors];
+
+export type StartMockResponses = {
+    /**
+     * Successful Response
+     */
+    200: MockState;
+};
+
+export type StartMockResponse = StartMockResponses[keyof StartMockResponses];
+
+export type MockStateData = {
+    body?: never;
+    path: {
+        /**
+         * Session Id
+         */
+        session_id: number;
+    };
+    query?: never;
+    url: '/api/mock/sessions/{session_id}';
+};
+
+export type MockStateErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type MockStateError = MockStateErrors[keyof MockStateErrors];
+
+export type MockStateResponses = {
+    /**
+     * Successful Response
+     */
+    200: MockState;
+};
+
+export type MockStateResponse = MockStateResponses[keyof MockStateResponses];
+
+export type AnswerMockData = {
+    body: MockAnswerIn;
+    path: {
+        /**
+         * Session Id
+         */
+        session_id: number;
+    };
+    query?: never;
+    url: '/api/mock/sessions/{session_id}/answer';
+};
+
+export type AnswerMockErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AnswerMockError = AnswerMockErrors[keyof AnswerMockErrors];
+
+export type AnswerMockResponses = {
+    /**
+     * Successful Response
+     */
+    200: MockState;
+};
+
+export type AnswerMockResponse = AnswerMockResponses[keyof AnswerMockResponses];
