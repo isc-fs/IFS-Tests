@@ -14,7 +14,8 @@ Instructions for coding agents working in this repository. Read [README.md](READ
 - Python: `uv sync`, `uv run ruff check .`, `uv run ruff format .`, `uv run mypy`, `uv run pytest` (integration tests need Docker).
 - Web (`web/`): `npm ci --ignore-scripts`, `npm run typecheck`, `npm run lint`, `npm test`, `npm run build`, `npm run size`.
 - Local stack: `docker compose up --build`; migrations: `alembic upgrade head` (or `docker compose run --rm api alembic upgrade head`).
-- New migration: `uv run alembic revision --autogenerate -m "..."`, then review it by hand.
+- New migration: `uv run alembic revision --autogenerate -m "..."`, then review it by hand. Migrations must be expand/contract (the previous release keeps running during a deploy).
+- Deployment: `deploy/` (compose, `deploy.sh`, `restore.sh`, Nginx snippet) and [`docs/runbook.md`](docs/runbook.md). CI never deploys; a maintainer runs `deploy.sh` on the server.
 
 ## Rules
 
