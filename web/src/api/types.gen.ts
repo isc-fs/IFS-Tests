@@ -831,6 +831,10 @@ export type ReviewQuestion = {
      * Right
      */
     right: number;
+    /**
+     * Answer Hidden
+     */
+    answer_hidden: boolean;
 };
 
 /**

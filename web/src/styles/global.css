@@ -257,7 +257,8 @@ button:hover,
 .button:hover {
   background: var(--isc-green-600);
 }
-button:disabled {
+button:disabled,
+button[aria-disabled='true'] {
   opacity: 0.6;
   cursor: not-allowed;
 }
@@ -295,6 +296,10 @@ button.secondary:hover {
 .notice.ok {
   background: #e7f3ec;
   color: var(--isc-green-800);
+}
+.notice.info {
+  background: var(--isc-l-bg-alt);
+  color: var(--isc-l-text);
 }
 .badge {
   display: inline-block;

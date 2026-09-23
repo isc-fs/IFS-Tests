@@ -199,9 +199,9 @@ export function QuestionCard({
             </section>
           ))}
           {next}
-          <ReportProblem questionId={question.id} />
         </div>
       )}
+      {feedback && <ReportProblem questionId={question.id} />}
     </article>
   )
 }

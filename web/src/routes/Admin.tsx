@@ -341,6 +341,30 @@ const ACTIONS: Record<string, string> = {
   'report.resolve': 'handled a report on',
 }
 
+const shown = (v: unknown) =>
+  v === null || v === undefined || v === '' ? 'none' : Array.isArray(v) ? v.join(', ') : String(v)
+
+/** How a changed field reads, given its new value; other fields read as "field → value". */
+const CHANGES: Record<string, (after: unknown) => string> = {
+  labels_reviewed: (v) => (v ? 'labels confirmed' : 'labels unconfirmed'),
+  excluded: (v) => (v ? 'hidden' : 'shown again'),
+  exclusion_note: (v) => `note → ${shown(v)}`,
+  upstream_change: (v) => `upstream change ${shown(v)}`,
+}
+
+function detail(action: string, details: Record<string, unknown>) {
+  let parts: string[] = []
+  if (action === 'user.update' || action === 'question.update') {
+    parts = Object.entries(details).map(([k, v]) => {
+      const after = (v as unknown[])[1]
+      return CHANGES[k]?.(after) ?? `${k} → ${shown(after)}`
+    })
+  }
+  if (action === 'question.answer') parts = [`${shown(details.before)} → ${shown(details.answer)}`]
+  if (action === 'question.answer_cleared') parts = [`was ${shown(details.removed)}`]
+  return parts.length ? ` (${parts.join(', ')})` : ''
+}
+
 function AuditTrail() {
   const log = useQuery(auditLogOptions({ query: { limit: 30 } }))
   return (
@@ -364,10 +388,7 @@ function AuditTrail() {
                 a.actor !== null &&
                 !a.target.startsWith('invite:') &&
                 ` ${a.target.replace(/^question:/, 'question ')}`}
-              {a.action === 'user.update' &&
-                ` (${Object.entries(a.details)
-                  .map(([k, v]) => `${k} → ${(v as string[])[1]}`)
-                  .join(', ')})`}
+              {detail(a.action, a.details)}
             </li>
           )
         })}
