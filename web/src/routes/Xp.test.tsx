@@ -83,7 +83,7 @@ test('the road shows every level, where you are, and keeps the top a secret', as
 })
 
 test('a DT V sees no help, what wrong answers cost, and what waits at the top', async () => {
-  renderApp('/profile', { 'GET /api/me': { body: { ...at(14, 55_000, 'Villano'), rank: 'technical_director' } } })
+  renderApp('/profile', { 'GET /api/me': { body: { ...at(14, 55_000, 'Villano'), position: 'technical_director' } } })
   const card = await screen.findByRole('region', { name: 'DT V' })
   expect(card).toHaveTextContent('55,000 XP · 5,000 XP to Villano')
   expect(card).toHaveTextContent('At Villano: wrong answers cost 75 %.')
@@ -92,7 +92,7 @@ test('a DT V sees no help, what wrong answers cost, and what waits at the top', 
   const top = screen.getByRole('region', { name: 'The top' })
   expect(within(top).getByRole('img', { name: 'Villano' })).toHaveClass('emblem-villano')
   expect(within(top).getByRole('listitem')).toHaveClass('locked', 'revealed') // in colour, still to reach
-  expect(screen.getByLabelText('Where are you on the team?')).toHaveValue('technical_director')
+  expect(screen.getByText(/Position on the team:/).closest('p')).toHaveTextContent('Technical Director')
 })
 
 test('at the top there is nothing left to chase but bragging rights', async () => {
@@ -156,19 +156,19 @@ test('newcomers choose where they are on the team when they join', async () => {
     },
     ...session('POST /auth/register', MEMBER, 201),
   })
-  const rank = await screen.findByLabelText('Where are you on the team?')
-  expect(rank).toHaveValue('mingo')
-  expect(rank).toHaveAccessibleDescription(/sets your starting level/)
-  await userEvent.selectOptions(rank, 'department_head')
+  const position = await screen.findByLabelText('Where are you on the team?')
+  expect(position).toHaveValue('mingo')
+  expect(position).toHaveAccessibleDescription(/sets your starting level/)
+  await userEvent.selectOptions(position, 'department_head')
   await userEvent.type(screen.getByLabelText('Email'), 'jefe@alu.comillas.edu')
   await userEvent.type(screen.getByLabelText('Display name'), 'Jefe')
   await userEvent.type(screen.getByLabelText('Password'), 'regen braking is free energy')
   await userEvent.click(screen.getByRole('button', { name: 'Create account' }))
   await waitFor(() => expect(sent('POST /auth/register')).toHaveLength(1))
-  expect(sent('POST /auth/register')[0].body).toMatchObject({ rank: 'department_head' })
+  expect(sent('POST /auth/register')[0].body).toMatchObject({ position: 'department_head' })
 })
 
-test("admins can correct someone's rank", async () => {
+test("admins can change someone's position", async () => {
   const users = [
     { ...ADMIN, status: 'active', last_seen: null, created_at: '2026-09-01T00:00:00Z', locked_until: null },
     { ...MEMBER, status: 'active', last_seen: null, created_at: '2026-09-02T00:00:00Z', locked_until: null },
@@ -178,11 +178,11 @@ test("admins can correct someone's rank", async () => {
     'GET /api/admin/users': { body: users },
     'GET /api/admin/invites': { body: [] },
     'GET /api/admin/audit': { body: [] },
-    'PATCH /api/admin/users/2': { body: { ...users[1], rank: 'member' } },
+    'PATCH /api/admin/users/2': { body: { ...users[1], position: 'member' } },
   })
   const marta = await screen.findByRole('group', { name: 'Marta' })
-  await userEvent.selectOptions(within(marta).getByLabelText('Rank'), 'member')
-  await waitFor(() => expect(sent('PATCH /api/admin/users/2')[0].body).toEqual({ rank: 'member' }))
+  await userEvent.selectOptions(within(marta).getByLabelText('Position'), 'member')
+  await waitFor(() => expect(sent('PATCH /api/admin/users/2')[0].body).toEqual({ position: 'member' }))
   expect(await screen.findByRole('status')).toHaveTextContent('Marta is now member, active, Returning member.')
 })
 

@@ -23,7 +23,7 @@ export type AdminUser = {
     vertical: Vertical | null;
     role: Role;
     status: Status;
-    rank: Rank;
+    position: Position;
     /**
      * Xp
      */
@@ -473,7 +473,7 @@ export type Me = {
      * Leaderboard Opt Out
      */
     leaderboard_opt_out: boolean;
-    rank: Rank;
+    position: Position;
     /**
      * Xp
      */
@@ -758,6 +758,25 @@ export type PlayQuestion = {
 };
 
 /**
+ * Position
+ *
+ * Someone's job on the team. Not their XP level: a DT on the ladder is not a Technical Director.
+ */
+export const Position = {
+    MINGO: 'mingo',
+    MEMBER: 'member',
+    DEPARTMENT_HEAD: 'department_head',
+    TECHNICAL_DIRECTOR: 'technical_director'
+} as const;
+
+/**
+ * Position
+ *
+ * Someone's job on the team. Not their XP level: a DT on the ladder is not a Technical Director.
+ */
+export type Position = typeof Position[keyof typeof Position];
+
+/**
  * ProfileIn
  */
 export type ProfileIn = {
@@ -765,7 +784,6 @@ export type ProfileIn = {
      * Display Name
      */
     display_name?: string | null;
-    rank?: Rank | null;
     vertical?: Vertical | null;
     /**
      * Leaderboard Opt Out
@@ -827,21 +845,6 @@ export type Progress = {
 };
 
 /**
- * Rank
- */
-export const Rank = {
-    MINGO: 'mingo',
-    MEMBER: 'member',
-    DEPARTMENT_HEAD: 'department_head',
-    TECHNICAL_DIRECTOR: 'technical_director'
-} as const;
-
-/**
- * Rank
- */
-export type Rank = typeof Rank[keyof typeof Rank];
-
-/**
  * RegisterIn
  */
 export type RegisterIn = {
@@ -862,7 +865,10 @@ export type RegisterIn = {
      */
     password: string;
     vertical?: Vertical | null;
-    rank?: Rank;
+    /**
+     * Job on the team; sets the starting level
+     */
+    position?: Position;
 };
 
 /**
@@ -1259,7 +1265,7 @@ export type TokenIn = {
 export type UserPatch = {
     role?: Role | null;
     status?: Status | null;
-    rank?: Rank | null;
+    position?: Position | null;
 };
 
 /**

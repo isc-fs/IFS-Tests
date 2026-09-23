@@ -13,7 +13,7 @@ people get the raw quiz, and wrong answers start to hurt as you rise.
 ## Decision
 
 **One currency: XP.** Lifetime XP sets your level; XP earned in a period ranks the leaderboard. Wrong answers
-can take XP away, so period XP can be negative; lifetime XP never drops below the level your rank starts at.
+can take XP away, so period XP can be negative; lifetime XP never drops below the level your position starts at.
 
 **XP per answer** = base by difficulty × mode × streak bonus × (½ with a hint).
 
@@ -82,10 +82,12 @@ levels on the rank card; the whole road on the profile, with what each level cha
 after the answer that earns it, bigger on entering a new tier; and emblems beside names on the leaderboard,
 which show lifetime rank while the ranking itself is XP earned in the period.
 
-**Ranks** set the starting level: Mingo (new this season) at Mingo I, returning member at Mingo IV, Department
-Head at Jefe I, Technical Director at DT I. People choose their rank when they join and can move it up later
-(audited); only admins can lower it, so nobody can take a high title and then drop back to a gentler tier.
-Lifetime XP never drops on a rank change.
+**Positions on the team set the starting level:** Mingo (new this season) at Mingo I, returning member at
+Mingo IV, Department Head at Jefe I, Technical Director at DT I. A position is someone's job, not their XP
+level: a DT on the ladder is not a Technical Director, and only the position grants anything (hosting a live
+quiz, ADR 0005). People choose their position when they join; after that only an admin changes it (audited).
+Someone who claims a position they don't hold has it lowered or their access revoked. Lifetime XP never drops
+on a position change. (The code calls it `position`; the ladder's tiers are the ranks.)
 
 ## Pacing (simulated over a season, `tests/unit/test_xp_rules.py`)
 
@@ -101,8 +103,8 @@ Lifetime XP never drops on a rank change.
 - The leaderboard shows XP; old season points are not converted (nothing was deployed).
 - The formulas and learn-more panels and hints are gated by tier (next branch).
 - Gains don't depend on level but penalties do, so on the leaderboard an experienced member who picks a low
-  rank loses less for wrong answers until they level up (3,000 XP before penalties start). That is the
-  price of letting people pick; admins can correct a rank that is plainly wrong.
+  position loses less for wrong answers until they level up (3,000 XP before penalties start). That is the
+  price of letting people pick at sign-up; admins can correct a position that is plainly wrong.
 - Mock XP is granted as each answer is recorded, so a player's XP moves during a run even though the review
   only comes at the end. Answers can't be changed, so this reveals nothing useful.
 - A player's answers are scored one at a time (their user row is locked while XP is granted), so parallel tabs

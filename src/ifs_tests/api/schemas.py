@@ -7,7 +7,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from ..db.models import Rank, Role, Status, Vertical
+from ..db.models import Position, Role, Status, Vertical
 
 
 class In(BaseModel):
@@ -40,7 +40,7 @@ class RegisterIn(TokenIn):
     display_name: str = Field(max_length=64)
     password: str = Field(max_length=256)
     vertical: Vertical | None = None
-    rank: Rank = Rank.mingo
+    position: Position = Field(default=Position.mingo, description="Job on the team; sets the starting level")
 
 
 class ResetIn(TokenIn):
@@ -96,14 +96,13 @@ class Me(Out):
     vertical: Vertical | None
     role: Role
     leaderboard_opt_out: bool
-    rank: Rank
+    position: Position
     xp: int
     progress: Progress | None = None
 
 
 class ProfileIn(In):
     display_name: str | None = Field(default=None, max_length=64)
-    rank: Rank | None = None
     vertical: Vertical | None = None
     leaderboard_opt_out: bool | None = None
 
@@ -140,7 +139,7 @@ class AdminUser(Out):
     vertical: Vertical | None
     role: Role
     status: Status
-    rank: Rank
+    position: Position
     xp: int
     leaderboard_opt_out: bool
     last_seen: datetime | None
@@ -151,7 +150,7 @@ class AdminUser(Out):
 class UserPatch(In):
     role: Role | None = None
     status: Status | None = None
-    rank: Rank | None = None
+    position: Position | None = None
 
 
 class BankSummary(BaseModel):

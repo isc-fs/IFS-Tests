@@ -29,11 +29,11 @@ def streak_days(db: DB, user_id: int, now: datetime) -> int:
 
 def lock(db: DB, user_id: int) -> tuple[int, str]:
     """Take the player's row lock until commit, so their answers are scored one at a time. NO KEY UPDATE
-    still lets rows that reference the user (attempts, sessions) be inserted meanwhile. Returns XP and rank."""
+    still lets rows that reference the user (attempts, sessions) be inserted meanwhile. Returns XP and position."""
     row = db.execute(
-        select(User.xp, User.rank).where(User.id == user_id).with_for_update(key_share=True)
+        select(User.xp, User.position).where(User.id == user_id).with_for_update(key_share=True)
     ).one()
-    return row.xp, row.rank
+    return row.xp, row.position
 
 
 def last_seen(
@@ -90,8 +90,8 @@ def grant(
     passed: bool = False,
 ) -> Grant:
     """Work out the XP for one answer and add it to the player's lifetime XP, which never drops below the
-    level their rank starts at. The caller stores `xp` on the attempt and commits."""
-    before, rank = lock(db, user_id)
+    level their position starts at. The caller stores `xp` on the attempt and commits."""
+    before, position = lock(db, user_id)
     amount = rules.award(
         correct,
         question.difficulty,
@@ -110,7 +110,7 @@ def grant(
     total = db.execute(
         update(User)
         .where(User.id == user_id)
-        .values(xp=func.greatest(rules.floor_for(rank), User.xp + amount))
+        .values(xp=func.greatest(rules.floor_for(position), User.xp + amount))
         .returning(User.xp)
     ).scalar_one()
     return Grant(amount, rules.level_for(total), rules.level_for(total) > rules.level_for(before))

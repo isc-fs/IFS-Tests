@@ -80,7 +80,9 @@ class Vertical(StrEnum):
     board = "Board"
 
 
-class Rank(StrEnum):
+class Position(StrEnum):
+    """Someone's job on the team. Not their XP level: a DT on the ladder is not a Technical Director."""
+
     mingo = "mingo"
     member = "member"
     department_head = "department_head"
@@ -88,7 +90,7 @@ class Rank(StrEnum):
 
 
 ROLES: tuple[str, ...] = tuple(Role)
-RANKS: tuple[str, ...] = tuple(Rank)
+POSITIONS: tuple[str, ...] = tuple(Position)
 STATUSES: tuple[str, ...] = tuple(Status)
 VERTICALS: tuple[str, ...] = tuple(Vertical)
 
@@ -104,7 +106,7 @@ class User(Base):
         CheckConstraint(_in("role", ROLES), name="role"),
         CheckConstraint(_in("status", STATUSES), name="status"),
         CheckConstraint(f"vertical IS NULL OR {_in('vertical', VERTICALS)}", name="vertical"),
-        CheckConstraint(_in("rank", RANKS), name="rank"),
+        CheckConstraint(_in("position", POSITIONS), name="position"),
     )
 
     id: Mapped[int] = mapped_column(Identity(), primary_key=True)
@@ -120,7 +122,7 @@ class User(Base):
     last_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     # Where the person started (Mingo, member, Department Head, Technical Director) and their lifetime XP.
-    rank: Mapped[str] = mapped_column(String(24), server_default="mingo")
+    position: Mapped[str] = mapped_column(String(24), server_default="mingo")
     xp: Mapped[int] = mapped_column(server_default="0")
 
 

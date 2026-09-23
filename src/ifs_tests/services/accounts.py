@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session as DB
 from ..auth.passwords import dummy_hash, hash_password, needs_rehash, password_problem, verify_password
 from ..auth.sessions import create_session, end_all_sessions, end_session
 from ..auth.tokens import new_token, token_hash
-from ..db.models import RANKS, ROLES, STATUSES, VERTICALS, AuditLog, Invite, PasswordReset, User
+from ..db.models import POSITIONS, ROLES, STATUSES, VERTICALS, AuditLog, Invite, PasswordReset, User
 from ..domain import accounts as rules
 from ..domain import xp as xp_rules
 from .errors import UserError
@@ -134,10 +134,10 @@ def register(
     password: str,
     now: datetime,
     vertical: str | None = None,
-    rank: str = "mingo",
+    position: str = "mingo",
 ) -> tuple[User, str]:
-    if rank not in RANKS:
-        raise AccountError("Unknown rank.", fields={"rank": "Pick where you are on the team."})
+    if position not in POSITIONS:
+        raise AccountError(UNKNOWN_POSITION, fields={"position": "Pick where you are on the team."})
     open_invite(db, token, now)
     email, name = _check_new_user(db, email, display_name, password)
     vertical = _check_vertical(vertical)
@@ -151,8 +151,8 @@ def register(
             display_name=name,
             vertical=invite.vertical or vertical,
             role=invite.role,
-            rank=rank,
-            xp=xp_rules.floor_for(rank),
+            position=position,
+            xp=xp_rules.floor_for(position),
             created_at=now,
         )
         db.add(user)
@@ -308,12 +308,6 @@ def update_profile(db: DB, user: User, changes: dict[str, Any]) -> User:
         user.display_name = name
     if "vertical" in changes:
         user.vertical = _check_vertical(changes["vertical"])
-    rank = changes.get("rank")
-    if rank is not None and rank != user.rank:
-        if rank in RANKS and xp_rules.RANKS[rank] < xp_rules.RANKS[user.rank]:
-            raise AccountError(LOWER_RANK, 403, {"rank": LOWER_RANK})
-        audit(db, user, "user.rank", f"user:{user.id}", rank=[user.rank, rank])
-        _set_rank(db, user, rank)
     if changes.get("leaderboard_opt_out") is not None:
         user.leaderboard_opt_out = changes["leaderboard_opt_out"]
     with _unique(db):
@@ -329,19 +323,19 @@ def _active_admin_ids(db: DB, lock: bool = True) -> list[int]:
     return list(db.scalars(stmt.with_for_update() if lock else stmt))
 
 
-LOWER_RANK = "Only an admin can lower your rank."
+UNKNOWN_POSITION = "Unknown position on the team."
 
 
-def _set_rank(db: DB, user: User, rank: str) -> None:
-    """A new rank moves the starting level; XP only ever goes up to meet it. Done in SQL so XP granted by
-    an answer at the same moment isn't overwritten."""
-    if rank not in RANKS:
-        raise AccountError("Unknown rank.", fields={"rank": "Pick where you are on the team."})
-    user.rank = rank
+def _set_position(db: DB, user: User, position: str) -> None:
+    """A new position moves the starting level; XP only ever goes up to meet it. Done in SQL so XP granted
+    by an answer at the same moment isn't overwritten."""
+    if position not in POSITIONS:
+        raise AccountError(UNKNOWN_POSITION, fields={"position": "Pick where they are on the team."})
+    user.position = position
     user.xp = db.execute(
         update(User)
         .where(User.id == user.id)
-        .values(rank=rank, xp=func.greatest(User.xp, xp_rules.floor_for(rank)))
+        .values(position=position, xp=func.greatest(User.xp, xp_rules.floor_for(position)))
         .returning(User.xp)
     ).scalar_one()
 
@@ -352,7 +346,7 @@ def update_user(
     user_id: int,
     role: str | None = None,
     status: str | None = None,
-    rank: str | None = None,
+    position: str | None = None,
 ) -> User:
     if user_id == actor.id and (role is not None or status is not None):
         raise AccountError("You can't change your own role or status.", 403)
@@ -371,9 +365,9 @@ def update_user(
     if role is not None and role != user.role:
         changes["role"] = [user.role, role]
         user.role = role
-    if rank is not None and rank != user.rank:
-        changes["rank"] = [user.rank, rank]
-        _set_rank(db, user, rank)
+    if position is not None and position != user.position:
+        changes["position"] = [user.position, position]
+        _set_position(db, user, position)
     if status is not None and status != user.status:
         changes["status"] = [user.status, status]
         user.status = status

@@ -68,8 +68,8 @@ LEVELS = tuple(
     for n, aids in enumerate(_AIDS)
 )
 
-# Where each rank starts. People choose their rank when they join and may raise it; only admins lower it.
-RANKS = {"mingo": 0, "member": 3, "department_head": 5, "technical_director": 10}
+# Where each position on the team starts on the ladder. Chosen at sign-up; after that only admins change it.
+START_LEVEL = {"mingo": 0, "member": 3, "department_head": 5, "technical_director": 10}
 
 
 def xp_for_level(level: int) -> int:
@@ -96,9 +96,9 @@ def title(level: int, vertical: str | None) -> str:
     return f"{lv.tier} {lv.division}"
 
 
-def floor_for(rank: str) -> int:
-    """Nobody drops below the level their rank starts at, however many wrong answers."""
-    return xp_for_level(RANKS[rank])
+def floor_for(position: str) -> int:
+    """Nobody drops below the level their position starts at, however many wrong answers."""
+    return xp_for_level(START_LEVEL[position])
 
 
 PRIOR = {"choice-one": 2, "choice-many": 3, "numbers": 4}
