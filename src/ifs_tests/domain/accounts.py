@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -15,7 +14,6 @@ LOCK_AFTER = 5
 LOCK_FOR = timedelta(minutes=15)
 
 _DIGITS = set("0123456789")
-_EMAIL = re.compile(r"^[^@\s\x00-\x1f]+@[^@\s\x00-\x1f]+\.[^@\s\x00-\x1f]+$")
 _NAME_PUNCTUATION = set(" .'-")
 
 
@@ -61,8 +59,15 @@ def loses_admin(role: str, status: str, new_role: str | None, new_status: str | 
 
 
 def clean_email(email: str) -> str | None:
+    """name@domain.tld: one @, a dot inside the domain, no spaces or control characters.
+    Plain string checks rather than a regex, so no input can make it slow."""
     email = email.strip().lower()
-    return email if len(email) <= 254 and _EMAIL.match(email) else None
+    local, _, domain = email.partition("@")
+    if len(email) > 254 or not local or "@" in domain or "." not in domain[1:-1]:
+        return None
+    if any(ch.isspace() or ord(ch) < 0x20 for ch in email):
+        return None
+    return email
 
 
 def clean_display_name(name: str) -> str | None:
