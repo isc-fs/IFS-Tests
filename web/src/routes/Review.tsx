@@ -18,6 +18,7 @@ import { queryClient, useMe } from '../lib/api'
 import { AREAS, TOPICS } from '../lib/areas'
 
 type Queue = NonNullable<NonNullable<ReviewQuestionsData['query']>['queue']>
+type Area = NonNullable<NonNullable<ReviewQuestionsData['query']>['area']>
 const QUEUES: [Queue, string][] = [
   ['reports', 'Reported'],
   ['changed', 'Changed upstream'],
@@ -54,11 +55,12 @@ function ReviewList() {
   const [params, setParams] = useSearchParams()
   const requested = params.get('queue') as Queue | null
   const queue: Queue = QUEUES.some(([q]) => q === requested) ? requested! : 'reports'
-  const area = params.get('area') ?? ''
+  const requestedArea = params.get('area') ?? ''
+  const area = Object.hasOwn(AREAS, requestedArea) ? (requestedArea as Area) : undefined
   const text = params.get('q') ?? ''
   const [search, setSearch] = useState(text)
   const list = useInfiniteQuery({
-    ...reviewQuestionsInfiniteOptions({ query: { queue, area: area || undefined, q: text || undefined } }),
+    ...reviewQuestionsInfiniteOptions({ query: { queue, area, q: text || undefined } }),
     initialPageParam: 0,
     getNextPageParam: (last, pages) => {
       const loaded = pages.reduce((n, p) => n + p.rows.length, 0)
@@ -103,7 +105,7 @@ function ReviewList() {
           <div className="grow">
             <Field label="Search the text" type="search" value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
-          <SelectField label="Area" value={area} onChange={(e) => set({ area: e.target.value })}>
+          <SelectField label="Area" value={area ?? ''} onChange={(e) => set({ area: e.target.value })}>
             <option value="">Every area</option>
             {Object.entries(AREAS).map(([a, label]) => (
               <option key={a} value={a}>

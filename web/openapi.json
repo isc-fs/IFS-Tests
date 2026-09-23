@@ -1225,8 +1225,13 @@
       "schema": {
        "anyOf": [
         {
-         "type": "string",
-         "maxLength": 16
+         "enum": [
+          "mech",
+          "elec",
+          "rules",
+          "unclassified"
+         ],
+         "type": "string"
         },
         {
          "type": "null"
@@ -1243,7 +1248,8 @@
        "anyOf": [
         {
          "type": "string",
-         "maxLength": 16
+         "maxLength": 16,
+         "pattern": "^[a-z]+$"
         },
         {
          "type": "null"
@@ -1260,7 +1266,8 @@
        "anyOf": [
         {
          "type": "string",
-         "maxLength": 100
+         "maxLength": 100,
+         "pattern": "^[^\\x00]*$"
         },
         {
          "type": "null"
@@ -3065,6 +3072,11 @@
      "right": {
       "type": "integer",
       "title": "Right"
+     },
+     "answer_hidden": {
+      "type": "boolean",
+      "title": "Answer Hidden",
+      "description": "The reviewer's own live question: answers withheld until answered"
      }
     },
     "type": "object",
@@ -3090,7 +3102,8 @@
      "quizzes",
      "reports",
      "answered",
-     "right"
+     "right",
+     "answer_hidden"
     ],
     "title": "ReviewQuestion",
     "description": "Everything a reviewer needs about one question, answers included (reviewers only)."

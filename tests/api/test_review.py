@@ -178,6 +178,9 @@ def test_players_report_problems_and_reviewers_resolve_them(
 ) -> None:
     qid = bank[90005]
     url = f"/api/questions/{qid}/report"
+    assert player.post(url, json={"message": "The range is too wide"}).status_code == 404  # not answered yet
+    for fid in (90005, 90001, 90002):
+        player.post(f"/api/practice/questions/{bank[fid]}/answer", json={"options": [], "value": "1"})
     assert player.post(url, json={"message": "no"}).status_code == 400
     assert (
         player.post(url, json={"message": "The answer should be 3.84 V, the range is too wide"}).status_code
@@ -218,3 +221,84 @@ def test_reviewers_can_review_but_not_administer(
     assert c.get("/api/review/questions").status_code == 200
     assert c.patch(f"/api/review/questions/{bank[90001]}", json={"labels_reviewed": True}).status_code == 200
     assert c.get("/api/admin/users").status_code == 403
+
+
+def test_a_reviewers_live_questions_keep_their_answers_hidden(
+    reviewer: TestClient, clock: Clock, bank: dict[int, int]
+) -> None:
+    started = reviewer.post("/api/daily/rules/start").json()
+    qid = started["question"]["id"]
+    hidden = reviewer.get(f"/api/review/questions/{qid}").json()
+    assert hidden["answer_hidden"] is True and hidden["official"] is None
+    assert not any(o["official"] for o in hidden["options"])
+    reviewer.post(f"/api/daily/attempts/{started['attempt_id']}/answer", json={"options": []})
+    assert reviewer.get(f"/api/review/questions/{qid}").json()["answer_hidden"] is False
+
+    run = reviewer.post("/api/mock/quizzes/9002/start").json()
+    later = bank[90012]  # the last question of that quiz, not reached yet
+    assert reviewer.get(f"/api/review/questions/{later}").json()["official"] is None
+    assert reviewer.get(f"/api/review/questions/{bank[90010]}").json()["answer_hidden"] is False
+    assert run["current"] is not None
+
+
+def test_hiding_todays_daily_question_replaces_it_for_those_who_have_not_started(
+    reviewer: TestClient, player: TestClient, bank: dict[int, int]
+) -> None:
+    mech = player.post("/api/daily/mech/start").json()
+    first = mech["question"]["id"]
+    reviewer.patch(f"/api/review/questions/{first}", json={"excluded": True})
+    assert player.post("/api/daily/mech/start").json()["question"]["id"] == first  # keeps what they started
+    newcomer_view = reviewer.post("/api/daily/mech/start").json()
+    assert newcomer_view["question"]["id"] != first
+
+
+def test_area_and_topic_must_agree(reviewer: TestClient, bank: dict[int, int]) -> None:
+    qid = bank[90001]  # mech / dynamics
+    bad = reviewer.patch(f"/api/review/questions/{qid}", json={"area": "rules", "topic": "aero"})
+    assert bad.status_code == 400 and "topic" in bad.json()["fields"]
+    moved = reviewer.patch(f"/api/review/questions/{qid}", json={"area": "elec"}).json()
+    assert (moved["area"], moved["topic"]) == ("elec", None)
+    kept = reviewer.patch(f"/api/review/questions/{qid}", json={"area": "elec", "topic": "hv"}).json()
+    assert kept["topic"] == "hv"
+
+
+def test_null_leaves_a_field_as_it_is(reviewer: TestClient, bank: dict[int, int]) -> None:
+    qid = bank[90001]
+    reviewer.patch(f"/api/review/questions/{qid}", json={"excluded": True})
+    same = reviewer.patch(
+        f"/api/review/questions/{qid}", json={"excluded": None, "labels_reviewed": None}
+    ).json()
+    assert same["excluded"] is True and same["labels_reviewed"] is False
+
+
+def test_control_characters_in_search_are_rejected(reviewer: TestClient) -> None:
+    for params in ({"q": "a\x00b"}, {"topic": "a\x00"}, {"area": "x"}):
+        assert reviewer.get("/api/review/questions", params=params).status_code == 422, params
+
+
+def test_the_audit_trail_records_what_changed(
+    reviewer: TestClient, db: Session, clock: Clock, tmp_path: Path, bank: dict[int, int]
+) -> None:
+    qid = bank[90002]
+    reviewer.put(f"/api/review/questions/{qid}/answer", json={"value": "0.33"})
+    reviewer.put(f"/api/review/questions/{qid}/answer", json={"value": "0.34"})
+    reviewer.delete(f"/api/review/questions/{qid}/answer")
+    reviewer.patch(f"/api/review/questions/{qid}", json={"acknowledge_change": True})  # nothing flagged
+    entries = db.scalars(
+        select(AuditLog).where(AuditLog.target == f"question:{qid}").order_by(AuditLog.id)
+    ).all()
+    assert [(e.action, e.details) for e in entries] == [
+        ("question.answer", {"answer": "0.33", "before": "0.32"}),
+        ("question.answer", {"answer": "0.34", "before": "0.33"}),
+        ("question.answer_cleared", {"removed": "0.34"}),
+    ]
+
+
+def test_a_hidden_question_changed_upstream_comes_back_to_the_queue(
+    reviewer: TestClient, db: Session, clock: Clock, tmp_path: Path, bank: dict[int, int]
+) -> None:
+    reviewer.patch(f"/api/review/questions/{bank[90001]}", json={"excluded": True})
+    changed = copy.deepcopy(load_bank(SAMPLE_DIR))
+    next(q for q in changed["questions"] if q["question_id"] == 90001)["text"] += " (fixed upstream)"
+    import_bank(db, changed, SAMPLE_DIR / "img", tmp_path, clock.now)
+    assert [r["id"] for r in page(reviewer, queue="changed")["rows"]] == [bank[90001]]
