@@ -2,6 +2,7 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router'
 import { getLeaderboardOptions, verticalLeaderboardOptions } from '../api/@tanstack/react-query.gen'
 import type { LeaderRow } from '../api/types.gen'
+import { Emblem } from '../components/Emblem'
 import { ErrorNotice } from '../components/Form'
 import { Page } from '../components/Page'
 import { useMe } from '../lib/api'
@@ -75,12 +76,16 @@ function Row({ row }: { row: LeaderRow }) {
   return (
     <li value={row.rank} className={row.me ? 'item me' : 'item'}>
       <span className="place">{row.rank}</span>
+      <Emblem level={row.level} title={row.title} size={32} />
       <span>
         <span className="item-title">
           {row.display_name}
           {row.me && <span className="badge">You</span>}
         </span>
-        {row.vertical && <span className="muted">{row.vertical}</span>}
+        <span className="muted">
+          {row.title}
+          {row.vertical && ` · ${row.vertical}`}
+        </span>
       </span>
       <span className="points">{row.xp.toLocaleString('en-GB')} XP</span>
     </li>

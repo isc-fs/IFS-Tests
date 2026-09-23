@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { expect, test } from 'vitest'
-import { ADMIN, MEMBER, renderApp, session } from '../test/render'
+import { ADMIN, ladder, MEMBER, renderApp, session } from '../test/render'
 
 const QUESTION = {
   id: 7,
@@ -28,49 +28,108 @@ const practice = (feedback: object) => ({
   },
 })
 
-test('home shows the level, the streak bonus and what help you still get', async () => {
-  renderApp('/', { 'GET /api/me': { body: MEMBER } })
-  const card = await screen.findByRole('region', { name: 'Level 1: Mingo' })
-  expect(within(card).getByText(/120 XP · 3 XP to level 2/)).toBeInTheDocument()
-  expect(within(card).getByRole('progressbar', { name: 'Progress to level 2' })).toHaveAttribute('value', '95')
+const at = (level: number, xp: number, top: string | null = null) => {
+  const steps = ladder(top)
+  const s = steps[level]
+  return {
+    ...MEMBER,
+    xp,
+    progress: {
+      ...MEMBER.progress,
+      level,
+      title: s.title ?? 'Leyenda',
+      tier: s.tier,
+      level_xp: s.xp,
+      next_level_xp: steps[level + 1]?.xp ?? null,
+      penalty: s.penalty,
+      aids: s.aids,
+      ladder: steps,
+    },
+  }
+}
+
+test('home shows your rank, how far the next promotion is and what it changes', async () => {
+  renderApp('/', { 'GET /api/me': { body: at(2, 2_800) } })
+  const card = await screen.findByRole('region', { name: 'Mingo III' })
+  expect(within(card).getByRole('img', { name: 'Mingo III' })).toBeInTheDocument()
+  expect(card).toHaveTextContent('2,800 XP · 200 XP to Mingo IV')
+  expect(within(card).getByRole('progressbar', { name: 'Progress to Mingo IV' })).toHaveAttribute('value', '1300')
+  expect(card).toHaveTextContent('At Mingo IV: wrong answers cost 5 %.')
   expect(card).toHaveTextContent('Streak: 2 days, +5 % XP.')
   expect(card).toHaveTextContent('Help: useful formulas, reading to learn more, a hint per question.')
   expect(card).toHaveTextContent('Wrong answers: cost nothing yet.')
+  expect(within(card).getByRole('link', { name: 'Your road to the top' })).toHaveAttribute('href', '/profile#road')
 })
 
-test('a Technical Director sees no help and what wrong answers cost', async () => {
-  const td = {
-    ...MEMBER,
-    rank: 'technical_director',
-    xp: 25_000,
-    progress: {
-      ...MEMBER.progress,
-      level: 20,
-      title: 'Technical Director',
-      level_xp: 24565,
-      next_level_xp: 27505,
-      penalty: 75,
-      streak: 0,
-      streak_bonus: 0,
-      aids: { formulas: false, learn_more: false, hint: false },
-    },
-  }
-  renderApp('/profile', { 'GET /api/me': { body: td } })
-  const card = await screen.findByRole('region', { name: 'Level 20: Technical Director' })
+test('the road shows every level, where you are, and keeps the top a secret', async () => {
+  renderApp('/profile', { 'GET /api/me': { body: at(6, 11_000) } })
+  const road = await screen.findByRole('region', { name: 'Your road to the top' })
+  const mingo = within(road).getByRole('region', { name: 'Mingo' })
+  expect(
+    within(mingo)
+      .getAllByRole('listitem')
+      .every((li) => li.classList.contains('done')),
+  ).toBe(true)
+  const here = within(road).getByText('You are here').closest('li')
+  expect(here).toHaveAttribute('aria-current', 'step')
+  expect(here).toHaveTextContent('Jefe II')
+  expect(within(road).getByText('Jefe I').closest('li')).toHaveTextContent(
+    'Formulas panel goes · Wrong answers cost 15 %',
+  )
+  expect(within(road).getByText('DT I').closest('li')).toHaveClass('locked')
+  const top = within(road).getByRole('region', { name: 'The top' })
+  expect(within(top).getByRole('img', { name: 'A title still to discover' })).toBeInTheDocument()
+  expect(top).toHaveTextContent('???60,000 XPReach DT V to find out what waits here.')
+})
+
+test('a DT V sees no help, what wrong answers cost, and what waits at the top', async () => {
+  renderApp('/profile', { 'GET /api/me': { body: { ...at(14, 55_000, 'Villano'), rank: 'technical_director' } } })
+  const card = await screen.findByRole('region', { name: 'DT V' })
+  expect(card).toHaveTextContent('55,000 XP · 5,000 XP to Villano')
+  expect(card).toHaveTextContent('At Villano: wrong answers cost 75 %.')
   expect(card).toHaveTextContent('Help: none: the quiz as it is on the day.')
-  expect(card).toHaveTextContent('Wrong answers: cost 75 % of what a right one earns.')
-  expect(card).toHaveTextContent('Streak: answer a daily question to start one.')
+  expect(card).toHaveTextContent('Wrong answers: cost 70 % of what a right one earns.')
+  const top = screen.getByRole('region', { name: 'The top' })
+  expect(within(top).getByRole('img', { name: 'Villano' })).toHaveClass('emblem-villano')
   expect(screen.getByLabelText('Where are you on the team?')).toHaveValue('technical_director')
 })
 
-test('the XP an answer earned is announced, and a level-up is celebrated', async () => {
+test('at the top there is nothing left to chase but bragging rights', async () => {
+  renderApp('/', { 'GET /api/me': { body: at(15, 80_000, 'Gigante Noble') } })
+  const card = await screen.findByRole('region', { name: 'Gigante Noble' })
+  expect(within(card).getByRole('img', { name: 'Gigante Noble' })).toHaveClass('emblem-gigante')
+  expect(card).toHaveTextContent('You made it to the top. Every XP from here is bragging rights.')
+  expect(within(card).queryByRole('progressbar')).toBeNull()
+})
+
+test('the XP an answer earned is announced, and a promotion is celebrated', async () => {
   const { sent } = renderApp('/practice', practice({ xp: 12, level: 2, level_up: true }))
   await userEvent.click(await screen.findByRole('radio', { name: '0.713 m' }))
   await userEvent.click(screen.getByRole('button', { name: 'Check answer' }))
   const earned = (await screen.findByText('+12 XP')).closest('output')
-  expect(earned).toHaveTextContent("+12 XP Level up! You're level 2 now.")
-  await waitFor(() => expect(sent('GET /api/me').length).toBeGreaterThan(1)) // the level card refreshes
-  expect(screen.getByText("Level up! You're level 2 now.")).toBeInTheDocument()
+  expect(earned).toHaveTextContent(/^\+12 XP.*Promoted to Mingo III!$/)
+  expect(within(earned as HTMLElement).getByRole('img', { name: 'Mingo III' })).toBeInTheDocument()
+  expect(earned?.querySelector('.promotion')).not.toHaveClass('new-tier')
+  await waitFor(() => expect(sent('GET /api/me').length).toBeGreaterThan(1)) // the rank card refreshes
+})
+
+test('reaching a new tier is a bigger moment and says what changes', async () => {
+  renderApp('/practice', practice({ xp: 40, level: 5, level_up: true }))
+  await userEvent.click(await screen.findByRole('radio', { name: '0.713 m' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Check answer' }))
+  const promotion = (await screen.findByText('Promoted to Jefe I!')).closest('.promotion')
+  expect(promotion).toHaveClass('new-tier')
+  expect(promotion).toHaveTextContent('Welcome to Jefe. Formulas panel goes · Wrong answers cost 15 %.')
+})
+
+test('reaching the top reveals its title', async () => {
+  renderApp('/practice', {
+    ...practice({ xp: 60, level: 15, level_up: true }),
+    'GET /api/me': { body: at(14, 59_990, 'Villano') },
+  })
+  await userEvent.click(await screen.findByRole('radio', { name: '0.713 m' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Check answer' }))
+  expect(await screen.findByText('You reached the top: Villano!')).toBeInTheDocument()
 })
 
 test('only the server says when an answer levelled you up', async () => {
@@ -78,7 +137,7 @@ test('only the server says when an answer levelled you up', async () => {
   await userEvent.click(await screen.findByRole('radio', { name: '0.713 m' }))
   await userEvent.click(screen.getByRole('button', { name: 'Check answer' }))
   expect(await screen.findByText('+12 XP')).toBeInTheDocument()
-  expect(screen.queryByText(/Level up/)).toBeNull()
+  expect(screen.queryByText(/Promoted/)).toBeNull()
 })
 
 test('XP lost on a wrong answer is shown with a minus sign', async () => {
@@ -86,7 +145,7 @@ test('XP lost on a wrong answer is shown with a minus sign', async () => {
   await userEvent.click(await screen.findByRole('radio', { name: '0.837 m' }))
   await userEvent.click(screen.getByRole('button', { name: 'Check answer' }))
   expect(await screen.findByText('−5 XP')).toHaveClass('loss')
-  expect(screen.queryByText(/Level up/)).toBeNull()
+  expect(screen.queryByText(/Promoted/)).toBeNull()
 })
 
 test('newcomers choose where they are on the team when they join', async () => {

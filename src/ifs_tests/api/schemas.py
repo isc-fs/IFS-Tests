@@ -63,17 +63,30 @@ class Aids(BaseModel):
     hint: bool
 
 
+class Step(BaseModel):
+    """One level of the ladder and what it changes."""
+
+    level: int
+    tier: Literal["Mingo", "Jefe", "DT", "Top"]
+    title: str | None = Field(description="Null for the top until the player reaches DT V: a surprise")
+    xp: int = Field(description="Lifetime XP that reaches it")
+    aids: Aids
+    penalty: int = Field(description="Percentage of a right answer's XP a wrong answer costs")
+
+
 class Progress(BaseModel):
     """Level, title and what help the player still gets. XP always refers to lifetime XP."""
 
     level: int
     title: str
+    tier: Literal["Mingo", "Jefe", "DT", "Top"]
     level_xp: int = Field(description="Lifetime XP at which the current level started")
-    next_level_xp: int
+    next_level_xp: int | None = Field(description="Null at the top")
     penalty: int = Field(description="Percentage of a right answer's XP a wrong answer costs")
     streak: int
     streak_bonus: int = Field(description="Extra XP on gains, in percent")
     aids: Aids
+    ladder: list[Step]
 
 
 class Me(Out):
@@ -377,6 +390,8 @@ class LeaderRow(BaseModel):
     vertical: Vertical | None
     xp: int
     me: bool
+    level: int = Field(description="Lifetime level, for the rank emblem")
+    title: str
 
 
 class MyRank(BaseModel):

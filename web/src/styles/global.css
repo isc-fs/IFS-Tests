@@ -592,26 +592,70 @@ textarea {
   align-items: center;
   gap: 16px;
 }
-.level-number {
-  display: grid;
-  place-items: center;
-  flex: none;
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
-  background: var(--isc-green);
-  color: var(--isc-white);
-  font-family: var(--isc-font-display);
-  font-size: var(--isc-fs-h3);
-  font-weight: 600;
-}
 .level-head p {
   margin: 2px 0 0;
 }
-.level-progress {
+.level-progress,
+.road-step progress {
+  appearance: none;
   width: 100%;
-  height: 8px;
-  accent-color: var(--isc-gold);
+  height: 10px;
+  border: 0;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--isc-sand);
+}
+.level-progress::-webkit-progress-bar,
+.road-step progress::-webkit-progress-bar {
+  background: var(--isc-sand);
+}
+.level-progress::-webkit-progress-value,
+.road-step progress::-webkit-progress-value {
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--isc-gold-600), var(--isc-gold-400));
+}
+.level-progress::-moz-progress-bar,
+.road-step progress::-moz-progress-bar {
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--isc-gold-600), var(--isc-gold-400));
+}
+.road-step progress {
+  height: 6px;
+}
+
+/* All sixteen levels in a row, like a season pass: filled up to where you are. */
+.season-strip {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(15, 1fr) 2fr;
+  gap: 3px;
+}
+.season-strip li {
+  height: 6px;
+  border-radius: 2px;
+  background: var(--isc-sand);
+}
+.season-strip li:nth-child(5n) {
+  margin-right: 4px;
+}
+.season-strip .strip-mingo.done,
+.season-strip .strip-mingo.current {
+  background: #b87a45;
+}
+.season-strip .strip-jefe.done,
+.season-strip .strip-jefe.current {
+  background: #8d9aa6;
+}
+.season-strip .strip-dt.done,
+.season-strip .strip-dt.current,
+.season-strip .strip-top.current {
+  background: var(--isc-gold-600);
+}
+.season-strip .current {
+  outline: 2px solid var(--isc-gold);
+  outline-offset: 1px;
 }
 .level-facts {
   list-style: none;
@@ -687,7 +731,7 @@ details[open] > summary::before {
 
 /* Leaderboard */
 .board .item {
-  grid-template-columns: 2.5ch minmax(0, 1fr) auto;
+  grid-template-columns: 2.5ch 32px minmax(0, 1fr) auto;
   align-items: center;
   padding: 12px 8px;
 }
@@ -749,4 +793,233 @@ details[open] > summary::before {
 }
 .home-board {
   margin-top: 24px;
+}
+
+/* Rank emblems: the tier sets the metal, the top titles have their own colours. */
+.emblem {
+  flex: none;
+  overflow: visible;
+}
+.emblem-mingo {
+  --hi: #e3a86b;
+  --lo: #8a5a2b;
+  --ink: #fff7ee;
+}
+.emblem-jefe {
+  --hi: #e9eef2;
+  --lo: #7d8a96;
+  --ink: var(--isc-green);
+}
+.emblem-dt {
+  --hi: var(--isc-gold-400);
+  --lo: var(--isc-gold-700);
+  --ink: var(--isc-green-900);
+}
+.emblem-gigante {
+  --hi: #7a1f3d;
+  --lo: #2c0a1a;
+  --ink: var(--isc-gold);
+}
+.emblem-villano {
+  --hi: #1f2a22;
+  --lo: #040806;
+  --ink: #6cff6c;
+}
+.emblem-leyenda {
+  --hi: var(--isc-white);
+  --lo: var(--isc-sand);
+  --ink: var(--isc-gold-700);
+}
+.emblem-mystery {
+  --hi: var(--isc-sand);
+  --lo: var(--isc-stone);
+  --ink: var(--isc-white);
+}
+.emblem-hi {
+  stop-color: var(--hi);
+}
+.emblem-lo {
+  stop-color: var(--lo);
+}
+.emblem-body {
+  stroke: var(--lo);
+  stroke-width: 1.5;
+}
+.emblem-rim {
+  stroke: var(--ink);
+  stroke-opacity: 0.45;
+  stroke-width: 1.5;
+}
+.emblem-art {
+  fill: var(--ink);
+}
+.emblem-numeral {
+  fill: var(--ink);
+  font-family: var(--isc-font-display);
+  font-weight: 700;
+  font-size: 18px;
+}
+.emblem-pip {
+  fill: var(--lo);
+}
+
+.level-card.tier-dt,
+.level-card.tier-top {
+  border-color: var(--isc-gold);
+}
+.level-card h2 {
+  margin: 0;
+}
+.level-card .eyebrow {
+  margin: 0;
+}
+.level-next {
+  margin: 0;
+  font-weight: 600;
+}
+.level-road-link {
+  align-self: flex-start;
+  font-weight: 600;
+}
+
+/* The ladder on the profile. */
+.road-tier {
+  display: grid;
+  gap: 8px;
+}
+.road-tier header h3 {
+  margin: 0;
+}
+.road-tier header p {
+  margin: 0;
+}
+.road-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  gap: 8px;
+}
+.road-step {
+  display: grid;
+  justify-items: center;
+  align-content: start;
+  gap: 4px;
+  padding: 12px 8px;
+  border: 1px solid var(--isc-c-border);
+  border-radius: var(--radius);
+  text-align: center;
+}
+.road-step.locked .emblem {
+  filter: grayscale(1);
+  opacity: 0.45;
+}
+.road-step.done {
+  background: var(--isc-cream);
+}
+.road-step.current {
+  border: 2px solid var(--isc-gold);
+  box-shadow: 0 0 0 4px rgb(255 184 29 / 0.2);
+}
+.road-xp {
+  font-family: var(--isc-font-mono);
+  font-size: var(--isc-fs-caption);
+  color: var(--isc-c-text-mut);
+}
+.road-changes {
+  font-size: var(--isc-fs-caption);
+  color: var(--isc-c-text-mut);
+}
+.tier-top .road-steps {
+  grid-template-columns: minmax(0, 320px);
+  justify-content: center;
+}
+.tier-top .road-step {
+  padding: 16px;
+}
+/* Phones: one level per row, emblem on the left. */
+@media (max-width: 560px) {
+  .road-steps {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+  .road-step:not(.tier-top .road-step) {
+    grid-template-columns: 44px minmax(0, 1fr) auto;
+    justify-items: start;
+    align-items: center;
+    column-gap: 12px;
+    padding: 8px 12px;
+    text-align: left;
+  }
+  .road-step:not(.tier-top .road-step) .emblem {
+    grid-row: span 3;
+    width: 44px;
+    height: 44px;
+  }
+  .road-step:not(.tier-top .road-step) .road-xp {
+    grid-column: 3;
+    grid-row: 1;
+  }
+  .road-step:not(.tier-top .road-step) > :not(.emblem, .road-xp) {
+    grid-column: 2 / -1;
+  }
+  .road-step:not(.tier-top .road-step) .road-title {
+    grid-column: 2;
+    grid-row: 1;
+  }
+}
+
+/* A promotion after an answer: the new emblem pops in; a new tier gets a bigger moment. */
+.promotion {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+  padding: 12px;
+  border: 2px solid var(--isc-gold);
+  border-radius: var(--radius);
+  background: var(--isc-cream);
+  font-weight: 400;
+}
+.promotion-title {
+  display: block;
+  font-family: var(--isc-font-display);
+  font-size: var(--isc-fs-h4);
+}
+.promotion.new-tier {
+  background: var(--isc-green);
+  color: var(--isc-white);
+}
+.promotion.new-tier .muted {
+  color: var(--isc-d-text-mut);
+}
+.promotion.new-tier .promotion-title {
+  font-size: var(--isc-fs-h3);
+  color: var(--isc-gold);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .promotion .emblem {
+    animation: emblem-pop 700ms cubic-bezier(0.2, 1.4, 0.4, 1) both;
+  }
+  .promotion.new-tier .emblem {
+    animation:
+      emblem-pop 900ms cubic-bezier(0.2, 1.4, 0.4, 1) both,
+      emblem-glow 1600ms ease-in-out 900ms 2;
+  }
+}
+@keyframes emblem-pop {
+  from {
+    transform: scale(0.3) rotate(-12deg);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+@keyframes emblem-glow {
+  50% {
+    filter: drop-shadow(0 0 10px var(--isc-gold));
+  }
 }

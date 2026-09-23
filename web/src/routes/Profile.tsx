@@ -5,6 +5,7 @@ import { changePasswordMutation, logoutMutation, updateMeMutation } from '../api
 import { type Me, type Rank, Vertical } from '../api/types.gen'
 import { ErrorNotice, Field, Form, Notice, PASSWORD_HINT, SelectField, useFieldErrors } from '../components/Form'
 import { LevelCard } from '../components/LevelCard'
+import { RankRoad } from '../components/RankRoad'
 import { Page } from '../components/Page'
 import { ME_KEY, queryClient, useMe } from '../lib/api'
 import { RANKS } from '../lib/xp'
@@ -23,7 +24,8 @@ export default function Profile() {
   return (
     <Page title="Profile" eyebrow="Your account">
       <p className="muted">Signed in as {user.email}</p>
-      <LevelCard me={user} />
+      <LevelCard me={user} road={false} />
+      <RankRoad me={user} />
       <ProfileForm user={user} />
       <PasswordForm />
       <section className="panel" aria-label="Session">

@@ -2311,6 +2311,15 @@
      "me": {
       "type": "boolean",
       "title": "Me"
+     },
+     "level": {
+      "type": "integer",
+      "title": "Level",
+      "description": "Lifetime level, for the rank emblem"
+     },
+     "title": {
+      "type": "string",
+      "title": "Title"
      }
     },
     "type": "object",
@@ -2319,7 +2328,9 @@
      "display_name",
      "vertical",
      "xp",
-     "me"
+     "me",
+     "level",
+     "title"
     ],
     "title": "LeaderRow"
    },
@@ -3020,14 +3031,32 @@
       "type": "string",
       "title": "Title"
      },
+     "tier": {
+      "type": "string",
+      "enum": [
+       "Mingo",
+       "Jefe",
+       "DT",
+       "Top"
+      ],
+      "title": "Tier"
+     },
      "level_xp": {
       "type": "integer",
       "title": "Level Xp",
       "description": "Lifetime XP at which the current level started"
      },
      "next_level_xp": {
-      "type": "integer",
-      "title": "Next Level Xp"
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Next Level Xp",
+      "description": "Null at the top"
      },
      "penalty": {
       "type": "integer",
@@ -3045,18 +3074,27 @@
      },
      "aids": {
       "$ref": "#/components/schemas/Aids"
+     },
+     "ladder": {
+      "items": {
+       "$ref": "#/components/schemas/Step"
+      },
+      "type": "array",
+      "title": "Ladder"
      }
     },
     "type": "object",
     "required": [
      "level",
      "title",
+     "tier",
      "level_xp",
      "next_level_xp",
      "penalty",
      "streak",
      "streak_bonus",
-     "aids"
+     "aids",
+     "ladder"
     ],
     "title": "Progress",
     "description": "Level, title and what help the player still gets. XP always refers to lifetime XP."
@@ -3645,6 +3683,60 @@
      "disabled"
     ],
     "title": "Status"
+   },
+   "Step": {
+    "properties": {
+     "level": {
+      "type": "integer",
+      "title": "Level"
+     },
+     "tier": {
+      "type": "string",
+      "enum": [
+       "Mingo",
+       "Jefe",
+       "DT",
+       "Top"
+      ],
+      "title": "Tier"
+     },
+     "title": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Title",
+      "description": "Null for the top until the player reaches DT V: a surprise"
+     },
+     "xp": {
+      "type": "integer",
+      "title": "Xp",
+      "description": "Lifetime XP that reaches it"
+     },
+     "aids": {
+      "$ref": "#/components/schemas/Aids"
+     },
+     "penalty": {
+      "type": "integer",
+      "title": "Penalty",
+      "description": "Percentage of a right answer's XP a wrong answer costs"
+     }
+    },
+    "type": "object",
+    "required": [
+     "level",
+     "tier",
+     "title",
+     "xp",
+     "aids",
+     "penalty"
+    ],
+    "title": "Step",
+    "description": "One level of the ladder and what it changes."
    },
    "TimedQuestion": {
     "properties": {
