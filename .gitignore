@@ -1,52 +1,16 @@
-# Prerequisites
-*.d
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+*.egg-info/
+build/
+dist/
 
-# Object files
-*.o
-*.ko
-*.obj
-*.elf
+# FS-Quiz mirror (ODbL data, regenerate with `uv run ifs-tests mirror`)
+data/
 
-# Linker output
-*.ilk
-*.map
-*.exp
-
-# Precompiled Headers
-*.gch
-*.pch
-
-# Libraries
-*.lib
-*.a
-*.la
-*.lo
-
-# Shared objects (inc. Windows DLLs)
-*.dll
-*.so
-*.so.*
-*.dylib
-
-# Executables
-*.exe
-*.out
-*.app
-*.i*86
-*.x86_64
-*.hex
-
-# Debug files
-*.dSYM/
-*.su
-*.idb
-*.pdb
-
-# Kernel Module Compile Results
-*.mod*
-*.cmd
-.tmp_versions/
-modules.order
-Module.symvers
-Mkfile.old
-dkms.conf
+# OS / editors
+.DS_Store
+.vscode/
+.idea/
