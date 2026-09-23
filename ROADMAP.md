@@ -24,7 +24,7 @@ after launch.
 | Phase | Title | Branches | Milestone tag |
 |:---:|---|---|---|
 | 1 | Foundations | ✅ done `feat/1-project-scope` · ✅ done `feat/2-fsquiz-client` · ✅ done `feat/3-team-proposal` | `v0.1.0` |
-| 2 | Platform foundation<br><sub>Staging live on the team server, accounts and the question bank in place</sub> | ✅ done `feat/4-platform-skeleton` · 🔄 active `feat/5-server-deploy` · 🔄 active `feat/6-accounts-auth` · 🔄 active `feat/7-bank-push` | `v0.2.0` |
+| 2 | Platform foundation<br><sub>Staging live on the team server, accounts and the question bank in place</sub> | ✅ done `feat/4-platform-skeleton` · ✅ done `feat/5-server-deploy` · 🔄 active `feat/6-accounts-auth` · 🔄 active `feat/7-bank-push` | `v0.2.0` |
 | 3 | Training MVP | 🔄 active `feat/8-practice` · 🔜 planned `feat/9-admin-taxonomy` · 🔜 planned `feat/10-daily-question` · 🔜 planned `feat/11-mock-quiz` · 🔄 active `feat/12-leaderboard` | `v0.3.0` |
 | 4 | Launch | 🔜 planned `feat/13-privacy-account` · 🔜 planned `feat/14-launch` | `v1.0.0` |
 | 5 | After launch _(deferred)_<br><sub>Ideas to prioritise with the team once the MVP is in use</sub> | ⏸ deferred `feat/15-admin-totp` · ⏸ deferred `feat/16-notion-sync` · ⏸ deferred `feat/17-solution-bounty` · ⏸ deferred `feat/18-team-questions` · ⏸ deferred `feat/19-quiz-day-drill` | `v1.1.0` |
@@ -62,7 +62,7 @@ gitGraph
     checkout dev
     merge feat/4-platform-skeleton
     branch feat/5-server-deploy
-    commit id: "… Hardened production compose, scheduler, backups, deploy script, Nginx snippet"
+    commit id: "✔ Hardened production compose, scheduler, backups, deploy script, Nginx snippet"
     checkout dev
     merge feat/5-server-deploy
     branch feat/6-accounts-auth
