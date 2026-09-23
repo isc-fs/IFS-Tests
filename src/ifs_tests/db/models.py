@@ -351,6 +351,16 @@ class Attempt(Base):
     passed: Mapped[bool] = mapped_column(server_default="false")
 
 
+class PracticeHint(Base):
+    """A hint taken on a practice question, spent by the next answer to it (which then earns half XP)."""
+
+    __tablename__ = "practice_hints"
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    question_id: Mapped[int] = mapped_column(ForeignKey("questions.id", ondelete="CASCADE"), primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
 Index(
     "uq_attempts_daily",
     Attempt.user_id,

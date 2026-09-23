@@ -1062,3 +1062,70 @@ details[open] > summary::before {
   border-radius: 6px;
   background: var(--isc-cream);
 }
+
+/* Formulas and reading beside the question, for the levels that still get them. */
+.content:has(.with-aids) {
+  max-width: 1320px;
+}
+.with-aids {
+  display: grid;
+  gap: 16px;
+}
+.aid {
+  font-size: var(--isc-fs-body-s);
+}
+.aid summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--isc-green);
+}
+.aid dl,
+.aid ul {
+  display: grid;
+  gap: 10px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.aid dt {
+  font-weight: 600;
+}
+.aid dd {
+  display: grid;
+  gap: 2px;
+  margin: 2px 0 0;
+}
+.aid code {
+  font-family: var(--isc-font-mono);
+  overflow-wrap: anywhere;
+}
+.aid li {
+  display: grid;
+  gap: 2px;
+}
+@media (min-width: 1180px) {
+  .with-aids {
+    grid-template-columns: minmax(220px, 1fr) minmax(0, 2.2fr) minmax(200px, 1fr);
+    grid-template-areas: 'formulas question reading';
+    align-items: start;
+  }
+  .aid.formulas {
+    grid-area: formulas;
+  }
+  .aided {
+    grid-area: question;
+  }
+  .aid.reading {
+    grid-area: reading;
+  }
+  .aid {
+    position: sticky;
+    top: 16px;
+    max-height: calc(100vh - 32px);
+    overflow-y: auto;
+  }
+}
+.choice.removed {
+  opacity: 0.45;
+  text-decoration: line-through;
+}

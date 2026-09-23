@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { AnswerDailyData, AnswerDailyErrors, AnswerDailyResponses, AnswerMockData, AnswerMockErrors, AnswerMockResponses, AnswerPracticeData, AnswerPracticeErrors, AnswerPracticeResponses, AuditLogData, AuditLogErrors, AuditLogResponses, BankSummaryData, BankSummaryResponses, ChangePasswordData, ChangePasswordErrors, ChangePasswordResponses, CorrectAnswerData, CorrectAnswerErrors, CorrectAnswerResponses, CreateInviteData, CreateInviteErrors, CreateInviteResponses, DailyStatusData, DailyStatusResponses, GetLeaderboardData, GetLeaderboardErrors, GetLeaderboardResponses, InviteInfoData, InviteInfoErrors, InviteInfoResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutResponses, MeData, MeResponses, MockQuizzesData, MockQuizzesResponses, MockStateData, MockStateErrors, MockStateResponses, NextQuestionData, NextQuestionErrors, NextQuestionResponses, OpenInvitesData, OpenInvitesResponses, PracticeAreasData, PracticeAreasResponses, PracticeQuestionData, PracticeQuestionErrors, PracticeQuestionResponses, RegisterData, RegisterErrors, RegisterResponses, RemoveCorrectionData, RemoveCorrectionErrors, RemoveCorrectionResponses, ReportQuestionData, ReportQuestionErrors, ReportQuestionResponses, ResetData, ResetErrors, ResetInfoData, ResetInfoErrors, ResetInfoResponses, ResetLinkData, ResetLinkErrors, ResetLinkResponses, ResetResponses, ResolveReportData, ResolveReportErrors, ResolveReportResponses, ReviewDailyData, ReviewDailyErrors, ReviewDailyResponses, ReviewQuestionData, ReviewQuestionErrors, ReviewQuestionResponses, ReviewQuestionsData, ReviewQuestionsErrors, ReviewQuestionsResponses, RevokeInviteData, RevokeInviteErrors, RevokeInviteResponses, RevokeSessionsData, RevokeSessionsErrors, RevokeSessionsResponses, StartDailyData, StartDailyErrors, StartDailyResponses, StartMockData, StartMockErrors, StartMockResponses, UpdateMeData, UpdateMeErrors, UpdateMeResponses, UpdateQuestionData, UpdateQuestionErrors, UpdateQuestionResponses, UpdateUserData, UpdateUserErrors, UpdateUserResponses, UsersData, UsersResponses, VerticalLeaderboardData, VerticalLeaderboardErrors, VerticalLeaderboardResponses } from './types.gen';
+import type { AnswerDailyData, AnswerDailyErrors, AnswerDailyResponses, AnswerMockData, AnswerMockErrors, AnswerMockResponses, AnswerPracticeData, AnswerPracticeErrors, AnswerPracticeResponses, AuditLogData, AuditLogErrors, AuditLogResponses, BankSummaryData, BankSummaryResponses, ChangePasswordData, ChangePasswordErrors, ChangePasswordResponses, CorrectAnswerData, CorrectAnswerErrors, CorrectAnswerResponses, CreateInviteData, CreateInviteErrors, CreateInviteResponses, DailyHintData, DailyHintErrors, DailyHintResponses, DailyStatusData, DailyStatusResponses, GetLeaderboardData, GetLeaderboardErrors, GetLeaderboardResponses, InviteInfoData, InviteInfoErrors, InviteInfoResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutResponses, MeData, MeResponses, MockHintData, MockHintErrors, MockHintResponses, MockQuizzesData, MockQuizzesResponses, MockStateData, MockStateErrors, MockStateResponses, NextQuestionData, NextQuestionErrors, NextQuestionResponses, OpenInvitesData, OpenInvitesResponses, PracticeAreasData, PracticeAreasResponses, PracticeHintData, PracticeHintErrors, PracticeHintResponses, PracticeQuestionData, PracticeQuestionErrors, PracticeQuestionResponses, RegisterData, RegisterErrors, RegisterResponses, RemoveCorrectionData, RemoveCorrectionErrors, RemoveCorrectionResponses, ReportQuestionData, ReportQuestionErrors, ReportQuestionResponses, ResetData, ResetErrors, ResetInfoData, ResetInfoErrors, ResetInfoResponses, ResetLinkData, ResetLinkErrors, ResetLinkResponses, ResetResponses, ResolveReportData, ResolveReportErrors, ResolveReportResponses, ReviewDailyData, ReviewDailyErrors, ReviewDailyResponses, ReviewQuestionData, ReviewQuestionErrors, ReviewQuestionResponses, ReviewQuestionsData, ReviewQuestionsErrors, ReviewQuestionsResponses, RevokeInviteData, RevokeInviteErrors, RevokeInviteResponses, RevokeSessionsData, RevokeSessionsErrors, RevokeSessionsResponses, StartDailyData, StartDailyErrors, StartDailyResponses, StartMockData, StartMockErrors, StartMockResponses, TopicAidsData, TopicAidsErrors, TopicAidsResponses, UpdateMeData, UpdateMeErrors, UpdateMeResponses, UpdateQuestionData, UpdateQuestionErrors, UpdateQuestionResponses, UpdateUserData, UpdateUserErrors, UpdateUserResponses, UsersData, UsersResponses, VerticalLeaderboardData, VerticalLeaderboardErrors, VerticalLeaderboardResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -199,6 +199,11 @@ export const answerPractice = <ThrowOnError extends boolean = false>(options: Op
 });
 
 /**
+ * Practice Hint
+ */
+export const practiceHint = <ThrowOnError extends boolean = false>(options: Options<PracticeHintData, ThrowOnError>): RequestResult<PracticeHintResponses, PracticeHintErrors, ThrowOnError> => (options.client ?? client).post<PracticeHintResponses, PracticeHintErrors, ThrowOnError>({ url: '/api/practice/questions/{question_id}/hint', ...options });
+
+/**
  * Daily Status
  */
 export const dailyStatus = <ThrowOnError extends boolean = false>(options?: Options<DailyStatusData, ThrowOnError>): RequestResult<DailyStatusResponses, unknown, ThrowOnError> => (options?.client ?? client).get<DailyStatusResponses, unknown, ThrowOnError>({ url: '/api/daily', ...options });
@@ -226,6 +231,11 @@ export const answerDaily = <ThrowOnError extends boolean = false>(options: Optio
 export const reviewDaily = <ThrowOnError extends boolean = false>(options: Options<ReviewDailyData, ThrowOnError>): RequestResult<ReviewDailyResponses, ReviewDailyErrors, ThrowOnError> => (options.client ?? client).get<ReviewDailyResponses, ReviewDailyErrors, ThrowOnError>({ url: '/api/daily/{area}/review', ...options });
 
 /**
+ * Daily Hint
+ */
+export const dailyHint = <ThrowOnError extends boolean = false>(options: Options<DailyHintData, ThrowOnError>): RequestResult<DailyHintResponses, DailyHintErrors, ThrowOnError> => (options.client ?? client).post<DailyHintResponses, DailyHintErrors, ThrowOnError>({ url: '/api/daily/attempts/{attempt_id}/hint', ...options });
+
+/**
  * Mock Quizzes
  */
 export const mockQuizzes = <ThrowOnError extends boolean = false>(options?: Options<MockQuizzesData, ThrowOnError>): RequestResult<MockQuizzesResponses, unknown, ThrowOnError> => (options?.client ?? client).get<MockQuizzesResponses, unknown, ThrowOnError>({ url: '/api/mock/quizzes', ...options });
@@ -251,6 +261,11 @@ export const answerMock = <ThrowOnError extends boolean = false>(options: Option
         ...options.headers
     }
 });
+
+/**
+ * Mock Hint
+ */
+export const mockHint = <ThrowOnError extends boolean = false>(options: Options<MockHintData, ThrowOnError>): RequestResult<MockHintResponses, MockHintErrors, ThrowOnError> => (options.client ?? client).post<MockHintResponses, MockHintErrors, ThrowOnError>({ url: '/api/mock/sessions/{session_id}/attempts/{attempt_id}/hint', ...options });
 
 /**
  * Review Questions
@@ -317,3 +332,8 @@ export const getLeaderboard = <ThrowOnError extends boolean = false>(options?: O
  * Vertical Leaderboard
  */
 export const verticalLeaderboard = <ThrowOnError extends boolean = false>(options?: Options<VerticalLeaderboardData, ThrowOnError>): RequestResult<VerticalLeaderboardResponses, VerticalLeaderboardErrors, ThrowOnError> => (options?.client ?? client).get<VerticalLeaderboardResponses, VerticalLeaderboardErrors, ThrowOnError>({ url: '/api/leaderboard/verticals', ...options });
+
+/**
+ * Topic Aids
+ */
+export const topicAids = <ThrowOnError extends boolean = false>(options: Options<TopicAidsData, ThrowOnError>): RequestResult<TopicAidsResponses, TopicAidsErrors, ThrowOnError> => (options.client ?? client).get<TopicAidsResponses, TopicAidsErrors, ThrowOnError>({ url: '/api/learning/{topic}', ...options });

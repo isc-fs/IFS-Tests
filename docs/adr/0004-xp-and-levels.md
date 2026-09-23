@@ -101,7 +101,11 @@ on a position change. (The code calls it `position`; the ladder's tiers are the 
 ## Consequences
 
 - The leaderboard shows XP; old season points are not converted (nothing was deployed).
-- The formulas and learn-more panels and hints are gated by tier (next branch).
+- The formulas and learn-more panels (from `content/learning.json`, per topic) and hints follow the level: the
+  server sends a panel only to levels that still get it and refuses hints from DT I. A hint is generated from
+  the answer key (two options left on single choice, how many are right on multiple choice, a range that holds
+  a number without being centred on it, the count and first value of a list, the length and first letter of a
+  text), comes before answering, one per question, and halves the XP.
 - Gains don't depend on level but penalties do, so on the leaderboard an experienced member who picks a low
   position loses less for wrong answers until they level up (3,000 XP before penalties start). That is the
   price of letting people pick at sign-up; admins can correct a position that is plainly wrong.

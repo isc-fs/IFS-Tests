@@ -19,6 +19,8 @@ test('a Department Head starts at Jefe I, earns XP by practising and sees the ro
 
   await page.getByRole('link', { name: 'Practice' }).first().click()
   const question = page.getByRole('article')
+  await expect(question).toBeVisible()
+  await expect(page.getByText(/Useful formulas/)).toHaveCount(0) // formulas end at Jefe I
   for (let i = 0; i < 3; i++) {
     const submit = question.getByRole('button', { name: /Check answer|Show the official answer/ })
     await expect(submit).toBeVisible()
