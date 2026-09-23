@@ -6,32 +6,48 @@ x-logging: &logging
   driver: json-file
   options: { max-size: "10m", max-file: "3" }
 
+# api and scheduler run the same image with the same hardening.
+x-app: &app
+  image: ghcr.io/isc-fs/ifs-tests:${IMAGE_TAG:?set IMAGE_TAG}
+  restart: unless-stopped
+  read_only: true
+  tmpfs: [/tmp]
+  security_opt: ["no-new-privileges:true"]
+  cap_drop: [ALL]
+  logging: *logging
+  environment:
+    IFS_ENV: ${QUIZ_ENV}
+    IFS_DATABASE_URL: postgresql+psycopg://app_rt:${APP_PASSWORD:?}@db:5432/quiz
+    IFS_PUBLIC_ORIGIN: https://${QUIZ_HOST:?}
+    FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:?set to the Nginx container's IP}
+  depends_on:
+    db: { condition: service_healthy }
+
 services:
   api:
-    image: ghcr.io/isc-fs/ifs-tests:${IMAGE_TAG:?set IMAGE_TAG}
-    restart: unless-stopped
-    read_only: true
-    tmpfs: [/tmp]
-    security_opt: ["no-new-privileges:true"]
-    cap_drop: [ALL]
+    <<: *app
     mem_limit: 512m
     cpus: 1.0
-    logging: *logging
-    environment:
-      IFS_ENV: ${QUIZ_ENV}
-      IFS_DATABASE_URL: postgresql+psycopg://app_rt:${APP_PASSWORD:?}@db:5432/quiz
-      IFS_PUBLIC_ORIGIN: https://${QUIZ_HOST:?}
     volumes:
       - media:/data/media
     networks:
       internal: {}
       proxy:
         aliases: ["quiz-${QUIZ_ENV}-api"]
-    depends_on:
-      db: { condition: service_healthy }
+
+  scheduler:
+    <<: *app
+    command: ["ifs-tests", "scheduler"]
+    mem_limit: 256m
+    cpus: 0.5
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os, sys, time; sys.exit(time.time() - os.path.getmtime('/tmp/scheduler-heartbeat') > 120)"]
+      interval: 30s
+      start_period: 15s
+    networks: [internal]
 
   db:
-    image: postgres:17-alpine
+    image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
     restart: unless-stopped
     security_opt: ["no-new-privileges:true"]
     cap_drop: [ALL]
@@ -54,12 +70,12 @@ services:
       - ./db/roles.sql:/quiz/roles.sql:ro
     networks: [internal]
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d quiz"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d quiz"]
       interval: 5s
       retries: 12
 
   backup:
-    image: postgres:17-alpine
+    image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
     restart: unless-stopped
     entrypoint: ["/bin/sh", "/quiz/backup.sh"]
     read_only: true
@@ -73,7 +89,7 @@ services:
       PGDATABASE: quiz
       PGUSER: backup_ro
       PGPASSWORD: ${BACKUP_PASSWORD:?}
-      BACKUP_AT: "02:30"
+      BACKUP_AT: "03:30"
       KEEP_DAYS: "14"
       HEARTBEAT_URL: ${BACKUP_HEARTBEAT_URL:-}
     volumes:

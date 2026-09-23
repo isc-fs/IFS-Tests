@@ -25,7 +25,9 @@ web/dist/
 .env.*
 !.env.example
 
-# Test coverage output
+# Playwright
+web/test-results/
+web/playwright-report/
+web/coverage/
 .coverage
 .coverage.*
-web/coverage/

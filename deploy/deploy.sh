@@ -48,9 +48,10 @@ if [[ -n $previous ]]; then
 fi
 
 log "migrating"
-compose "$tag" run --rm --no-deps \
-  -e IFS_DATABASE_URL="postgresql+psycopg://migrator:${MIGRATOR_PASSWORD}@db:5432/quiz" \
-  api alembic upgrade head
+# Passed by name only, so the password never shows up on a command line (`ps`).
+export IFS_DATABASE_URL="postgresql+psycopg://migrator:${MIGRATOR_PASSWORD}@db:5432/quiz"
+compose "$tag" run --rm --no-deps -e IFS_DATABASE_URL api alembic upgrade head
+unset IFS_DATABASE_URL
 
 smoke() {
   compose "$tag" exec -T api python - <<'PY'
@@ -76,14 +77,14 @@ sys.exit(0 if all(checks.values()) else 1)
 PY
 }
 
-if compose "$tag" up -d --remove-orphans --wait --wait-timeout 90 api && smoke; then
+if compose "$tag" up -d --remove-orphans --wait --wait-timeout 90 api scheduler && smoke; then
   echo "$tag" > "$dir/deployed-tag"
   echo "$(date -u +%FT%TZ) $env $tag $(whoami)" >> "$dir/deploy-history"
   log "done: $env is on $tag"
 else
   if [[ -n $previous ]]; then
     log "rolling back to $previous"
-    compose "$previous" up -d --remove-orphans --wait --wait-timeout 90 api
+    compose "$previous" up -d --remove-orphans --wait --wait-timeout 90 api scheduler
   fi
   die "$tag failed to start or failed the smoke test"
 fi

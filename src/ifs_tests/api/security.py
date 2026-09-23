@@ -47,3 +47,40 @@ class SecurityHeaders:
             await send(message)
 
         await self.app(scope, receive, send_with_headers)
+
+
+UNSAFE = {"POST", "PUT", "PATCH", "DELETE"}
+
+
+class CSRFGuard:
+    """State-changing requests to /api and /auth must carry `X-CSRF: 1` and, if the browser sends an Origin,
+    it must be ours. Cross-site pages can't add custom headers without a CORS preflight, which we never allow."""
+
+    def __init__(self, app: ASGIApp, allowed_origins: frozenset[str]) -> None:
+        self.app = app
+        self.allowed = allowed_origins
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if (
+            scope["type"] == "http"
+            and scope["method"] in UNSAFE
+            and scope["path"].startswith(("/api/", "/auth/"))
+        ):
+            headers = {k.lower(): v for k, v in scope.get("headers", [])}
+            origin = headers.get(b"origin", b"").decode()
+            if headers.get(b"x-csrf") != b"1" or (origin and origin.rstrip("/") not in self.allowed):
+                await _reject(send)
+                return
+        await self.app(scope, receive, send)
+
+
+async def _reject(send: Send) -> None:
+    body = b'{"detail":"Cross-site request blocked."}'
+    await send(
+        {
+            "type": "http.response.start",
+            "status": 403,
+            "headers": [(b"content-type", b"application/json"), (b"content-length", str(len(body)).encode())],
+        }
+    )
+    await send({"type": "http.response.body", "body": body})

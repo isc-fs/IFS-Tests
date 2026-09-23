@@ -11,7 +11,7 @@ Members have Comillas Microsoft accounts, but the team has no access to the univ
 - Passwords are hashed with Argon2id (argon2-cffi), minimum 10 characters, common passwords rejected, rehashed when parameters change, never logged.
 - Brute force is limited at Nginx (`limit_req` on `/auth/`) and per account (5 failures → 15-minute lock).
 - Forgotten passwords: an admin issues a single-use reset link (24 h). No email needed.
-- Sessions are opaque random IDs in a `__Host-` cookie (HttpOnly, Secure, SameSite=Lax); only a hash is stored; 12 h idle / 30 d absolute; rotated at login.
+- Sessions are opaque random IDs in a `__Host-` cookie (HttpOnly, Secure, SameSite=Lax); only a hash is stored; 12 h idle / 30 d absolute; rotated at login. Local development over plain http uses a `sid` cookie without Secure, since Safari refuses Secure cookies on http://localhost; deployed environments must be https.
 
 ## Consequences
 - The app stores password hashes, so it owns their protection (above). Admin TOTP can be added later.

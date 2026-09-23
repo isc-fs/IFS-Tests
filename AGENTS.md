@@ -7,12 +7,14 @@ Instructions for coding agents working in this repository. Read [README.md](READ
 - Training platform for Formula Student registration quizzes, fed by the FS-Quiz API v2 (`https://api.fs-quiz.eu/2/`, no key).
 - Architecture: one FastAPI service (Python 3.13, uv) serving a React/Vite SPA, PostgreSQL via SQLAlchemy 2 + Alembic, Docker Compose on the team's Hetzner server. Read [`docs/architecture.md`](docs/architecture.md) and [`docs/adr/`](docs/adr/) before changing structure; record new structural decisions as ADRs.
 - FS-Quiz API behaviour and quirks: [`docs/fsquiz-api.md`](docs/fsquiz-api.md). The live responses differ from the published spec.
-- Layers: `api` → `services` → `repositories` → `db`; `domain/` holds pure rules (no I/O, clock passed in). Authorization happens in FastAPI dependencies; user IDs come from the session only. Answer keys never appear in a response other than the user's own submission.
+- Layers: `api` → `services` → `db`; `domain/` holds pure rules (no I/O, clock passed in). Authorization happens in FastAPI dependencies; user IDs come from the session only. Answer keys never appear in a response other than the user's own submission.
 
 ## Commands
 
 - Python: `uv sync`, `uv run ruff check .`, `uv run ruff format .`, `uv run mypy`, `uv run pytest` (integration tests need Docker).
-- Web (`web/`): `npm ci --ignore-scripts`, `npm run typecheck`, `npm run lint`, `npm test`, `npm run build`, `npm run size`.
+- Web (`web/`): `npm ci --ignore-scripts`, `npm run format`, `npm run typecheck`, `npm run lint`, `npm test` (with coverage gates), `npm run build`, `npm run size`, `npm run e2e`.
+- After changing the API: `uv run ifs-tests openapi > web/openapi.json && (cd web && npm run gen:api)`; CI fails if either is stale.
+- Tests follow the pyramid: pure rules in `domain/` get table-driven unit tests; services and routes get API tests against Postgres; races get integration tests in `tests/integration/test_concurrency.py`; user flows get component tests and one Playwright journey.
 - Local stack: `docker compose up --build`; migrations: `alembic upgrade head` (or `docker compose run --rm api alembic upgrade head`).
 - New migration: `uv run alembic revision --autogenerate -m "..."`, then review it by hand. Migrations must be expand/contract (the previous release keeps running during a deploy).
 - Deployment: `deploy/` (compose, `deploy.sh`, `restore.sh`, Nginx snippet) and [`docs/runbook.md`](docs/runbook.md). CI never deploys; a maintainer runs `deploy.sh` on the server.
