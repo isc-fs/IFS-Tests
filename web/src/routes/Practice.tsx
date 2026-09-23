@@ -120,6 +120,7 @@ function Session({ area, topic, onGraded }: Filter & { onGraded: (correct: boole
       {question && (
         <QuestionCard
           key={question.id}
+          focusOnShow={round > 0}
           question={question}
           feedback={feedback}
           pending={answer.isPending}

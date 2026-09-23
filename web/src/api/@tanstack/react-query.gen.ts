@@ -3,8 +3,8 @@
 import { type DefaultError, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { answerDaily, answerPractice, auditLog, bankSummary, changePassword, createInvite, dailyStatus, inviteInfo, login, logout, me, nextQuestion, openInvites, type Options, practiceAreas, practiceQuestion, register, reset, resetInfo, resetLink, reviewDaily, revokeInvite, revokeSessions, startDaily, updateMe, updateUser, users } from '../sdk.gen';
-import type { AnswerDailyData, AnswerDailyError, AnswerDailyResponse, AnswerPracticeData, AnswerPracticeError, AnswerPracticeResponse, AuditLogData, AuditLogError, AuditLogResponse, BankSummaryData, BankSummaryResponse, ChangePasswordData, ChangePasswordError, ChangePasswordResponse, CreateInviteData, CreateInviteError, CreateInviteResponse, DailyStatusData, DailyStatusResponse, InviteInfoData, InviteInfoError, InviteInfoResponse, LoginData, LoginError, LoginResponse, LogoutData, LogoutResponse, MeData, MeResponse, NextQuestionData, NextQuestionError, NextQuestionResponse, OpenInvitesData, OpenInvitesResponse, PracticeAreasData, PracticeAreasResponse, PracticeQuestionData, PracticeQuestionError, PracticeQuestionResponse, RegisterData, RegisterError, RegisterResponse, ResetData, ResetError, ResetInfoData, ResetInfoError, ResetInfoResponse, ResetLinkData, ResetLinkError, ResetLinkResponse, ResetResponse, ReviewDailyData, ReviewDailyError, ReviewDailyResponse, RevokeInviteData, RevokeInviteError, RevokeInviteResponse, RevokeSessionsData, RevokeSessionsError, RevokeSessionsResponse, StartDailyData, StartDailyError, StartDailyResponse, UpdateMeData, UpdateMeError, UpdateMeResponse, UpdateUserData, UpdateUserError, UpdateUserResponse, UsersData, UsersResponse } from '../types.gen';
+import { answerDaily, answerMock, answerPractice, auditLog, bankSummary, changePassword, createInvite, dailyStatus, inviteInfo, login, logout, me, mockQuizzes, mockState, nextQuestion, openInvites, type Options, practiceAreas, practiceQuestion, register, reset, resetInfo, resetLink, reviewDaily, revokeInvite, revokeSessions, startDaily, startMock, updateMe, updateUser, users } from '../sdk.gen';
+import type { AnswerDailyData, AnswerDailyError, AnswerDailyResponse, AnswerMockData, AnswerMockError, AnswerMockResponse, AnswerPracticeData, AnswerPracticeError, AnswerPracticeResponse, AuditLogData, AuditLogError, AuditLogResponse, BankSummaryData, BankSummaryResponse, ChangePasswordData, ChangePasswordError, ChangePasswordResponse, CreateInviteData, CreateInviteError, CreateInviteResponse, DailyStatusData, DailyStatusResponse, InviteInfoData, InviteInfoError, InviteInfoResponse, LoginData, LoginError, LoginResponse, LogoutData, LogoutResponse, MeData, MeResponse, MockQuizzesData, MockQuizzesResponse, MockStateData, MockStateError, MockStateResponse, NextQuestionData, NextQuestionError, NextQuestionResponse, OpenInvitesData, OpenInvitesResponse, PracticeAreasData, PracticeAreasResponse, PracticeQuestionData, PracticeQuestionError, PracticeQuestionResponse, RegisterData, RegisterError, RegisterResponse, ResetData, ResetError, ResetInfoData, ResetInfoError, ResetInfoResponse, ResetLinkData, ResetLinkError, ResetLinkResponse, ResetResponse, ReviewDailyData, ReviewDailyError, ReviewDailyResponse, RevokeInviteData, RevokeInviteError, RevokeInviteResponse, RevokeSessionsData, RevokeSessionsError, RevokeSessionsResponse, StartDailyData, StartDailyError, StartDailyResponse, StartMockData, StartMockError, StartMockResponse, UpdateMeData, UpdateMeError, UpdateMeResponse, UpdateUserData, UpdateUserError, UpdateUserResponse, UsersData, UsersResponse } from '../types.gen';
 
 /**
  * Login
@@ -490,3 +490,73 @@ export const reviewDailyOptions = (options: Options<ReviewDailyData>) => queryOp
     },
     queryKey: reviewDailyQueryKey(options)
 });
+
+export const mockQuizzesQueryKey = (options?: Options<MockQuizzesData>) => createQueryKey('mockQuizzes', options);
+
+/**
+ * Mock Quizzes
+ */
+export const mockQuizzesOptions = (options?: Options<MockQuizzesData>) => queryOptions<MockQuizzesResponse, DefaultError, MockQuizzesResponse, ReturnType<typeof mockQuizzesQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await mockQuizzes({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: mockQuizzesQueryKey(options)
+});
+
+/**
+ * Start Mock
+ */
+export const startMockMutation = (options?: Partial<Options<StartMockData>>): UseMutationOptions<StartMockResponse, StartMockError, Options<StartMockData>> => {
+    const mutationOptions: UseMutationOptions<StartMockResponse, StartMockError, Options<StartMockData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await startMock({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+export const mockStateQueryKey = (options: Options<MockStateData>) => createQueryKey('mockState', options);
+
+/**
+ * Mock State
+ */
+export const mockStateOptions = (options: Options<MockStateData>) => queryOptions<MockStateResponse, MockStateError, MockStateResponse, ReturnType<typeof mockStateQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await mockState({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: mockStateQueryKey(options)
+});
+
+/**
+ * Answer Mock
+ */
+export const answerMockMutation = (options?: Partial<Options<AnswerMockData>>): UseMutationOptions<AnswerMockResponse, AnswerMockError, Options<AnswerMockData>> => {
+    const mutationOptions: UseMutationOptions<AnswerMockResponse, AnswerMockError, Options<AnswerMockData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await answerMock({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};

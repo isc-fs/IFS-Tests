@@ -11,7 +11,7 @@ from .. import __version__
 from ..auth.passwords import HashingBusy
 from ..services.errors import UserError
 from ..settings import Settings, get_settings
-from .routes import admin, auth, daily, me, practice
+from .routes import admin, auth, daily, me, mock, practice
 from .security import CSRFGuard, SecurityHeaders
 
 
@@ -45,7 +45,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         errors = [{"loc": err["loc"], "msg": err["msg"], "type": err["type"]} for err in e.errors()]
         return JSONResponse({"detail": errors}, status_code=422)
 
-    for router in (auth.router, me.router, admin.router, practice.router, daily.router):
+    for router in (auth.router, me.router, admin.router, practice.router, daily.router, mock.router):
         app.include_router(router)
 
     @app.api_route("/healthz", methods=["GET", "HEAD"], include_in_schema=False)

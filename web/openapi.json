@@ -1023,6 +1023,173 @@
      }
     }
    }
+  },
+  "/api/mock/quizzes": {
+   "get": {
+    "tags": [
+     "mock"
+    ],
+    "summary": "Mock Quizzes",
+    "operationId": "mock_quizzes",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/MockQuiz"
+         },
+         "type": "array",
+         "title": "Response Mock Quizzes"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/mock/quizzes/{quiz_id}/start": {
+   "post": {
+    "tags": [
+     "mock"
+    ],
+    "summary": "Start Mock",
+    "operationId": "start_mock",
+    "parameters": [
+     {
+      "name": "quiz_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "maximum": 2147483647,
+       "minimum": 1,
+       "title": "Quiz Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/MockState"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/mock/sessions/{session_id}": {
+   "get": {
+    "tags": [
+     "mock"
+    ],
+    "summary": "Mock State",
+    "operationId": "mock_state",
+    "parameters": [
+     {
+      "name": "session_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "maximum": 2147483647,
+       "minimum": 1,
+       "title": "Session Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/MockState"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/mock/sessions/{session_id}/answer": {
+   "post": {
+    "tags": [
+     "mock"
+    ],
+    "summary": "Answer Mock",
+    "operationId": "answer_mock",
+    "parameters": [
+     {
+      "name": "session_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "maximum": 2147483647,
+       "minimum": 1,
+       "title": "Session Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/MockAnswerIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/MockState"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
   }
  },
  "components": {
@@ -1625,6 +1792,276 @@
      "leaderboard_opt_out"
     ],
     "title": "Me"
+   },
+   "MockAnswerIn": {
+    "properties": {
+     "options": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "integer",
+         "maximum": 2147483647.0,
+         "minimum": 1.0
+        },
+        "type": "array",
+        "maxItems": 40
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Options"
+     },
+     "value": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 200
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Value"
+     },
+     "attempt_id": {
+      "type": "integer",
+      "maximum": 9.223372036854776e+18,
+      "minimum": 1.0,
+      "title": "Attempt Id"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "attempt_id"
+    ],
+    "title": "MockAnswerIn"
+   },
+   "MockItem": {
+    "properties": {
+     "question": {
+      "$ref": "#/components/schemas/PlayQuestion"
+     },
+     "feedback": {
+      "$ref": "#/components/schemas/Feedback"
+     },
+     "late": {
+      "type": "boolean",
+      "title": "Late"
+     }
+    },
+    "type": "object",
+    "required": [
+     "question",
+     "feedback",
+     "late"
+    ],
+    "title": "MockItem"
+   },
+   "MockQuiz": {
+    "properties": {
+     "id": {
+      "type": "integer",
+      "title": "Id"
+     },
+     "label": {
+      "type": "string",
+      "title": "Label"
+     },
+     "year": {
+      "type": "integer",
+      "title": "Year"
+     },
+     "vehicle_class": {
+      "type": "string",
+      "title": "Vehicle Class"
+     },
+     "held_on": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Held On"
+     },
+     "questions": {
+      "type": "integer",
+      "title": "Questions"
+     },
+     "graded": {
+      "type": "integer",
+      "title": "Graded"
+     },
+     "total_time_s": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Total Time S"
+     },
+     "bar_to_beat": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Bar To Beat"
+     },
+     "best": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Best",
+      "description": "Most correct answers in a finished run"
+     },
+     "open_session": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Open Session"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "label",
+     "year",
+     "vehicle_class",
+     "held_on",
+     "questions",
+     "graded",
+     "total_time_s",
+     "bar_to_beat",
+     "best",
+     "open_session"
+    ],
+    "title": "MockQuiz"
+   },
+   "MockState": {
+    "properties": {
+     "session_id": {
+      "type": "integer",
+      "title": "Session Id"
+     },
+     "quiz_id": {
+      "type": "integer",
+      "title": "Quiz Id"
+     },
+     "label": {
+      "type": "string",
+      "title": "Label"
+     },
+     "position": {
+      "type": "integer",
+      "title": "Position",
+      "description": "Questions already answered"
+     },
+     "total": {
+      "type": "integer",
+      "title": "Total"
+     },
+     "current": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/TimedQuestion"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "summary": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/MockSummary"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    },
+    "type": "object",
+    "required": [
+     "session_id",
+     "quiz_id",
+     "label",
+     "position",
+     "total",
+     "current",
+     "summary"
+    ],
+    "title": "MockState"
+   },
+   "MockSummary": {
+    "properties": {
+     "correct": {
+      "type": "integer",
+      "title": "Correct"
+     },
+     "graded": {
+      "type": "integer",
+      "title": "Graded"
+     },
+     "points": {
+      "type": "integer",
+      "title": "Points"
+     },
+     "counted": {
+      "type": "boolean",
+      "title": "Counted"
+     },
+     "bar_to_beat": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Bar To Beat"
+     },
+     "items": {
+      "items": {
+       "$ref": "#/components/schemas/MockItem"
+      },
+      "type": "array",
+      "title": "Items"
+     }
+    },
+    "type": "object",
+    "required": [
+     "correct",
+     "graded",
+     "points",
+     "counted",
+     "bar_to_beat",
+     "items"
+    ],
+    "title": "MockSummary"
    },
    "OpenInvite": {
     "properties": {

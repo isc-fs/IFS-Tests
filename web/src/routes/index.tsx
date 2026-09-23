@@ -6,6 +6,7 @@ import Home from './Home'
 import Invite from './Invite'
 import Layout from './Layout'
 import Login from './Login'
+import Mock, { MockRun } from './Mock'
 import Practice from './Practice'
 import Profile from './Profile'
 import Reset from './Reset'
@@ -45,6 +46,8 @@ export const routes: RouteObject[] = [
       { index: true, element: <Home /> },
       { path: 'daily', element: <Daily /> },
       { path: 'practice', element: <Practice /> },
+      { path: 'mock', element: <Mock /> },
+      { path: 'mock/:sessionId', element: <MockRun /> },
       { path: 'profile', element: <Profile /> },
       { path: 'admin', element: <Admin /> },
     ],

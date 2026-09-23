@@ -2,8 +2,6 @@ import { Link } from 'react-router'
 import { Page } from '../components/Page'
 import { useMe } from '../lib/api'
 
-const NEXT = [{ title: 'Mock quizzes', text: 'Replay FSG, FSA and more with the real time budget per question.' }]
-
 export default function Home() {
   const { data: user } = useMe()
   return (
@@ -35,16 +33,15 @@ export default function Home() {
           </Link>
         </p>
       </section>
-      <p className="lede">Coming in the next releases:</p>
-      <ul className="cards">
-        {NEXT.map((item) => (
-          <li key={item.title} className="card">
-            <h2>{item.title}</h2>
-            <p>{item.text}</p>
-            <span className="badge">Coming soon</span>
-          </li>
-        ))}
-      </ul>
+      <section className="panel stack" aria-labelledby="mock-title">
+        <h2 id="mock-title">Mock quizzes</h2>
+        <p>Replay FSG, FSA and more, one question at a time with the real time budget.</p>
+        <p>
+          <Link to="/mock" className="button">
+            Choose a quiz
+          </Link>
+        </p>
+      </section>
     </Page>
   )
 }

@@ -12,11 +12,11 @@ from sqlalchemy.orm import Session
 
 from ifs_tests.bank.mirror import load_bank
 from ifs_tests.bank.sample import SAMPLE_DIR
-from ifs_tests.db.models import AnswerKey, DailyQuestion, Question, User
+from ifs_tests.db.models import DailyQuestion, Question, User
 from ifs_tests.services.bank import import_bank
 
 from ..conftest import Clock
-from .helpers import PASSWORD, login, member
+from .helpers import PASSWORD, login, member, right_answer
 
 pytestmark = pytest.mark.integration
 NewClient = Callable[[], TestClient]
@@ -33,22 +33,6 @@ def player(app_client: TestClient, admin: User, new_client: NewClient, bank: Non
     c = new_client()
     member(app_client, c, "marta@alu.comillas.edu", "Marta")
     return c
-
-
-def right_answer(db: Session, question_id: int) -> dict[str, Any]:
-    """What a player who knows the answer would send."""
-    key = db.get_one(AnswerKey, question_id).key
-    assert key is not None
-    if key["kind"] == "choice":
-        return {"options": key["options"][:1] if key["mode"] == "one" else key["options"]}
-    alt = key["accept"][0]
-    if key["kind"] == "number":
-        return {"value": str(alt["v"])}
-    if key["kind"] == "numbers":
-        return {"value": "; ".join(str(v["v"]) for v in alt["values"])}
-    if key["kind"] == "range":
-        return {"value": str(alt["lo"])}
-    return {"value": alt}
 
 
 def next_day(c: TestClient, clock: Clock, days: int = 1) -> None:
