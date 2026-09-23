@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router'
 import { getLeaderboardOptions, verticalLeaderboardOptions } from '../api/@tanstack/react-query.gen'
 import type { LeaderRow } from '../api/types.gen'
@@ -46,7 +46,7 @@ function Chips<T extends string>({
       <ul className="chips">
         {(Object.entries(options) as [T, string][]).map(([value, name]) => (
           <li key={value}>
-            <Link to={to(value)} aria-current={value === current ? 'page' : undefined}>
+            <Link to={to(value)} aria-current={value === current ? 'true' : undefined}>
               {name}
             </Link>
           </li>
@@ -88,15 +88,17 @@ function Row({ row }: { row: LeaderRow }) {
 }
 
 function People({ board, period }: { board: PersonBoard; period: Period }) {
-  const q = useQuery(getLeaderboardOptions({ query: { board, period } }))
+  const q = useQuery({ ...getLeaderboardOptions({ query: { board, period } }), placeholderData: keepPreviousData })
   const when = period === 'season' ? 'this season' : 'in the last 7 days'
   const title = `${BOARDS[board]}, ${PERIODS[period].toLowerCase()}`
   return (
     <section className="panel stack" aria-labelledby="board-title">
       <h2 id="board-title">{title}</h2>
-      {q.isPending && <p className="muted">Loading the board…</p>}
+      <p className="muted" aria-live="polite">
+        {q.isPending || q.isPlaceholderData ? 'Loading the board…' : ''}
+      </p>
       <ErrorNotice error={q.error} />
-      {q.data && q.data.rows.length === 0 && (
+      {q.data && q.data.rows.length === 0 && !q.data.me && (
         <p>Nobody has scored {when} yet. Answer the daily questions or run a mock quiz to get on the board.</p>
       )}
       {!!q.data?.rows.length && (
@@ -123,7 +125,7 @@ function People({ board, period }: { board: PersonBoard; period: Period }) {
                 You're hidden from others; this is where you'd be. <Link to="/profile">Change it in your profile</Link>.
               </>
             ) : (
-              `Outside the top ${q.data.rows.length}: keep going.`
+              'Just outside the top 50: keep going.'
             )}
           </p>
         </div>
@@ -135,15 +137,17 @@ function People({ board, period }: { board: PersonBoard; period: Period }) {
 
 function Verticals({ period }: { period: Period }) {
   const { data: user } = useMe()
-  const q = useQuery(verticalLeaderboardOptions({ query: { period } }))
+  const q = useQuery({ ...verticalLeaderboardOptions({ query: { period } }), placeholderData: keepPreviousData })
   return (
     <section className="panel stack" aria-labelledby="board-title">
       <h2 id="board-title">Verticals, {PERIODS[period].toLowerCase()}</h2>
       <p className="muted">
-        Average points per active member, counting everyone in the vertical, and the share of members who answered a
-        daily question in the last 7 days. Only verticals with at least 3 active members are shown.
+        Average points per active member and the share who answered a daily question in the last 7 days. People who hide
+        themselves from the leaderboard aren't counted, and only verticals with at least 3 other members are shown.
       </p>
-      {q.isPending && <p className="muted">Loading the board…</p>}
+      <p className="muted" aria-live="polite">
+        {q.isPending || q.isPlaceholderData ? 'Loading the board…' : ''}
+      </p>
       <ErrorNotice error={q.error} />
       {q.data?.rows.length === 0 && <p>No vertical has 3 active members yet.</p>}
       {!!q.data?.rows.length && (

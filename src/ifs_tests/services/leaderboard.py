@@ -6,10 +6,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session as DB
 
-from ..db.models import Attempt, Question, User
+from ..db.models import Attempt, MockSession, Question, User
 from ..domain import leaderboard as rules
 from ..domain.daily import madrid_day
 
@@ -37,12 +37,13 @@ class Board:
     players: int
 
 
-def _since(period: str, now: datetime) -> datetime:
-    return rules.madrid_midnight(rules.first_day(period, madrid_day(now)))
-
-
-def _scores(db: DB, since: datetime, area: str | None = None) -> list[tuple[int, str, str | None, bool, int]]:
-    """(id, name, vertical, opted out, points) of each active member who scored since then."""
+def _scores(
+    db: DB, period: str, now: datetime, area: str | None = None
+) -> list[tuple[int, str, str | None, bool, int]]:
+    """(id, name, vertical, opted out, points) of each active member who scored in the period.
+    Points belong to the day the play started: a daily's own day, a mock run's start. So a run begun
+    before midnight on 31 August can't score in two seasons."""
+    first = rules.first_day(period, madrid_day(now))
     stmt = (
         select(
             User.id,
@@ -52,11 +53,20 @@ def _scores(db: DB, since: datetime, area: str | None = None) -> list[tuple[int,
             func.sum(Attempt.points),
         )
         .join(Attempt, Attempt.user_id == User.id)
-        .where(User.status == "active", Attempt.submitted_at >= since, Attempt.points > 0)
+        .outerjoin(MockSession, MockSession.id == Attempt.session_id)
+        .where(
+            User.status == "active",
+            Attempt.points > 0,
+            or_(
+                and_(Attempt.mode == "daily", Attempt.day >= first),
+                and_(Attempt.mode == "mock", MockSession.started_at >= rules.madrid_midnight(first)),
+            ),
+        )
         .group_by(User.id)
     )
     if area:
-        # Daily attempts record their area; mock attempts take it from the question.
+        # Attempts record the area they were played under, so relabelling a question later moves nothing.
+        # (Mock attempts from before that was recorded fall back to the question's area.)
         stmt = stmt.join(Question, Question.id == Attempt.question_id).where(
             func.coalesce(Attempt.area, Question.area) == area
         )
@@ -64,7 +74,7 @@ def _scores(db: DB, since: datetime, area: str | None = None) -> list[tuple[int,
 
 
 def board(db: DB, user: User, area: str | None, period: str, now: datetime) -> Board:
-    scores = _scores(db, _since(period, now), area)
+    scores = _scores(db, period, now, area)
     shown = sorted((s for s in scores if not s[3]), key=lambda s: (-s[4], s[1].casefold()))
     ranks = rules.ranks([s[4] for s in shown])
     rows = [
@@ -76,11 +86,12 @@ def board(db: DB, user: User, area: str | None, period: str, now: datetime) -> B
     if mine:
         others = (s[4] for s in shown if s[0] != user.id)
         me = Mine(rules.rank_among(mine, others), mine, user.leaderboard_opt_out)
-    return Board(rows[: rules.TOP], me, len(shown))
+    # Everyone tied at the cut stays, so nobody ranked in the top 50 is missing from it.
+    return Board([r for r in rows if r.rank <= rules.TOP], me, len(shown))
 
 
 def verticals(db: DB, period: str, now: datetime) -> list[rules.VerticalScore]:
-    points = {s[0]: s[4] for s in _scores(db, _since(period, now))}
+    points = {s[0]: s[4] for s in _scores(db, period, now)}
     week_start = rules.first_day("week", madrid_day(now))
     played = set(
         db.scalars(
@@ -89,5 +100,9 @@ def verticals(db: DB, period: str, now: datetime) -> list[rules.VerticalScore]:
             .distinct()
         )
     )
-    members = db.execute(select(User.id, User.vertical).where(User.status == "active"))
+    # People who opted out are left out entirely: counting them in an average lets anyone subtract the
+    # named members' points and recover theirs.
+    members = db.execute(
+        select(User.id, User.vertical).where(User.status == "active", User.leaderboard_opt_out.is_(False))
+    )
     return rules.vertical_board(rules.Member(v, points.get(i, 0), i in played) for i, v in members)

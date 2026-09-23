@@ -55,8 +55,8 @@ class VerticalScore:
 
 
 def vertical_board(members: Iterable[Member]) -> list[VerticalScore]:
-    """Average points per active member and the share who played this week, best average first.
-    Verticals too small to average fairly (and to keep anyone anonymous) are left out."""
+    """Average points per member and the share who played this week, best average first.
+    Verticals with too few members to average fairly are left out."""
     by_vertical: dict[str, list[Member]] = {}
     for m in members:
         if m.vertical:

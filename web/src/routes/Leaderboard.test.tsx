@@ -40,15 +40,15 @@ test('chips and the period toggle live in the URL', async () => {
   const { router, calls } = renderApp('/leaderboard', api(BOARD))
   const boards = await screen.findByRole('navigation', { name: 'Board' })
   const periods = screen.getByRole('navigation', { name: 'Period' })
-  expect(within(boards).getByRole('link', { name: 'Everyone' })).toHaveAttribute('aria-current', 'page')
-  expect(within(periods).getByRole('link', { name: 'This season' })).toHaveAttribute('aria-current', 'page')
+  expect(within(boards).getByRole('link', { name: 'Everyone' })).toHaveAttribute('aria-current', 'true')
+  expect(within(periods).getByRole('link', { name: 'This season' })).toHaveAttribute('aria-current', 'true')
 
   await userEvent.click(within(boards).getByRole('link', { name: 'Mechanical' }))
   await waitFor(() => expect(router.state.location.search).toBe('?board=mech'))
   await userEvent.click(within(periods).getByRole('link', { name: 'Last 7 days' }))
   await waitFor(() => expect(router.state.location.search).toBe('?board=mech&period=week'))
-  expect(within(boards).getByRole('link', { name: 'Mechanical' })).toHaveAttribute('aria-current', 'page')
-  expect(within(periods).getByRole('link', { name: 'Last 7 days' })).toHaveAttribute('aria-current', 'page')
+  expect(within(boards).getByRole('link', { name: 'Mechanical' })).toHaveAttribute('aria-current', 'true')
+  expect(within(periods).getByRole('link', { name: 'Last 7 days' })).toHaveAttribute('aria-current', 'true')
   expect(within(boards).getByRole('link', { name: 'Everyone' })).toHaveAttribute('href', '/leaderboard?period=week')
   await waitFor(() =>
     expect(
@@ -86,7 +86,7 @@ test('members outside the top rows get their rank below the list', async () => {
   const rows = Array.from({ length: 50 }, (_, i) => row(1, `P${i}`, 20))
   renderApp('/leaderboard', api({ ...BOARD, rows, me: { rank: 51, points: 10, hidden: false }, players: 51 }))
   expect(await screen.findByText('You: #51')).toBeInTheDocument()
-  expect(screen.getByText('Outside the top 50: keep going.')).toBeInTheDocument()
+  expect(screen.getByText('Just outside the top 50: keep going.')).toBeInTheDocument()
   expect(screen.getByText('51 people on this board, top 50 shown.')).toBeInTheDocument()
 })
 
@@ -125,7 +125,7 @@ test('the verticals board is a table with your vertical marked', async () => {
   expect(mech).toHaveTextContent('Mechanical8 members12.350%')
   expect(dv).toHaveTextContent('DriverlessYours3 members6.733%')
   expect(dv).toHaveClass('me')
-  expect(screen.getByRole('link', { name: 'Verticals' })).toHaveAttribute('aria-current', 'page')
+  expect(screen.getByRole('link', { name: 'Verticals' })).toHaveAttribute('aria-current', 'true')
   expect(calls.some((c) => c.key === 'GET /api/leaderboard')).toBe(false)
 })
 
@@ -143,4 +143,15 @@ test('the leaderboard is in the menu and linked from home', async () => {
   const nav = await screen.findByRole('navigation', { name: 'Main' })
   expect(within(nav).getByRole('link', { name: 'Leaderboard' })).toHaveAttribute('href', '/leaderboard')
   expect(screen.getByRole('link', { name: 'See the leaderboard' })).toHaveAttribute('href', '/leaderboard')
+})
+
+test('someone hidden from the board still sees their own place when nobody visible has scored', async () => {
+  renderApp('/leaderboard', {
+    'GET /api/me': { body: { ...MEMBER, leaderboard_opt_out: true } },
+    'GET /api/leaderboard': {
+      body: { period: 'season', board: 'everyone', rows: [], me: { rank: 1, points: 10, hidden: true }, players: 0 },
+    },
+  })
+  expect(await screen.findByText('You: #1')).toBeInTheDocument()
+  expect(screen.queryByText(/Nobody has scored/)).toBeNull()
 })

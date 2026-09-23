@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from ifs_tests.bank.mirror import load_bank
 from ifs_tests.bank.sample import SAMPLE_DIR
-from ifs_tests.db.models import User
+from ifs_tests.db.models import Question, User
 from ifs_tests.services import daily, mock
 from ifs_tests.services.bank import import_bank
 
@@ -188,7 +188,7 @@ def test_the_board_shows_the_top_fifty_and_your_own_rank_below(
         play_daily(db, u, "elec", clock.now)
     add(db, "Idle")
     b = board(c)
-    assert len(b["rows"]) == 50 and b["players"] == 52
+    assert len(b["rows"]) == 51 and b["players"] == 52  # all 51 tied at the top, past the usual 50
     assert {r["rank"] for r in b["rows"]} == {1} and not any(r["me"] for r in b["rows"])
     assert b["me"] == {"rank": 52, "points": 10, "hidden": False}
 
@@ -210,8 +210,9 @@ def test_vertical_board(
     c = join(app_client, new_client, "Marta")
     assert c.patch("/api/me", json={"vertical": "Driverless"}).status_code == 200
     play_daily(db, user(db, "Marta"), "mech", clock.now)
-    play_mock(db, add(db, "Leo", "Driverless", leaderboard_opt_out=True), clock.now)
+    play_mock(db, add(db, "Leo", "Driverless", leaderboard_opt_out=True), clock.now)  # left out entirely
     add(db, "Pau", "Driverless")
+    add(db, "Kai", "Driverless")
     play_daily(db, add(db, "Ana", "Driverless", status="alumni"), "mech", clock.now)
     for name in ("Tom", "Eva"):  # a vertical of two is too small to show
         play_daily(db, add(db, name, "Mechanical"), "mech", clock.now)
@@ -221,7 +222,7 @@ def test_vertical_board(
     assert r.status_code == 200
     assert r.json() == {
         "period": "season",
-        "rows": [{"vertical": "Driverless", "members": 3, "points_per_member": 6.7, "participation": 0.333}],
+        "rows": [{"vertical": "Driverless", "members": 3, "points_per_member": 3.3, "participation": 0.333}],
     }
     assert not any(name in r.text for name in ("Leo", "Marta", "Pau", "@"))
 
@@ -237,3 +238,74 @@ def test_unknown_boards_and_periods_are_refused(team: None, app_client: TestClie
     for params in ({"board": "unclassified"}, {"period": "month"}, {"board": "verticals"}):
         assert app_client.get("/api/leaderboard", params=params).status_code == 422
     assert app_client.get("/api/leaderboard/verticals", params={"period": "day"}).status_code == 422
+
+
+def test_opted_out_members_stay_out_of_vertical_averages(
+    team: None, app_client: TestClient, new_client: NewClient, db: Session, clock: Clock
+) -> None:
+    """Counting them would let anyone subtract the named members' points and recover theirs."""
+    c = join(app_client, new_client, "Marta")
+    assert c.patch("/api/me", json={"vertical": "Driverless"}).status_code == 200
+    play_daily(db, user(db, "Marta"), "mech", clock.now)
+    add(db, "Pau", "Driverless")
+    add(db, "Sara", "Driverless")
+    leo = add(db, "Leo", "Driverless", leaderboard_opt_out=True)
+    play_daily(db, leo, "elec", clock.now)
+    play_mock(db, leo, clock.now)
+    [v] = c.get("/api/leaderboard/verticals").json()["rows"]
+    assert (v["members"], v["points_per_member"]) == (3, round(10 / 3, 1))
+    add(db, "Pol", "Electronics")
+    add(db, "Ona", "Electronics")
+    add(db, "Hid", "Electronics", leaderboard_opt_out=True)
+    assert [r["vertical"] for r in c.get("/api/leaderboard/verticals").json()["rows"]] == ["Driverless"]
+
+
+def test_everyone_tied_at_the_cut_is_listed(
+    team: None, app_client: TestClient, new_client: NewClient, db: Session, clock: Clock
+) -> None:
+    c = join(app_client, new_client, "Zoe")
+    play_daily(db, user(db, "Zoe"), "mech", clock.now)
+    for i in range(55):
+        play_daily(db, add(db, f"Ana{i:02d}"), "mech", clock.now)
+    b = board(c)
+    assert len(b["rows"]) == 56 and {r["rank"] for r in b["rows"]} == {1}
+    assert any(r["me"] for r in b["rows"])
+
+
+def test_a_mock_run_started_before_the_season_turns_scores_in_the_old_one(
+    team: None, app_client: TestClient, new_client: NewClient, db: Session, clock: Clock
+) -> None:
+    c = join(app_client, new_client, "Marta")
+    marta = user(db, "Marta")
+    start = datetime(2027, 8, 31, 21, 59, 30, tzinfo=UTC)  # 23:59:30 in Madrid, season 2026
+    after = datetime(2027, 8, 31, 22, 0, 10, tzinfo=UTC)  # 00:00:10 on 1 September, season 2027
+    s = mock.start(db, marta, CV, start)
+    st = mock.state(db, marta, s.id, start)
+    while st.current:
+        q, a = st.current
+        body = right_answer(db, q.id)
+        st = mock.answer(db, marta, s.id, a.id, body.get("options"), body.get("value"), after)
+    assert st.summary and st.summary.points == 10
+    later = after + timedelta(hours=1)
+    assert play_mock(db, marta, later) == 10  # the first run of the new season counts
+    clock.now = later
+    login(c, email("Marta"), PASSWORD)
+    assert board(c)["me"]["points"] == 10
+
+
+def test_relabelling_a_question_moves_no_points_between_areas(
+    team: None, app_client: TestClient, new_client: NewClient, db: Session, clock: Clock
+) -> None:
+    c = join(app_client, new_client, "Marta")
+    play_mock(db, user(db, "Marta"), clock.now)
+    before = board(c, board="rules")["me"]["points"]
+    for q in db.query(Question).filter_by(area="mech"):
+        q.area = "rules"
+    db.commit()
+    assert board(c, board="rules")["me"]["points"] == before
+
+
+def test_both_boards_need_a_member(team: None, new_client: NewClient) -> None:
+    anon = new_client()
+    assert anon.get("/api/leaderboard").status_code == 401
+    assert anon.get("/api/leaderboard/verticals").status_code == 401
