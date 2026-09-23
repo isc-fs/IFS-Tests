@@ -14,7 +14,7 @@ from ifs_tests.bank.mirror import load_bank
 from ifs_tests.bank.sample import SAMPLE_DIR
 from ifs_tests.db.models import AnswerOption, Attempt, AuditLog, Question, User
 from ifs_tests.domain import daily as daily_rules
-from ifs_tests.domain.xp import RANKS, TOP, award, difficulty, floor_for, level_for, xp_for_level
+from ifs_tests.domain.xp import START_LEVEL, TOP, award, difficulty, floor_for, level_for, xp_for_level
 from ifs_tests.services import maintenance, xp
 from ifs_tests.services.bank import import_bank
 
@@ -33,8 +33,10 @@ def bank(db: Session, clock: Clock, tmp_path: Path) -> dict[int, int]:
     return {fsquiz_id: qid for fsquiz_id, qid in db.execute(select(Question.fsquiz_id, Question.id))}
 
 
-def join(admin_client: TestClient, c: TestClient, name: str, rank: str | None = None) -> dict[str, object]:
-    extra = {"rank": rank} if rank else {}
+def join(
+    admin_client: TestClient, c: TestClient, name: str, position: str | None = None
+) -> dict[str, object]:
+    extra = {"position": position} if position else {}
     r = register(c, invite(admin_client), f"{name.lower()}@alu.comillas.edu", name, **extra)
     assert r.status_code == 201, r.text
     return dict(r.json())
@@ -60,7 +62,7 @@ def options(db: Session, qid: int) -> list[int]:
 
 
 @pytest.mark.parametrize(
-    ("rank", "level", "title", "aids", "penalty"),
+    ("position", "level", "title", "aids", "penalty"),
     [
         (None, 0, "Mingo I", {"formulas": True, "learn_more": True, "hint": True}, 0),
         ("member", 3, "Mingo IV", {"formulas": True, "learn_more": True, "hint": True}, 5),
@@ -68,18 +70,18 @@ def options(db: Session, qid: int) -> list[int]:
         ("technical_director", 10, "DT I", {"formulas": False, "learn_more": False, "hint": False}, 45),
     ],
 )
-def test_the_rank_you_join_with_sets_your_starting_level(
+def test_the_position_you_join_with_sets_your_starting_level(
     signed_in: TestClient,
     new_client: NewClient,
-    rank: str | None,
+    position: str | None,
     level: int,
     title: str,
     aids: dict[str, bool],
     penalty: int,
 ) -> None:
     c = new_client()
-    me = join(signed_in, c, "Ana", rank)
-    assert (me["rank"], me["xp"]) == (rank or "mingo", xp_for_level(level))
+    me = join(signed_in, c, "Ana", position)
+    assert (me["position"], me["xp"]) == (position or "mingo", xp_for_level(level))
     progress = c.get("/api/me").json()["progress"]
     ladder = progress.pop("ladder")
     assert progress == {
@@ -128,56 +130,43 @@ def test_the_top_title_is_revealed_at_dt_v_and_depends_on_the_vertical(
     )
 
 
-def test_an_unknown_rank_is_refused(signed_in: TestClient, new_client: NewClient) -> None:
-    r = register(new_client(), invite(signed_in), "ana@alu.comillas.edu", "Ana", rank="team_principal")
+def test_an_unknown_position_is_refused(signed_in: TestClient, new_client: NewClient) -> None:
+    r = register(new_client(), invite(signed_in), "ana@alu.comillas.edu", "Ana", position="team_principal")
     assert r.status_code == 422
 
 
-def test_people_move_their_own_rank_up_only_and_it_is_audited(
+def test_members_cannot_change_their_own_position(signed_in: TestClient, new_client: NewClient) -> None:
+    c = new_client()
+    join(signed_in, c, "Ana")
+    assert (
+        c.patch("/api/me", json={"position": "technical_director"}).status_code == 422
+    )  # not a profile field
+    assert c.get("/api/me").json()["position"] == "mingo"
+
+
+def test_admins_change_a_position_up_or_down_and_it_is_audited(
     signed_in: TestClient, new_client: NewClient, db: Session
 ) -> None:
     c = new_client()
     ana = join(signed_in, c, "Ana")
-    up = c.patch("/api/me", json={"rank": "department_head"}).json()
-    assert (up["rank"], up["xp"], up["progress"]["title"]) == (
-        "department_head",
-        floor_for("department_head"),
-        "Jefe I",
-    )
-    down = c.patch("/api/me", json={"rank": "mingo"})
-    assert down.status_code == 403
-    assert down.json()["fields"] == {"rank": "Only an admin can lower your rank."}
-    assert c.patch("/api/me", json={"rank": "department_head", "display_name": "Ana B"}).status_code == 200
-    assert c.patch("/api/me", json={"rank": "boss"}).status_code == 422
-    audit = db.execute(
-        select(AuditLog.action, AuditLog.actor_id, AuditLog.details).where(AuditLog.action == "user.rank")
-    )
-    assert [tuple(a) for a in audit] == [("user.rank", ana["id"], {"rank": ["mingo", "department_head"]})]
-    lowered = signed_in.patch(f"/api/admin/users/{ana['id']}", json={"rank": "mingo"}).json()
-    assert (lowered["rank"], lowered["xp"]) == ("mingo", floor_for("department_head"))  # XP never drops
-
-
-def test_admins_correct_a_rank_and_it_is_audited(
-    signed_in: TestClient, new_client: NewClient, db: Session
-) -> None:
-    c = new_client()
-    ana = join(signed_in, c, "Ana")
-    r = signed_in.patch(f"/api/admin/users/{ana['id']}", json={"rank": "member"})
+    r = signed_in.patch(f"/api/admin/users/{ana['id']}", json={"position": "department_head"})
     assert r.status_code == 200, r.text
-    assert (r.json()["rank"], r.json()["xp"]) == ("member", floor_for("member"))
-    assert c.get("/api/me").json()["progress"]["title"] == "Mingo IV"
-    actions = [a.action for a in db.scalars(select(AuditLog).order_by(AuditLog.id))]
-    assert actions[-1] == "user.update"
+    assert (r.json()["position"], r.json()["xp"]) == ("department_head", floor_for("department_head"))
+    assert c.get("/api/me").json()["progress"]["title"] == "Jefe I"
     details = db.scalars(select(AuditLog.details).order_by(AuditLog.id.desc())).first()
-    assert details == {"rank": ["mingo", "member"]}
+    assert details == {"position": ["mingo", "department_head"]}
+    lowered = signed_in.patch(f"/api/admin/users/{ana['id']}", json={"position": "mingo"}).json()
+    assert (lowered["position"], lowered["xp"]) == ("mingo", floor_for("department_head"))  # XP never drops
 
 
-def test_members_cannot_use_the_admin_route_to_change_ranks(
+def test_members_cannot_use_the_admin_route_to_change_positions(
     signed_in: TestClient, new_client: NewClient
 ) -> None:
     c = new_client()
     ana = join(signed_in, c, "Ana")
-    assert c.patch(f"/api/admin/users/{ana['id']}", json={"rank": "technical_director"}).status_code == 403
+    assert (
+        c.patch(f"/api/admin/users/{ana['id']}", json={"position": "technical_director"}).status_code == 403
+    )
 
 
 def test_practice_repeats_earn_a_tenth_once_a_day(
@@ -199,7 +188,7 @@ def test_practice_repeats_earn_a_tenth_once_a_day(
     assert c.get("/api/me").json()["xp"] == 13
 
 
-def test_wrong_answers_cost_xp_at_high_levels_but_never_below_the_rank(
+def test_wrong_answers_cost_xp_at_high_levels_but_never_below_the_position(
     signed_in: TestClient, new_client: NewClient, db: Session, bank: dict[int, int]
 ) -> None:
     c = new_client()
@@ -208,7 +197,7 @@ def test_wrong_answers_cost_xp_at_high_levels_but_never_below_the_rank(
     wrong = options(db, qid)[1]
     r = c.post(f"/api/practice/questions/{qid}/answer", json={"options": [wrong]}).json()
     assert r["correct"] is False
-    assert r["xp"] == cost(db, qid, "practice", RANKS["technical_director"]) == -4  # a third: 4 options
+    assert r["xp"] == cost(db, qid, "practice", START_LEVEL["technical_director"]) == -4  # a third: 4 options
     assert r["level"] == 10
     assert c.get("/api/me").json()["xp"] == floor_for("technical_director")
     assert db.scalars(select(Attempt.xp)).all() == [-4]
@@ -427,7 +416,7 @@ def test_a_daily_left_to_run_out_costs_like_a_wrong_answer(
     started = c.post("/api/daily/mech/start").json()
     clock.now = datetime.fromisoformat(started["deadline_at"]) + timedelta(seconds=4)
     area = c.get("/api/daily").json()["areas"][0]
-    penalty = cost(db, started["question"]["id"], "daily", RANKS["technical_director"], late=True)
+    penalty = cost(db, started["question"]["id"], "daily", START_LEVEL["technical_director"], late=True)
     assert (area["state"], area["late"], area["correct"], area["xp"]) == ("done", True, False, penalty)
     assert c.get("/api/me").json()["progress"]["streak"] == 0
     stored = c.post(f"/api/daily/attempts/{started['attempt_id']}/answer", json=_wrong(started)).json()
@@ -451,7 +440,7 @@ def test_the_nightly_job_closes_abandoned_dailies_once(
     assert maintenance.run(db, clock.now)["dailies_closed"] == 0
     got = dict(db.execute(select(Attempt.user_id, Attempt.xp).where(Attempt.area == "mech")).tuples().all())
     assert sorted(got.values()) == [
-        award(False, 3, "daily", RANKS["department_head"]),
+        award(False, 3, "daily", START_LEVEL["department_head"]),
         0,
     ]  # a mingo loses nothing
 
@@ -485,7 +474,7 @@ def test_a_mock_question_left_to_run_out_costs_like_a_wrong_answer(
             json={"attempt_id": state["current"]["attempt_id"], **body},
         ).json()
     items = [i["feedback"]["xp"] for i in state["summary"]["items"]]
-    dh = RANKS["department_head"]
+    dh = START_LEVEL["department_head"]
     assert items == [award(False, 3, "mock", dh)] + [award(True, 3, "mock", dh)] * 4
     assert state["summary"]["xp"] == sum(items)
 
@@ -539,7 +528,9 @@ def test_im_not_sure_in_practice_shows_the_answer_for_nothing(
     c.get("/api/me")
     clock.advance(hours=2)
     again = c.post(f"/api/practice/questions/{qid}/answer", json=right_answer(db, qid)).json()
-    assert again["xp"] == award(True, 3, "practice", RANKS["technical_director"], repeat=True)  # already seen
+    assert again["xp"] == award(
+        True, 3, "practice", START_LEVEL["technical_director"], repeat=True
+    )  # already seen
 
 
 def test_im_not_sure_does_nothing_for_an_ungraded_question(
@@ -564,7 +555,9 @@ def test_im_not_sure_in_the_daily_keeps_the_streak_but_not_after_the_clock(
     late = c.post("/api/daily/elec/start").json()
     clock.now = datetime.fromisoformat(late["deadline_at"]) + timedelta(seconds=10)
     r = c.post(f"/api/daily/attempts/{late['attempt_id']}/answer", json={"unsure": True}).json()
-    assert r["xp"] == cost(db, late["question"]["id"], "daily", RANKS["technical_director"], late=True) < 0
+    assert (
+        r["xp"] == cost(db, late["question"]["id"], "daily", START_LEVEL["technical_director"], late=True) < 0
+    )
 
 
 def test_im_not_sure_in_a_mock_quiz_moves_on_for_nothing(

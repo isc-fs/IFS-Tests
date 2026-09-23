@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { expect, test } from 'vitest'
 import { MEMBER, renderApp } from '../test/render'
@@ -21,22 +21,12 @@ test('clearing the vertical sends null and the saved notice appears', async () =
   })
 })
 
-test('people can move their rank up, never down', async () => {
-  const head = { ...MEMBER, rank: 'department_head' }
-  const { sent } = renderApp('/profile', {
-    'GET /api/me': { body: head },
-    'PATCH /api/me': (body) => ({ body: { ...head, ...(body as object) } }),
-  })
-  const rank = await screen.findByLabelText('Where are you on the team?')
-  expect(
-    within(rank)
-      .getAllByRole('option')
-      .map((o) => o.textContent),
-  ).toEqual(['Department Head: starts at Jefe I', 'Technical Director: starts at DT I'])
-  await userEvent.selectOptions(rank, 'technical_director')
-  await userEvent.click(screen.getByRole('button', { name: 'Save profile' }))
-  await waitFor(() => expect(sent('PATCH /api/me')).toHaveLength(1))
-  expect(sent('PATCH /api/me')[0].body).toMatchObject({ rank: 'technical_director' })
+test('your position on the team is shown but only an admin can change it', async () => {
+  renderApp('/profile', { 'GET /api/me': { body: { ...MEMBER, position: 'technical_director' } } })
+  expect(await screen.findByText('Technical Director', { exact: false })).toHaveTextContent(
+    'Position on the team: Technical Director. Only an admin can change it.',
+  )
+  expect(screen.queryByLabelText('Where are you on the team?')).toBeNull()
 })
 
 test('a taken name is shown on the field and disappears when edited', async () => {

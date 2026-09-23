@@ -138,7 +138,7 @@ def test_a_double_start_gives_one_attempt_and_one_deadline(
 def test_a_double_submit_is_graded_once(db: Session, app_engine: Engine, daily_player: User) -> None:
     # A returning member well above their floor, so a wrong answer costs XP too and a double grant shows.
     start = floor_for("member") + 1000
-    daily_player.rank, daily_player.xp = "member", start
+    daily_player.position, daily_player.xp = "member", start
     db.commit()
     _, attempt = daily.start(db, daily_player, "rules", NOW)
     options = list(db.scalars(select(AnswerOption.id).where(AnswerOption.question_id == attempt.question_id)))
@@ -253,7 +253,7 @@ def test_closing_abandoned_dailies_never_deadlocks_with_a_late_answer(
     db: Session, app_engine: Engine, daily_player: User, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # The nightly job holds one abandoned attempt and the player's row while the player answers another late.
-    daily_player.rank, daily_player.xp = "member", floor_for("member") + 1000
+    daily_player.position, daily_player.xp = "member", floor_for("member") + 1000
     db.commit()
     started = [daily.start(db, daily_player, area, NOW)[1].id for area in ("mech", "elec")]
     later = NOW + timedelta(hours=1)
