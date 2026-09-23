@@ -168,7 +168,7 @@ def update(db: DB, reviewer: User, question_id: int, changes: dict[str, Any], no
     if "area" in changes or "topic" in changes:
         area = changes.get("area", q.area)
         allowed = TOPICS_BY_AREA.get(area, [])
-        topic = changes["topic"] if "topic" in changes else (q.topic if q.topic in allowed else None)
+        topic = changes.get("topic", q.topic if q.topic in allowed else None)
         if area not in ("mech", "elec", "rules", "unclassified"):
             raise UserError("Pick an area from the list.", fields={"area": "Pick an area from the list."})
         if topic and topic not in allowed:
