@@ -14,8 +14,11 @@ const NEXT = [
 export default function Home() {
   const { data: user } = useMe()
   return (
-    <Page title="Home" heading={`Hi ${user?.display_name}.`}>
-      <p className="eyebrow">Formula Student registration quizzes</p>
+    <Page
+      title="Home"
+      heading={`Hi ${user?.display_name.replace(/\.$/, '')}.`}
+      eyebrow="Formula Student registration quizzes"
+    >
       {!user?.vertical && (
         <p className="lede">
           First step: <Link to="/profile">set your vertical</Link> so your answers count for your team on the board.

@@ -154,6 +154,9 @@ h3 {
 .card {
   padding: 20px;
 }
+.card .badge {
+  margin-left: 0;
+}
 .card p {
   font-size: var(--isc-fs-body-s);
   color: var(--isc-c-text-mut);

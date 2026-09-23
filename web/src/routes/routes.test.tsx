@@ -66,6 +66,11 @@ test('an API 401 while signed in means the session ended', async () => {
   expect(await screen.findByText('Your session ended. Sign in to continue.')).toBeInTheDocument()
 })
 
+test('a name ending in a full stop is not doubled in the greeting', async () => {
+  renderApp('/', { 'GET /api/me': { body: { ...MEMBER, display_name: 'Sara P.' } } })
+  expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent(/^Hi Sara P\.$/)
+})
+
 test('user-supplied names are rendered as text, never as HTML', async () => {
   const name = '<img src=x onerror="window.pwned=1">'
   renderApp('/', { 'GET /api/me': { body: { ...MEMBER, display_name: name } } })
