@@ -185,3 +185,27 @@ test("admins can correct someone's rank", async () => {
   await waitFor(() => expect(sent('PATCH /api/admin/users/2')[0].body).toEqual({ rank: 'member' }))
   expect(await screen.findByRole('status')).toHaveTextContent('Marta is now member, active, Returning member.')
 })
+
+test('"I\'m not sure" shows the answer for nothing', async () => {
+  const { sent } = renderApp('/practice', {
+    ...practice({}),
+    'POST /api/practice/questions/7/answer': {
+      body: { correct: false, passed: true, official: '0.713 m', correct_options: [70], solutions: [], xp: 0 },
+    },
+  })
+  const button = await screen.findByRole('button', { name: "I'm not sure" })
+  expect(button).toHaveAccessibleDescription(/nothing is gained or lost\. A wrong answer can cost XP\./)
+  await userEvent.click(button)
+  await waitFor(() => expect(sent('POST /api/practice/questions/7/answer')[0].body).toEqual({ unsure: true }))
+  expect(
+    await screen.findByText("You weren't sure, so here is the answer. Nothing gained or lost."),
+  ).toBeInTheDocument()
+  expect(screen.getByText('0.713 m').closest('label')).toHaveTextContent('Correct answer')
+  expect(screen.queryByText('Not quite.')).toBeNull()
+})
+
+test('questions without an official answer have no "I\'m not sure"', async () => {
+  renderApp('/practice', { ...practice({}), 'GET /api/practice/next': { body: { ...QUESTION, graded: false } } })
+  expect(await screen.findByRole('button', { name: 'Check answer' })).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: "I'm not sure" })).toBeNull()
+})

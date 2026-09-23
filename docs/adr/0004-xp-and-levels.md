@@ -43,7 +43,7 @@ title. Level *n* needs `250 × n × (n + 1)` lifetime XP, so each level asks 500
 Mingo II at 500, Jefe I at 7,500, DT I at 27,500, the top at 60,000. Five divisions per tier rather than
 four, so promotions keep coming. Each level takes one training wheel away:
 
-| Level | XP | Formulas | Learn more | Hint | Wrong answer costs |
+| Level | XP | Formulas | Learn more | Hint | Wrong rules answer costs |
 |---|---|---|---|---|---|
 | Mingo I–III | 0 / 500 / 1,500 | ✓ | ✓ | ✓ | nothing |
 | Mingo IV | 3,000 | ✓ | ✓ | ✓ | 5 % of what a right answer gives |
@@ -51,6 +51,25 @@ four, so promotions keep coming. Each level takes one training wheel away:
 | Jefe I–V | 7,500 … 22,500 | | | ✓ | 15, 20, 25, 30, 35 % |
 | DT I–V | 27,500 … 52,500 | | | | 45, 50, 55, 60, 70 % |
 | The top | 60,000 | | | | 75 % |
+
+**Wrong answers cost by kind of question.** The column above is the full share, and it applies to rules questions:
+you know the rule or you don't. Elsewhere a slip in a calculation, a rounding difference or a unit in the answer
+key shouldn't cost like not knowing a rule, and blind guessing rarely pays on typed answers anyway:
+
+| Kind (outside the rules) | Share of the level's penalty | At the top (+50 for a right daily) |
+|---|---|---|
+| Single choice | no more than makes a blind guess break even: 1/(options − 1), so ⅓ with 4 options | −17 |
+| Multiple choice (all or nothing) | half | −19 |
+| Typed number, list, range or text | a quarter | −9 |
+
+Three quarters of the graded bank is single choice with 4 options, including most calculations in mechanical and
+electrical; a sixth is typed; about a sixth is rules.
+
+**"I'm not sure."** Any graded question can be passed before answering: the official answer is shown and nothing is
+gained or lost. It is stored as not right, so the question counts as seen for repeats and as not known when its
+difficulty is recalibrated, and in the daily it keeps the streak. It teaches the real quizzes' tactic of leaving a
+question blank. After the clock runs out a pass counts as a late wrong answer, so waiting and then passing gains
+nothing.
 
 The top title depends on the vertical: **Gigante Noble** for Mechanical, **Villano** for Electronics, Tractive
 System and Driverless (the electrical side, as the app's areas group them), **Leyenda** for everyone else. It

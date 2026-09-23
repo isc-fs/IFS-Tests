@@ -1434,7 +1434,7 @@
      "content": {
       "application/json": {
        "schema": {
-        "$ref": "#/components/schemas/AnswerIn"
+        "$ref": "#/components/schemas/KeyIn"
        }
       }
      }
@@ -1843,6 +1843,12 @@
        }
       ],
       "title": "Value"
+     },
+     "unsure": {
+      "type": "boolean",
+      "title": "Unsure",
+      "description": "\"I'm not sure\": no answer, no XP, no penalty in time",
+      "default": false
      }
     },
     "additionalProperties": false,
@@ -2197,6 +2203,12 @@
       "title": "Level Up",
       "description": "This answer took you to a new level",
       "default": false
+     },
+     "passed": {
+      "type": "boolean",
+      "title": "Passed",
+      "description": "The player said \"I'm not sure\"",
+      "default": false
      }
     },
     "type": "object",
@@ -2283,6 +2295,43 @@
      "expires_at"
     ],
     "title": "InviteInfo"
+   },
+   "KeyIn": {
+    "properties": {
+     "options": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "integer",
+         "maximum": 2147483647.0,
+         "minimum": 1.0
+        },
+        "type": "array",
+        "maxItems": 40
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Options"
+     },
+     "value": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 200
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Value"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "title": "KeyIn",
+    "description": "An answer as options picked or a typed value."
    },
    "LeaderRow": {
     "properties": {
@@ -2520,6 +2569,12 @@
        }
       ],
       "title": "Value"
+     },
+     "unsure": {
+      "type": "boolean",
+      "title": "Unsure",
+      "description": "\"I'm not sure\": no answer, no XP, no penalty in time",
+      "default": false
      },
      "attempt_id": {
       "type": "integer",

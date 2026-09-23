@@ -180,7 +180,13 @@ class Result:
 
 
 def answer(
-    db: DB, user: User, attempt_id: int, options: list[int] | None, value: str | None, now: datetime
+    db: DB,
+    user: User,
+    attempt_id: int,
+    options: list[int] | None,
+    value: str | None,
+    now: datetime,
+    unsure: bool = False,
 ) -> Result:
     """Submit once. Late answers are recorded and count as wrong; repeats return the stored result."""
     a = db.scalar(
@@ -190,22 +196,25 @@ def answer(
         raise UserError("Start the question first.", 404)
     if a.submitted_at is None:
         q = db.get_one(Question, a.question_id)
-        checked = check(db, q, options, value)
+        checked = check(db, q, options, value, unsure)
         late = rules.is_late(now, a.deadline_at)
         recorded = db.execute(
             update(Attempt)
             .where(Attempt.id == a.id, Attempt.submitted_at.is_(None))
             .values(
-                answer={"options": options, "value": value},
+                answer={"options": options, "value": value, "unsure": checked.passed},
                 correct=checked.correct,
                 submitted_at=now,
                 late=late,
+                passed=checked.passed,
             )
             .returning(Attempt.id)
         ).first()
         if recorded:  # only the request that recorded the answer earns the XP
             repeat = xp.last_seen(db, user.id, q.id, now, other_than=a.id) is not None
-            granted = xp.grant(db, user.id, q, "daily", checked.correct, now, late=late, repeat=repeat)
+            granted = xp.grant(
+                db, user.id, q, "daily", checked.correct, now, late=late, repeat=repeat, passed=checked.passed
+            )
             db.execute(update(Attempt).where(Attempt.id == a.id).values(xp=granted.xp))
             db.commit()
             db.refresh(a)
@@ -251,7 +260,7 @@ def close_expired(db: DB, now: datetime, user_id: int | None = None) -> int:
 def review_attempt(db: DB, user: User, a: Attempt) -> Result:
     """The stored result of a submitted attempt: retries and reloads never re-grade."""
     q = db.get_one(Question, a.question_id)
-    checked = check(db, q, a.answer.get("options"), a.answer.get("value"))
+    checked = check(db, q, a.answer.get("options"), a.answer.get("value"), a.passed)
     checked.correct = a.correct
     run = rules.streak(_on_time_days(db, user), a.day) if a.day else 0
     checked.xp, checked.level = a.xp, xp.level(db, user.id)

@@ -230,7 +230,7 @@ def _summary(db: DB, s: MockSession) -> Summary:
     for q in questions:
         a = attempts.get(q.id)
         answer = a.answer if a else {}
-        checked = check(db, q, answer.get("options"), answer.get("value"))
+        checked = check(db, q, answer.get("options"), answer.get("value"), bool(a and a.passed))
         checked.correct = a.correct if a else (False if q.graded else None)
         checked.xp = a.xp if a else 0
         items.append(Item(q, checked, bool(a and a.late)))
@@ -267,6 +267,7 @@ def answer(
     options: list[int] | None,
     value: str | None,
     now: datetime,
+    unsure: bool = False,
 ) -> State:
     """Answer the question on screen and move on. Answering it again changes nothing."""
     s = _session(db, user, session_id)
@@ -275,16 +276,17 @@ def answer(
         raise UserError("That question isn't part of this run.", 404)
     if a.submitted_at is None:
         q = db.get_one(Question, a.question_id)
-        checked = check(db, q, options, value)
+        checked = check(db, q, options, value, unsure)
         late = timing.is_late(now, a.deadline_at)
         recorded = db.execute(
             update(Attempt)
             .where(Attempt.id == a.id, Attempt.submitted_at.is_(None))
             .values(
-                answer={"options": options, "value": value},
+                answer={"options": options, "value": value, "unsure": checked.passed},
                 correct=checked.correct,
                 submitted_at=now,
                 late=late,
+                passed=checked.passed,
             )
             .returning(Attempt.id)
         ).first()
@@ -292,7 +294,9 @@ def answer(
             repeat = (
                 not s.counted or xp.last_seen(db, user.id, q.id, s.started_at, other_than=a.id) is not None
             )
-            granted = xp.grant(db, user.id, q, "mock", checked.correct, now, repeat=repeat, late=late)
+            granted = xp.grant(
+                db, user.id, q, "mock", checked.correct, now, repeat=repeat, late=late, passed=checked.passed
+            )
             db.execute(update(Attempt).where(Attempt.id == a.id).values(xp=granted.xp))
         db.commit()
     return state(db, user, session_id, now)

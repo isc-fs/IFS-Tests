@@ -76,6 +76,12 @@ export type AnswerIn = {
      * Value
      */
     value?: string | null;
+    /**
+     * Unsure
+     *
+     * "I'm not sure": no answer, no XP, no penalty in time
+     */
+    unsure?: boolean;
 };
 
 /**
@@ -298,6 +304,12 @@ export type Feedback = {
      * This answer took you to a new level
      */
     level_up?: boolean;
+    /**
+     * Passed
+     *
+     * The player said "I'm not sure"
+     */
+    passed?: boolean;
 };
 
 /**
@@ -332,6 +344,22 @@ export type InviteInfo = {
      * Expires At
      */
     expires_at: string;
+};
+
+/**
+ * KeyIn
+ *
+ * An answer as options picked or a typed value.
+ */
+export type KeyIn = {
+    /**
+     * Options
+     */
+    options?: Array<number> | null;
+    /**
+     * Value
+     */
+    value?: string | null;
 };
 
 /**
@@ -465,6 +493,12 @@ export type MockAnswerIn = {
      * Value
      */
     value?: string | null;
+    /**
+     * Unsure
+     *
+     * "I'm not sure": no answer, no XP, no penalty in time
+     */
+    unsure?: boolean;
     /**
      * Attempt Id
      */
@@ -2212,7 +2246,7 @@ export type RemoveCorrectionResponses = {
 export type RemoveCorrectionResponse = RemoveCorrectionResponses[keyof RemoveCorrectionResponses];
 
 export type CorrectAnswerData = {
-    body: AnswerIn;
+    body: KeyIn;
     path: {
         /**
          * Question Id

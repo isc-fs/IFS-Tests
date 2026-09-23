@@ -68,6 +68,11 @@ const FINISHED = {
         feedback: { correct: false, official: '0.7', correct_options: [], solutions: [] },
         late: true,
       },
+      {
+        question: q(3, 'Ride height?'),
+        feedback: { correct: false, passed: true, official: '30 mm', correct_options: [], solutions: [] },
+        late: false,
+      },
     ],
   },
 }
@@ -116,6 +121,7 @@ test('a run: one question at a time, then the results', async () => {
   ])
   const review = screen.getByRole('list', { name: '' })
   expect(within(review).getByText('Question 2: out of time')).toBeInTheDocument()
+  expect(within(review).getByText('Question 3: not sure')).toBeInTheDocument()
   await userEvent.click(within(review).getByText('Question 1: right'))
   expect(within(review).getByText('Spring rate?')).toBeVisible()
 })

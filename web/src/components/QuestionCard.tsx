@@ -79,6 +79,13 @@ function Earned({ feedback }: { feedback: Feedback }) {
 }
 
 function Result({ feedback }: { feedback: Feedback }) {
+  if (feedback.passed)
+    return (
+      <>
+        <Notice tone="ok">You weren't sure, so here is the answer. Nothing gained or lost.</Notice>
+        <Earned feedback={feedback} />
+      </>
+    )
   if (feedback.correct === true)
     return (
       <>
@@ -227,9 +234,27 @@ export function QuestionCard({
         )}
         {expired && !answered && <Notice tone="error">Time's up. Sending your answer…</Notice>}
         {!answered && !expired && (
-          <button type="submit" disabled={pending}>
-            {kind === 'self' ? 'Show the official answer' : 'Check answer'}
-          </button>
+          <div className="answer-actions">
+            <button type="submit" disabled={pending}>
+              {kind === 'self' ? 'Show the official answer' : 'Check answer'}
+            </button>
+            {question.graded && kind !== 'self' && (
+              <button
+                type="button"
+                className="secondary"
+                disabled={pending}
+                aria-describedby={`${legend}-unsure`}
+                onClick={() => onAnswer({ unsure: true })}
+              >
+                I'm not sure
+              </button>
+            )}
+          </div>
+        )}
+        {!answered && !expired && question.graded && kind !== 'self' && (
+          <p className="muted answer-note" id={`${legend}-unsure`}>
+            Not sure? You see the answer and nothing is gained or lost. A wrong answer can cost XP.
+          </p>
         )}
       </Form>
       {feedback && (

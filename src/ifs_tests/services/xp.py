@@ -8,7 +8,7 @@ from datetime import datetime
 from sqlalchemy import case, func, select, update
 from sqlalchemy.orm import Session as DB
 
-from ..db.models import Attempt, MockSession, Question, User
+from ..db.models import AnswerOption, Attempt, MockSession, Question, User
 from ..domain import daily as daily_rules
 from ..domain import leaderboard as board_rules
 from ..domain import xp as rules
@@ -62,6 +62,12 @@ def level(db: DB, user_id: int) -> int:
     return rules.level_for(db.execute(select(User.xp).where(User.id == user_id)).scalar_one())
 
 
+def _options(db: DB, question: Question) -> int:
+    if question.answer_kind != "choice-one":
+        return 0
+    return db.scalar(select(func.count()).where(AnswerOption.question_id == question.id)) or 0
+
+
 @dataclass
 class Grant:
     xp: int
@@ -81,6 +87,7 @@ def grant(
     repeat: bool = False,
     late: bool = False,
     again_today: bool = False,
+    passed: bool = False,
 ) -> Grant:
     """Work out the XP for one answer and add it to the player's lifetime XP, which never drops below the
     level their rank starts at. The caller stores `xp` on the attempt and commits."""
@@ -95,6 +102,10 @@ def grant(
         repeat,
         late,
         again_today,
+        area=question.area,
+        answer_kind=question.answer_kind,
+        options=_options(db, question),
+        passed=passed,
     )
     total = db.execute(
         update(User)

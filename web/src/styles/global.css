@@ -1027,3 +1027,13 @@ details[open] > summary::before {
     filter: drop-shadow(0 0 10px var(--isc-gold));
   }
 }
+
+.answer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.answer-note {
+  margin: 0;
+  font-size: var(--isc-fs-caption);
+}

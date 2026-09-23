@@ -180,11 +180,13 @@ export function MockRun() {
                     Question {i + 1}:{' '}
                     {item.late
                       ? 'out of time'
-                      : item.feedback.correct === null
-                        ? 'not graded'
-                        : item.feedback.correct
-                          ? 'right'
-                          : 'wrong'}
+                      : item.feedback.passed
+                        ? 'not sure'
+                        : item.feedback.correct === null
+                          ? 'not graded'
+                          : item.feedback.correct
+                            ? 'right'
+                            : 'wrong'}
                   </summary>
                   <QuestionCard question={item.question} feedback={item.feedback} onAnswer={() => {}} />
                 </details>

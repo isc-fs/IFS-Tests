@@ -9,7 +9,7 @@ from ...db.models import User
 from ...services import questions, review
 from ..deps import Db, Member, Now, Reviewer
 from ..schemas import (
-    AnswerIn,
+    KeyIn,
     ReportIn,
     ReviewOption,
     ReviewPage,
@@ -110,7 +110,7 @@ def update_question(
 
 
 @router.put("/questions/{question_id}/answer")
-def correct_answer(question_id: Id, body: AnswerIn, reviewer: Reviewer, db: Db, now: Now) -> ReviewQuestion:
+def correct_answer(question_id: Id, body: KeyIn, reviewer: Reviewer, db: Db, now: Now) -> ReviewQuestion:
     review.set_answer(db, reviewer, question_id, body.options, body.value, now)
     return _detail(db, reviewer, question_id, now)
 

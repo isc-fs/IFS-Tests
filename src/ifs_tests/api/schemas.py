@@ -191,9 +191,15 @@ class PlayQuestion(BaseModel):
     quizzes: list[str]
 
 
-class AnswerIn(In):
+class KeyIn(In):
+    """An answer as options picked or a typed value."""
+
     options: list[Annotated[int, Field(ge=1, le=2**31 - 1)]] | None = Field(default=None, max_length=40)
     value: str | None = Field(default=None, max_length=200)
+
+
+class AnswerIn(KeyIn):
+    unsure: bool = Field(default=False, description='"I\'m not sure": no answer, no XP, no penalty in time')
 
 
 class SolutionOut(BaseModel):
@@ -211,6 +217,7 @@ class Feedback(BaseModel):
     xp: int = Field(default=0, description="XP this answer earned (negative when it cost XP)")
     level: int | None = Field(default=None, description="Your level after this answer")
     level_up: bool = Field(default=False, description="This answer took you to a new level")
+    passed: bool = Field(default=False, description='The player said "I\'m not sure"')
 
 
 class DailyArea(BaseModel):
