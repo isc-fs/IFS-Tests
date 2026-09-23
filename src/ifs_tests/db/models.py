@@ -1,21 +1,25 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from enum import StrEnum
 from typing import Any
 
 from sqlalchemy import (
     BigInteger,
     CheckConstraint,
+    Column,
+    Date,
     DateTime,
     ForeignKey,
     Identity,
     Index,
     MetaData,
     String,
+    Table,
+    Text,
     func,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 NAMING = {
@@ -152,3 +156,106 @@ class Session(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
+# Question bank. Events and quizzes keep their FS-Quiz IDs; questions get our own IDs so the team can add
+# questions of its own later.
+
+AREAS = ("mech", "elec", "rules", "unclassified")
+KINDS = ("choice-one", "choice-many", "number", "numbers", "range", "text", "self")
+
+
+class Event(Base):
+    __tablename__ = "events"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=False)
+    short_name: Mapped[str] = mapped_column(String(32))
+    name: Mapped[str | None] = mapped_column(String(128))
+    country: Mapped[str | None] = mapped_column(String(64))
+
+
+quiz_events = Table(
+    "quiz_events",
+    Base.metadata,
+    Column("quiz_id", ForeignKey("quizzes.id", ondelete="CASCADE"), primary_key=True),
+    Column("event_id", ForeignKey("events.id", ondelete="CASCADE"), primary_key=True),
+)
+
+
+class Quiz(Base):
+    __tablename__ = "quizzes"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=False)
+    year: Mapped[int]
+    vehicle_class: Mapped[str] = mapped_column(String(8))
+    held_on: Mapped[date | None] = mapped_column(Date)
+    status: Mapped[str] = mapped_column(String(32))
+    information: Mapped[str | None] = mapped_column(Text)
+    last_qualifier: Mapped[dict[str, Any] | None]
+
+
+class Question(Base):
+    __tablename__ = "questions"
+    __table_args__ = (
+        CheckConstraint(_in("area", AREAS), name="area"),
+        CheckConstraint(_in("answer_kind", KINDS), name="answer_kind"),
+    )
+
+    id: Mapped[int] = mapped_column(Identity(), primary_key=True)
+    fsquiz_id: Mapped[int | None] = mapped_column(unique=True)
+    type: Mapped[str] = mapped_column(String(16))
+    text: Mapped[str] = mapped_column(Text)
+    time_s: Mapped[int | None]
+    images: Mapped[list[str]] = mapped_column(ARRAY(String(64)), server_default="{}")
+    area: Mapped[str] = mapped_column(String(16), index=True)
+    topic: Mapped[str | None] = mapped_column(String(16))
+    # How the answer is entered; safe to show before answering. "self" = reveal only.
+    answer_kind: Mapped[str] = mapped_column(String(16))
+    # Whether answers can be scored automatically. Daily questions and mock quizzes only use graded ones.
+    graded: Mapped[bool] = mapped_column(server_default="false")
+    # False when an image the question needs is missing: such questions are never served.
+    playable: Mapped[bool] = mapped_column(server_default="true")
+    source_hash: Mapped[str] = mapped_column(String(64))
+    key_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class AnswerOption(Base):
+    """Choices shown to players. Which ones are correct lives only in AnswerKey."""
+
+    __tablename__ = "answer_options"
+
+    id: Mapped[int] = mapped_column(Identity(), primary_key=True)
+    question_id: Mapped[int] = mapped_column(ForeignKey("questions.id", ondelete="CASCADE"), index=True)
+    position: Mapped[int]
+    text: Mapped[str] = mapped_column(Text)
+
+
+class AnswerKey(Base):
+    """Kept apart from questions so that nothing that serialises a question can leak it."""
+
+    __tablename__ = "answer_keys"
+
+    question_id: Mapped[int] = mapped_column(ForeignKey("questions.id", ondelete="CASCADE"), primary_key=True)
+    key: Mapped[dict[str, Any] | None]
+    display: Mapped[str | None] = mapped_column(Text)
+
+
+class Solution(Base):
+    __tablename__ = "solutions"
+
+    id: Mapped[int] = mapped_column(Identity(), primary_key=True)
+    question_id: Mapped[int] = mapped_column(ForeignKey("questions.id", ondelete="CASCADE"), index=True)
+    text: Mapped[str | None] = mapped_column(Text)
+    images: Mapped[list[str]] = mapped_column(ARRAY(String(64)), server_default="{}")
+
+
+class QuizQuestion(Base):
+    __tablename__ = "quiz_questions"
+
+    quiz_id: Mapped[int] = mapped_column(ForeignKey("quizzes.id", ondelete="CASCADE"), primary_key=True)
+    question_id: Mapped[int] = mapped_column(
+        ForeignKey("questions.id", ondelete="CASCADE"), primary_key=True, index=True
+    )
+    position: Mapped[int]

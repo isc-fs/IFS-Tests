@@ -23,9 +23,15 @@ services:
       IFS_DATABASE_URL: postgresql+psycopg://ifs:ifs@db:5432/ifs_tests
     ports:
       - "127.0.0.1:8000:8000"
+    volumes:
+      - media:/data/media
+      # The mirror you made on the host with `uv run ifs-tests mirror --images`; load it with
+      # `docker compose run --rm api ifs-tests push` (or `push --sample` without a mirror).
+      - ./data/fsquiz:/data/fsquiz:ro
     depends_on:
       db:
         condition: service_healthy
 
 volumes:
   pgdata:
+  media:

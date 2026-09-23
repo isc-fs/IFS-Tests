@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     public_origin: str = "http://localhost:8000"
     web_dist: Path = Path("web/dist")
     media_dir: Path = Path("data/media")
+    # FS-Quiz mirror (bank.json and img/), written by `ifs-tests mirror`, read by `ifs-tests push`.
+    bank_dir: Path = Path("data/fsquiz")
 
     @model_validator(mode="after")
     def deployed_means_https(self) -> Settings:

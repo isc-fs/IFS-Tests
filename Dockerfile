@@ -17,7 +17,8 @@ COPY src ./src
 RUN uv sync --frozen --no-dev
 
 FROM python:3.13-slim@sha256:8d9d0b8bcf6506481eae4907c18f5e3e7902e629f5f6d684f9e7c32e85e3ddf0
-RUN useradd --uid 10001 --no-create-home --shell /usr/sbin/nologin app
+RUN useradd --uid 10001 --no-create-home --shell /usr/sbin/nologin app \
+    && install -d -o 10001 -g 10001 /data/media /data/fsquiz
 WORKDIR /app
 COPY --from=build /app/.venv /app/.venv
 COPY --from=build /app/src /app/src
@@ -25,7 +26,7 @@ COPY alembic.ini ./
 COPY migrations ./migrations
 COPY --from=web /web/dist ./web/dist
 # Return large freed buffers to the OS (Argon2 allocates 19 MiB per hash).
-ENV PATH="/app/.venv/bin:$PATH" PYTHONUNBUFFERED=1 IFS_WEB_DIST=/app/web/dist IFS_MEDIA_DIR=/data/media \
+ENV PATH="/app/.venv/bin:$PATH" PYTHONUNBUFFERED=1 IFS_WEB_DIST=/app/web/dist IFS_MEDIA_DIR=/data/media IFS_BANK_DIR=/data/fsquiz \
     GLIBC_TUNABLES=glibc.malloc.mmap_threshold=1048576
 USER 10001
 EXPOSE 8000

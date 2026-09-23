@@ -13,6 +13,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import httpx
+
 from .client import FSQuiz, NotFound
 from .normalize import build_bank
 
@@ -98,8 +100,13 @@ def mirror(
         todo = sorted(p for p in paths if not (img_dir / p).exists())
         log(f"{len(paths)} images, downloading {len(todo)}")
         for p in todo:
+            try:
+                content = api.image(p)
+            except httpx.HTTPError as e:
+                log(f"  image {p}: {e}")
+                continue
             (img_dir / p).parent.mkdir(parents=True, exist_ok=True)
-            (img_dir / p).write_bytes(api.image(p))
+            (img_dir / p).write_bytes(content)
 
     log(f"{api.calls} API calls; bank: {len(bank['questions'])} questions -> {data_dir / 'bank.json'}")
     return bank

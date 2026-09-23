@@ -58,6 +58,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.add_api_route(prefix, _not_found, methods=methods, include_in_schema=False)
         app.add_api_route(prefix + "/{path:path}", _not_found, methods=methods, include_in_schema=False)
 
+    # Question images, named by content hash, so they never change once written.
+    app.mount("/media", ImmutableStatic(directory=settings.media_dir, check_dir=False), name="media")
     _mount_spa(app, settings.web_dist)
     return app
 

@@ -3,8 +3,8 @@
 import { type DefaultError, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { auditLog, changePassword, createInvite, inviteInfo, login, logout, me, openInvites, type Options, register, reset, resetInfo, resetLink, revokeInvite, revokeSessions, updateMe, updateUser, users } from '../sdk.gen';
-import type { AuditLogData, AuditLogError, AuditLogResponse, ChangePasswordData, ChangePasswordError, ChangePasswordResponse, CreateInviteData, CreateInviteError, CreateInviteResponse, InviteInfoData, InviteInfoError, InviteInfoResponse, LoginData, LoginError, LoginResponse, LogoutData, LogoutResponse, MeData, MeResponse, OpenInvitesData, OpenInvitesResponse, RegisterData, RegisterError, RegisterResponse, ResetData, ResetError, ResetInfoData, ResetInfoError, ResetInfoResponse, ResetLinkData, ResetLinkError, ResetLinkResponse, ResetResponse, RevokeInviteData, RevokeInviteError, RevokeInviteResponse, RevokeSessionsData, RevokeSessionsError, RevokeSessionsResponse, UpdateMeData, UpdateMeError, UpdateMeResponse, UpdateUserData, UpdateUserError, UpdateUserResponse, UsersData, UsersResponse } from '../types.gen';
+import { auditLog, bankSummary, changePassword, createInvite, inviteInfo, login, logout, me, openInvites, type Options, register, reset, resetInfo, resetLink, revokeInvite, revokeSessions, updateMe, updateUser, users } from '../sdk.gen';
+import type { AuditLogData, AuditLogError, AuditLogResponse, BankSummaryData, BankSummaryResponse, ChangePasswordData, ChangePasswordError, ChangePasswordResponse, CreateInviteData, CreateInviteError, CreateInviteResponse, InviteInfoData, InviteInfoError, InviteInfoResponse, LoginData, LoginError, LoginResponse, LogoutData, LogoutResponse, MeData, MeResponse, OpenInvitesData, OpenInvitesResponse, RegisterData, RegisterError, RegisterResponse, ResetData, ResetError, ResetInfoData, ResetInfoError, ResetInfoResponse, ResetLinkData, ResetLinkError, ResetLinkResponse, ResetResponse, RevokeInviteData, RevokeInviteError, RevokeInviteResponse, RevokeSessionsData, RevokeSessionsError, RevokeSessionsResponse, UpdateMeData, UpdateMeError, UpdateMeResponse, UpdateUserData, UpdateUserError, UpdateUserResponse, UsersData, UsersResponse } from '../types.gen';
 
 /**
  * Login
@@ -330,4 +330,22 @@ export const auditLogOptions = (options?: Options<AuditLogData>) => queryOptions
         return data;
     },
     queryKey: auditLogQueryKey(options)
+});
+
+export const bankSummaryQueryKey = (options?: Options<BankSummaryData>) => createQueryKey('bankSummary', options);
+
+/**
+ * Bank Summary
+ */
+export const bankSummaryOptions = (options?: Options<BankSummaryData>) => queryOptions<BankSummaryResponse, DefaultError, BankSummaryResponse, ReturnType<typeof bankSummaryQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await bankSummary({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: bankSummaryQueryKey(options)
 });

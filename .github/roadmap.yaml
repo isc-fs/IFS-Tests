@@ -68,15 +68,16 @@ phases:
   - number: 3
     title: Training MVP
     tag: v0.3.0
+    note: "One branch per way of answering questions, then the tools around them"
     branches:
       - name: feat/8-practice
         scope: Practice by topic with server-side grading and answer reveal
-      - name: feat/9-admin-taxonomy
-        scope: Reviewer tools for topic labels, answer keys and exclusions
-      - name: feat/10-daily-question
+      - name: feat/9-daily-question
         scope: One question per area per day, time-boxed, with streaks
-      - name: feat/11-mock-quiz
+      - name: feat/10-mock-quiz
         scope: Replay a real past quiz against its original clock
+      - name: feat/11-admin-taxonomy
+        scope: Reviewer tools for topic labels, answer keys and exclusions
       - name: feat/12-leaderboard
         scope: Season leaderboards per person, area and vertical, with opt-out
 

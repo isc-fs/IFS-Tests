@@ -23,8 +23,8 @@ Internet ──443──> Nginx (shared on the team server, TLS, rate limit on /
 
 ```
 src/ifs_tests/
-  bank/          FS-Quiz client, mirror, normalisation, topic tagging (and later: answer keys, push)
-  domain/        rules as pure functions: account rules now; grading, scoring, daily selection, streaks later
+  bank/          FS-Quiz client, mirror, normalisation, topic tagging, image conversion, a made-up sample bank
+  domain/        rules as pure functions: accounts, answer keys, grading (scoring, daily selection, streaks later)
   db/            SQLAlchemy models and sessions
   services/      use cases: queries, transactions, locking, audit
   auth/          password hashing and policy, tokens, server-side sessions
@@ -45,7 +45,8 @@ Rules for contributors:
 
 ## The rules of the game
 
-- **Grading:** single choice = exact option; multi choice = exact set; numeric input within `max(half the key's last digit, 0.1 %)`; numeric tuples in order; codes/sequences normalised; ranges `lo–hi`. Questions without an official answer, needing a missing image, or of type drag-sort are not gradable (practice still shows them).
+- **Question bank:** `ifs-tests push` loads the mirror (`bank.json` + images) into the database: questions, choices, answer keys (in their own table, never serialised with a question), solutions, quizzes and events. Images become WebP files under 150 KB named by content hash and are served from `/media/`. Re-running skips unchanged questions and flags ones whose official answer changed upstream. A question that needs a missing image is kept but not served.
+- **Grading** (`domain/keys.py`, `domain/grading.py`): single choice = one of the marked options; multi choice = exact set; numbers within `max(half a unit in the key's last decimal, 0.1 %)`, decimal comma or point; lists of numbers separated by `;` or `, ` (in order, except ascending whole numbers, which are sets); ranges `lo-hi`; short text codes compared without case or spaces. Questions with no official answer, drag-sort and free-form answers are not graded automatically: practice shows the official answer instead.
 - **Daily question:** one per area (mech, elec, rules) per Madrid day. Chosen from eligible questions not used in the last 120 days, preferring reviewed labels and least-practised questions; deterministic tie-break.
 - **Timing:** the server sets every deadline; the browser only displays it. Three-second grace. Submitting twice returns the first result.
 - **Scoring:** daily correct on time = 10 + streak bonus (max +5); wrong or late = 0; mock quiz = 2 per correct answer, first attempt per quiz per season; practice = 0. Seasons run September–August.

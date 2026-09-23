@@ -10,13 +10,14 @@ from datetime import time as clock_time
 from pathlib import Path
 
 from .bank.client import FSQuiz
-from .bank.mirror import DATA_DIR, load_bank, mirror
+from .bank.mirror import load_bank, mirror
 from .db.models import ROLES, VERTICALS
+from .settings import get_settings
 
 
 def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(prog="ifs-tests", description="FS quiz practice tooling")
-    p.add_argument("--data", type=Path, default=DATA_DIR, help="mirror directory (default: data/fsquiz)")
+    p.add_argument("--data", type=Path, help="mirror directory (default: IFS_BANK_DIR or data/fsquiz)")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     m = sub.add_parser("mirror", help="download the FS-Quiz bank (cached; only fetches what is missing)")
@@ -37,6 +38,9 @@ def main(argv: list[str] | None = None) -> None:
     t = sub.add_parser("topics", help="first-pass topic tagging of the bank")
     t.add_argument("--csv", type=Path, help="write per-question tags to this CSV for review")
 
+    b = sub.add_parser("push", help="load the mirrored bank (bank.json and img/) into the database")
+    b.add_argument("--sample", action="store_true", help="load the small made-up sample bank instead")
+
     sub.add_parser("openapi", help="print the API's OpenAPI schema (used to generate the web client)")
 
     a = sub.add_parser("create-admin", help="create the first admin account (only when none exists)")
@@ -56,7 +60,8 @@ def main(argv: list[str] | None = None) -> None:
     sub.add_parser("scheduler", help="run the nightly jobs forever (the scheduler service)")
 
     args = p.parse_args(argv)
-    if args.cmd in ("create-admin", "invite", "reset-link", "maintenance", "scheduler", "openapi"):
+    args.data = args.data or get_settings().bank_dir
+    if args.cmd in ("create-admin", "invite", "reset-link", "maintenance", "scheduler", "openapi", "push"):
         _app_command(args)
         return
     if args.cmd == "mirror":
@@ -84,7 +89,6 @@ def _app_command(args: argparse.Namespace) -> None:
     from .db.models import User
     from .db.session import session_factory
     from .services import accounts, maintenance
-    from .settings import get_settings
 
     if args.cmd == "openapi":
         from .api.app import create_app
@@ -110,7 +114,15 @@ def _app_command(args: argparse.Namespace) -> None:
 
     with make_db() as db:
         try:
-            if args.cmd == "maintenance":
+            if args.cmd == "push":
+                from .bank.sample import SAMPLE_DIR
+                from .services.bank import import_bank
+
+                source = SAMPLE_DIR if args.sample else args.data
+                logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(message)s")
+                report = import_bank(db, load_bank(source), source / "img", settings.media_dir, now)
+                print(f"Bank loaded from {source}: {report}")
+            elif args.cmd == "maintenance":
                 print(maintenance.run(db, now))
             elif args.cmd == "create-admin":
                 if args.password_stdin:

@@ -362,6 +362,25 @@ button.secondary:hover {
   }
 }
 
+.stats {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+}
+.stats strong {
+  font-family: var(--isc-font-display);
+  font-size: var(--isc-fs-h3);
+  color: var(--isc-green);
+  font-variant-numeric: tabular-nums;
+}
+code {
+  font-family: var(--isc-font-mono);
+  font-size: 0.9em;
+}
+
 .audit {
   font-size: var(--isc-fs-caption);
   padding-left: 0;

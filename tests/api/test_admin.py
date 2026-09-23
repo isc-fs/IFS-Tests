@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
 
+from ifs_tests.bank.mirror import load_bank
+from ifs_tests.bank.sample import SAMPLE_DIR
 from ifs_tests.db.models import User
+from ifs_tests.services.bank import import_bank
 
+from ..conftest import Clock
 from .helpers import invite, login, member, register
 
 pytestmark = pytest.mark.integration
@@ -79,3 +85,12 @@ def test_reviewers_cannot_administer(app_client: TestClient, admin: User, new_cl
     register(reviewer, invite(app_client, role="reviewer"), "rev@alu.comillas.edu", "Rev")
     assert reviewer.get("/api/admin/users").status_code == 403
     assert reviewer.patch("/api/me", json={"role": "admin"}).status_code == 422
+
+
+def test_bank_summary(app_client: TestClient, admin: User, db: Session, clock: Clock, tmp_path: Path) -> None:
+    login(app_client)
+    empty = app_client.get("/api/admin/bank").json()
+    assert empty["questions"] == 0 and empty["imported_at"] is None
+    import_bank(db, load_bank(SAMPLE_DIR), SAMPLE_DIR / "img", tmp_path, clock.now)
+    s = app_client.get("/api/admin/bank").json()
+    assert (s["questions"], s["playable"], s["graded"], s["quizzes"]) == (12, 12, 10, 3)

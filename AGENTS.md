@@ -16,6 +16,7 @@ Instructions for coding agents working in this repository. Read [README.md](READ
 - After changing the API: `uv run ifs-tests openapi > web/openapi.json && (cd web && npm run gen:api)`; CI fails if either is stale.
 - Tests follow the pyramid: pure rules in `domain/` get table-driven unit tests; services and routes get API tests against Postgres; races get integration tests in `tests/integration/test_concurrency.py`; user flows get component tests and one Playwright journey.
 - Local stack: `docker compose up --build`; migrations: `alembic upgrade head` (or `docker compose run --rm api alembic upgrade head`).
+- Question bank: `uv run ifs-tests mirror --images` (polite, cached), then `uv run ifs-tests push` or `docker compose run --rm api ifs-tests push`; `push --sample` loads a small made-up bank (tests, CI, fresh dev stacks). Answer-key parsing and grading live in `domain/keys.py` and `domain/grading.py`, with table tests over real key formats.
 - New migration: `uv run alembic revision --autogenerate -m "..."`, then review it by hand. Migrations must be expand/contract (the previous release keeps running during a deploy).
 - Deployment: `deploy/` (compose, `deploy.sh`, `restore.sh`, Nginx snippet) and [`docs/runbook.md`](docs/runbook.md). CI never deploys; a maintainer runs `deploy.sh` on the server.
 

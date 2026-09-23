@@ -54,3 +54,15 @@ def test_docs_hidden_when_deployed(dist: Path) -> None:
 def test_app_without_a_build_still_serves_the_api(tmp_path: Path) -> None:
     c = client(tmp_path / "missing")
     assert c.get("/healthz").status_code == 200 and c.get("/").status_code == 404
+
+
+def test_media_is_served_immutable_and_confined(tmp_path: Path, dist: Path) -> None:
+    media = tmp_path / "media"
+    media.mkdir()
+    (media / "abc.webp").write_bytes(b"RIFF....WEBP")
+    c = TestClient(create_app(Settings(env="test", web_dist=dist, media_dir=media)))
+    r = c.get("/media/abc.webp")
+    assert r.status_code == 200 and "immutable" in r.headers["cache-control"]
+    assert c.get("/media/missing.webp").status_code == 404
+    traversal = c.get("/media/%2e%2e/secret.txt")
+    assert traversal.status_code == 404 and "top secret" not in traversal.text
