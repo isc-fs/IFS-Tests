@@ -1271,3 +1271,13 @@ details[open] > summary::before {
   max-height: 50vh;
   width: auto;
 }
+.shell:has(.live-screen) .topbar {
+  display: none;
+}
+.live-screen .countdown {
+  font-size: clamp(32px, 4vw, 72px);
+}
+.live-screen .muted,
+.live-screen .badge {
+  font-size: inherit;
+}

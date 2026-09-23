@@ -1,5 +1,5 @@
 import { useMutation } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import {
   advanceSessionMutation,
   configureSessionMutation,
@@ -29,6 +29,8 @@ export function HostControls({ s }: { s: LiveState }) {
   const done = { onSuccess: () => refresh(s.code) }
   const advance = useMutation({ ...advanceSessionMutation(), ...done })
   const end = useMutation({ ...endSessionMutation(), ...done })
+  const [dirty, setDirty] = useState(false)
+  const [ending, setEnding] = useState(false)
   const last = s.state === 'closed' && s.position + 1 >= s.total
   const path = { path: { code: s.code } }
   return (
@@ -40,11 +42,11 @@ export function HostControls({ s }: { s: LiveState }) {
             Code <span className="screen-code small">{s.code}</span> · {s.players.length} joined
           </p>
           <a href={`/live/${s.code}/screen`} target="_blank" rel="noreferrer">
-            Open the projector screen
+            Open the projector screen (new tab)
           </a>
         </div>
       </div>
-      {s.state === 'lobby' && <Lobby s={s} key={s.tables.map((t) => t.id).join()} />}
+      {s.state === 'lobby' && <Lobby s={s} key={s.tables.map((t) => t.id).join()} dirty={dirty} onDirty={setDirty} />}
       {s.state !== 'lobby' && s.state !== 'finished' && (
         <section className="panel stack" aria-labelledby="running-title">
           <h2 id="running-title">
@@ -74,13 +76,32 @@ export function HostControls({ s }: { s: LiveState }) {
         </>
       ) : (
         <div className="answer-actions">
-          <button type="button" onClick={() => advance.mutate(path)} disabled={advance.isPending}>
-            {last ? 'Finish and show the results' : STEP[s.state]}
+          <button
+            type="button"
+            onClick={() => advance.mutate(path)}
+            disabled={advance.isPending || (s.state === 'lobby' && dirty)}
+          >
+            {s.state === 'lobby' && dirty
+              ? 'Save the tables first'
+              : last
+                ? 'Finish and show the results'
+                : STEP[s.state]}
           </button>
-          {s.state !== 'lobby' && (
-            <button type="button" className="secondary" onClick={() => end.mutate(path)} disabled={end.isPending}>
+          {s.state !== 'lobby' && !ending && (
+            <button type="button" className="secondary" onClick={() => setEnding(true)}>
               End now
             </button>
+          )}
+          {ending && (
+            <>
+              <span>End the quiz for everyone?</span>
+              <button type="button" className="secondary" onClick={() => end.mutate(path)} disabled={end.isPending}>
+                End it
+              </button>
+              <button type="button" className="link-button" onClick={() => setEnding(false)}>
+                Keep going
+              </button>
+            </>
           )}
         </div>
       )}
@@ -91,7 +112,7 @@ export function HostControls({ s }: { s: LiveState }) {
 
 type Draft = Required<Pick<TableIn, 'name' | 'member_ids' | 'topics' | 'catch_all'>> & { captain_id: number | null }
 
-function Lobby({ s }: { s: LiveState }) {
+function Lobby({ s, dirty, onDirty }: { s: LiveState; dirty: boolean; onDirty: (dirty: boolean) => void }) {
   const [draft, setDraft] = useState<Draft[]>(() =>
     s.tables.map((t) => ({
       name: t.name,
@@ -101,13 +122,13 @@ function Lobby({ s }: { s: LiveState }) {
       catch_all: t.catch_all,
     })),
   )
-  const [dirty, setDirty] = useState(false)
   const done = { onSuccess: () => refresh(s.code) }
   const auto = useMutation({ ...seatBySubdepartmentMutation(), ...done })
-  const save = useMutation({ ...seatTablesMutation(), onSuccess: () => (setDirty(false), refresh(s.code)) })
+  const save = useMutation({ ...seatTablesMutation(), onSuccess: () => (onDirty(false), refresh(s.code)) })
   const configure = useMutation({ ...configureSessionMutation(), ...done })
   const path = { path: { code: s.code } }
-  const change = (next: Draft[]) => (setDraft(next), setDirty(true))
+  const change = (next: Draft[]) => (setDraft(next), onDirty(true))
+  const addTable = useRef<HTMLButtonElement>(null)
   const edit = (i: number, patch: Partial<Draft>) => change(draft.map((t, j) => (j === i ? { ...t, ...patch } : t)))
   const seatOf = (uid: number) => draft.findIndex((t) => t.member_ids.includes(uid))
   const move = (uid: number, to: number) =>
@@ -132,6 +153,7 @@ function Lobby({ s }: { s: LiveState }) {
             Seat by sub-department
           </button>
           <button
+            ref={addTable}
             type="button"
             className="secondary"
             onClick={() =>
@@ -188,7 +210,11 @@ function Lobby({ s }: { s: LiveState }) {
                 </label>
               </fieldset>
             )}
-            <button type="button" className="link-button" onClick={() => change(draft.filter((_, j) => j !== i))}>
+            <button
+              type="button"
+              className="link-button"
+              onClick={() => (change(draft.filter((_, j) => j !== i)), addTable.current?.focus())}
+            >
               Remove this table
             </button>
           </fieldset>
@@ -221,7 +247,6 @@ function Lobby({ s }: { s: LiveState }) {
         </button>
         <ErrorNotice error={auto.error ?? save.error} />
       </section>
-      {dirty && <Notice tone="info">Save the tables before starting.</Notice>}
       <details className="panel">
         <summary>Change the settings</summary>
         <ConfigForm
@@ -231,59 +256,67 @@ function Lobby({ s }: { s: LiveState }) {
           error={configure.error}
           saveLabel="Save the settings"
         />
+        <ErrorNotice error={configure.error} />
+        {configure.isSuccess && <Notice tone="ok">Settings saved.</Notice>}
       </details>
     </>
   )
 }
 
-/** Between questions: seat latecomers, move people, change a captain. */
-function Seating({ s }: { s: LiveState }) {
+function SeatRow({ s, p }: { s: LiveState; p: LiveState['players'][number] }) {
+  const [table, setTable] = useState(p.table_id ?? 0)
   const done = { onSuccess: () => refresh(s.code) }
   const move = useMutation({ ...movePlayerMutation(), ...done })
   const captain = useMutation({ ...editTableMutation(), ...done })
+  const seatedAt = s.tables.find((t) => t.id === p.table_id)
+  return (
+    <li>
+      <label>
+        {p.name}{' '}
+        <select value={table} onChange={(e) => setTable(Number(e.target.value))}>
+          <option value={0}>Not seated</option>
+          {s.tables.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <button
+        type="button"
+        className="link-button"
+        disabled={table === (p.table_id ?? 0) || move.isPending}
+        onClick={() => move.mutate({ path: { code: s.code, user_id: p.user_id }, body: { table_id: table || null } })}
+      >
+        Move
+      </button>
+      {seatedAt && seatedAt.captain_id !== p.user_id && (
+        <button
+          type="button"
+          className="link-button"
+          disabled={captain.isPending}
+          onClick={() =>
+            captain.mutate({ path: { code: s.code, table_id: seatedAt.id }, body: { captain_id: p.user_id } })
+          }
+        >
+          Make captain
+        </button>
+      )}
+      <ErrorNotice error={move.error ?? captain.error} />
+    </li>
+  )
+}
+
+/** Between questions: seat latecomers, move people, change a captain. */
+function Seating({ s }: { s: LiveState }) {
   return (
     <details>
       <summary>Seating</summary>
       <ul className="seat-list">
         {s.players.map((p) => (
-          <li key={p.user_id}>
-            <label>
-              {p.name}{' '}
-              <select
-                value={p.table_id ?? ''}
-                onChange={(e) =>
-                  move.mutate({
-                    path: { code: s.code, user_id: p.user_id },
-                    body: { table_id: Number(e.target.value) || null },
-                  })
-                }
-              >
-                <option value="">Not seated</option>
-                {s.tables.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {p.table_id !== null && s.tables.find((t) => t.id === p.table_id)?.captain_id !== p.user_id && (
-              <button
-                type="button"
-                className="link-button"
-                onClick={() =>
-                  captain.mutate({
-                    path: { code: s.code, table_id: p.table_id as number },
-                    body: { captain_id: p.user_id },
-                  })
-                }
-              >
-                Make captain
-              </button>
-            )}
-          </li>
+          <SeatRow key={`${p.user_id}-${p.table_id}`} s={s} p={p} />
         ))}
       </ul>
-      <ErrorNotice error={move.error ?? captain.error} />
     </details>
   )
 }

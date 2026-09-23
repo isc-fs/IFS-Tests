@@ -140,6 +140,12 @@ export function QuestionCard({
 }) {
   const [chosen, setChosen] = useState<number[]>(preset?.options ?? [])
   const [value, setValue] = useState(preset?.value ?? '')
+  const [appliedPreset, setAppliedPreset] = useState(preset)
+  if (preset !== appliedPreset) {
+    setAppliedPreset(preset)
+    setChosen(preset?.options ?? [])
+    setValue(preset?.value ?? '')
+  }
   const [missing, setMissing] = useState<string>()
   const [hint, setHint] = useState<HintOut>()
   const [hintError, setHintError] = useState<string>()

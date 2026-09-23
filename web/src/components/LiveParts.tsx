@@ -40,7 +40,9 @@ export function Tables({ s, showScore }: { s: LiveState; showScore?: boolean }) 
           <strong>{t.name}</strong>
           <span className="muted">
             {t.member_ids
-              .map((id) => (id === t.captain_id ? `${names.get(id)} (captain)` : names.get(id)))
+              .map((id) =>
+                id === t.captain_id ? `${names.get(id) ?? 'someone'} (captain)` : (names.get(id) ?? 'someone'),
+              )
               .join(', ') || 'Nobody yet'}
           </span>
           {s.state === 'open' && <span className="badge">{t.answered ? 'Answered' : 'Thinking'}</span>}
@@ -64,6 +66,9 @@ export function Reveal({ s, r }: { s: LiveState; r: LiveReveal }) {
       <p className="question-text">
         {r.position + 1}. {q.text}
       </p>
+      {q.images.map((src) => (
+        <img key={src} src={src} alt="Figure for this question" className="question-image" />
+      ))}
       {q.options.length > 0 && (
         <ul className="choices">
           {q.options.map((o) => (
@@ -93,6 +98,9 @@ export function Reveal({ s, r }: { s: LiveState; r: LiveReveal }) {
         <section key={i} className="solution" aria-label="Worked solution">
           <h3>Worked solution</h3>
           {sol.text && <p className="question-text">{sol.text}</p>}
+          {sol.images.map((src) => (
+            <img key={src} src={src} alt="Figure for the solution" className="question-image" />
+          ))}
         </section>
       ))}
     </article>

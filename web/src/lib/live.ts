@@ -8,14 +8,23 @@ import { queryClient } from './api'
  * is fetched again then; a slow poll covers a dropped stream. */
 export function useLive(code: string) {
   const options = { path: { code } }
+  const query = useQuery({
+    ...sessionStateOptions(options),
+    refetchInterval: 5000,
+    // The server's refusals (not joined, no such code) are final; a dropped connection or a proxy error isn't.
+    retry: (count, error) => count < 3 && !(error as { detail?: unknown } | null)?.detail,
+    retryDelay: 500,
+  })
+  // Open the stream only once the state loads: before joining it is refused, and a refused EventSource stays shut.
+  const allowed = query.isSuccess
   useEffect(() => {
-    if (typeof EventSource === 'undefined') return
+    if (!allowed || typeof EventSource === 'undefined') return
     const events = new EventSource(`/api/live/sessions/${code}/events`)
     events.onmessage = () => queryClient.invalidateQueries({ queryKey: sessionStateQueryKey(options) })
     return () => events.close()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [code])
-  return useQuery({ ...sessionStateOptions(options), refetchInterval: 5000, retry: false })
+  }, [code, allowed])
+  return query
 }
 
 export const refresh = (code: string) =>

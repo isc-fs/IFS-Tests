@@ -1,6 +1,7 @@
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
+import { refresh } from '../lib/live'
 import { MEMBER, renderApp } from '../test/render'
 
 const HOST = { ...MEMBER, id: 9, display_name: 'Tere', position: 'technical_director', can_host: true }
@@ -203,4 +204,84 @@ test('the projector during a question', async () => {
   expect(await screen.findByText('Which flag means rain?')).toBeInTheDocument()
   expect(screen.queryByText(/Correct answer|Official answer/)).toBeNull()
   expect(screen.getByRole('timer')).toBeInTheDocument()
+})
+
+test('a failed refresh keeps the question and the answer being picked', async () => {
+  let fail = false
+  at('/live/ABC234', { ...MEMBER, id: 3 }, open, {
+    'GET /api/live/sessions/ABC234': () =>
+      fail ? { status: 502, body: undefined } : { body: { ...open, captain: true } },
+  })
+  await userEvent.click(await screen.findByRole('radio', { name: 'Red and yellow' }))
+  fail = true
+  await refresh('ABC234')
+  expect(await screen.findByText(/Reconnecting/, {}, { timeout: 4000 })).toBeInTheDocument()
+  expect(screen.getByRole('radio', { name: 'Red and yellow' })).toBeChecked()
+})
+
+test('opening the link before joining: join, then the live stream opens', async () => {
+  const opened: string[] = []
+  vi.stubGlobal(
+    'EventSource',
+    class {
+      constructor(url: string) {
+        opened.push(url)
+      }
+      close() {}
+    },
+  )
+  let joined = false
+  renderApp('/live/ABC234', {
+    'GET /api/me': { body: MEMBER },
+    'GET /api/live/sessions/ABC234': () =>
+      joined ? { body: base } : { status: 403, body: { detail: 'Join the live quiz first.' } },
+    'POST /api/live/sessions/ABC234/join': () => ((joined = true), { body: base }),
+  })
+  await userEvent.click(await screen.findByRole('button', { name: 'Join ABC234' }))
+  expect(await screen.findByText(/You're in\./)).toBeInTheDocument()
+  expect(opened).toEqual(['/api/live/sessions/ABC234/events'])
+  vi.unstubAllGlobals()
+})
+
+test('the host cannot start with unsaved tables, and a failed settings save explains itself', async () => {
+  at(
+    '/live/ABC234',
+    HOST,
+    { ...base, role: 'host' },
+    {
+      'PUT /api/live/sessions/ABC234/config': { status: 422, body: { detail: 'Pick the quiz to replay.' } },
+    },
+  )
+  await userEvent.click(await screen.findByRole('button', { name: 'Add a table' }))
+  expect(screen.getByRole('button', { name: 'Save the tables first' })).toBeDisabled()
+  await userEvent.click(screen.getByText('Change the settings'))
+  await userEvent.click(screen.getByRole('button', { name: 'Save the settings' }))
+  expect(await screen.findByText('Pick the quiz to replay.')).toBeInTheDocument()
+})
+
+test('after the last question the host finishes, and ending early asks first', async () => {
+  const { sent } = at(
+    '/live/ABC234',
+    HOST,
+    { ...open, role: 'host', state: 'closed', position: 1 },
+    {
+      'POST /api/live/sessions/ABC234/end': { status: 204 },
+    },
+  )
+  expect(await screen.findByRole('button', { name: 'Finish and show the results' })).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: 'End now' }))
+  expect(screen.getByText('End the quiz for everyone?')).toBeInTheDocument()
+  expect(sent('POST /api/live/sessions/ABC234/end')).toHaveLength(0)
+  await userEvent.click(screen.getByRole('button', { name: 'End it' }))
+  await waitFor(() => expect(sent('POST /api/live/sessions/ABC234/end')).toHaveLength(1))
+})
+
+test('a wrong code is explained next to the field', async () => {
+  renderApp('/live', {
+    'GET /api/me': { body: MEMBER },
+    'POST /api/live/sessions/ZZZZZZ/join': { status: 404, body: { detail: 'No live quiz with that code.' } },
+  })
+  await userEvent.type(await screen.findByLabelText('Code'), 'zzzzzz')
+  await userEvent.click(screen.getByRole('button', { name: 'Join' }))
+  expect(await screen.findByText('No live quiz with that code.')).toBeInTheDocument()
 })

@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import {
   answerMutation,
@@ -13,7 +13,7 @@ import type { AnswerIn, LiveConfig, LiveState } from '../api/types.gen'
 import { Countdown } from '../components/Countdown'
 import { ErrorNotice, Field, Form, Notice, SelectField } from '../components/Form'
 import { answerText, Reveal, Results, RoomScore, Tables } from '../components/LiveParts'
-import { Page } from '../components/Page'
+import { APP_NAME, Page } from '../components/Page'
 import { Qr } from '../components/Qr'
 import { QuestionCard } from '../components/QuestionCard'
 import { errorMessage, queryClient, useMe } from '../lib/api'
@@ -94,12 +94,22 @@ export function ConfigForm({
       <fieldset className="stack">
         <legend>Questions</legend>
         <label className="check">
-          <input type="radio" checked={c.questions === 'areas'} onChange={() => set({ questions: 'areas' })} />
+          <input
+            type="radio"
+            name="questions"
+            checked={c.questions === 'areas'}
+            onChange={() => set({ questions: 'areas' })}
+          />
           By area or topic
         </label>
         <label className="check">
-          <input type="radio" checked={c.questions === 'quiz'} onChange={() => set({ questions: 'quiz' })} />A full past
-          quiz, in its order
+          <input
+            type="radio"
+            name="questions"
+            checked={c.questions === 'quiz'}
+            onChange={() => set({ questions: 'quiz' })}
+          />
+          A full past quiz, in its order
         </label>
       </fieldset>
       {c.questions === 'areas' ? (
@@ -227,7 +237,7 @@ export function LiveSession() {
   const { code = '' } = useParams()
   const live = useLive(code)
   const join = useMutation({ ...joinSessionMutation(), onSuccess: () => refresh(code) })
-  if (live.isError) {
+  if (live.isError && !live.data) {
     return (
       <Page title="Live quiz">
         <Notice tone="error">{errorMessage(live.error)}</Notice>
@@ -242,6 +252,7 @@ export function LiveSession() {
   if (!s) return <p className="muted">Loading…</p>
   return (
     <Page title={`Live quiz ${s.code}`} eyebrow={`Hosted by ${s.host_name}`}>
+      {live.isError && <Notice tone="info">Reconnecting… your answer stays where it is.</Notice>}
       {s.role === 'host' ? <HostControls s={s} /> : <PlayerView s={s} />}
     </Page>
   )
@@ -269,12 +280,25 @@ function PlayerView({ s }: { s: LiveState }) {
   return (
     <div className="stack">
       {seat}
-      <p className="muted" aria-live="polite">
+      <p className="muted">
         Question {s.position + 1} of {s.total} · for {tableName(s, s.question_table_id)}
+      </p>
+      <p className="sr-only" aria-live="polite">
+        {announce(s)}
       </p>
       {s.state === 'open' && s.question ? <Answering s={s} key={s.position} /> : <Closed s={s} />}
     </div>
   )
+}
+
+/** What a screen reader hears as the quiz moves on: a new question, the table's answer going in, the close. */
+function announce(s: LiveState): string {
+  const n = `Question ${s.position + 1}`
+  if (s.state === 'open') return s.my_answer ? `${n}: your table has answered.` : `${n} is open.`
+  const reveal = s.reveals?.find((r) => r.position === s.position)
+  const mine = reveal?.answers.find((a) => a.table_id === s.my_table_id)
+  if (!reveal) return `${n} is closed.`
+  return `${n} is closed. ${mine ? (mine.correct ? 'Your table got it right.' : 'Your table got it wrong.') : ''}`
 }
 
 function Closed({ s }: { s: LiveState }) {
@@ -289,7 +313,7 @@ function Closed({ s }: { s: LiveState }) {
 }
 
 function Answering({ s }: { s: LiveState }) {
-  const [preset, setPreset] = useState<{ answer: AnswerIn; n: number }>({ answer: {}, n: 0 })
+  const [preset, setPreset] = useState<AnswerIn>()
   const [expired, setExpired] = useState(false)
   const expire = useCallback(() => setExpired(true), [])
   const send = useMutation({ ...answerMutation(), onSuccess: () => refresh(s.code) })
@@ -310,15 +334,16 @@ function Answering({ s }: { s: LiveState }) {
     )
   }
   if (target == null) return <Notice tone="info">Watch the screen: you'll be seated soon.</Notice>
+  if (!answering && expired) return <Notice tone="info">Time's up: the captain's answer is what counts.</Notice>
   return (
     <div className="stack">
       <QuestionCard
-        key={`${s.position}-${preset.n}`}
         question={question}
+        focusOnShow={s.position > 0}
         pending={send.isPending || propose.isPending}
-        expired={answering && expired}
+        expired={expired}
         clock={clock}
-        preset={preset.answer}
+        preset={preset}
         submitLabel={answering ? 'Send the table’s answer' : `Propose to ${tableName(s, target)}'s captain`}
         allowUnsure={answering}
         onAnswer={(body) =>
@@ -340,7 +365,7 @@ function Answering({ s }: { s: LiveState }) {
                   <button
                     type="button"
                     className="link-button"
-                    onClick={() => setPreset({ answer: { options: p.options, value: p.value }, n: preset.n + 1 })}
+                    onClick={() => setPreset({ options: p.options, value: p.value })}
                   >
                     Use this
                   </button>
@@ -358,10 +383,14 @@ function Answering({ s }: { s: LiveState }) {
 export function LiveScreen() {
   const { code = '' } = useParams()
   const { data: s, error } = useLive(code)
-  if (error) return <Notice tone="error">{errorMessage(error)}</Notice>
+  useEffect(() => {
+    document.title = `Screen ${code} · ${APP_NAME}`
+  }, [code])
+  if (error && !s) return <Notice tone="error">{errorMessage(error)}</Notice>
   if (!s) return <p className="muted">Loading…</p>
   return (
     <div className="live-screen stack">
+      <h1 className="sr-only">Live quiz {s.code}</h1>
       {s.state === 'lobby' && (
         <div className="screen-join">
           <Qr text={joinUrl(s.code)} size={260} label={`QR code to join ${s.code}`} />
