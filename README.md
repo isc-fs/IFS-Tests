@@ -40,6 +40,8 @@ docker compose run --rm api alembic upgrade head
 
 For frontend work, run the API with `uv run uvicorn ifs_tests.api.app:app --reload` and the SPA with `cd web && npm install && npm run dev` (Vite proxies API calls to port 8000).
 
+Deploying to the team server: [`docs/runbook.md`](docs/runbook.md).
+
 Checks that CI runs:
 
 ```bash

@@ -10,7 +10,8 @@ Internet ──443──> Nginx (shared on the team server, TLS, rate limit on /
                     ▼                                    ▼
    compose project quiz-prod                        compose project quiz-staging
    ├─ api        FastAPI + built SPA (one container, one origin)
-   ├─ scheduler  same image: daily question, maintenance, backups
+   ├─ scheduler  same image: daily question, session clean-up (from feat/6)
+   ├─ backup     nightly pg_dump, 14 days (postgres image)
    └─ db         PostgreSQL (internal network only)
 ```
 
@@ -58,6 +59,8 @@ FS-Quiz answers are public on fs-quiz.eu. The server guarantees nobody can forge
 | local | `docker compose up --build` or `uv run uvicorn` + `npm run dev` | local container | — |
 | staging | team server, `quiz-staging` | own container | `deploy.sh staging <sha>` |
 | prod | team server, `quiz-prod` | own container | `deploy.sh prod vX.Y.Z` |
+
+Setup, deploys, rollbacks, backups and restores are step by step in the [runbook](runbook.md).
 
 ## Targets
 

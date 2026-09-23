@@ -1,0 +1,39 @@
+name: Publish image
+
+# dev   -> ghcr.io/isc-fs/ifs-tests:sha-<commit> and :staging
+# vX.Y.Z tag (on main) -> ghcr.io/isc-fs/ifs-tests:vX.Y.Z
+# Deployment itself is manual: a maintainer runs deploy/deploy.sh on the server.
+
+on:
+  push:
+    branches: [dev]
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: read
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Build and push
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          tags=(-t "$image:sha-${GITHUB_SHA::12}")
+          if [[ $GITHUB_REF == refs/tags/v* ]]; then
+            tags+=(-t "$image:$GITHUB_REF_NAME")
+          else
+            tags+=(-t "$image:staging")
+          fi
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker build "${tags[@]}" \
+            --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" \
+            --label "org.opencontainers.image.revision=$GITHUB_SHA" .
+          docker push --all-tags "$image"
+          echo "Published: ${tags[*]//-t /}" >> "$GITHUB_STEP_SUMMARY"
