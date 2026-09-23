@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from ifs_tests.bank.mirror import load_bank
 from ifs_tests.bank.sample import SAMPLE_DIR
 from ifs_tests.db.models import AnswerKey, DailyQuestion, Question, User
+from ifs_tests.services import daily
 from ifs_tests.services.bank import import_bank
 
 from ..conftest import Clock
@@ -203,3 +204,14 @@ def test_yesterdays_question_is_not_repeated_while_others_are_left(
         seen.append(db.scalars(latest.order_by(DailyQuestion.day.desc())).first())
         next_day(player, clock)
     assert len(set(seen)) == 3  # the sample bank has three graded mechanical questions
+
+
+def test_starting_keeps_working_once_the_connection_has_prepared_the_insert(
+    bank: None, db: Session, clock: Clock
+) -> None:
+    # psycopg prepares a statement after 5 runs and Postgres moves to a generic plan after 5 more.
+    for i in range(12):
+        u = User(email=f"p{i}@alu.comillas.edu", password_hash="-", display_name=f"P{i}")
+        db.add(u)
+        db.commit()
+        daily.start(db, u, "mech", clock.now)
