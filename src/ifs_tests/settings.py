@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="IFS_", env_file=".env", extra="ignore")
 
     env: Literal["local", "test", "staging", "prod"] = "local"
-    database_url: str = "postgresql+psycopg://ifs:ifs@localhost:5432/ifs_tests"
+    database_url: str = "postgresql+psycopg://ifs:ifs@localhost:55432/ifs_tests"
     # Public origin of the app, used for CSRF origin checks and absolute links (invites).
     public_origin: str = "http://localhost:8000"
     web_dist: Path = Path("web/dist")
