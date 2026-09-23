@@ -24,3 +24,8 @@ web/dist/
 .env
 .env.*
 !.env.example
+
+# Test coverage output
+.coverage
+.coverage.*
+web/coverage/
