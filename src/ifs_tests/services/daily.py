@@ -6,7 +6,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 
-from sqlalchemy import Select, func, select, update
+from sqlalchemy import Select, func, select, text, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session as DB
 
@@ -142,8 +142,10 @@ def start(db: DB, user: User, area: str, now: datetime) -> tuple[Question, Attem
                 area=area,
                 deadline_at=deadline,
             )
+            # A literal predicate: once psycopg prepares the statement, a bound parameter here stops
+            # Postgres matching the partial unique index and the insert fails.
             .on_conflict_do_nothing(
-                index_elements=["user_id", "day", "area"], index_where=Attempt.mode == "daily"
+                index_elements=["user_id", "day", "area"], index_where=text("mode = 'daily'")
             )
         )
         db.commit()
