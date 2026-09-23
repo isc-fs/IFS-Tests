@@ -88,41 +88,37 @@ phases:
         scope: The site becomes MingoQuiz (the repository keeps its name); live quiz plan
 
   - number: 4
+    title: Team play
+    tag: v0.4.0
+    note: "Live quiz sessions for team meetings and vertical training (ADR 0005)"
+    branches:
+      - name: feat/16-live-quiz
+        scope: Any TD hosts a session everyone joins with a code; sub-department tables with captains; specialists routing; rehearsal of a full past quiz; speed points; CSV export
+
+  - number: 5
     title: Launch
     tag: v1.0.0
     branches:
-      - name: feat/16-privacy-account
+      - name: feat/17-privacy-account
         scope: Privacy notice, data export and deletion, season rollover, attribution
-      - name: feat/17-launch
+      - name: feat/18-launch
         scope: Load test, restore drill, handover documentation, launch checklist
-
-  - number: 5
-    title: Team play
-    tag: v1.1.0
-    note: "Live quiz sessions for team meetings and vertical training (ADR 0005)"
-    branches:
-      - name: feat/18-live-quiz
-        scope: Any TD hosts a session everyone joins with a code; hand-built tables, one answer per table from its captain, live marking, speed-points toggle, CSV export
-      - name: feat/19-live-tables
-        scope: Sub-department tables, proposals to the captain, each question routed to the table that owns its topic, per-topic results
-      - name: feat/20-live-rehearsal
-        scope: A full past quiz on real timing, results only at the end against the bar to beat, a per-topic weakness report
 
   - number: 6
     title: After launch
-    tag: v1.2.0
+    tag: v1.1.0
     deferred: true
     note: "Ideas to prioritise with the team once the MVP is in use"
     branches:
-      - name: feat/21-admin-totp
+      - name: feat/19-admin-totp
         scope: Second factor for admin accounts
-      - name: feat/22-notion-sync
+      - name: feat/20-notion-sync
         scope: Push scores and streaks to the Notion Team Directory
-      - name: feat/23-solution-bounty
+      - name: feat/21-solution-bounty
         scope: Members write worked solutions, reviewers approve, XP awarded
-      - name: feat/24-team-questions
+      - name: feat/22-team-questions
         scope: Team-written questions, starting with Driverless
-      - name: feat/25-rule-page-links
+      - name: feat/23-rule-page-links
         scope: Download each rulebook once (polite, cached), index rule numbers to pages, link references like EV 4.7.6 to their page
 
 sidequests: []

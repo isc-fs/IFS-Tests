@@ -1884,6 +1884,682 @@
      }
     }
    }
+  },
+  "/api/live/subdepartments": {
+   "get": {
+    "tags": [
+     "live"
+    ],
+    "summary": "Subdepartments",
+    "operationId": "subdepartments",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/Subdepartment"
+         },
+         "type": "array",
+         "title": "Response Subdepartments"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/live/sessions": {
+   "post": {
+    "tags": [
+     "live"
+    ],
+    "summary": "Create Session",
+    "operationId": "create_session",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/LiveConfig"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/LiveCreated"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/live/sessions/{code}": {
+   "get": {
+    "tags": [
+     "live"
+    ],
+    "summary": "Session State",
+    "operationId": "session_state",
+    "parameters": [
+     {
+      "name": "code",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "pattern": "^[A-Za-z0-9]{6}$",
+       "title": "Code"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/LiveState"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/live/sessions/{code}/join": {
+   "post": {
+    "tags": [
+     "live"
+    ],
+    "summary": "Join Session",
+    "operationId": "join_session",
+    "parameters": [
+     {
+      "name": "code",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "pattern": "^[A-Za-z0-9]{6}$",
+       "title": "Code"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/LiveState"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/live/sessions/{code}/config": {
+   "put": {
+    "tags": [
+     "live"
+    ],
+    "summary": "Configure Session",
+    "operationId": "configure_session",
+    "parameters": [
+     {
+      "name": "code",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "pattern": "^[A-Za-z0-9]{6}$",
+       "title": "Code"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/LiveConfig"
+       }
+      }
+     }
+    },
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/live/sessions/{code}/tables": {
+   "put": {
+    "tags": [
+     "live"
+    ],
+    "summary": "Seat Tables",
+    "operationId": "seat_tables",
+    "parameters": [
+     {
+      "name": "code",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "pattern": "^[A-Za-z0-9]{6}$",
+       "title": "Code"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/SeatIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/live/sessions/{code}/tables/auto": {
+   "post": {
+    "tags": [
+     "live"
+    ],
+    "summary": "Seat By Subdepartment",
+    "operationId": "seat_by_subdepartment",
+    "parameters": [
+     {
+      "name": "code",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "pattern": "^[A-Za-z0-9]{6}$",
+       "title": "Code"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/live/sessions/{code}/tables/{table_id}": {
+   "patch": {
+    "tags": [
+     "live"
+    ],
+    "summary": "Edit Table",
+    "operationId": "edit_table",
+    "parameters": [
+     {
+      "name": "code",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "pattern": "^[A-Za-z0-9]{6}$",
+       "title": "Code"
+      }
+     },
+     {
+      "name": "table_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "maximum": 2147483647,
+       "minimum": 1,
+       "title": "Table Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/TableEditIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/live/sessions/{code}/players/{user_id}": {
+   "put": {
+    "tags": [
+     "live"
+    ],
+    "summary": "Move Player",
+    "operationId": "move_player",
+    "parameters": [
+     {
+      "name": "code",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "pattern": "^[A-Za-z0-9]{6}$",
+       "title": "Code"
+      }
+     },
+     {
+      "name": "user_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "maximum": 2147483647,
+       "minimum": 1,
+       "title": "User Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/MoveIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "delete": {
+    "tags": [
+     "live"
+    ],
+    "summary": "Remove Player",
+    "operationId": "remove_player",
+    "parameters": [
+     {
+      "name": "code",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "pattern": "^[A-Za-z0-9]{6}$",
+       "title": "Code"
+      }
+     },
+     {
+      "name": "user_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "maximum": 2147483647,
+       "minimum": 1,
+       "title": "User Id"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/live/sessions/{code}/advance": {
+   "post": {
+    "tags": [
+     "live"
+    ],
+    "summary": "Advance Session",
+    "operationId": "advance_session",
+    "parameters": [
+     {
+      "name": "code",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "pattern": "^[A-Za-z0-9]{6}$",
+       "title": "Code"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/live/sessions/{code}/end": {
+   "post": {
+    "tags": [
+     "live"
+    ],
+    "summary": "End Session",
+    "operationId": "end_session",
+    "parameters": [
+     {
+      "name": "code",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "pattern": "^[A-Za-z0-9]{6}$",
+       "title": "Code"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/live/sessions/{code}/proposal": {
+   "put": {
+    "tags": [
+     "live"
+    ],
+    "summary": "Propose",
+    "operationId": "propose",
+    "parameters": [
+     {
+      "name": "code",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "pattern": "^[A-Za-z0-9]{6}$",
+       "title": "Code"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/KeyIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/live/sessions/{code}/answer": {
+   "post": {
+    "tags": [
+     "live"
+    ],
+    "summary": "Answer",
+    "operationId": "answer",
+    "parameters": [
+     {
+      "name": "code",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "pattern": "^[A-Za-z0-9]{6}$",
+       "title": "Code"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/AnswerIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/live/sessions/{code}/results.csv": {
+   "get": {
+    "tags": [
+     "live"
+    ],
+    "summary": "Results",
+    "operationId": "results",
+    "parameters": [
+     {
+      "name": "code",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "pattern": "^[A-Za-z0-9]{6}$",
+       "title": "Code"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/live/sessions/{code}/events": {
+   "get": {
+    "tags": [
+     "live"
+    ],
+    "summary": "Events",
+    "description": "A version number whenever the session changes (and when a question's time runs out), so screens know\nto fetch the state again. No state travels here, so nobody sees more than their own GET shows them.",
+    "operationId": "events",
+    "parameters": [
+     {
+      "name": "code",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "pattern": "^[A-Za-z0-9]{6}$",
+       "title": "Code"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
   }
  },
  "components": {
@@ -2765,6 +3441,457 @@
     ],
     "title": "Link"
    },
+   "LiveConfig": {
+    "properties": {
+     "questions": {
+      "type": "string",
+      "enum": [
+       "areas",
+       "quiz"
+      ],
+      "title": "Questions",
+      "default": "areas"
+     },
+     "areas": {
+      "items": {
+       "type": "string",
+       "enum": [
+        "mech",
+        "elec",
+        "rules"
+       ]
+      },
+      "type": "array",
+      "maxItems": 3,
+      "title": "Areas",
+      "default": []
+     },
+     "topics": {
+      "items": {
+       "type": "string",
+       "maxLength": 16
+      },
+      "type": "array",
+      "maxItems": 12,
+      "title": "Topics",
+      "default": []
+     },
+     "quiz_id": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "maximum": 2147483647.0,
+        "minimum": 1.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Quiz Id"
+     },
+     "count": {
+      "type": "integer",
+      "maximum": 60.0,
+      "minimum": 1.0,
+      "title": "Count",
+      "default": 10
+     },
+     "timing": {
+      "type": "string",
+      "enum": [
+       "real",
+       "fixed",
+       "host"
+      ],
+      "title": "Timing",
+      "default": "real"
+     },
+     "seconds": {
+      "type": "integer",
+      "maximum": 900.0,
+      "minimum": 10.0,
+      "title": "Seconds",
+      "default": 60
+     },
+     "feedback": {
+      "type": "string",
+      "enum": [
+       "each",
+       "end"
+      ],
+      "title": "Feedback",
+      "default": "each"
+     },
+     "speed_points": {
+      "type": "boolean",
+      "title": "Speed Points",
+      "default": false
+     },
+     "routing": {
+      "type": "string",
+      "enum": [
+       "all",
+       "owners"
+      ],
+      "title": "Routing",
+      "description": "all: every table answers every question; owners: each goes to the table owning its topic",
+      "default": "all"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "title": "LiveConfig",
+    "description": "How the host wants the quiz to go (ADR 0005)."
+   },
+   "LiveCreated": {
+    "properties": {
+     "code": {
+      "type": "string",
+      "title": "Code"
+     }
+    },
+    "type": "object",
+    "required": [
+     "code"
+    ],
+    "title": "LiveCreated"
+   },
+   "LivePlayerOut": {
+    "properties": {
+     "user_id": {
+      "type": "integer",
+      "title": "User Id"
+     },
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "table_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Table Id"
+     }
+    },
+    "type": "object",
+    "required": [
+     "user_id",
+     "name",
+     "table_id"
+    ],
+    "title": "LivePlayerOut"
+   },
+   "LiveReveal": {
+    "properties": {
+     "position": {
+      "type": "integer",
+      "title": "Position"
+     },
+     "question": {
+      "$ref": "#/components/schemas/PlayQuestion"
+     },
+     "table_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Table Id",
+      "description": "The table that answered for the room; null when every table did"
+     },
+     "feedback": {
+      "$ref": "#/components/schemas/Feedback"
+     },
+     "answers": {
+      "items": {
+       "$ref": "#/components/schemas/TableAnswer"
+      },
+      "type": "array",
+      "title": "Answers"
+     }
+    },
+    "type": "object",
+    "required": [
+     "position",
+     "question",
+     "table_id",
+     "feedback",
+     "answers"
+    ],
+    "title": "LiveReveal"
+   },
+   "LiveState": {
+    "properties": {
+     "code": {
+      "type": "string",
+      "title": "Code"
+     },
+     "state": {
+      "type": "string",
+      "enum": [
+       "lobby",
+       "open",
+       "closed",
+       "finished"
+      ],
+      "title": "State"
+     },
+     "host_name": {
+      "type": "string",
+      "title": "Host Name"
+     },
+     "config": {
+      "$ref": "#/components/schemas/LiveConfig"
+     },
+     "role": {
+      "type": "string",
+      "enum": [
+       "host",
+       "player"
+      ],
+      "title": "Role"
+     },
+     "my_table_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "My Table Id"
+     },
+     "captain": {
+      "type": "boolean",
+      "title": "Captain"
+     },
+     "position": {
+      "type": "integer",
+      "title": "Position"
+     },
+     "total": {
+      "type": "integer",
+      "title": "Total"
+     },
+     "deadline_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Deadline At"
+     },
+     "server_now": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Server Now"
+     },
+     "version": {
+      "type": "integer",
+      "title": "Version"
+     },
+     "players": {
+      "items": {
+       "$ref": "#/components/schemas/LivePlayerOut"
+      },
+      "type": "array",
+      "title": "Players"
+     },
+     "tables": {
+      "items": {
+       "$ref": "#/components/schemas/LiveTableOut"
+      },
+      "type": "array",
+      "title": "Tables"
+     },
+     "question": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/PlayQuestion"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "question_table_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Question Table Id"
+     },
+     "budget_s": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Budget S"
+     },
+     "my_answer": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/KeyIn"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "What the table answering sent, while it is open"
+     },
+     "proposals": {
+      "items": {
+       "$ref": "#/components/schemas/Proposal"
+      },
+      "type": "array",
+      "title": "Proposals",
+      "default": []
+     },
+     "reveals": {
+      "items": {
+       "$ref": "#/components/schemas/LiveReveal"
+      },
+      "type": "array",
+      "title": "Reveals",
+      "default": []
+     },
+     "room_right": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Room Right"
+     },
+     "room_asked": {
+      "type": "integer",
+      "title": "Room Asked",
+      "default": 0
+     },
+     "bar_to_beat": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Bar To Beat"
+     }
+    },
+    "type": "object",
+    "required": [
+     "code",
+     "state",
+     "host_name",
+     "config",
+     "role",
+     "my_table_id",
+     "captain",
+     "position",
+     "total",
+     "deadline_at",
+     "server_now",
+     "version",
+     "players",
+     "tables"
+    ],
+    "title": "LiveState",
+    "description": "What one person sees of a live quiz. Right and wrong appear only once a question closes (or at the end\nof a rehearsal)."
+   },
+   "LiveTableOut": {
+    "properties": {
+     "id": {
+      "type": "integer",
+      "title": "Id"
+     },
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "captain_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Captain Id"
+     },
+     "topics": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Topics"
+     },
+     "catch_all": {
+      "type": "boolean",
+      "title": "Catch All"
+     },
+     "member_ids": {
+      "items": {
+       "type": "integer"
+      },
+      "type": "array",
+      "title": "Member Ids"
+     },
+     "answered": {
+      "type": "boolean",
+      "title": "Answered",
+      "description": "Has sent its answer to the current question"
+     },
+     "right": {
+      "type": "integer",
+      "title": "Right",
+      "description": "Right answers so far, once they may be shown"
+     },
+     "points": {
+      "type": "integer",
+      "title": "Points"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "name",
+     "captain_id",
+     "topics",
+     "catch_all",
+     "member_ids",
+     "answered",
+     "right",
+     "points"
+    ],
+    "title": "LiveTableOut"
+   },
    "LoginIn": {
     "properties": {
      "email": {
@@ -2824,6 +3951,19 @@
       "type": "integer",
       "title": "Xp"
      },
+     "subdepartments": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Subdepartments"
+     },
+     "can_host": {
+      "type": "boolean",
+      "title": "Can Host",
+      "description": "May host a live quiz: TDs by position, and admins",
+      "default": false
+     },
      "progress": {
       "anyOf": [
        {
@@ -2844,7 +3984,8 @@
      "role",
      "leaderboard_opt_out",
      "position",
-     "xp"
+     "xp",
+     "subdepartments"
     ],
     "title": "Me"
    },
@@ -3124,6 +4265,29 @@
     ],
     "title": "MockSummary"
    },
+   "MoveIn": {
+    "properties": {
+     "table_id": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "maximum": 2147483647.0,
+        "minimum": 1.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Table Id"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "table_id"
+    ],
+    "title": "MoveIn"
+   },
    "MyRank": {
     "properties": {
      "rank": {
@@ -3384,6 +4548,22 @@
        }
       ],
       "title": "Leaderboard Opt Out"
+     },
+     "subdepartments": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string",
+         "maxLength": 8
+        },
+        "type": "array",
+        "maxItems": 6
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Subdepartments"
      }
     },
     "additionalProperties": false,
@@ -3467,6 +4647,49 @@
     ],
     "title": "Progress",
     "description": "Level, title and what help the player still gets. XP always refers to lifetime XP."
+   },
+   "Proposal": {
+    "properties": {
+     "user_id": {
+      "type": "integer",
+      "title": "User Id"
+     },
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "options": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "integer"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Options"
+     },
+     "value": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Value"
+     }
+    },
+    "type": "object",
+    "required": [
+     "user_id",
+     "name"
+    ],
+    "title": "Proposal"
    },
    "QuestionDocs": {
     "properties": {
@@ -4069,6 +5292,24 @@
     ],
     "title": "Role"
    },
+   "SeatIn": {
+    "properties": {
+     "tables": {
+      "items": {
+       "$ref": "#/components/schemas/TableIn"
+      },
+      "type": "array",
+      "maxItems": 30,
+      "title": "Tables"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "tables"
+    ],
+    "title": "SeatIn"
+   },
    "SolutionOut": {
     "properties": {
      "text": {
@@ -4159,6 +5400,185 @@
     ],
     "title": "Step",
     "description": "One level of the ladder and what it changes."
+   },
+   "Subdepartment": {
+    "properties": {
+     "code": {
+      "type": "string",
+      "title": "Code"
+     },
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "vertical": {
+      "type": "string",
+      "title": "Vertical"
+     },
+     "topics": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Topics"
+     }
+    },
+    "type": "object",
+    "required": [
+     "code",
+     "name",
+     "vertical",
+     "topics"
+    ],
+    "title": "Subdepartment"
+   },
+   "TableAnswer": {
+    "properties": {
+     "table_id": {
+      "type": "integer",
+      "title": "Table Id"
+     },
+     "correct": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Correct"
+     },
+     "passed": {
+      "type": "boolean",
+      "title": "Passed"
+     },
+     "points": {
+      "type": "integer",
+      "title": "Points"
+     },
+     "options": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "integer"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Options"
+     },
+     "value": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Value"
+     }
+    },
+    "type": "object",
+    "required": [
+     "table_id",
+     "correct",
+     "passed",
+     "points"
+    ],
+    "title": "TableAnswer"
+   },
+   "TableEditIn": {
+    "properties": {
+     "name": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 40,
+        "minLength": 1
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Name"
+     },
+     "captain_id": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "maximum": 2147483647.0,
+        "minimum": 1.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Captain Id"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "title": "TableEditIn"
+   },
+   "TableIn": {
+    "properties": {
+     "name": {
+      "type": "string",
+      "maxLength": 40,
+      "minLength": 1,
+      "title": "Name"
+     },
+     "captain_id": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "maximum": 2147483647.0,
+        "minimum": 1.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Captain Id"
+     },
+     "member_ids": {
+      "items": {
+       "type": "integer",
+       "maximum": 2147483647.0,
+       "minimum": 1.0
+      },
+      "type": "array",
+      "maxItems": 100,
+      "title": "Member Ids"
+     },
+     "topics": {
+      "items": {
+       "type": "string",
+       "maxLength": 16
+      },
+      "type": "array",
+      "maxItems": 12,
+      "title": "Topics",
+      "default": []
+     },
+     "catch_all": {
+      "type": "boolean",
+      "title": "Catch All",
+      "default": false
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "name",
+     "member_ids"
+    ],
+    "title": "TableIn"
    },
    "TimedQuestion": {
     "properties": {

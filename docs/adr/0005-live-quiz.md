@@ -1,6 +1,6 @@
 # 0005 — Live quiz: a hosted session everyone joins with a code
 
-- **Status:** accepted · 2026-09-23 (two small details under **Open**)
+- **Status:** accepted and built (feat/16) · 2026-09-23; two small details under **Open**
 - **Deciders:** Álvaro González (Driverless TD)
 
 ## Context
@@ -96,24 +96,25 @@ collaborative, and one person per table submits: letting everyone submit is too 
   `attempts` in mode `live` for each member's XP and history, and feed difficulty recalibration once per table.
 - **Updates reach the screens by Server-Sent Events** (`GET /api/live/{code}/events`): one long-lived response
   per screen, reconnecting by itself, over the same origin and session cookie, so the strict CSP needs no
-  change. Actions (join, propose, submit, next) are ordinary POSTs with the usual CSRF check. The two uvicorn
-  workers stay in step through Postgres `LISTEN/NOTIFY`, so there is no Redis to run. Eighty phones and a
-  projector are a trivial load.
+  change. The stream carries only a version number; each screen then fetches its own view, so a stream never
+  shows more than that person's GET would. Each stream checks the session's version once a second (one indexed
+  row), which keeps any worker in step without `LISTEN/NOTIFY` or Redis; eighty phones and a projector are a
+  trivial load. A stream closes after five minutes and the browser reconnects, and screens also poll every five
+  seconds in case a stream drops. Actions (join, propose, answer, next) are ordinary requests with the usual CSRF
+  check.
 - **Timing is the server's**, as in daily and mock questions; answers after the deadline plus grace are refused.
 - **Answers stay secret** until the reveal. Proposals are visible only to the proposer's table.
-- **Nginx** needs buffering off and a longer read timeout on the events path (a three-line change to
-  `deploy/nginx/quiz.conf` for the consultant).
+- **Nginx needs no change:** the stream sends `X-Accel-Buffering: no` and a heartbeat every 15 seconds, well
+  inside the default read timeout.
+- **The results CSV** escapes cells a spreadsheet would run as formulas (`=`, `+`, `-`, `@`), since names and
+  answers come from players.
 
-## Delivery, in three branches
+## Delivery
 
-1. **feat/18-live-quiz: replace the Excel.** Hosting by position (TDs and admins), codes and QR, lobby with
-   hand-built tables and captains, one answer per table from the captain, area/topic and mixed sessions, reveal
-   after each question with the room's score, speed-points toggle, projector screen, CSV export.
-2. **feat/19-live-tables: specialists.** Sub-departments on profiles (the Team Directory list), tables seated
-   automatically from them, proposals to the captain, topic ownership and routing each question to its table,
-   per-table and per-topic results, shared XP.
-3. **feat/20-live-rehearsal: registration day.** Full past quiz on real timing with results only at the end,
-   the bar to beat, host controls on the phone, a per-topic weakness report afterwards.
+Built in one branch, **feat/16-live-quiz**: hosting by position, codes and QR, lobby seating by sub-department or
+by hand, captains, proposals, every-table and specialist routing, reveal after each question or only at the
+end, a full past quiz on real timing with the bar to beat, speed points, projector screen, shared XP, CSV
+export. Still to come: a per-topic weakness report after a rehearsal.
 
 ## Open
 

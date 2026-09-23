@@ -15,6 +15,7 @@ from ..auth.tokens import new_token, token_hash
 from ..db.models import POSITIONS, ROLES, STATUSES, VERTICALS, AuditLog, Invite, PasswordReset, User
 from ..domain import accounts as rules
 from ..domain import xp as xp_rules
+from ..domain.live import SUBDEPARTMENTS
 from .errors import UserError
 
 INVITE_TTL = timedelta(days=7)
@@ -310,6 +311,11 @@ def update_profile(db: DB, user: User, changes: dict[str, Any]) -> User:
         user.vertical = _check_vertical(changes["vertical"])
     if changes.get("leaderboard_opt_out") is not None:
         user.leaderboard_opt_out = changes["leaderboard_opt_out"]
+    if changes.get("subdepartments") is not None:
+        codes = list(dict.fromkeys(changes["subdepartments"]))
+        if not set(codes) <= SUBDEPARTMENTS.keys():
+            raise AccountError("Unknown sub-department.", fields={"subdepartments": "Pick from the list."})
+        user.subdepartments = codes
     with _unique(db):
         db.commit()
     return user

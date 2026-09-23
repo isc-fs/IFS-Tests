@@ -1129,3 +1129,145 @@ details[open] > summary::before {
   opacity: 0.45;
   text-decoration: line-through;
 }
+
+/* Live quiz */
+.host-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+}
+.host-bar p {
+  margin: 0;
+}
+.qr {
+  flex: none;
+  border-radius: 6px;
+}
+.screen-code {
+  font-family: var(--isc-font-mono);
+  font-size: clamp(48px, 9vw, 120px);
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  color: var(--isc-green);
+}
+.screen-code.small {
+  font-size: var(--isc-fs-h3);
+  letter-spacing: 0.08em;
+}
+.checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+.live-config fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+.table-edit {
+  border: 1px solid var(--isc-c-border);
+  border-radius: var(--radius);
+  padding: 12px;
+}
+.table-edit label,
+.seat-list label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.seat-list,
+.live-tables,
+.live-answers,
+.proposals {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.seat-list li,
+.proposals li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.live-tables li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--isc-c-border);
+  border-radius: var(--radius);
+}
+.live-tables li.answered {
+  border-color: var(--isc-green);
+}
+.live-tables .muted {
+  grid-column: 1;
+  overflow-wrap: anywhere;
+}
+.live-tables .badge {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+}
+.live-answers li.right {
+  color: var(--isc-green);
+}
+.live-answers li.wrong {
+  color: var(--isc-c-error);
+}
+.room-score {
+  display: grid;
+  gap: 4px;
+  padding: 16px;
+  border-radius: var(--radius);
+  background: var(--isc-green);
+  color: var(--isc-white);
+}
+.room-score strong {
+  font-family: var(--isc-font-display);
+  font-size: clamp(32px, 6vw, 56px);
+  line-height: 1;
+  color: var(--isc-gold);
+}
+.room-score .muted {
+  color: var(--isc-d-text-mut);
+}
+.reveal .choices {
+  list-style: none;
+  padding: 0;
+}
+.content:has(.live-screen) {
+  max-width: 1400px;
+}
+.live-screen {
+  font-size: clamp(18px, 2.2vw, 28px);
+}
+.screen-join {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 32px;
+}
+.screen-question {
+  font-family: var(--isc-font-display);
+  font-size: clamp(24px, 3.4vw, 44px);
+  line-height: var(--isc-lh-heading);
+  color: var(--isc-green);
+}
+.screen-options {
+  display: grid;
+  gap: 12px;
+  font-size: clamp(20px, 2.6vw, 34px);
+}
+.screen-image {
+  max-height: 50vh;
+  width: auto;
+}

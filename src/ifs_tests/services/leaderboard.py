@@ -62,7 +62,7 @@ def _scores(
             Attempt.xp != 0,
             or_(
                 and_(
-                    Attempt.mode.in_(["daily", "practice"]),
+                    Attempt.mode.in_(["daily", "practice", "live"]),
                     func.coalesce(Attempt.day, func.date(func.timezone("Europe/Madrid", Attempt.created_at)))
                     >= first,
                 ),

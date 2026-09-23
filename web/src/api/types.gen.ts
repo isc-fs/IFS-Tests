@@ -524,6 +524,247 @@ export type Link = {
 };
 
 /**
+ * LiveConfig
+ *
+ * How the host wants the quiz to go (ADR 0005).
+ */
+export type LiveConfig = {
+    /**
+     * Questions
+     */
+    questions?: 'areas' | 'quiz';
+    /**
+     * Areas
+     */
+    areas?: Array<'mech' | 'elec' | 'rules'>;
+    /**
+     * Topics
+     */
+    topics?: Array<string>;
+    /**
+     * Quiz Id
+     */
+    quiz_id?: number | null;
+    /**
+     * Count
+     */
+    count?: number;
+    /**
+     * Timing
+     */
+    timing?: 'real' | 'fixed' | 'host';
+    /**
+     * Seconds
+     */
+    seconds?: number;
+    /**
+     * Feedback
+     */
+    feedback?: 'each' | 'end';
+    /**
+     * Speed Points
+     */
+    speed_points?: boolean;
+    /**
+     * Routing
+     *
+     * all: every table answers every question; owners: each goes to the table owning its topic
+     */
+    routing?: 'all' | 'owners';
+};
+
+/**
+ * LiveCreated
+ */
+export type LiveCreated = {
+    /**
+     * Code
+     */
+    code: string;
+};
+
+/**
+ * LivePlayerOut
+ */
+export type LivePlayerOut = {
+    /**
+     * User Id
+     */
+    user_id: number;
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Table Id
+     */
+    table_id: number | null;
+};
+
+/**
+ * LiveReveal
+ */
+export type LiveReveal = {
+    /**
+     * Position
+     */
+    position: number;
+    question: PlayQuestion;
+    /**
+     * Table Id
+     *
+     * The table that answered for the room; null when every table did
+     */
+    table_id: number | null;
+    feedback: Feedback;
+    /**
+     * Answers
+     */
+    answers: Array<TableAnswer>;
+};
+
+/**
+ * LiveState
+ *
+ * What one person sees of a live quiz. Right and wrong appear only once a question closes (or at the end
+ * of a rehearsal).
+ */
+export type LiveState = {
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * State
+     */
+    state: 'lobby' | 'open' | 'closed' | 'finished';
+    /**
+     * Host Name
+     */
+    host_name: string;
+    config: LiveConfig;
+    /**
+     * Role
+     */
+    role: 'host' | 'player';
+    /**
+     * My Table Id
+     */
+    my_table_id: number | null;
+    /**
+     * Captain
+     */
+    captain: boolean;
+    /**
+     * Position
+     */
+    position: number;
+    /**
+     * Total
+     */
+    total: number;
+    /**
+     * Deadline At
+     */
+    deadline_at: string | null;
+    /**
+     * Server Now
+     */
+    server_now: string;
+    /**
+     * Version
+     */
+    version: number;
+    /**
+     * Players
+     */
+    players: Array<LivePlayerOut>;
+    /**
+     * Tables
+     */
+    tables: Array<LiveTableOut>;
+    question?: PlayQuestion | null;
+    /**
+     * Question Table Id
+     */
+    question_table_id?: number | null;
+    /**
+     * Budget S
+     */
+    budget_s?: number | null;
+    /**
+     * What the table answering sent, while it is open
+     */
+    my_answer?: KeyIn | null;
+    /**
+     * Proposals
+     */
+    proposals?: Array<Proposal>;
+    /**
+     * Reveals
+     */
+    reveals?: Array<LiveReveal>;
+    /**
+     * Room Right
+     */
+    room_right?: number | null;
+    /**
+     * Room Asked
+     */
+    room_asked?: number;
+    /**
+     * Bar To Beat
+     */
+    bar_to_beat?: string | null;
+};
+
+/**
+ * LiveTableOut
+ */
+export type LiveTableOut = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Captain Id
+     */
+    captain_id: number | null;
+    /**
+     * Topics
+     */
+    topics: Array<string>;
+    /**
+     * Catch All
+     */
+    catch_all: boolean;
+    /**
+     * Member Ids
+     */
+    member_ids: Array<number>;
+    /**
+     * Answered
+     *
+     * Has sent its answer to the current question
+     */
+    answered: boolean;
+    /**
+     * Right
+     *
+     * Right answers so far, once they may be shown
+     */
+    right: number;
+    /**
+     * Points
+     */
+    points: number;
+};
+
+/**
  * LoginIn
  */
 export type LoginIn = {
@@ -564,6 +805,16 @@ export type Me = {
      * Xp
      */
     xp: number;
+    /**
+     * Subdepartments
+     */
+    subdepartments: Array<string>;
+    /**
+     * Can Host
+     *
+     * May host a live quiz: TDs by position, and admins
+     */
+    can_host?: boolean;
     progress?: Progress | null;
 };
 
@@ -713,6 +964,16 @@ export type MockSummary = {
      * Items
      */
     items: Array<MockItem>;
+};
+
+/**
+ * MoveIn
+ */
+export type MoveIn = {
+    /**
+     * Table Id
+     */
+    table_id: number | null;
 };
 
 /**
@@ -876,6 +1137,10 @@ export type ProfileIn = {
      * Leaderboard Opt Out
      */
     leaderboard_opt_out?: boolean | null;
+    /**
+     * Subdepartments
+     */
+    subdepartments?: Array<string> | null;
 };
 
 /**
@@ -929,6 +1194,28 @@ export type Progress = {
      * Ladder
      */
     ladder: Array<Step>;
+};
+
+/**
+ * Proposal
+ */
+export type Proposal = {
+    /**
+     * User Id
+     */
+    user_id: number;
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Options
+     */
+    options?: Array<number> | null;
+    /**
+     * Value
+     */
+    value?: string | null;
 };
 
 /**
@@ -1295,6 +1582,16 @@ export const Role = {
 export type Role = typeof Role[keyof typeof Role];
 
 /**
+ * SeatIn
+ */
+export type SeatIn = {
+    /**
+     * Tables
+     */
+    tables: Array<TableIn>;
+};
+
+/**
  * SolutionOut
  */
 export type SolutionOut = {
@@ -1355,6 +1652,98 @@ export type Step = {
      * Percentage of a right answer's XP a wrong answer costs
      */
     penalty: number;
+};
+
+/**
+ * Subdepartment
+ */
+export type Subdepartment = {
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Vertical
+     */
+    vertical: string;
+    /**
+     * Topics
+     */
+    topics: Array<string>;
+};
+
+/**
+ * TableAnswer
+ */
+export type TableAnswer = {
+    /**
+     * Table Id
+     */
+    table_id: number;
+    /**
+     * Correct
+     */
+    correct: boolean | null;
+    /**
+     * Passed
+     */
+    passed: boolean;
+    /**
+     * Points
+     */
+    points: number;
+    /**
+     * Options
+     */
+    options?: Array<number> | null;
+    /**
+     * Value
+     */
+    value?: string | null;
+};
+
+/**
+ * TableEditIn
+ */
+export type TableEditIn = {
+    /**
+     * Name
+     */
+    name?: string | null;
+    /**
+     * Captain Id
+     */
+    captain_id?: number | null;
+};
+
+/**
+ * TableIn
+ */
+export type TableIn = {
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Captain Id
+     */
+    captain_id?: number | null;
+    /**
+     * Member Ids
+     */
+    member_ids: Array<number>;
+    /**
+     * Topics
+     */
+    topics?: Array<string>;
+    /**
+     * Catch All
+     */
+    catch_all?: boolean;
 };
 
 /**
@@ -2657,3 +3046,474 @@ export type TopicAidsResponses = {
 };
 
 export type TopicAidsResponse = TopicAidsResponses[keyof TopicAidsResponses];
+
+export type SubdepartmentsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/live/subdepartments';
+};
+
+export type SubdepartmentsResponses = {
+    /**
+     * Response Subdepartments
+     *
+     * Successful Response
+     */
+    200: Array<Subdepartment>;
+};
+
+export type SubdepartmentsResponse = SubdepartmentsResponses[keyof SubdepartmentsResponses];
+
+export type CreateSessionData = {
+    body: LiveConfig;
+    path?: never;
+    query?: never;
+    url: '/api/live/sessions';
+};
+
+export type CreateSessionErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CreateSessionError = CreateSessionErrors[keyof CreateSessionErrors];
+
+export type CreateSessionResponses = {
+    /**
+     * Successful Response
+     */
+    201: LiveCreated;
+};
+
+export type CreateSessionResponse = CreateSessionResponses[keyof CreateSessionResponses];
+
+export type SessionStateData = {
+    body?: never;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+    };
+    query?: never;
+    url: '/api/live/sessions/{code}';
+};
+
+export type SessionStateErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type SessionStateError = SessionStateErrors[keyof SessionStateErrors];
+
+export type SessionStateResponses = {
+    /**
+     * Successful Response
+     */
+    200: LiveState;
+};
+
+export type SessionStateResponse = SessionStateResponses[keyof SessionStateResponses];
+
+export type JoinSessionData = {
+    body?: never;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+    };
+    query?: never;
+    url: '/api/live/sessions/{code}/join';
+};
+
+export type JoinSessionErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type JoinSessionError = JoinSessionErrors[keyof JoinSessionErrors];
+
+export type JoinSessionResponses = {
+    /**
+     * Successful Response
+     */
+    200: LiveState;
+};
+
+export type JoinSessionResponse = JoinSessionResponses[keyof JoinSessionResponses];
+
+export type ConfigureSessionData = {
+    body: LiveConfig;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+    };
+    query?: never;
+    url: '/api/live/sessions/{code}/config';
+};
+
+export type ConfigureSessionErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ConfigureSessionError = ConfigureSessionErrors[keyof ConfigureSessionErrors];
+
+export type ConfigureSessionResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type ConfigureSessionResponse = ConfigureSessionResponses[keyof ConfigureSessionResponses];
+
+export type SeatTablesData = {
+    body: SeatIn;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+    };
+    query?: never;
+    url: '/api/live/sessions/{code}/tables';
+};
+
+export type SeatTablesErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type SeatTablesError = SeatTablesErrors[keyof SeatTablesErrors];
+
+export type SeatTablesResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type SeatTablesResponse = SeatTablesResponses[keyof SeatTablesResponses];
+
+export type SeatBySubdepartmentData = {
+    body?: never;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+    };
+    query?: never;
+    url: '/api/live/sessions/{code}/tables/auto';
+};
+
+export type SeatBySubdepartmentErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type SeatBySubdepartmentError = SeatBySubdepartmentErrors[keyof SeatBySubdepartmentErrors];
+
+export type SeatBySubdepartmentResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type SeatBySubdepartmentResponse = SeatBySubdepartmentResponses[keyof SeatBySubdepartmentResponses];
+
+export type EditTableData = {
+    body: TableEditIn;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+        /**
+         * Table Id
+         */
+        table_id: number;
+    };
+    query?: never;
+    url: '/api/live/sessions/{code}/tables/{table_id}';
+};
+
+export type EditTableErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type EditTableError = EditTableErrors[keyof EditTableErrors];
+
+export type EditTableResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type EditTableResponse = EditTableResponses[keyof EditTableResponses];
+
+export type RemovePlayerData = {
+    body?: never;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+        /**
+         * User Id
+         */
+        user_id: number;
+    };
+    query?: never;
+    url: '/api/live/sessions/{code}/players/{user_id}';
+};
+
+export type RemovePlayerErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type RemovePlayerError = RemovePlayerErrors[keyof RemovePlayerErrors];
+
+export type RemovePlayerResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type RemovePlayerResponse = RemovePlayerResponses[keyof RemovePlayerResponses];
+
+export type MovePlayerData = {
+    body: MoveIn;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+        /**
+         * User Id
+         */
+        user_id: number;
+    };
+    query?: never;
+    url: '/api/live/sessions/{code}/players/{user_id}';
+};
+
+export type MovePlayerErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type MovePlayerError = MovePlayerErrors[keyof MovePlayerErrors];
+
+export type MovePlayerResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type MovePlayerResponse = MovePlayerResponses[keyof MovePlayerResponses];
+
+export type AdvanceSessionData = {
+    body?: never;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+    };
+    query?: never;
+    url: '/api/live/sessions/{code}/advance';
+};
+
+export type AdvanceSessionErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AdvanceSessionError = AdvanceSessionErrors[keyof AdvanceSessionErrors];
+
+export type AdvanceSessionResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type AdvanceSessionResponse = AdvanceSessionResponses[keyof AdvanceSessionResponses];
+
+export type EndSessionData = {
+    body?: never;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+    };
+    query?: never;
+    url: '/api/live/sessions/{code}/end';
+};
+
+export type EndSessionErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type EndSessionError = EndSessionErrors[keyof EndSessionErrors];
+
+export type EndSessionResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type EndSessionResponse = EndSessionResponses[keyof EndSessionResponses];
+
+export type ProposeData = {
+    body: KeyIn;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+    };
+    query?: never;
+    url: '/api/live/sessions/{code}/proposal';
+};
+
+export type ProposeErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ProposeError = ProposeErrors[keyof ProposeErrors];
+
+export type ProposeResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type ProposeResponse = ProposeResponses[keyof ProposeResponses];
+
+export type AnswerData = {
+    body: AnswerIn;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+    };
+    query?: never;
+    url: '/api/live/sessions/{code}/answer';
+};
+
+export type AnswerErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AnswerError = AnswerErrors[keyof AnswerErrors];
+
+export type AnswerResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type AnswerResponse = AnswerResponses[keyof AnswerResponses];
+
+export type ResultsData = {
+    body?: never;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+    };
+    query?: never;
+    url: '/api/live/sessions/{code}/results.csv';
+};
+
+export type ResultsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ResultsError = ResultsErrors[keyof ResultsErrors];
+
+export type ResultsResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
+
+export type EventsData = {
+    body?: never;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+    };
+    query?: never;
+    url: '/api/live/sessions/{code}/events';
+};
+
+export type EventsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type EventsError = EventsErrors[keyof EventsErrors];
+
+export type EventsResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};

@@ -6,7 +6,7 @@ from fastapi import APIRouter, Request
 
 from ...db.models import User
 from ...domain import xp as rules
-from ...services import accounts, xp
+from ...services import accounts, live, xp
 from ..deps import AppSettings, Db, Member, Now
 from ..schemas import Aids, Me, PasswordChangeIn, ProfileIn, Progress, Step
 
@@ -30,6 +30,7 @@ def _me(db: Db, user: User, now: datetime) -> Me:
     streak = xp.streak_days(db, user.id, now)
     seen_top = level >= rules.TOP - 1
     out = Me.model_validate(user)
+    out.can_host = live.can_host(user)
     out.progress = Progress(
         level=level,
         title=rules.title(level, user.vertical),

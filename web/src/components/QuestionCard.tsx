@@ -121,6 +121,9 @@ export function QuestionCard({
   expired,
   focusOnShow,
   onHint,
+  submitLabel = 'Check answer',
+  preset,
+  allowUnsure = true,
 }: {
   question: PlayQuestion
   feedback?: Feedback
@@ -135,9 +138,15 @@ export function QuestionCard({
   focusOnShow?: boolean
   /** Ask for a hint; offered only to the levels that still get them. */
   onHint?: () => Promise<HintOut | undefined>
+  /** What the answer button says (live quizzes: "Propose to the captain"). */
+  submitLabel?: string
+  /** An answer to start from, e.g. a teammate's proposal. */
+  preset?: AnswerIn
+  /** Offer "I'm not sure" (not for proposals, which are only suggestions). */
+  allowUnsure?: boolean
 }) {
-  const [chosen, setChosen] = useState<number[]>([])
-  const [value, setValue] = useState('')
+  const [chosen, setChosen] = useState<number[]>(preset?.options ?? [])
+  const [value, setValue] = useState(preset?.value ?? '')
   const [missing, setMissing] = useState<string>()
   const [hint, setHint] = useState<HintOut>()
   const [hintError, setHintError] = useState<string>()
@@ -247,14 +256,14 @@ export function QuestionCard({
         {!answered && !expired && (
           <div className="answer-actions">
             <button type="submit" disabled={pending}>
-              {kind === 'self' ? 'Show the official answer' : 'Check answer'}
+              {kind === 'self' ? 'Show the official answer' : submitLabel}
             </button>
             {hintable && !hint && (
               <button type="button" className="secondary" disabled={pending} onClick={askHint}>
                 Hint (halves the XP)
               </button>
             )}
-            {question.graded && kind !== 'self' && (
+            {allowUnsure && question.graded && kind !== 'self' && (
               <button
                 type="button"
                 className="secondary"
@@ -273,7 +282,7 @@ export function QuestionCard({
           </Notice>
         )}
         {hintError && <Notice tone="error">{hintError}</Notice>}
-        {!answered && !expired && question.graded && kind !== 'self' && (
+        {allowUnsure && !answered && !expired && question.graded && kind !== 'self' && (
           <p className="muted answer-note" id={`${legend}-unsure`}>
             Not sure? You see the answer and nothing is gained or lost. A wrong answer can cost XP.
           </p>
