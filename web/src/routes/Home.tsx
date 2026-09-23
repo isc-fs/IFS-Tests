@@ -42,6 +42,9 @@ export default function Home() {
           </Link>
         </p>
       </section>
+      <p className="home-board">
+        Every daily question and first mock run scores. <Link to="/leaderboard">See the leaderboard</Link>
+      </p>
     </Page>
   )
 }

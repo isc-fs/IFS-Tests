@@ -1588,6 +1588,116 @@
      }
     }
    }
+  },
+  "/api/leaderboard": {
+   "get": {
+    "tags": [
+     "leaderboard"
+    ],
+    "summary": "Get Leaderboard",
+    "operationId": "get_leaderboard",
+    "parameters": [
+     {
+      "name": "board",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "enum": [
+        "everyone",
+        "mech",
+        "elec",
+        "rules"
+       ],
+       "type": "string",
+       "default": "everyone",
+       "title": "Board"
+      }
+     },
+     {
+      "name": "period",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "enum": [
+        "season",
+        "week"
+       ],
+       "type": "string",
+       "default": "season",
+       "title": "Period"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Leaderboard"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/leaderboard/verticals": {
+   "get": {
+    "tags": [
+     "leaderboard"
+    ],
+    "summary": "Vertical Leaderboard",
+    "operationId": "vertical_leaderboard",
+    "parameters": [
+     {
+      "name": "period",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "enum": [
+        "season",
+        "week"
+       ],
+       "type": "string",
+       "default": "season",
+       "title": "Period"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/VerticalBoard"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
   }
  },
  "components": {
@@ -2118,6 +2228,99 @@
     ],
     "title": "InviteInfo"
    },
+   "LeaderRow": {
+    "properties": {
+     "rank": {
+      "type": "integer",
+      "title": "Rank"
+     },
+     "display_name": {
+      "type": "string",
+      "title": "Display Name"
+     },
+     "vertical": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Vertical"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "points": {
+      "type": "integer",
+      "title": "Points"
+     },
+     "me": {
+      "type": "boolean",
+      "title": "Me"
+     }
+    },
+    "type": "object",
+    "required": [
+     "rank",
+     "display_name",
+     "vertical",
+     "points",
+     "me"
+    ],
+    "title": "LeaderRow"
+   },
+   "Leaderboard": {
+    "properties": {
+     "period": {
+      "type": "string",
+      "enum": [
+       "season",
+       "week"
+      ],
+      "title": "Period"
+     },
+     "board": {
+      "type": "string",
+      "enum": [
+       "everyone",
+       "mech",
+       "elec",
+       "rules"
+      ],
+      "title": "Board"
+     },
+     "rows": {
+      "items": {
+       "$ref": "#/components/schemas/LeaderRow"
+      },
+      "type": "array",
+      "title": "Rows"
+     },
+     "me": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/MyRank"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "Null until the member scores in this period"
+     },
+     "players": {
+      "type": "integer",
+      "title": "Players",
+      "description": "People on this board, including any beyond the rows shown"
+     }
+    },
+    "type": "object",
+    "required": [
+     "period",
+     "board",
+     "rows",
+     "me",
+     "players"
+    ],
+    "title": "Leaderboard"
+   },
    "Link": {
     "properties": {
      "url": {
@@ -2470,6 +2673,31 @@
      "items"
     ],
     "title": "MockSummary"
+   },
+   "MyRank": {
+    "properties": {
+     "rank": {
+      "type": "integer",
+      "title": "Rank"
+     },
+     "points": {
+      "type": "integer",
+      "title": "Points"
+     },
+     "hidden": {
+      "type": "boolean",
+      "title": "Hidden",
+      "description": "Opted out: others don't see them on the board"
+     }
+    },
+    "type": "object",
+    "required": [
+     "rank",
+     "points",
+     "hidden"
+    ],
+    "title": "MyRank",
+    "description": "The requesting member's own place, shown even when they are hidden or outside the top rows."
    },
    "OpenInvite": {
     "properties": {
@@ -3392,6 +3620,59 @@
      "Board"
     ],
     "title": "Vertical"
+   },
+   "VerticalBoard": {
+    "properties": {
+     "period": {
+      "type": "string",
+      "enum": [
+       "season",
+       "week"
+      ],
+      "title": "Period"
+     },
+     "rows": {
+      "items": {
+       "$ref": "#/components/schemas/VerticalRow"
+      },
+      "type": "array",
+      "title": "Rows"
+     }
+    },
+    "type": "object",
+    "required": [
+     "period",
+     "rows"
+    ],
+    "title": "VerticalBoard"
+   },
+   "VerticalRow": {
+    "properties": {
+     "vertical": {
+      "$ref": "#/components/schemas/Vertical"
+     },
+     "members": {
+      "type": "integer",
+      "title": "Members"
+     },
+     "points_per_member": {
+      "type": "number",
+      "title": "Points Per Member"
+     },
+     "participation": {
+      "type": "number",
+      "title": "Participation",
+      "description": "Share of members who answered a daily question in the last 7 days"
+     }
+    },
+    "type": "object",
+    "required": [
+     "vertical",
+     "members",
+     "points_per_member",
+     "participation"
+    ],
+    "title": "VerticalRow"
    }
   }
  }

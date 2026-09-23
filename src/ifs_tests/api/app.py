@@ -11,7 +11,7 @@ from .. import __version__
 from ..auth.passwords import HashingBusy
 from ..services.errors import UserError
 from ..settings import Settings, get_settings
-from .routes import admin, auth, daily, me, mock, practice, review
+from .routes import admin, auth, daily, leaderboard, me, mock, practice, review
 from .security import CSRFGuard, SecurityHeaders
 
 
@@ -54,6 +54,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         mock.router,
         review.router,
         review.reports,
+        leaderboard.router,
     ):
         app.include_router(router)
 

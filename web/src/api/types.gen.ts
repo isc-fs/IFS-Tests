@@ -294,6 +294,57 @@ export type InviteInfo = {
 };
 
 /**
+ * LeaderRow
+ */
+export type LeaderRow = {
+    /**
+     * Rank
+     */
+    rank: number;
+    /**
+     * Display Name
+     */
+    display_name: string;
+    vertical: Vertical | null;
+    /**
+     * Points
+     */
+    points: number;
+    /**
+     * Me
+     */
+    me: boolean;
+};
+
+/**
+ * Leaderboard
+ */
+export type Leaderboard = {
+    /**
+     * Period
+     */
+    period: 'season' | 'week';
+    /**
+     * Board
+     */
+    board: 'everyone' | 'mech' | 'elec' | 'rules';
+    /**
+     * Rows
+     */
+    rows: Array<LeaderRow>;
+    /**
+     * Null until the member scores in this period
+     */
+    me: MyRank | null;
+    /**
+     * Players
+     *
+     * People on this board, including any beyond the rows shown
+     */
+    players: number;
+};
+
+/**
  * Link
  */
 export type Link = {
@@ -485,6 +536,28 @@ export type MockSummary = {
      * Items
      */
     items: Array<MockItem>;
+};
+
+/**
+ * MyRank
+ *
+ * The requesting member's own place, shown even when they are hidden or outside the top rows.
+ */
+export type MyRank = {
+    /**
+     * Rank
+     */
+    rank: number;
+    /**
+     * Points
+     */
+    points: number;
+    /**
+     * Hidden
+     *
+     * Opted out: others don't see them on the board
+     */
+    hidden: boolean;
 };
 
 /**
@@ -1037,6 +1110,41 @@ export const Vertical = {
  * Vertical
  */
 export type Vertical = typeof Vertical[keyof typeof Vertical];
+
+/**
+ * VerticalBoard
+ */
+export type VerticalBoard = {
+    /**
+     * Period
+     */
+    period: 'season' | 'week';
+    /**
+     * Rows
+     */
+    rows: Array<VerticalRow>;
+};
+
+/**
+ * VerticalRow
+ */
+export type VerticalRow = {
+    vertical: Vertical;
+    /**
+     * Members
+     */
+    members: number;
+    /**
+     * Points Per Member
+     */
+    points_per_member: number;
+    /**
+     * Participation
+     *
+     * Share of members who answered a daily question in the last 7 days
+     */
+    participation: number;
+};
 
 export type LoginData = {
     body: LoginIn;
@@ -2029,3 +2137,67 @@ export type ReportQuestionResponses = {
 };
 
 export type ReportQuestionResponse = ReportQuestionResponses[keyof ReportQuestionResponses];
+
+export type GetLeaderboardData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Board
+         */
+        board?: 'everyone' | 'mech' | 'elec' | 'rules';
+        /**
+         * Period
+         */
+        period?: 'season' | 'week';
+    };
+    url: '/api/leaderboard';
+};
+
+export type GetLeaderboardErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetLeaderboardError = GetLeaderboardErrors[keyof GetLeaderboardErrors];
+
+export type GetLeaderboardResponses = {
+    /**
+     * Successful Response
+     */
+    200: Leaderboard;
+};
+
+export type GetLeaderboardResponse = GetLeaderboardResponses[keyof GetLeaderboardResponses];
+
+export type VerticalLeaderboardData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Period
+         */
+        period?: 'season' | 'week';
+    };
+    url: '/api/leaderboard/verticals';
+};
+
+export type VerticalLeaderboardErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VerticalLeaderboardError = VerticalLeaderboardErrors[keyof VerticalLeaderboardErrors];
+
+export type VerticalLeaderboardResponses = {
+    /**
+     * Successful Response
+     */
+    200: VerticalBoard;
+};
+
+export type VerticalLeaderboardResponse = VerticalLeaderboardResponses[keyof VerticalLeaderboardResponses];

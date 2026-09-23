@@ -200,6 +200,7 @@ def _advance(db: DB, s: MockSession, now: datetime) -> tuple[Question, Attempt] 
                 answer={},
                 created_at=now,
                 session_id=s.id,
+                area=q.area,
                 deadline_at=now + timedelta(seconds=timing.budget(q.time_s, q.answer_kind)),
             )
             db.add(a)

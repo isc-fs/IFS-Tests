@@ -64,7 +64,7 @@ test('invite, join, hide from the board, get a reset link, sign back in', async 
 
 test('pages never scroll sideways on a phone', async ({ page }) => {
   await signIn(page, ADMIN.email, ADMIN.password)
-  for (const path of ['/', '/daily', '/practice', '/mock', '/profile', '/admin', '/review']) {
+  for (const path of ['/', '/daily', '/practice', '/mock', '/leaderboard', '/profile', '/admin', '/review']) {
     await page.goto(path)
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
@@ -86,5 +86,14 @@ test('every navigation link is on screen on a phone', async ({ page }) => {
   for (const link of await page.getByRole('navigation', { name: 'Main' }).getByRole('link').all()) {
     const box = await link.boundingBox()
     expect(box && box.x >= 0 && box.x + box.width <= width, await link.innerText()).toBe(true)
+  }
+})
+
+test('the selected filter chip stands out', async ({ page }) => {
+  await signIn(page, ADMIN.email, ADMIN.password)
+  for (const path of ['/leaderboard?period=week', '/practice?area=mech', '/review?queue=all']) {
+    await page.goto(path)
+    const chip = page.locator('.chips a[aria-current]').first()
+    await expect(chip, path).toHaveCSS('background-color', 'rgb(6, 66, 41)')
   }
 })
