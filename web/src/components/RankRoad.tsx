@@ -38,7 +38,7 @@ export function RankRoad({ me }: { me: Me }) {
                 return (
                   <li
                     key={s.level}
-                    className={`road-step ${state}`}
+                    className={`road-step ${state}${s.level === p.ladder.length - 1 && s.title ? ' revealed' : ''}`}
                     aria-current={state === 'current' ? 'step' : undefined}
                   >
                     <Emblem level={s.level} title={s.title} size={tier === 'Top' ? 88 : 52} />

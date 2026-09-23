@@ -915,6 +915,10 @@ details[open] > summary::before {
   filter: grayscale(1);
   opacity: 0.45;
 }
+.road-step.locked.revealed .emblem {
+  filter: drop-shadow(0 0 8px var(--isc-gold));
+  opacity: 1;
+}
 .road-step.done {
   background: var(--isc-cream);
 }

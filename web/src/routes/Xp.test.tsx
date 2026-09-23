@@ -91,6 +91,7 @@ test('a DT V sees no help, what wrong answers cost, and what waits at the top', 
   expect(card).toHaveTextContent('Wrong answers: cost 70 % of what a right one earns.')
   const top = screen.getByRole('region', { name: 'The top' })
   expect(within(top).getByRole('img', { name: 'Villano' })).toHaveClass('emblem-villano')
+  expect(within(top).getByRole('listitem')).toHaveClass('locked', 'revealed') // in colour, still to reach
   expect(screen.getByLabelText('Where are you on the team?')).toHaveValue('technical_director')
 })
 
