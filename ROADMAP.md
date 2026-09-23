@@ -24,8 +24,8 @@ after launch.
 | Phase | Title | Branches | Milestone tag |
 |:---:|---|---|---|
 | 1 | Foundations | ✅ done `feat/1-project-scope` · ✅ done `feat/2-fsquiz-client` · ✅ done `feat/3-team-proposal` | `v0.1.0` |
-| 2 | Platform foundation<br><sub>Staging live on the team server, accounts and the question bank in place</sub> | 🔜 planned `feat/4-platform-skeleton` · 🔜 planned `feat/5-server-deploy` · 🔜 planned `feat/6-accounts-auth` · 🔜 planned `feat/7-bank-push` | `v0.2.0` |
-| 3 | Training MVP | 🔜 planned `feat/8-practice` · 🔜 planned `feat/9-admin-taxonomy` · 🔜 planned `feat/10-daily-question` · 🔜 planned `feat/11-mock-quiz` · 🔜 planned `feat/12-leaderboard` | `v0.3.0` |
+| 2 | Platform foundation<br><sub>Staging live on the team server, accounts and the question bank in place</sub> | ✅ done `feat/4-platform-skeleton` · 🔄 active `feat/5-server-deploy` · 🔄 active `feat/6-accounts-auth` · 🔄 active `feat/7-bank-push` | `v0.2.0` |
+| 3 | Training MVP | 🔄 active `feat/8-practice` · 🔜 planned `feat/9-admin-taxonomy` · 🔜 planned `feat/10-daily-question` · 🔜 planned `feat/11-mock-quiz` · 🔄 active `feat/12-leaderboard` | `v0.3.0` |
 | 4 | Launch | 🔜 planned `feat/13-privacy-account` · 🔜 planned `feat/14-launch` | `v1.0.0` |
 | 5 | After launch _(deferred)_<br><sub>Ideas to prioritise with the team once the MVP is in use</sub> | ⏸ deferred `feat/15-admin-totp` · ⏸ deferred `feat/16-notion-sync` · ⏸ deferred `feat/17-solution-bounty` · ⏸ deferred `feat/18-team-questions` · ⏸ deferred `feat/19-quiz-day-drill` | `v1.1.0` |
 
@@ -58,19 +58,19 @@ gitGraph
 
     %% Phase 2 — Platform foundation
     branch feat/4-platform-skeleton
-    commit id: "○ ADRs, FastAPI app, Alembic, SPA shell, local compose, CI, CodeQL"
+    commit id: "✔ ADRs, FastAPI app, Alembic, SPA shell, local compose, CI, CodeQL"
     checkout dev
     merge feat/4-platform-skeleton
     branch feat/5-server-deploy
-    commit id: "○ Hardened production compose, scheduler, backups, deploy script, Nginx snippet"
+    commit id: "… Hardened production compose, scheduler, backups, deploy script, Nginx snippet"
     checkout dev
     merge feat/5-server-deploy
     branch feat/6-accounts-auth
-    commit id: "○ Invite links, Argon2id passwords, sessions, CSRF, roles, admin users, audit"
+    commit id: "… Invite links, Argon2id passwords, sessions, CSRF, roles, admin users, audit"
     checkout dev
     merge feat/6-accounts-auth
     branch feat/7-bank-push
-    commit id: "○ Bank tables, answer-key normaliser, idempotent import, mirrored images"
+    commit id: "… Bank tables, answer-key normaliser, idempotent import, mirrored images"
     checkout dev
     merge feat/7-bank-push
     checkout main
@@ -79,7 +79,7 @@ gitGraph
 
     %% Phase 3 — Training MVP
     branch feat/8-practice
-    commit id: "○ Practice by topic with server-side grading and answer reveal"
+    commit id: "… Practice by topic with server-side grading and answer reveal"
     checkout dev
     merge feat/8-practice
     branch feat/9-admin-taxonomy
@@ -95,7 +95,7 @@ gitGraph
     checkout dev
     merge feat/11-mock-quiz
     branch feat/12-leaderboard
-    commit id: "○ Season leaderboards per person, area and vertical, with opt-out"
+    commit id: "… Season leaderboards per person, area and vertical, with opt-out"
     checkout dev
     merge feat/12-leaderboard
     checkout main
