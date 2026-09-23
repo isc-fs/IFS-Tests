@@ -213,8 +213,13 @@ class Question(Base):
     answer_kind: Mapped[str] = mapped_column(String(16))
     # Whether answers can be scored automatically. Daily questions and mock quizzes only use graded ones.
     graded: Mapped[bool] = mapped_column(server_default="false")
-    # False when an image the question needs is missing: such questions are never served.
+    # Served to players only when true: no image missing and not excluded by a reviewer.
     playable: Mapped[bool] = mapped_column(server_default="true")
+    images_missing: Mapped[bool] = mapped_column(server_default="false")
+    excluded: Mapped[bool] = mapped_column(server_default="false")
+    exclusion_note: Mapped[str | None] = mapped_column(String(200))
+    # Set once a reviewer confirmed area and topic; re-imports keep them.
+    labels_reviewed: Mapped[bool] = mapped_column(server_default="false")
     source_hash: Mapped[str] = mapped_column(String(64))
     key_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -240,6 +245,17 @@ class AnswerKey(Base):
     question_id: Mapped[int] = mapped_column(ForeignKey("questions.id", ondelete="CASCADE"), primary_key=True)
     key: Mapped[dict[str, Any] | None]
     display: Mapped[str | None] = mapped_column(Text)
+    # A reviewer's correction, used instead of FS-Quiz's answer. Dropped if the question changes upstream.
+    override: Mapped[dict[str, Any] | None]
+    override_display: Mapped[str | None] = mapped_column(Text)
+
+    @property
+    def effective(self) -> dict[str, Any] | None:
+        return self.override or self.key
+
+    @property
+    def shown(self) -> str | None:
+        return self.override_display if self.override else self.display
 
 
 class Solution(Base):
@@ -335,4 +351,27 @@ Index(
     MockSession.quiz_id,
     unique=True,
     postgresql_where=MockSession.finished_at.is_(None),
+)
+
+
+class Report(Base):
+    """A player's note that something is wrong with a question, for reviewers."""
+
+    __tablename__ = "reports"
+
+    id: Mapped[int] = mapped_column(Identity(), primary_key=True)
+    question_id: Mapped[int] = mapped_column(ForeignKey("questions.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    message: Mapped[str] = mapped_column(String(500))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    resolved_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+
+
+Index(
+    "uq_reports_open",
+    Report.question_id,
+    Report.user_id,
+    unique=True,
+    postgresql_where=Report.resolved_at.is_(None),
 )

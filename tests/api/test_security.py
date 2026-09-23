@@ -31,7 +31,7 @@ def test_every_api_route_needs_a_member_and_admin_routes_an_admin(
     m = new_client()
     register(m, invite(app_client), "m@alu.comillas.edu", "Member")
     for method, path in routes:
-        if path.startswith("/api/admin/"):
+        if path.startswith(("/api/admin/", "/api/review/")):
             assert m.request(method, path, json={}).status_code == 403, (method, path)
 
 

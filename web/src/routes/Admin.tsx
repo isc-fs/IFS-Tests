@@ -1,5 +1,6 @@
 import { type QueryKey, useMutation, useQuery } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router'
 import {
   auditLogOptions,
   auditLogQueryKey,
@@ -303,13 +304,18 @@ function BankPanel() {
               </li>
             ))}
           </ul>
-          {bank.questions > bank.playable && (
-            <p className="muted">{bank.questions - bank.playable} are hidden until their images are available.</p>
+          {bank.missing_images > 0 && (
+            <p className="muted">{bank.missing_images} are hidden until their images are available.</p>
+          )}
+          {bank.excluded > 0 && (
+            <p className="muted">
+              {bank.excluded} hidden by reviewers. <Link to="/review?queue=excluded">See them</Link>
+            </p>
           )}
           {bank.key_changes > 0 && (
             <Notice tone="error">
-              FS-Quiz changed the official answer of {bank.key_changes} question{bank.key_changes > 1 ? 's' : ''} since
-              it was first loaded. Reviewer tools to check them are on the roadmap.
+              FS-Quiz changed {bank.key_changes} question{bank.key_changes > 1 ? 's' : ''} since they were loaded.{' '}
+              <Link to="/review?queue=changed">Review the changes</Link>
             </Notice>
           )}
         </>
@@ -329,6 +335,10 @@ const ACTIONS: Record<string, string> = {
   'password.reset': 'reset their password',
   'password.change': 'changed their password',
   'bank.import': 'loaded the question bank',
+  'question.update': 'reviewed',
+  'question.answer': 'corrected the answer of',
+  'question.answer_cleared': 'removed the correction of',
+  'report.resolve': 'handled a report on',
 }
 
 function AuditTrail() {
@@ -349,7 +359,11 @@ function AuditTrail() {
           return (
             <li key={a.id}>
               <time dateTime={a.at}>{when(a.at)}</time> {a.actor ?? 'System'} {ACTIONS[a.action] ?? a.action}
-              {!self && a.target && a.actor !== null && !a.target.startsWith('invite:') && ` ${a.target}`}
+              {!self &&
+                a.target &&
+                a.actor !== null &&
+                !a.target.startsWith('invite:') &&
+                ` ${a.target.replace(/^question:/, 'question ')}`}
               {a.action === 'user.update' &&
                 ` (${Object.entries(a.details)
                   .map(([k, v]) => `${k} → ${(v as string[])[1]}`)

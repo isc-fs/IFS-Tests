@@ -11,8 +11,10 @@ import Practice from './Practice'
 import Profile from './Profile'
 import Reset from './Reset'
 
-// The admin area is only for a handful of people: keep it out of the main bundle.
+// The admin and review areas are only for a handful of people: keep them out of the main bundle.
 const Admin = lazy(() => import('./Admin'))
+const Review = lazy(() => import('./Review'))
+const ReviewDetail = lazy(() => import('./Review').then((m) => ({ default: m.ReviewDetail })))
 
 function Crashed() {
   return (
@@ -50,6 +52,8 @@ export const routes: RouteObject[] = [
       { path: 'mock/:sessionId', element: <MockRun /> },
       { path: 'profile', element: <Profile /> },
       { path: 'admin', element: <Admin /> },
+      { path: 'review', element: <Review /> },
+      { path: 'review/:questionId', element: <ReviewDetail /> },
     ],
   },
   { path: '*', element: <NotFound /> },

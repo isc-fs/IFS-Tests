@@ -39,7 +39,7 @@ def _quiz_labels(db: DB, ids: list[int]) -> dict[int, list[str]]:
         .join(quiz_events, quiz_events.c.quiz_id == Quiz.id)
         .join(Event, Event.id == quiz_events.c.event_id)
         .where(QuizQuestion.question_id.in_(ids))
-        .order_by(Quiz.year.desc(), Event.short_name)
+        .order_by(Quiz.year.desc(), Quiz.held_on.desc().nulls_last(), Event.short_name, Quiz.id)
     )
     labels: dict[int, list[str]] = defaultdict(list)
     for qid, event, year, vehicle in rows:
@@ -64,8 +64,8 @@ def show(db: DB, questions: list[Question]) -> list[Shown]:
         select(AnswerOption).where(AnswerOption.question_id.in_(ids)).order_by(AnswerOption.position)
     ):
         options[o.question_id].append(o)
-    rows = db.execute(select(AnswerKey.question_id, AnswerKey.key).where(AnswerKey.question_id.in_(ids)))
-    keys = {qid: key for qid, key in rows}
+    found = db.scalars(select(AnswerKey).where(AnswerKey.question_id.in_(ids)))
+    keys = {k.question_id: k.effective for k in found}
     labels = _quiz_labels(db, ids)
     return [Shown(q, options[q.id], labels[q.id], _value_count(keys.get(q.id))) for q in questions]
 
@@ -83,12 +83,12 @@ def check(db: DB, q: Question, options: list[int] | None, value: str | None) -> 
     if options and not set(options) <= set(choices):
         raise UserError("Pick one of the listed answers.")
     key = db.get(AnswerKey, q.id)
-    k = key.key if key else None
+    k = key.effective if key else None
     correct = grade(k, options=options, value=value) if q.graded else None
     solutions = db.scalars(select(Solution).where(Solution.question_id == q.id).order_by(Solution.id)).all()
     return Checked(
         correct=correct,
-        official=key.display if key else None,
+        official=key.shown if key else None,
         correct_options=list(k["options"]) if k and k["kind"] == "choice" else [],
         solutions=[(s.text, list(s.images)) for s in solutions],
     )

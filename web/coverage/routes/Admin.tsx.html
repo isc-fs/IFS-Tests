@@ -30,9 +30,9 @@
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">77.52% </span>
+                <span class="strong">78.02% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>69/89</span>
+                <span class='fraction'>71/91</span>
             </div>
         
             
@@ -426,7 +426,22 @@
 <a name='L361'></a><a href='#L361'>361</a>
 <a name='L362'></a><a href='#L362'>362</a>
 <a name='L363'></a><a href='#L363'>363</a>
-<a name='L364'></a><a href='#L364'>364</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L364'></a><a href='#L364'>364</a>
+<a name='L365'></a><a href='#L365'>365</a>
+<a name='L366'></a><a href='#L366'>366</a>
+<a name='L367'></a><a href='#L367'>367</a>
+<a name='L368'></a><a href='#L368'>368</a>
+<a name='L369'></a><a href='#L369'>369</a>
+<a name='L370'></a><a href='#L370'>370</a>
+<a name='L371'></a><a href='#L371'>371</a>
+<a name='L372'></a><a href='#L372'>372</a>
+<a name='L373'></a><a href='#L373'>373</a>
+<a name='L374'></a><a href='#L374'>374</a>
+<a name='L375'></a><a href='#L375'>375</a>
+<a name='L376'></a><a href='#L376'>376</a>
+<a name='L377'></a><a href='#L377'>377</a>
+<a name='L378'></a><a href='#L378'>378</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -746,7 +761,16 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -775,6 +799,10 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">10x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -791,6 +819,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">import { type QueryKey, useMutation, useQuery } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router'
 import {
   auditLogOptions,
   auditLogQueryKey,
@@ -1094,13 +1123,18 @@ function BankPanel() {
               &lt;/li&gt;
             ))}
           &lt;/ul&gt;
-          {bank.questions &gt; bank.playable &amp;&amp; (
-            &lt;p className="muted"&gt;{bank.questions - bank.playable} are hidden until their images are available.&lt;/p&gt;
+          {bank.missing_images &gt; 0 &amp;&amp; (
+            &lt;p className="muted"&gt;{bank.missing_images} are hidden until their images are available.&lt;/p&gt;
+          )}
+          {bank.excluded &gt; 0 &amp;&amp; (
+            &lt;p className="muted"&gt;
+              {bank.excluded} hidden by reviewers. &lt;Link to="/review?queue=excluded"&gt;See them&lt;/Link&gt;
+            &lt;/p&gt;
           )}
           {bank.key_changes &gt; 0 &amp;&amp; (
             &lt;Notice tone="error"&gt;
-              FS-Quiz changed the official answer of {bank.key_changes} question{bank.key_changes &gt; 1 ? 's' : <span class="branch-1 cbranch-no" title="branch not covered" >''} </span>since
-              it was first loaded. Reviewer tools to check them are on the roadmap.
+              FS-Quiz changed {bank.key_changes} question{bank.key_changes &gt; 1 ? 's' : <span class="branch-1 cbranch-no" title="branch not covered" >''} </span>since they were loaded.{' '}
+              &lt;Link to="/review?queue=changed"&gt;Review the changes&lt;/Link&gt;
             &lt;/Notice&gt;
           )}
         &lt;/&gt;
@@ -1120,6 +1154,10 @@ const ACTIONS: Record&lt;string, string&gt; = {
   'password.reset': 'reset their password',
   'password.change': 'changed their password',
   'bank.import': 'loaded the question bank',
+  'question.update': 'reviewed',
+  'question.answer': 'corrected the answer of',
+  'question.answer_cleared': 'removed the correction of',
+  'report.resolve': 'handled a report on',
 }
 &nbsp;
 function AuditTrail() {
@@ -1140,7 +1178,11 @@ function AuditTrail() {
           return (
             &lt;li key={a.id}&gt;
               &lt;time dateTime={a.at}&gt;{when(a.at)}&lt;/time&gt; {a.actor ?? <span class="branch-1 cbranch-no" title="branch not covered" >'System'} </span>{ACTIONS[a.action] ?? <span class="branch-1 cbranch-no" title="branch not covered" >a.action}</span>
-              {!self &amp;&amp; a.target &amp;&amp; a.actor !== null &amp;&amp; !a.target.startsWith('invite:') &amp;&amp; ` ${a.target}`}
+              {!self &amp;&amp;
+                a.target &amp;&amp;
+                a.actor !== null &amp;&amp;
+                !a.target.startsWith('invite:') &amp;&amp;
+                ` ${a.target.replace(/^question:/, 'question ')}`}
               {a.action === 'user.update' &amp;&amp;
 <span class="branch-1 cbranch-no" title="branch not covered" >                ` (${Object.entries(a.details)</span>
                   .<span class="fstat-no" title="function not covered" >map(([</span>k, v]) =&gt; <span class="cstat-no" title="statement not covered" >`${k} → ${(v as string[])[1]}`)</span>
@@ -1159,7 +1201,7 @@ function AuditTrail() {
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-09-23T12:12:13.474Z
+                at 2026-09-23T14:36:49.969Z
             </div>
         <script src="../prettify.js"></script>
         <script>

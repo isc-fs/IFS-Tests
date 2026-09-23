@@ -75,6 +75,22 @@ test('a choice question: say what is missing, then grade and explain', async () 
   expect(calls.filter((c) => c.key === 'GET /api/practice/next')[1].url.searchParams.get('skip')).toBe('7')
 })
 
+test('players can report a problem once they have answered', async () => {
+  const { sent } = renderApp('/practice', {
+    ...api(CHOICE, { correct: false, official: '0.713 m', correct_options: [70], solutions: [] }),
+    'POST /api/questions/7/report': { status: 204 },
+  })
+  await userEvent.click(await screen.findByRole('radio', { name: '0.837 m' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Check answer' }))
+  await userEvent.click(await screen.findByRole('button', { name: 'Report a problem with this question' }))
+  const send = screen.getByRole('button', { name: 'Send report' })
+  expect(send).toBeDisabled()
+  await userEvent.type(screen.getByLabelText("What's wrong?"), 'The figure is missing')
+  await userEvent.click(send)
+  expect(await screen.findByText('Thanks. A reviewer will take a look.')).toBeInTheDocument()
+  expect(sent('POST /api/questions/7/report')[0].body).toEqual({ message: 'The figure is missing' })
+})
+
 test('a list answer explains the format and shows the official answer', async () => {
   const { sent } = renderApp(
     '/practice',

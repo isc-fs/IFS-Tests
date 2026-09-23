@@ -108,7 +108,8 @@ h3 {
 }
 .topbar nav {
   display: flex;
-  gap: 16px;
+  flex-wrap: wrap;
+  gap: 0 16px;
 }
 .topbar nav a {
   display: inline-flex;
@@ -186,7 +187,8 @@ label {
   font-size: var(--isc-fs-body-s);
 }
 input,
-select {
+select,
+textarea {
   font: inherit;
   min-height: 44px;
   padding: 10px 12px;
@@ -542,6 +544,41 @@ button.secondary:hover {
 }
 .review details > .question {
   margin-top: 8px;
+}
+
+.review-list .item-title {
+  font-weight: 400;
+  text-decoration: none;
+  color: var(--isc-graphite);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.review-list .item-title:hover {
+  text-decoration: underline;
+}
+.review-list .question-meta {
+  margin-top: 6px;
+}
+.review-options {
+  display: grid;
+  gap: 6px;
+  padding-left: 20px;
+  margin: 0;
+}
+.review-options li.right {
+  font-weight: 600;
+  color: var(--isc-green-800);
+}
+textarea {
+  resize: vertical;
+  min-height: auto;
+}
+
+.panel.stack > button,
+.panel.stack > .row {
+  align-self: flex-start;
 }
 
 .stats {
