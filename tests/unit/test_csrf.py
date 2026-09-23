@@ -61,3 +61,10 @@ def test_reads_and_other_paths_pass() -> None:
 def test_deployed_origins_exclude_dev_servers() -> None:
     origins = Settings(env="prod", public_origin="https://quiz.iscracingteam.com/").allowed_origins
     assert origins == frozenset({"https://quiz.iscracingteam.com"})
+
+
+def test_deployed_environments_must_be_served_over_https() -> None:
+    with pytest.raises(ValueError, match="https"):
+        Settings(env="prod", public_origin="http://quiz.iscracingteam.com")
+    assert Settings(env="prod", public_origin="https://quiz.iscracingteam.com").session_cookie == "__Host-sid"
+    assert Settings(env="local", public_origin="http://localhost:8000").session_cookie == "sid"

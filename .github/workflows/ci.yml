@@ -96,7 +96,7 @@ jobs:
           docker run --rm ifs-tests:ci sh -c '! test -e /app/data'
       - name: Smoke test
         run: |
-          docker run -d --name smoke -p 8000:8000 -e IFS_ENV=staging ifs-tests:ci
+          docker run -d --name smoke -p 8000:8000 -e IFS_ENV=staging -e IFS_PUBLIC_ORIGIN=https://quiz.example ifs-tests:ci
           for i in $(seq 20); do curl -fsS localhost:8000/healthz && break; sleep 1; done
           curl -fsSI localhost:8000/ | grep -i "content-security-policy"
           test "$(curl -s -o /dev/null -w '%{http_code}' localhost:8000/api/openapi.json)" = "404"

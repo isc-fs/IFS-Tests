@@ -4,6 +4,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -19,9 +20,25 @@ class Settings(BaseSettings):
     # FS-Quiz mirror (bank.json and img/), written by `ifs-tests mirror`, read by `ifs-tests push`.
     bank_dir: Path = Path("data/fsquiz")
 
+    @model_validator(mode="after")
+    def deployed_means_https(self) -> Settings:
+        if self.is_deployed and not self.https:
+            raise ValueError("IFS_PUBLIC_ORIGIN must be https:// in staging and prod")
+        return self
+
     @property
     def is_deployed(self) -> bool:
         return self.env in ("staging", "prod")
+
+    @property
+    def https(self) -> bool:
+        return self.public_origin.startswith("https://")
+
+    @property
+    def session_cookie(self) -> str:
+        """`__Host-` cookies must be Secure, which browsers such as Safari refuse over plain http://localhost.
+        So local http development gets a plain name; anything served over https gets the strict one."""
+        return "__Host-sid" if self.https else "sid"
 
     def link(self, kind: str, token: str) -> str:
         """Invite/reset link. The token goes in the fragment: browsers never send it to any server."""
