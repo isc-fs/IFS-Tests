@@ -213,7 +213,10 @@ def _advance(db: DB, s: MockSession, now: datetime) -> tuple[Question, Attempt] 
             break
         if a.submitted_at is None:
             a.submitted_at, a.late, a.correct = now, True, False if q.graded else None
-            a.xp = xp.grant(db, s.user_id, q, "mock", a.correct, now, repeat=not s.counted, late=True).xp
+            repeat = (
+                not s.counted or xp.last_seen(db, s.user_id, q.id, s.started_at, other_than=a.id) is not None
+            )
+            a.xp = xp.grant(db, s.user_id, q, "mock", a.correct, now, repeat=repeat, late=True).xp
     s.position = sum(1 for a in attempts.values() if a.submitted_at)
     if current is None:
         s.finished_at = s.finished_at or now
@@ -285,8 +288,11 @@ def answer(
             )
             .returning(Attempt.id)
         ).first()
-        if recorded:  # replays of a quiz already run this season earn like repeats
-            granted = xp.grant(db, user.id, q, "mock", checked.correct, now, repeat=not s.counted, late=late)
+        if recorded:  # replays of a quiz already run this season, or questions seen before, earn like repeats
+            repeat = (
+                not s.counted or xp.last_seen(db, user.id, q.id, s.started_at, other_than=a.id) is not None
+            )
+            granted = xp.grant(db, user.id, q, "mock", checked.correct, now, repeat=repeat, late=late)
             db.execute(update(Attempt).where(Attempt.id == a.id).values(xp=granted.xp))
         db.commit()
     return state(db, user, session_id, now)

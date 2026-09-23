@@ -1,4 +1,4 @@
-"""Practice: any playable question, answered as often as you like, never scored."""
+"""Practice: any playable question, answered as often as you like, at half XP; a question seen before earns a tenth."""
 
 from __future__ import annotations
 
@@ -77,8 +77,8 @@ def answer(
 ) -> Checked:
     q = playable(db, question_id)
     result = check(db, q, options, value)
-    xp.lock(db, user.id)  # so two tabs can't both score the first right answer
-    last = xp.last_right(db, user.id, q.id)
+    xp.lock(db, user.id)  # so two tabs can't both score the first answer
+    last = xp.last_seen(db, user.id, q.id, now)
     again_today = last is not None and madrid_day(last) == madrid_day(now)
     granted = xp.grant(
         db, user.id, q, "practice", result.correct, now, repeat=last is not None, again_today=again_today
@@ -96,5 +96,5 @@ def answer(
         )
     )
     db.commit()
-    result.xp, result.level = granted.xp, granted.level
+    result.xp, result.level, result.level_up = granted.xp, granted.level, granted.level_up
     return result

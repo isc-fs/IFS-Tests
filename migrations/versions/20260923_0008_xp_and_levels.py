@@ -37,7 +37,7 @@ def upgrade() -> None:
         """
         UPDATE questions SET difficulty = LEAST(5, GREATEST(1,
             CASE answer_kind WHEN 'choice-one' THEN 2 WHEN 'numbers' THEN 4 ELSE 3 END
-            + CASE WHEN time_s >= 360 THEN 1 WHEN time_s <= 60 THEN -1 ELSE 0 END))
+            + CASE WHEN time_s >= 360 THEN 1 WHEN time_s BETWEEN 1 AND 60 THEN -1 ELSE 0 END))
         """
     )
     # ### end Alembic commands ###

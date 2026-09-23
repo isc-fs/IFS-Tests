@@ -622,6 +622,7 @@ textarea {
   font-size: var(--isc-fs-body-s);
 }
 .earned {
+  display: block;
   margin: 0;
   font-weight: 600;
 }

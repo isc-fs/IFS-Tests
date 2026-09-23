@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { expect, test } from 'vitest'
 import { MEMBER, renderApp } from '../test/render'
@@ -18,8 +18,25 @@ test('clearing the vertical sends null and the saved notice appears', async () =
     display_name: 'Marta',
     vertical: null,
     leaderboard_opt_out: true,
-    rank: 'mingo',
   })
+})
+
+test('people can move their rank up, never down', async () => {
+  const head = { ...MEMBER, rank: 'department_head' }
+  const { sent } = renderApp('/profile', {
+    'GET /api/me': { body: head },
+    'PATCH /api/me': (body) => ({ body: { ...head, ...(body as object) } }),
+  })
+  const rank = await screen.findByLabelText('Where are you on the team?')
+  expect(
+    within(rank)
+      .getAllByRole('option')
+      .map((o) => o.textContent),
+  ).toEqual(['Department Head', 'Technical Director'])
+  await userEvent.selectOptions(rank, 'technical_director')
+  await userEvent.click(screen.getByRole('button', { name: 'Save profile' }))
+  await waitFor(() => expect(sent('PATCH /api/me')).toHaveLength(1))
+  expect(sent('PATCH /api/me')[0].body).toMatchObject({ rank: 'technical_director' })
 })
 
 test('a taken name is shown on the field and disappears when edited', async () => {

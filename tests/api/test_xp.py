@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select, update
+from sqlalchemy import insert, select, update
 from sqlalchemy.orm import Session
 
 from ifs_tests.bank.mirror import load_bank
@@ -103,20 +103,28 @@ def test_an_unknown_rank_is_refused(signed_in: TestClient, new_client: NewClient
     assert r.status_code == 422
 
 
-def test_people_change_their_own_rank_but_never_lose_xp(
+def test_people_move_their_own_rank_up_only_and_it_is_audited(
     signed_in: TestClient, new_client: NewClient, db: Session
 ) -> None:
     c = new_client()
-    join(signed_in, c, "Ana")
+    ana = join(signed_in, c, "Ana")
     up = c.patch("/api/me", json={"rank": "department_head"}).json()
     assert (up["rank"], up["xp"], up["progress"]["title"]) == (
         "department_head",
         floor_for("department_head"),
         "Department Head",
     )
-    down = c.patch("/api/me", json={"rank": "mingo"}).json()
-    assert (down["rank"], down["xp"]) == ("mingo", floor_for("department_head"))
+    down = c.patch("/api/me", json={"rank": "mingo"})
+    assert down.status_code == 403
+    assert down.json()["fields"] == {"rank": "Only an admin can lower your rank."}
+    assert c.patch("/api/me", json={"rank": "department_head", "display_name": "Ana B"}).status_code == 200
     assert c.patch("/api/me", json={"rank": "boss"}).status_code == 422
+    audit = db.execute(
+        select(AuditLog.action, AuditLog.actor_id, AuditLog.details).where(AuditLog.action == "user.rank")
+    )
+    assert [tuple(a) for a in audit] == [("user.rank", ana["id"], {"rank": ["mingo", "department_head"]})]
+    lowered = signed_in.patch(f"/api/admin/users/{ana['id']}", json={"rank": "mingo"}).json()
+    assert (lowered["rank"], lowered["xp"]) == ("mingo", floor_for("department_head"))  # XP never drops
 
 
 def test_admins_correct_a_rank_and_it_is_audited(
@@ -243,27 +251,134 @@ def test_the_streak_shows_on_the_profile_and_boosts_gains(
     assert r["xp"] == award(True, 3, "practice", 0, streak_days=3) == 14
 
 
+def _answers(
+    db: Session, clock: Clock, user_id: int, qid: int, *results: bool, late: bool | None = None
+) -> None:
+    for i, correct in enumerate(results):
+        db.add(
+            Attempt(
+                user_id=user_id,
+                question_id=qid,
+                mode="practice",
+                answer={},
+                correct=correct,
+                late=late,
+                created_at=clock.now + timedelta(minutes=i),
+            )
+        )
+
+
 def test_recalibration_follows_how_people_actually_do(
     db: Session, clock: Clock, admin: User, bank: dict[int, int]
 ) -> None:
     easy, hard = bank[90001], bank[90002]
-    for i in range(20):
-        for qid, correct in ((easy, True), (hard, i == 0)):
-            db.add(
-                Attempt(
-                    user_id=admin.id,
-                    question_id=qid,
-                    mode="practice",
-                    answer={},
-                    correct=correct,
-                    created_at=clock.now,
-                )
-            )
+    people = [
+        db.scalar(
+            insert(User)
+            .values(email=f"p{i}@x.com", password_hash="x", display_name=f"P{i}")
+            .returning(User.id)
+        )
+        for i in range(20)
+    ]
+    for i, uid in enumerate(people):
+        assert uid is not None
+        _answers(db, clock, uid, easy, True, False, False)  # only the first answer counts
+        _answers(db, clock, uid, hard, i == 0, True, True)
     db.commit()
     assert xp.recalibrate(db) >= 2
     assert db.get_one(Question, easy, populate_existing=True).difficulty < 3
     assert db.get_one(Question, hard, populate_existing=True).difficulty > 3
     assert xp.recalibrate(db) == 0
+
+
+def test_one_player_answering_again_and_again_moves_nothing(
+    db: Session, clock: Clock, admin: User, bank: dict[int, int]
+) -> None:
+    _answers(db, clock, admin.id, bank[90001], *[False] * 40)
+    _answers(db, clock, admin.id, bank[90002], *[False] * 40, late=True)
+    db.commit()
+    xp.recalibrate(db)
+    for qid in (bank[90001], bank[90002]):  # one person is too few: back to the prior, not "hard"
+        q = db.get_one(Question, qid, populate_existing=True)
+        assert q.difficulty == difficulty(q.answer_kind, q.time_s)
+
+
+def test_a_question_seen_before_earns_a_tenth_in_every_mode(
+    signed_in: TestClient, new_client: NewClient, db: Session, clock: Clock, bank: dict[int, int]
+) -> None:
+    c = new_client()
+    join(signed_in, c, "Ana")
+    started = c.post("/api/daily/mech/start").json()
+    qid = started["question"]["id"]
+    c.post(f"/api/practice/questions/{qid}/answer", json=_wrong(started))  # sees the official answer
+    r = c.post(f"/api/daily/attempts/{started['attempt_id']}/answer", json=right_answer(db, qid)).json()
+    assert r["xp"] == award(True, 3, "daily", 0, repeat=True) == 5
+
+    state = c.post("/api/mock/quizzes/9002/start").json()
+    seen = state["current"]["question"]["id"]
+    c.post(f"/api/practice/questions/{seen}/answer", json=right_answer(db, seen))
+    state = c.post(
+        f"/api/mock/sessions/{state['session_id']}/answer",
+        json={"attempt_id": state["current"]["attempt_id"], **right_answer(db, seen)},
+    ).json()
+    while state["current"]:
+        body = right_answer(db, state["current"]["question"]["id"])
+        state = c.post(
+            f"/api/mock/sessions/{state['session_id']}/answer",
+            json={"attempt_id": state["current"]["attempt_id"], **body},
+        ).json()
+    items = [i["feedback"]["xp"] for i in state["summary"]["items"]]
+    assert items[0] == award(True, 3, "mock", 0, repeat=True) and items[1] == award(True, 3, "mock", 0)
+
+
+def test_practice_wrong_then_right_earns_nothing_more_that_day(
+    signed_in: TestClient, new_client: NewClient, db: Session, clock: Clock, bank: dict[int, int]
+) -> None:
+    c = new_client()
+    join(signed_in, c, "Ana")
+    qid = bank[90001]
+    right, wrong = options(db, qid)[:2]
+    assert c.post(f"/api/practice/questions/{qid}/answer", json={"options": [wrong]}).json()["xp"] == 0
+    assert c.post(f"/api/practice/questions/{qid}/answer", json={"options": [right]}).json()["xp"] == 0
+    assert c.get("/api/me").json()["xp"] == 0
+
+
+def test_the_answer_that_crosses_a_level_says_so(
+    signed_in: TestClient, new_client: NewClient, db: Session, bank: dict[int, int]
+) -> None:
+    c = new_client()
+    ana = join(signed_in, c, "Ana")
+    db.execute(update(User).where(User.id == ana["id"]).values(xp=xp_for_level(1) - 1))
+    db.commit()
+    qid = bank[90001]
+    first = c.post(f"/api/practice/questions/{qid}/answer", json={"options": [options(db, qid)[0]]}).json()
+    assert (first["level"], first["level_up"]) == (1, True)
+    other = bank[90002]
+    second = c.post(f"/api/practice/questions/{other}/answer", json=right_answer(db, other)).json()
+    assert (second["level"], second["level_up"]) == (1, False)
+
+
+def test_you_keep_your_place_when_xp_won_and_lost_cancel_out(
+    signed_in: TestClient, new_client: NewClient, db: Session, bank: dict[int, int]
+) -> None:
+    c = new_client()
+    toni = join(signed_in, c, "Toni", "technical_director")
+    qid = bank[90001]
+    for xp_amount in (9, -9):
+        db.add(
+            Attempt(
+                user_id=toni["id"],
+                question_id=qid,
+                mode="practice",
+                answer={},
+                correct=xp_amount > 0,
+                created_at=datetime.now(UTC),
+                xp=xp_amount,
+            )
+        )
+    db.commit()
+    board = c.get("/api/leaderboard").json()
+    assert board["me"] is not None and board["me"]["xp"] == 0
 
 
 def _wrong(started: dict[str, Any]) -> dict[str, Any]:

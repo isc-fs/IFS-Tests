@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import threading
+import time
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -20,6 +21,7 @@ from ifs_tests.domain.daily import madrid_day
 from ifs_tests.domain.xp import award, floor_for, level_for
 from ifs_tests.services import accounts, daily, mock, practice, review
 from ifs_tests.services import bank as bank_service
+from ifs_tests.services import xp as xp_service
 from ifs_tests.services.bank import import_bank
 
 pytestmark = pytest.mark.integration
@@ -245,3 +247,55 @@ def test_two_tabs_cannot_both_score_the_first_right_answer(
     assert sorted(r.xp for r in results) == [0, 0, 0, award(True, 3, "practice", 0)], results
     db.refresh(daily_player)
     assert daily_player.xp == award(True, 3, "practice", 0)
+
+
+def test_closing_abandoned_dailies_never_deadlocks_with_a_late_answer(
+    db: Session, app_engine: Engine, daily_player: User, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The nightly job holds one abandoned attempt and the player's row while the player answers another late.
+    daily_player.rank, daily_player.xp = "member", floor_for("member") + 1000
+    db.commit()
+    started = [daily.start(db, daily_player, area, NOW)[1].id for area in ("mech", "elec")]
+    later = NOW + timedelta(hours=1)
+    job_holds, player_waits = threading.Event(), threading.Event()
+    grant = xp_service.grant
+
+    def slow_grant(s: Session, user_id: int, question: Question, *args: Any, **kwargs: Any) -> Any:
+        granted = grant(s, user_id, question, *args, **kwargs)
+        if threading.current_thread().name == "job" and not job_holds.is_set():
+            job_holds.set()
+            player_waits.wait(5)
+            time.sleep(0.5)  # the player's request locks its attempt and queues for the player's row
+        return granted
+
+    monkeypatch.setattr(xp_service, "grant", slow_grant)
+    results: dict[str, Any] = {}
+
+    def job() -> None:
+        with sessionmaker(app_engine, expire_on_commit=False)() as s:
+            try:
+                results["job"] = daily.close_expired(s, later)
+            except Exception as e:  # noqa: BLE001
+                results["job"] = e
+
+    def player() -> None:
+        job_holds.wait(5)
+        with sessionmaker(app_engine, expire_on_commit=False)() as s:
+            player_waits.set()
+            try:
+                results["player"] = daily.answer(
+                    s, s.get_one(User, daily_player.id), started[1], [], None, later
+                )
+            except Exception as e:  # noqa: BLE001
+                results["player"] = e
+
+    threads = [threading.Thread(target=job, name="job"), threading.Thread(target=player)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert not any(isinstance(r, Exception) for r in results.values()), results
+    rows = db.scalars(
+        select(Attempt).where(Attempt.id.in_(started)).execution_options(populate_existing=True)
+    )
+    assert all(a.submitted_at == later and a.late for a in rows)

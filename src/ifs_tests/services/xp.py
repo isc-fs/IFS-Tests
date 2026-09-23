@@ -8,8 +8,9 @@ from datetime import datetime
 from sqlalchemy import case, func, select, update
 from sqlalchemy.orm import Session as DB
 
-from ..db.models import Attempt, Question, User
+from ..db.models import Attempt, MockSession, Question, User
 from ..domain import daily as daily_rules
+from ..domain import leaderboard as board_rules
 from ..domain import xp as rules
 
 
@@ -26,17 +27,35 @@ def streak_days(db: DB, user_id: int, now: datetime) -> int:
     return daily_rules.streak({d for d in days if d}, daily_rules.madrid_day(now))
 
 
-def lock(db: DB, user_id: int) -> int:
-    """Take the player's row lock until commit, so their answers are scored one at a time. Returns their XP."""
-    return db.execute(select(User.xp).where(User.id == user_id).with_for_update()).scalar_one()
+def lock(db: DB, user_id: int) -> tuple[int, str]:
+    """Take the player's row lock until commit, so their answers are scored one at a time. NO KEY UPDATE
+    still lets rows that reference the user (attempts, sessions) be inserted meanwhile. Returns XP and rank."""
+    row = db.execute(
+        select(User.xp, User.rank).where(User.id == user_id).with_for_update(key_share=True)
+    ).one()
+    return row.xp, row.rank
 
 
-def last_right(db: DB, user_id: int, question_id: int) -> datetime | None:
-    return db.scalar(
-        select(func.max(Attempt.created_at)).where(
-            Attempt.user_id == user_id, Attempt.question_id == question_id, Attempt.correct.is_(True)
+def last_seen(
+    db: DB, user_id: int, question_id: int, now: datetime, other_than: int | None = None
+) -> datetime | None:
+    """When the player last had this question graded this season, in any mode: from then on they have seen
+    its answer. A new season starts everyone afresh; a mock answer belongs to the season its run started in,
+    as on the leaderboard."""
+    season_start = board_rules.madrid_midnight(board_rules.first_day("season", daily_rules.madrid_day(now)))
+    stmt = (
+        select(func.max(Attempt.created_at))
+        .outerjoin(MockSession, MockSession.id == Attempt.session_id)
+        .where(
+            Attempt.user_id == user_id,
+            Attempt.question_id == question_id,
+            Attempt.correct.is_not(None),
+            func.coalesce(MockSession.started_at, Attempt.created_at) >= season_start,
         )
     )
+    if other_than is not None:
+        stmt = stmt.where(Attempt.id != other_than)
+    return db.scalar(stmt)
 
 
 def level(db: DB, user_id: int) -> int:
@@ -47,6 +66,7 @@ def level(db: DB, user_id: int) -> int:
 class Grant:
     xp: int
     level: int
+    level_up: bool
 
 
 def grant(
@@ -64,12 +84,12 @@ def grant(
 ) -> Grant:
     """Work out the XP for one answer and add it to the player's lifetime XP, which never drops below the
     level their rank starts at. The caller stores `xp` on the attempt and commits."""
-    rank = db.execute(select(User.rank).where(User.id == user_id)).scalar_one()
+    before, rank = lock(db, user_id)
     amount = rules.award(
         correct,
         question.difficulty,
         mode,
-        rules.level_for(lock(db, user_id)),
+        rules.level_for(before),
         streak_days(db, user_id, now),
         hint,
         repeat,
@@ -82,22 +102,30 @@ def grant(
         .values(xp=func.greatest(rules.floor_for(rank), User.xp + amount))
         .returning(User.xp)
     ).scalar_one()
-    return Grant(amount, rules.level_for(total))
+    return Grant(amount, rules.level_for(total), rules.level_for(total) > rules.level_for(before))
 
 
 def recalibrate(db: DB) -> int:
-    """Nightly: move each graded question's difficulty towards how people actually answer it."""
+    """Nightly: move each graded question's difficulty towards how people actually answer it. Only each
+    person's first answer in time counts, so nobody can drag a question's difficulty by answering it again."""
+    first = (
+        select(Attempt.question_id, Attempt.correct)
+        .where(Attempt.correct.is_not(None), Attempt.late.is_not(True))
+        .distinct(Attempt.user_id, Attempt.question_id)
+        .order_by(Attempt.user_id, Attempt.question_id, Attempt.created_at, Attempt.id)
+        .subquery()
+    )
     stats = db.execute(
         select(
             Question.id,
             Question.answer_kind,
             Question.time_s,
             Question.difficulty,
-            func.count(Attempt.id),
-            func.count(case((Attempt.correct.is_(True), 1))),
+            func.count(),
+            func.count(case((first.c.correct.is_(True), 1))),
         )
-        .join(Attempt, Attempt.question_id == Question.id)
-        .where(Question.graded, Attempt.correct.is_not(None))
+        .join(first, first.c.question_id == Question.id)
+        .where(Question.graded)
         .group_by(Question.id)
     )
     changed = 0

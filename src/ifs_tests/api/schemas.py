@@ -197,6 +197,7 @@ class Feedback(BaseModel):
     solutions: list[SolutionOut]
     xp: int = Field(default=0, description="XP this answer earned (negative when it cost XP)")
     level: int | None = Field(default=None, description="Your level after this answer")
+    level_up: bool = Field(default=False, description="This answer took you to a new level")
 
 
 class DailyArea(BaseModel):

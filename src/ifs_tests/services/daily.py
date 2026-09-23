@@ -182,7 +182,7 @@ class Result:
 def answer(
     db: DB, user: User, attempt_id: int, options: list[int] | None, value: str | None, now: datetime
 ) -> Result:
-    """Submit once. Late answers are recorded but score nothing; repeats return the stored result."""
+    """Submit once. Late answers are recorded and count as wrong; repeats return the stored result."""
     a = db.scalar(
         select(Attempt).where(Attempt.id == attempt_id, Attempt.user_id == user.id, Attempt.mode == "daily")
     )
@@ -204,8 +204,14 @@ def answer(
             .returning(Attempt.id)
         ).first()
         if recorded:  # only the request that recorded the answer earns the XP
-            granted = xp.grant(db, user.id, q, "daily", checked.correct, now, late=late)
+            repeat = xp.last_seen(db, user.id, q.id, now, other_than=a.id) is not None
+            granted = xp.grant(db, user.id, q, "daily", checked.correct, now, late=late, repeat=repeat)
             db.execute(update(Attempt).where(Attempt.id == a.id).values(xp=granted.xp))
+            db.commit()
+            db.refresh(a)
+            result = review_attempt(db, user, a)
+            result.checked.level_up = granted.level_up
+            return result
         db.commit()
         db.refresh(a)
     return review_attempt(db, user, a)
@@ -214,8 +220,12 @@ def answer(
 def close_expired(db: DB, now: datetime, user_id: int | None = None) -> int:
     """Close daily questions left to run out: late and wrong, like an answer sent after the time.
     Otherwise closing the tab on a hard question would dodge the XP a wrong answer costs."""
-    stmt = select(Attempt.id, Attempt.question_id, Attempt.user_id).where(
-        Attempt.mode == "daily", Attempt.submitted_at.is_(None), Attempt.deadline_at < now - rules.GRACE
+    stmt = (
+        select(Attempt.id, Attempt.question_id, Attempt.user_id)
+        .where(
+            Attempt.mode == "daily", Attempt.submitted_at.is_(None), Attempt.deadline_at < now - rules.GRACE
+        )
+        .order_by(Attempt.user_id, Attempt.id)
     )
     if user_id is not None:
         stmt = stmt.where(Attempt.user_id == user_id)
@@ -230,10 +240,11 @@ def close_expired(db: DB, now: datetime, user_id: int | None = None) -> int:
             .returning(Attempt.id)
         ).first()
         if recorded:
-            granted = xp.grant(db, owner, q, "daily", correct, now, late=True)
+            repeat = xp.last_seen(db, owner, q.id, now, other_than=attempt_id) is not None
+            granted = xp.grant(db, owner, q, "daily", correct, now, late=True, repeat=repeat)
             db.execute(update(Attempt).where(Attempt.id == attempt_id).values(xp=granted.xp))
             closed += 1
-    db.commit()
+        db.commit()  # one attempt per transaction: attempt then player, the same lock order as answering
     return closed
 
 

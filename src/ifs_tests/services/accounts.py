@@ -5,7 +5,7 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DB
 
@@ -308,8 +308,12 @@ def update_profile(db: DB, user: User, changes: dict[str, Any]) -> User:
         user.display_name = name
     if "vertical" in changes:
         user.vertical = _check_vertical(changes["vertical"])
-    if changes.get("rank") is not None:
-        _set_rank(user, changes["rank"])
+    rank = changes.get("rank")
+    if rank is not None and rank != user.rank:
+        if rank in RANKS and xp_rules.RANKS[rank] < xp_rules.RANKS[user.rank]:
+            raise AccountError(LOWER_RANK, 403, {"rank": LOWER_RANK})
+        audit(db, user, "user.rank", f"user:{user.id}", rank=[user.rank, rank])
+        _set_rank(db, user, rank)
     if changes.get("leaderboard_opt_out") is not None:
         user.leaderboard_opt_out = changes["leaderboard_opt_out"]
     with _unique(db):
@@ -325,12 +329,21 @@ def _active_admin_ids(db: DB, lock: bool = True) -> list[int]:
     return list(db.scalars(stmt.with_for_update() if lock else stmt))
 
 
-def _set_rank(user: User, rank: str) -> None:
-    """A new rank moves the starting level; XP only ever goes up to meet it."""
+LOWER_RANK = "Only an admin can lower your rank."
+
+
+def _set_rank(db: DB, user: User, rank: str) -> None:
+    """A new rank moves the starting level; XP only ever goes up to meet it. Done in SQL so XP granted by
+    an answer at the same moment isn't overwritten."""
     if rank not in RANKS:
         raise AccountError("Unknown rank.", fields={"rank": "Pick where you are on the team."})
     user.rank = rank
-    user.xp = max(user.xp, xp_rules.floor_for(rank))
+    user.xp = db.execute(
+        update(User)
+        .where(User.id == user.id)
+        .values(rank=rank, xp=func.greatest(User.xp, xp_rules.floor_for(rank)))
+        .returning(User.xp)
+    ).scalar_one()
 
 
 def update_user(
@@ -360,7 +373,7 @@ def update_user(
         user.role = role
     if rank is not None and rank != user.rank:
         changes["rank"] = [user.rank, rank]
-        _set_rank(user, rank)
+        _set_rank(db, user, rank)
     if status is not None and status != user.status:
         changes["status"] = [user.status, status]
         user.status = status

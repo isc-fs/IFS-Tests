@@ -353,7 +353,7 @@ class MockSession(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     quiz_id: Mapped[int] = mapped_column(ForeignKey("quizzes.id", ondelete="CASCADE"))
     season: Mapped[int]
-    # Only the first run of a quiz in a season scores points.
+    # Only the first run of a quiz in a season earns full XP.
     counted: Mapped[bool]
     position: Mapped[int] = mapped_column(server_default="0")
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

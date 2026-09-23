@@ -40,9 +40,9 @@ class Board:
 def _scores(
     db: DB, period: str, now: datetime, area: str | None = None
 ) -> list[tuple[int, str, str | None, bool, int]]:
-    """(id, name, vertical, opted out, xp) of each active member who scored in the period.
-    XP belongs to the day the play started: a daily's own day, a mock run's start. So a run begun
-    before midnight on 31 August can't score in two seasons."""
+    """(id, name, vertical, opted out, xp) of each active member who won or lost XP in the period, from
+    every mode. XP belongs to the day the play started: a daily's own day, a practice answer's day, a mock
+    run's start. So a run begun before midnight on 31 August can't count in two seasons."""
     first = rules.first_day(period, madrid_day(now))
     stmt = (
         select(
@@ -85,9 +85,9 @@ def board(db: DB, user: User, area: str | None, period: str, now: datetime) -> B
         Row(rank, name, vertical, xp, uid == user.id)
         for rank, (uid, name, vertical, _, xp) in zip(ranks, shown, strict=True)
     ]
-    mine = next((s[4] for s in scores if s[0] == user.id), 0)
+    mine = next((s[4] for s in scores if s[0] == user.id), None)
     me = None
-    if mine:
+    if mine is not None:  # XP won and lost can net to zero; they still played
         others = (s[4] for s in shown if s[0] != user.id)
         me = Mine(rules.rank_among(mine, others), mine, user.leaderboard_opt_out)
     # Everyone tied at the cut stays, so nobody ranked in the top 50 is missing from it.

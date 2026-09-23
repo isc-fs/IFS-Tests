@@ -2191,6 +2191,12 @@
       ],
       "title": "Level",
       "description": "Your level after this answer"
+     },
+     "level_up": {
+      "type": "boolean",
+      "title": "Level Up",
+      "description": "This answer took you to a new level",
+      "default": false
      }
     },
     "type": "object",

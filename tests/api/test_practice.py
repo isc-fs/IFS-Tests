@@ -78,6 +78,7 @@ def test_choice_answers(player: TestClient, db: Session, bank: dict[int, int], c
         "solutions": [],
         "xp": PRACTICE,
         "level": level_for(PRACTICE),
+        "level_up": level_for(PRACTICE) > 0,
     }
     no = player.post(f"/api/practice/questions/{qid}/answer", json={"options": [wrong]}).json()
     assert (no["correct"], no["xp"]) == (False, 0)  # a newcomer's wrong answer costs nothing

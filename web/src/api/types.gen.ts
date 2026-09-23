@@ -292,6 +292,12 @@ export type Feedback = {
      * Your level after this answer
      */
     level?: number | null;
+    /**
+     * Level Up
+     *
+     * This answer took you to a new level
+     */
+    level_up?: boolean;
 };
 
 /**

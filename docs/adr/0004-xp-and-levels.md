@@ -21,9 +21,11 @@ can take XP away, so period XP can be negative; lifetime XP never drops below th
 |---|---|---|---|---|---|
 | Base XP | 10 | 15 | 25 | 40 | 60 |
 
-- Modes: practice ×0.5, daily question ×2, mock quiz ×1.5. A question you already got right, or a replay of
-  a mock quiz you already ran this season, gives ×0.1. In practice that tenth is paid at most once a day per
-  question, so clicking the same answer again earns nothing.
+- Modes: practice ×0.5, daily question ×2, mock quiz ×1.5.
+- Repeats give ×0.1: a question you have already had graded this season, in any mode (right or wrong: either
+  way you have seen the official answer), and every question of a replayed mock quiz. In practice that tenth
+  is paid at most once a day per question, so a wrong answer followed by the right one earns nothing more.
+  A new season starts everyone afresh; a mock answer belongs to the season its run started in.
 - Streak: consecutive days with an on-time daily answer. +5 % per day after the first, up to +50 % (11 days).
   It multiplies gains, never penalties.
 - A late answer counts as wrong, and so does a question left to run out (a mock question when the run moves
@@ -32,8 +34,9 @@ can take XP away, so period XP can be negative; lifetime XP never drops below th
 - Questions that can't be graded give nothing either way.
 - Difficulty (1–5) starts from the kind of answer (single choice 2, multiple choice and typed 3, lists 4) and
   the real quiz's time budget (≥ 6 min +1, ≤ 1 min −1). Once 20 people have answered, it moves towards how
-  they did (≥ 80 % right → 1 … < 20 % → 5), weighted two to one. Set on import, recalculated nightly by
-  the maintenance job.
+  they did (≥ 80 % right → 1 … < 20 % → 5), weighted two to one. Only each person's first answer in time
+  counts, so nobody can move a question's difficulty by answering it again. Set on import, recalculated
+  nightly by the maintenance job.
 
 **Levels.** Level *L* needs `25 × L^2.3` lifetime XP (L4 ≈ 600, L8 ≈ 3,000, L12 ≈ 7,600, L16 ≈ 14,700,
 L20 ≈ 24,600). Titles and training wheels by level:
@@ -48,8 +51,9 @@ L20 ≈ 24,600). Titles and training wheels by level:
 | 20+ | Technical Director | | | | 75 % |
 
 **Ranks** set the starting level: Mingo (new this season) 0, returning member 8, Department Head 12,
-Technical Director 20. People choose their rank when they join; admins can change it. Starting higher gives no
-leaderboard advantage (only XP earned counts) and means less help and bigger penalties.
+Technical Director 20. People choose their rank when they join and can move it up later (audited); only admins
+can lower it, so nobody can take a high title and then drop back to a gentler tier. Lifetime XP never drops
+on a rank change.
 
 ## Pacing (simulated, `tests/unit/test_xp_rules.py`)
 
@@ -63,6 +67,10 @@ leaderboard advantage (only XP earned counts) and means less help and bigger pen
 
 - The leaderboard shows XP; old season points are not converted (nothing was deployed).
 - The formulas and learn-more panels and hints are gated by tier (next branch).
-- Anyone can pick a high rank; that only makes the game harder for them.
+- Gains don't depend on level but penalties do, so on the leaderboard an experienced member who picks a low
+  rank loses less for wrong answers until they level up (about 3,000 XP before penalties start). That is the
+  price of letting people pick; admins can correct a rank that is plainly wrong.
+- Mock XP is granted as each answer is recorded, so a player's XP moves during a run even though the review
+  only comes at the end. Answers can't be changed, so this reveals nothing useful.
 - A player's answers are scored one at a time (their user row is locked while XP is granted), so parallel tabs
   can't claim the same first right answer twice.

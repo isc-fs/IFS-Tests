@@ -32,6 +32,7 @@ class Checked:
     solutions: list[tuple[str | None, list[str]]]
     xp: int = 0  # set by the mode that scored the answer
     level: int | None = None
+    level_up: bool = False
 
 
 def _quiz_labels(db: DB, ids: list[int]) -> dict[int, list[str]]:

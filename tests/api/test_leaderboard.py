@@ -233,9 +233,9 @@ def test_late_answers_earn_nothing_and_replays_a_tenth(
 ) -> None:
     c = join(app_client, new_client, "Marta")
     marta = user(db, "Marta")
-    assert play_daily(db, marta, "mech", clock.now, late=True) == 0
     assert play_mock(db, marta, clock.now) == RUN
     assert play_mock(db, marta, clock.now) == REPLAY
+    assert play_daily(db, marta, "elec", clock.now, late=True) == 0
     assert board(c)["me"] == {"rank": 1, "xp": RUN + REPLAY, "hidden": False}
 
 

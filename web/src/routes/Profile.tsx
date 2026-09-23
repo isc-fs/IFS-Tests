@@ -52,8 +52,17 @@ function ProfileForm({ user }: { user: Me }) {
     Object.keys(patch).forEach(touch)
     if (save.isSuccess) save.reset()
   }
+  // Only send the rank when it changed, so an old form never undoes an admin's correction.
   const submit = () =>
-    save.mutate({ body: { ...form, vertical: (form.vertical || null) as Vertical | null, rank: form.rank as Rank } })
+    save.mutate({
+      body: {
+        ...form,
+        vertical: (form.vertical || null) as Vertical | null,
+        rank: form.rank === user.rank ? undefined : (form.rank as Rank),
+      },
+    })
+  const ranks = Object.keys(RANKS) as Rank[]
+  const higher = ranks.slice(ranks.indexOf(user.rank))
 
   return (
     <Form onSubmit={submit} error={save.error} className="stack panel" aria-labelledby="profile-title">
@@ -82,12 +91,12 @@ function ProfileForm({ user }: { user: Me }) {
         label="Where are you on the team?"
         value={form.rank}
         onChange={(e) => edit({ rank: e.target.value as Rank })}
-        hint="Moving up raises your level to where that rank starts; your XP never goes down from a change."
+        hint="Moving up raises your level to where that rank starts. Only an admin can lower it."
         error={errors.rank}
       >
-        {Object.entries(RANKS).map(([r, label]) => (
+        {higher.map((r) => (
           <option key={r} value={r}>
-            {label}
+            {RANKS[r]}
           </option>
         ))}
       </SelectField>

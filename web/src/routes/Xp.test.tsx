@@ -63,22 +63,22 @@ test('a Technical Director sees no help and what wrong answers cost', async () =
   expect(screen.getByLabelText('Where are you on the team?')).toHaveValue('technical_director')
 })
 
-test('the XP an answer earned is shown, and a level-up is celebrated', async () => {
-  let answered = false
-  const levelTwo = { ...MEMBER, xp: 132, progress: { ...MEMBER.progress, level: 2 } }
-  const { sent } = renderApp('/practice', {
-    ...practice({ xp: 12, level: 2 }),
-    'GET /api/me': () => ({ body: answered ? levelTwo : MEMBER }),
-    'POST /api/practice/questions/7/answer': () => {
-      answered = true
-      return { body: { correct: true, official: '0.713 m', correct_options: [70], solutions: [], xp: 12, level: 2 } }
-    },
-  })
+test('the XP an answer earned is announced, and a level-up is celebrated', async () => {
+  const { sent } = renderApp('/practice', practice({ xp: 12, level: 2, level_up: true }))
+  await userEvent.click(await screen.findByRole('radio', { name: '0.713 m' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Check answer' }))
+  const earned = (await screen.findByText('+12 XP')).closest('output')
+  expect(earned).toHaveTextContent("+12 XP Level up! You're level 2 now.")
+  await waitFor(() => expect(sent('GET /api/me').length).toBeGreaterThan(1)) // the level card refreshes
+  expect(screen.getByText("Level up! You're level 2 now.")).toBeInTheDocument()
+})
+
+test('only the server says when an answer levelled you up', async () => {
+  renderApp('/practice', practice({ xp: 12, level: 5, level_up: false }))
   await userEvent.click(await screen.findByRole('radio', { name: '0.713 m' }))
   await userEvent.click(screen.getByRole('button', { name: 'Check answer' }))
   expect(await screen.findByText('+12 XP')).toBeInTheDocument()
-  await waitFor(() => expect(sent('GET /api/me').length).toBeGreaterThan(1))
-  expect(screen.getByText("Level up! You're level 2 now.")).toBeInTheDocument()
+  expect(screen.queryByText(/Level up/)).toBeNull()
 })
 
 test('XP lost on a wrong answer is shown with a minus sign', async () => {
