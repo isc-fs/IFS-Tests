@@ -160,3 +160,35 @@ def test_sample_bank_is_valid_json_with_our_own_content() -> None:
     bank = json.loads((SAMPLE_DIR / "bank.json").read_text())
     assert "not FS-Quiz data" in bank["source"]
     assert all(q["question_id"] >= 90000 for q in bank["questions"])
+
+
+def test_exclusions_survive_a_reimport(
+    db: Session, clock: Clock, tmp_path: Path, sample: dict[str, Any]
+) -> None:
+    import_bank(db, sample, SAMPLE_DIR / "img", tmp_path, clock.now)
+    q = by_fsquiz(db, 90001)
+    q.excluded, q.playable = True, False
+    db.commit()
+    raw(sample, 90001)["text"] += " (edited upstream)"
+    import_bank(db, sample, SAMPLE_DIR / "img", tmp_path, clock.now)
+    db.refresh(q)
+    assert q.excluded and not q.playable
+
+
+def test_images_arriving_later_keep_a_reviewers_correction(
+    db: Session, clock: Clock, tmp_path: Path, sample: dict[str, Any]
+) -> None:
+    empty = tmp_path / "none"
+    empty.mkdir()
+    import_bank(db, sample, empty, tmp_path / "media", clock.now)
+    beam = by_fsquiz(db, 90006)
+    key = db.get_one(AnswerKey, beam.id)
+    options = db.scalars(select(AnswerOption.id).where(AnswerOption.question_id == beam.id)).all()
+    key.override, key.override_display = {"kind": "choice", "mode": "one", "options": [options[1]]}, "1.2 kNm"
+    db.commit()
+    report = import_bank(db, sample, SAMPLE_DIR / "img", tmp_path / "media", clock.now)
+    db.refresh(key)
+    db.refresh(beam)
+    assert (report.updated, report.key_changed) == (1, 0)
+    assert beam.playable and key.override is not None and key.override["options"] == [options[1]]
+    assert db.scalars(select(AnswerOption.id).where(AnswerOption.question_id == beam.id)).all() == options

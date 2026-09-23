@@ -12,11 +12,13 @@ import pytest
 from sqlalchemy import Engine, func, select
 from sqlalchemy.orm import Session, sessionmaker
 
+from ifs_tests.bank import images
 from ifs_tests.bank.mirror import load_bank
 from ifs_tests.bank.sample import SAMPLE_DIR
-from ifs_tests.db.models import AnswerOption, Attempt, DailyQuestion, MockSession, User
+from ifs_tests.db.models import AnswerOption, Attempt, DailyQuestion, MockSession, Question, User
 from ifs_tests.domain.daily import madrid_day
-from ifs_tests.services import accounts, daily, mock
+from ifs_tests.services import accounts, daily, mock, review
+from ifs_tests.services import bank as bank_service
 from ifs_tests.services.bank import import_bank
 
 pytestmark = pytest.mark.integration
@@ -173,3 +175,49 @@ def test_a_double_submit_in_a_mock_quiz_moves_on_once(
         * 4,
     )
     assert results == [1, 1, 1, 1], results
+
+
+def test_hiding_a_question_during_an_import_sticks(
+    db: Session, app_engine: Engine, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The import pauses right as it writes the question; the reviewer hides it at that moment."""
+    bank = load_bank(SAMPLE_DIR)
+    empty = tmp_path / "no-images"
+    empty.mkdir()
+    import_bank(db, bank, empty, tmp_path / "media", NOW)  # the beam figure is missing: 90006 not playable
+    reviewer = User(email="r@x.com", password_hash="x", display_name="Rev", role="reviewer")
+    db.add(reviewer)
+    db.commit()
+    beam = db.scalars(select(Question.id).where(Question.fsquiz_id == 90006)).one()
+
+    paused, resume = threading.Event(), threading.Event()
+    real = images.to_media
+
+    def slow_media(source: Path, media_dir: Path) -> str:
+        paused.set()
+        resume.wait(5)
+        return real(source, media_dir)
+
+    monkeypatch.setattr(bank_service, "to_media", slow_media)
+    make = sessionmaker(app_engine, expire_on_commit=False)
+
+    def run_import() -> None:
+        with make() as s:
+            import_bank(s, bank, SAMPLE_DIR / "img", tmp_path / "media", NOW)
+
+    def hide() -> None:
+        with make() as s:
+            review.update(s, s.get_one(User, reviewer.id), beam, {"excluded": True}, NOW)
+
+    importer = threading.Thread(target=run_import)
+    importer.start()
+    assert paused.wait(5)
+    hider = threading.Thread(target=hide)
+    hider.start()
+    hider.join(0.5)  # with the row lock it waits for the import; without it, it commits now
+    resume.set()
+    importer.join()
+    hider.join()
+    q = db.get_one(Question, beam)
+    db.refresh(q)
+    assert (q.excluded, q.images_missing, q.playable) == (True, False, False)

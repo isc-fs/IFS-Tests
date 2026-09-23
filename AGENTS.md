@@ -7,7 +7,7 @@ Instructions for coding agents working in this repository. Read [README.md](READ
 - Training platform for Formula Student registration quizzes, fed by the FS-Quiz API v2 (`https://api.fs-quiz.eu/2/`, no key).
 - Architecture: one FastAPI service (Python 3.13, uv) serving a React/Vite SPA, PostgreSQL via SQLAlchemy 2 + Alembic, Docker Compose on the team's Hetzner server. Read [`docs/architecture.md`](docs/architecture.md) and [`docs/adr/`](docs/adr/) before changing structure; record new structural decisions as ADRs.
 - FS-Quiz API behaviour and quirks: [`docs/fsquiz-api.md`](docs/fsquiz-api.md). The live responses differ from the published spec.
-- Layers: `api` → `services` → `db`; `domain/` holds pure rules (no I/O, clock passed in). Authorization happens in FastAPI dependencies; user IDs come from the session only. Answer keys never appear in a response other than the user's own submission.
+- Layers: `api` → `services` → `db`; `domain/` holds pure rules (no I/O, clock passed in). Authorization happens in FastAPI dependencies; user IDs come from the session only. Answer keys never appear in a response other than the user's own submission, a finished mock run, or the reviewer tools; reviewers never see the answer to one of their own live questions (today's daily question they haven't answered, or a question in their open mock run). `tests/api/test_security.py` scans every response schema for answer fields.
 
 ## Commands
 

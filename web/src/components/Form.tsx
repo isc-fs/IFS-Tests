@@ -101,12 +101,8 @@ export function SelectField({
   )
 }
 
-export function Notice({ tone, children }: { tone: 'error' | 'ok'; children: ReactNode }) {
-  return (
-    <div className={`notice ${tone}`} role={tone === 'error' ? 'alert' : 'status'}>
-      {children}
-    </div>
-  )
+export function Notice({ tone, ...props }: { tone: 'error' | 'ok' | 'info' } & ComponentProps<'div'>) {
+  return <div className={`notice ${tone}`} role={tone === 'error' ? 'alert' : 'status'} {...props} />
 }
 
 /** A form-level error; errors tied to specific fields are shown next to those fields instead. */

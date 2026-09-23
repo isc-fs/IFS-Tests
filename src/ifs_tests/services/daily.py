@@ -19,7 +19,9 @@ LOCK = 0x1F5DA11  # pg advisory lock key for choosing the day's questions
 
 
 def ensure_daily(db: DB, day: date) -> dict[str, int]:
-    """Choose the day's questions once; concurrent callers wait for the first and reuse its choice."""
+    """Choose the day's questions once; concurrent callers wait for the first and reuse its choice.
+    A chosen question that a reviewer hid (or that stopped being gradable) is replaced for everyone who
+    hasn't started it yet; people who did keep theirs."""
     chosen = _chosen(db, day)
     if len(chosen) == len(rules.AREAS):
         return chosen
@@ -43,7 +45,9 @@ def ensure_daily(db: DB, day: date) -> dict[str, int]:
         qid = rules.pick([rules.Candidate(i, used, n) for i, used, n in rows], day, area)
         if qid is not None:
             db.execute(
-                insert(DailyQuestion).values(day=day, area=area, question_id=qid).on_conflict_do_nothing()
+                insert(DailyQuestion)
+                .values(day=day, area=area, question_id=qid)
+                .on_conflict_do_update(index_elements=["day", "area"], set_={"question_id": qid})
             )
             chosen[area] = qid
     db.commit()
@@ -51,7 +55,12 @@ def ensure_daily(db: DB, day: date) -> dict[str, int]:
 
 
 def _chosen(db: DB, day: date) -> dict[str, int]:
-    rows = db.execute(select(DailyQuestion.area, DailyQuestion.question_id).where(DailyQuestion.day == day))
+    """The day's questions that can still be served."""
+    rows = db.execute(
+        select(DailyQuestion.area, DailyQuestion.question_id)
+        .join(Question, Question.id == DailyQuestion.question_id)
+        .where(DailyQuestion.day == day, Question.playable, Question.graded)
+    )
     return {area: qid for area, qid in rows}
 
 
@@ -99,10 +108,16 @@ class Status:
 def status(db: DB, user: User, now: datetime) -> Status:
     day = rules.madrid_day(now)
     chosen = ensure_daily(db, day)
+    mine = {
+        a.area: a
+        for a in db.scalars(
+            select(Attempt).where(Attempt.user_id == user.id, Attempt.mode == "daily", Attempt.day == day)
+        )
+    }
     areas = []
-    for area, qid in chosen.items():
-        q = db.get_one(Question, qid)
-        a = _attempt(db, user, day, area)
+    for area in sorted(set(chosen) | {a for a in mine if a}):
+        a = mine.get(area)
+        q = db.get_one(Question, a.question_id if a else chosen[area])
         state = "new" if a is None else "done" if a.submitted_at else "started"
         areas.append(
             AreaState(
@@ -123,36 +138,34 @@ def status(db: DB, user: User, now: datetime) -> Status:
 def start(db: DB, user: User, area: str, now: datetime) -> tuple[Question, Attempt]:
     """Start the clock, or return the running attempt. The question is only revealed from here."""
     day = rules.madrid_day(now)
+    existing = _attempt(db, user, day, area)
+    if existing is not None:
+        if existing.submitted_at:
+            raise UserError("You've already answered today's question for this area.", 409)
+        return db.get_one(Question, existing.question_id), existing
     qid = ensure_daily(db, day).get(area)
     if qid is None:
         raise UserError("There's no daily question for this area today.", 404)
     q = db.get_one(Question, qid)
-    existing = _attempt(db, user, day, area)
-    if existing is None:
-        deadline = now + timedelta(seconds=rules.budget(q.time_s, q.answer_kind))
-        db.execute(
-            insert(Attempt)
-            .values(
-                user_id=user.id,
-                question_id=q.id,
-                mode="daily",
-                answer={},
-                created_at=now,
-                day=day,
-                area=area,
-                deadline_at=deadline,
-            )
-            # A literal predicate: once psycopg prepares the statement, a bound parameter here stops
-            # Postgres matching the partial unique index and the insert fails.
-            .on_conflict_do_nothing(
-                index_elements=["user_id", "day", "area"], index_where=text("mode = 'daily'")
-            )
+    db.execute(
+        insert(Attempt)
+        .values(
+            user_id=user.id,
+            question_id=q.id,
+            mode="daily",
+            answer={},
+            created_at=now,
+            day=day,
+            area=area,
+            deadline_at=now + timedelta(seconds=rules.budget(q.time_s, q.answer_kind)),
         )
-        db.commit()
-        existing = db.scalars(_mine(user, day, area)).one()
-    if existing.submitted_at:
-        raise UserError("You've already answered today's question for this area.", 409)
-    return q, existing
+        # A literal predicate: once psycopg prepares the statement, a bound parameter here stops
+        # Postgres matching the partial unique index and the insert fails.
+        .on_conflict_do_nothing(index_elements=["user_id", "day", "area"], index_where=text("mode = 'daily'"))
+    )
+    db.commit()
+    started = db.scalars(_mine(user, day, area)).one()  # ours, or a parallel request's
+    return db.get_one(Question, started.question_id), started
 
 
 @dataclass

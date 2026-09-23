@@ -121,6 +121,8 @@ class BankSummary(BaseModel):
     by_area: dict[str, int]
     quizzes: int
     key_changes: int
+    missing_images: int
+    excluded: int
     imported_at: datetime | None
 
 
@@ -251,6 +253,83 @@ class AreaProgress(BaseModel):
     answered: int
     correct: int
     topics: dict[str, int]
+
+
+class ReviewRow(BaseModel):
+    id: int
+    text: str
+    area: str
+    topic: str | None
+    answer_kind: str
+    graded: bool
+    playable: bool
+    excluded: bool
+    labels_reviewed: bool
+    key_changed_at: datetime | None
+    reports: int
+
+
+class ReviewPage(BaseModel):
+    rows: list[ReviewRow]
+    total: int
+    queues: dict[str, int]
+
+
+class ReviewOption(BaseModel):
+    id: int
+    text: str
+    official: bool
+    corrected: bool
+
+
+class ReviewReport(BaseModel):
+    id: int
+    by: str | None
+    message: str
+    at: datetime
+
+
+class ReviewQuestion(BaseModel):
+    """Everything a reviewer needs about one question, answers included (reviewers only)."""
+
+    id: int
+    fsquiz_id: int | None
+    type: str
+    text: str
+    images: list[str]
+    area: str
+    topic: str | None
+    labels_reviewed: bool
+    answer_kind: str
+    graded: bool
+    playable: bool
+    images_missing: bool
+    excluded: bool
+    exclusion_note: str | None
+    key_changed_at: datetime | None
+    official: str | None
+    correction: str | None
+    options: list[ReviewOption]
+    quizzes: list[str]
+    reports: list[ReviewReport]
+    answered: int
+    right: int
+    answer_hidden: bool = Field(
+        description="The reviewer's own live question: answers withheld until answered"
+    )
+
+
+class ReviewPatch(In):
+    area: Literal["mech", "elec", "rules", "unclassified"] | None = None
+    topic: str | None = Field(default=None, max_length=16)
+    labels_reviewed: bool | None = None
+    excluded: bool | None = None
+    exclusion_note: str | None = Field(default=None, max_length=200)
+    acknowledge_change: bool | None = None
+
+
+class ReportIn(In):
+    message: str = Field(max_length=500)
 
 
 class AuditEntry(BaseModel):

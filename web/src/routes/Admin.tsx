@@ -1,5 +1,6 @@
 import { type QueryKey, useMutation, useQuery } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router'
 import {
   auditLogOptions,
   auditLogQueryKey,
@@ -303,13 +304,18 @@ function BankPanel() {
               </li>
             ))}
           </ul>
-          {bank.questions > bank.playable && (
-            <p className="muted">{bank.questions - bank.playable} are hidden until their images are available.</p>
+          {bank.missing_images > 0 && (
+            <p className="muted">{bank.missing_images} are hidden until their images are available.</p>
+          )}
+          {bank.excluded > 0 && (
+            <p className="muted">
+              {bank.excluded} hidden by reviewers. <Link to="/review?queue=excluded">See them</Link>
+            </p>
           )}
           {bank.key_changes > 0 && (
             <Notice tone="error">
-              FS-Quiz changed the official answer of {bank.key_changes} question{bank.key_changes > 1 ? 's' : ''} since
-              it was first loaded. Reviewer tools to check them are on the roadmap.
+              FS-Quiz changed {bank.key_changes} question{bank.key_changes > 1 ? 's' : ''} since they were loaded.{' '}
+              <Link to="/review?queue=changed">Review the changes</Link>
             </Notice>
           )}
         </>
@@ -329,6 +335,34 @@ const ACTIONS: Record<string, string> = {
   'password.reset': 'reset their password',
   'password.change': 'changed their password',
   'bank.import': 'loaded the question bank',
+  'question.update': 'reviewed',
+  'question.answer': 'corrected the answer of',
+  'question.answer_cleared': 'removed the correction of',
+  'report.resolve': 'handled a report on',
+}
+
+const shown = (v: unknown) =>
+  v === null || v === undefined || v === '' ? 'none' : Array.isArray(v) ? v.join(', ') : String(v)
+
+/** How a changed field reads, given its new value; other fields read as "field → value". */
+const CHANGES: Record<string, (after: unknown) => string> = {
+  labels_reviewed: (v) => (v ? 'labels confirmed' : 'labels unconfirmed'),
+  excluded: (v) => (v ? 'hidden' : 'shown again'),
+  exclusion_note: (v) => `note → ${shown(v)}`,
+  upstream_change: (v) => `upstream change ${shown(v)}`,
+}
+
+function detail(action: string, details: Record<string, unknown>) {
+  let parts: string[] = []
+  if (action === 'user.update' || action === 'question.update') {
+    parts = Object.entries(details).map(([k, v]) => {
+      const after = (v as unknown[])[1]
+      return CHANGES[k]?.(after) ?? `${k} → ${shown(after)}`
+    })
+  }
+  if (action === 'question.answer') parts = [`${shown(details.before)} → ${shown(details.answer)}`]
+  if (action === 'question.answer_cleared') parts = [`was ${shown(details.removed)}`]
+  return parts.length ? ` (${parts.join(', ')})` : ''
 }
 
 function AuditTrail() {
@@ -349,11 +383,12 @@ function AuditTrail() {
           return (
             <li key={a.id}>
               <time dateTime={a.at}>{when(a.at)}</time> {a.actor ?? 'System'} {ACTIONS[a.action] ?? a.action}
-              {!self && a.target && a.actor !== null && !a.target.startsWith('invite:') && ` ${a.target}`}
-              {a.action === 'user.update' &&
-                ` (${Object.entries(a.details)
-                  .map(([k, v]) => `${k} → ${(v as string[])[1]}`)
-                  .join(', ')})`}
+              {!self &&
+                a.target &&
+                a.actor !== null &&
+                !a.target.startsWith('invite:') &&
+                ` ${a.target.replace(/^question:/, 'question ')}`}
+              {detail(a.action, a.details)}
             </li>
           )
         })}

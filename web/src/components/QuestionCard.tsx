@@ -2,6 +2,7 @@ import { type ReactNode, useEffect, useId, useRef, useState } from 'react'
 import type { AnswerIn, Feedback, PlayQuestion } from '../api/types.gen'
 import { AREAS, TOPICS } from '../lib/areas'
 import { Field, Form, Notice } from './Form'
+import { ReportProblem } from './ReportProblem'
 
 const HINTS: Record<string, string> = {
   number: 'A number. Decimal point or comma both work.',
@@ -200,6 +201,7 @@ export function QuestionCard({
           {next}
         </div>
       )}
+      {feedback && <ReportProblem questionId={question.id} />}
     </article>
   )
 }

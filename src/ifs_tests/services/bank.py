@@ -89,22 +89,38 @@ def _upsert_events_and_quizzes(db: DB, bank: dict[str, Any]) -> None:
         db.execute(insert(quiz_events), links)
 
 
+def _write_solutions(db: DB, q: Question, raw: dict[str, Any], media: _Media) -> None:
+    db.execute(delete(Solution).where(Solution.question_id == q.id))
+    for sol in raw["solutions"]:
+        pictures = [m for m in (media(p) for p in sol["images"]) if m]
+        db.add(Solution(question_id=q.id, text=sol["text"], images=pictures))
+
+
 def _write_question(db: DB, q: Question, raw: dict[str, Any], media: _Media, now: datetime) -> bool:
-    """Replace a question's content from `raw`. Returns whether its official answer changed."""
+    """Bring a question up to date with `raw`. Returns whether it needs a reviewer's eyes again:
+    its official answer changed, or a reviewer's override had to be dropped because the question changed."""
     images = [media(p) for p in raw["images"]]
-    area, topic, _ = topics.tag(raw)
-    q.type, q.text, q.time_s = raw["type"], raw["text"] or "", raw["time"]
     q.images = [i for i in images if i]
-    q.playable = all(images)
-    q.area, q.topic = area, topic or None
-    q.source_hash, q.updated_at = source_hash(raw), now
+    q.images_missing = not all(images)
+    q.playable = not q.images_missing and not q.excluded
+    q.updated_at = now
+    fresh = q.id is None
+    if not fresh and q.source_hash == source_hash(raw):
+        # Same content (only images or media were missing): keep options, keys and overrides as they are.
+        _write_solutions(db, q, raw, media)
+        return False
+
+    if not q.labels_reviewed:
+        area, topic, _ = topics.tag(raw)
+        q.area, q.topic = area, topic or None
+    q.type, q.text, q.time_s = raw["type"], raw["text"] or "", raw["time"]
+    q.source_hash = source_hash(raw)
     q.answer_kind = keys.answer_kind(raw["type"], keys.build_key(raw["type"], raw["answers"]))
-    if q.id is None:
+    if fresh:
         db.add(q)
         db.flush()
     else:
         db.execute(delete(AnswerOption).where(AnswerOption.question_id == q.id))
-        db.execute(delete(Solution).where(Solution.question_id == q.id))
 
     option_ids = None
     if raw["type"] in CHOICE:
@@ -116,17 +132,21 @@ def _write_question(db: DB, q: Question, raw: dict[str, Any], media: _Media, now
         db.flush()
         option_ids = [o.id for o in options]
     key = keys.build_key(raw["type"], raw["answers"], option_ids)
-    q.graded = key is not None and key["kind"] != "self"
     shown = keys.display(raw["type"], raw["answers"])
+    q.graded = key is not None and key["kind"] != "self"
 
     previous = db.get(AnswerKey, q.id)
-    changed = previous is not None and previous.display != shown
+    changed = False
+    if previous is None:
+        db.add(AnswerKey(question_id=q.id, key=key, display=shown))
+    else:
+        # A hidden question that changed upstream may have been fixed: ask a reviewer to look again.
+        changed = previous.display != shown or previous.override is not None or q.excluded
+        previous.key, previous.display = key, shown
+        previous.override = previous.override_display = None
     if changed:
         q.key_changed_at = now
-    db.merge(AnswerKey(question_id=q.id, key=key, display=shown))
-    for s in raw["solutions"]:
-        pictures = [m for m in (media(p) for p in s["images"]) if m]
-        db.add(Solution(question_id=q.id, text=s["text"], images=pictures))
+    _write_solutions(db, q, raw, media)
     return changed
 
 
@@ -140,7 +160,9 @@ def import_bank(
     report = ImportReport()
     media = _Media(image_dir, media_dir)
     _upsert_events_and_quizzes(db, bank)
-    existing = {q.fsquiz_id: q for q in db.scalars(select(Question).where(Question.fsquiz_id.is_not(None)))}
+    # Locked, so a reviewer hiding or relabelling a question mid-import isn't undone by stale values.
+    locked = db.scalars(select(Question).where(Question.fsquiz_id.is_not(None)).with_for_update())
+    existing = {q.fsquiz_id: q for q in locked}
     # Media files can be lost independently of the database (a restore on a new server): rewrite those.
     lost_solution_media = {
         qid
@@ -153,7 +175,7 @@ def import_bank(
         if (
             q is not None
             and q.source_hash == source_hash(raw)
-            and (q.playable or image_dir is None)
+            and (not q.images_missing or image_dir is None)
             and _all_in(media_dir, q.images)
             and q.id not in lost_solution_media
         ):
@@ -180,7 +202,7 @@ def import_bank(
         db.execute(insert(QuizQuestion), rows)
 
     report.ungraded = db.scalar(select(func.count()).where(Question.graded.is_(False))) or 0
-    report.missing_images = db.scalar(select(func.count()).where(Question.playable.is_(False))) or 0
+    report.missing_images = db.scalar(select(func.count()).where(Question.images_missing)) or 0
     db.add(AuditLog(actor_id=None, action="bank.import", target="fsquiz", details=asdict(report)))
     db.commit()
     return report
@@ -201,5 +223,7 @@ def summary(db: DB) -> dict[str, Any]:
         "by_area": by_area,
         "quizzes": db.scalar(select(count).select_from(Quiz)) or 0,
         "key_changes": db.scalar(select(count).where(Question.key_changed_at.is_not(None))) or 0,
+        "missing_images": db.scalar(select(count).where(Question.images_missing)) or 0,
+        "excluded": db.scalar(select(count).where(Question.excluded)) or 0,
         "imported_at": last,
     }

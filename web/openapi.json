@@ -1191,6 +1191,403 @@
      }
     }
    }
+  },
+  "/api/review/questions": {
+   "get": {
+    "tags": [
+     "review"
+    ],
+    "summary": "Review Questions",
+    "operationId": "review_questions",
+    "parameters": [
+     {
+      "name": "queue",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "enum": [
+        "all",
+        "reports",
+        "changed",
+        "unclassified",
+        "ungraded",
+        "excluded"
+       ],
+       "type": "string",
+       "default": "all",
+       "title": "Queue"
+      }
+     },
+     {
+      "name": "area",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "enum": [
+          "mech",
+          "elec",
+          "rules",
+          "unclassified"
+         ],
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Area"
+      }
+     },
+     {
+      "name": "topic",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "maxLength": 16,
+         "pattern": "^[a-z]+$"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Topic"
+      }
+     },
+     {
+      "name": "q",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "maxLength": 100,
+         "pattern": "^[^\\x00]*$"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Q"
+      }
+     },
+     {
+      "name": "offset",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "maximum": 100000,
+       "minimum": 0,
+       "default": 0,
+       "title": "Offset"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ReviewPage"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/review/questions/{question_id}": {
+   "get": {
+    "tags": [
+     "review"
+    ],
+    "summary": "Review Question",
+    "operationId": "review_question",
+    "parameters": [
+     {
+      "name": "question_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "maximum": 2147483647,
+       "minimum": 1,
+       "title": "Question Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ReviewQuestion"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "patch": {
+    "tags": [
+     "review"
+    ],
+    "summary": "Update Question",
+    "operationId": "update_question",
+    "parameters": [
+     {
+      "name": "question_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "maximum": 2147483647,
+       "minimum": 1,
+       "title": "Question Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ReviewPatch"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ReviewQuestion"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/review/questions/{question_id}/answer": {
+   "put": {
+    "tags": [
+     "review"
+    ],
+    "summary": "Correct Answer",
+    "operationId": "correct_answer",
+    "parameters": [
+     {
+      "name": "question_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "maximum": 2147483647,
+       "minimum": 1,
+       "title": "Question Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/AnswerIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ReviewQuestion"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "delete": {
+    "tags": [
+     "review"
+    ],
+    "summary": "Remove Correction",
+    "operationId": "remove_correction",
+    "parameters": [
+     {
+      "name": "question_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "maximum": 2147483647,
+       "minimum": 1,
+       "title": "Question Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ReviewQuestion"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/review/reports/{report_id}/resolve": {
+   "post": {
+    "tags": [
+     "review"
+    ],
+    "summary": "Resolve Report",
+    "operationId": "resolve_report",
+    "parameters": [
+     {
+      "name": "report_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "maximum": 2147483647,
+       "minimum": 1,
+       "title": "Report Id"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/questions/{question_id}/report": {
+   "post": {
+    "tags": [
+     "review"
+    ],
+    "summary": "Report Question",
+    "operationId": "report_question",
+    "parameters": [
+     {
+      "name": "question_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "maximum": 2147483647,
+       "minimum": 1,
+       "title": "Question Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ReportIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
   }
  },
  "components": {
@@ -1429,6 +1826,14 @@
       "type": "integer",
       "title": "Key Changes"
      },
+     "missing_images": {
+      "type": "integer",
+      "title": "Missing Images"
+     },
+     "excluded": {
+      "type": "integer",
+      "title": "Excluded"
+     },
      "imported_at": {
       "anyOf": [
        {
@@ -1450,6 +1855,8 @@
      "by_area",
      "quizzes",
      "key_changes",
+     "missing_images",
+     "excluded",
      "imported_at"
     ],
     "title": "BankSummary"
@@ -2333,6 +2740,21 @@
     ],
     "title": "RegisterIn"
    },
+   "ReportIn": {
+    "properties": {
+     "message": {
+      "type": "string",
+      "maxLength": 500,
+      "title": "Message"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "message"
+    ],
+    "title": "ReportIn"
+   },
    "ResetIn": {
     "properties": {
      "token": {
@@ -2367,6 +2789,438 @@
      "expires_at"
     ],
     "title": "ResetInfo"
+   },
+   "ReviewOption": {
+    "properties": {
+     "id": {
+      "type": "integer",
+      "title": "Id"
+     },
+     "text": {
+      "type": "string",
+      "title": "Text"
+     },
+     "official": {
+      "type": "boolean",
+      "title": "Official"
+     },
+     "corrected": {
+      "type": "boolean",
+      "title": "Corrected"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "text",
+     "official",
+     "corrected"
+    ],
+    "title": "ReviewOption"
+   },
+   "ReviewPage": {
+    "properties": {
+     "rows": {
+      "items": {
+       "$ref": "#/components/schemas/ReviewRow"
+      },
+      "type": "array",
+      "title": "Rows"
+     },
+     "total": {
+      "type": "integer",
+      "title": "Total"
+     },
+     "queues": {
+      "additionalProperties": {
+       "type": "integer"
+      },
+      "type": "object",
+      "title": "Queues"
+     }
+    },
+    "type": "object",
+    "required": [
+     "rows",
+     "total",
+     "queues"
+    ],
+    "title": "ReviewPage"
+   },
+   "ReviewPatch": {
+    "properties": {
+     "area": {
+      "anyOf": [
+       {
+        "type": "string",
+        "enum": [
+         "mech",
+         "elec",
+         "rules",
+         "unclassified"
+        ]
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Area"
+     },
+     "topic": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 16
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Topic"
+     },
+     "labels_reviewed": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Labels Reviewed"
+     },
+     "excluded": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Excluded"
+     },
+     "exclusion_note": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 200
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Exclusion Note"
+     },
+     "acknowledge_change": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Acknowledge Change"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "title": "ReviewPatch"
+   },
+   "ReviewQuestion": {
+    "properties": {
+     "id": {
+      "type": "integer",
+      "title": "Id"
+     },
+     "fsquiz_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Fsquiz Id"
+     },
+     "type": {
+      "type": "string",
+      "title": "Type"
+     },
+     "text": {
+      "type": "string",
+      "title": "Text"
+     },
+     "images": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Images"
+     },
+     "area": {
+      "type": "string",
+      "title": "Area"
+     },
+     "topic": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Topic"
+     },
+     "labels_reviewed": {
+      "type": "boolean",
+      "title": "Labels Reviewed"
+     },
+     "answer_kind": {
+      "type": "string",
+      "title": "Answer Kind"
+     },
+     "graded": {
+      "type": "boolean",
+      "title": "Graded"
+     },
+     "playable": {
+      "type": "boolean",
+      "title": "Playable"
+     },
+     "images_missing": {
+      "type": "boolean",
+      "title": "Images Missing"
+     },
+     "excluded": {
+      "type": "boolean",
+      "title": "Excluded"
+     },
+     "exclusion_note": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Exclusion Note"
+     },
+     "key_changed_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Key Changed At"
+     },
+     "official": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Official"
+     },
+     "correction": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Correction"
+     },
+     "options": {
+      "items": {
+       "$ref": "#/components/schemas/ReviewOption"
+      },
+      "type": "array",
+      "title": "Options"
+     },
+     "quizzes": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Quizzes"
+     },
+     "reports": {
+      "items": {
+       "$ref": "#/components/schemas/ReviewReport"
+      },
+      "type": "array",
+      "title": "Reports"
+     },
+     "answered": {
+      "type": "integer",
+      "title": "Answered"
+     },
+     "right": {
+      "type": "integer",
+      "title": "Right"
+     },
+     "answer_hidden": {
+      "type": "boolean",
+      "title": "Answer Hidden",
+      "description": "The reviewer's own live question: answers withheld until answered"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "fsquiz_id",
+     "type",
+     "text",
+     "images",
+     "area",
+     "topic",
+     "labels_reviewed",
+     "answer_kind",
+     "graded",
+     "playable",
+     "images_missing",
+     "excluded",
+     "exclusion_note",
+     "key_changed_at",
+     "official",
+     "correction",
+     "options",
+     "quizzes",
+     "reports",
+     "answered",
+     "right",
+     "answer_hidden"
+    ],
+    "title": "ReviewQuestion",
+    "description": "Everything a reviewer needs about one question, answers included (reviewers only)."
+   },
+   "ReviewReport": {
+    "properties": {
+     "id": {
+      "type": "integer",
+      "title": "Id"
+     },
+     "by": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "By"
+     },
+     "message": {
+      "type": "string",
+      "title": "Message"
+     },
+     "at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "At"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "by",
+     "message",
+     "at"
+    ],
+    "title": "ReviewReport"
+   },
+   "ReviewRow": {
+    "properties": {
+     "id": {
+      "type": "integer",
+      "title": "Id"
+     },
+     "text": {
+      "type": "string",
+      "title": "Text"
+     },
+     "area": {
+      "type": "string",
+      "title": "Area"
+     },
+     "topic": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Topic"
+     },
+     "answer_kind": {
+      "type": "string",
+      "title": "Answer Kind"
+     },
+     "graded": {
+      "type": "boolean",
+      "title": "Graded"
+     },
+     "playable": {
+      "type": "boolean",
+      "title": "Playable"
+     },
+     "excluded": {
+      "type": "boolean",
+      "title": "Excluded"
+     },
+     "labels_reviewed": {
+      "type": "boolean",
+      "title": "Labels Reviewed"
+     },
+     "key_changed_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Key Changed At"
+     },
+     "reports": {
+      "type": "integer",
+      "title": "Reports"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "text",
+     "area",
+     "topic",
+     "answer_kind",
+     "graded",
+     "playable",
+     "excluded",
+     "labels_reviewed",
+     "key_changed_at",
+     "reports"
+    ],
+    "title": "ReviewRow"
    },
    "Role": {
     "type": "string",
