@@ -79,6 +79,12 @@ def clean_display_name(name: str) -> str | None:
     return name
 
 
+def sort_key(name: str) -> str:
+    """Alphabetical order that ignores accents and case, so "Álvaro" sorts with the A's."""
+    decomposed = unicodedata.normalize("NFKD", name).casefold()
+    return "".join(ch for ch in decomposed if not unicodedata.combining(ch))
+
+
 def name_skeleton(name: str) -> str:
     """What a name looks like, for uniqueness: accents, dotless i, case and punctuation are ignored,
     so "E2E Admın" and "e2e-admin" collide with "E2E Admin"."""

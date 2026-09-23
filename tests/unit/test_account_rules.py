@@ -14,6 +14,7 @@ from ifs_tests.domain.accounts import (
     loses_admin,
     name_skeleton,
     session_state,
+    sort_key,
 )
 
 NOW = datetime(2026, 10, 1, 12, 0, tzinfo=UTC)
@@ -116,6 +117,11 @@ def test_clean_display_name_is_idempotent() -> None:
 )
 def test_look_alikes_share_a_skeleton(variant: str) -> None:
     assert name_skeleton(variant) == name_skeleton("E2E Admin")
+
+
+def test_sort_key_ignores_accents_and_case() -> None:
+    names = ["Zoe", "Álvaro G.", "bea", "Alba", "Óscar"]
+    assert sorted(names, key=sort_key) == ["Alba", "Álvaro G.", "bea", "Óscar", "Zoe"]
 
 
 def test_different_names_have_different_skeletons() -> None:

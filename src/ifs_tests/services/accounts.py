@@ -5,7 +5,7 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy import func, select, update
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DB
 
@@ -370,8 +370,8 @@ def revoke_invite(db: DB, actor: User, invite_id: int, now: datetime) -> None:
     db.commit()
 
 
-def list_users(db: DB) -> Sequence[User]:
-    return db.scalars(select(User).order_by(func.lower(User.display_name))).all()
+def list_users(db: DB) -> list[User]:
+    return sorted(db.scalars(select(User)), key=lambda u: (rules.sort_key(u.display_name), u.id))
 
 
 def list_open_invites(db: DB, now: datetime) -> Sequence[Invite]:

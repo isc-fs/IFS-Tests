@@ -21,10 +21,12 @@ def test_links_use_the_configured_public_origin(app_client: TestClient, admin: U
 
 def test_users_list_and_audit_trail(app_client: TestClient, admin: User, new_client: NewClient) -> None:
     login(app_client)
+    member(app_client, new_client(), "zoe@alu.comillas.edu", "Zoe")
+    member(app_client, new_client(), "alvaro@alu.comillas.edu", "Álvaro")
     m = member(app_client, new_client(), "ana@alu.comillas.edu", "Ana")
     app_client.post(f"/api/admin/users/{m['id']}/reset-link")
     users = app_client.get("/api/admin/users").json()
-    assert [u["display_name"] for u in users] == ["Admin", "Ana"]
+    assert [u["display_name"] for u in users] == ["Admin", "Álvaro", "Ana", "Zoe"]
     assert all("password_hash" not in u for u in users)
     audit = app_client.get("/api/admin/audit", params={"limit": 3}).json()
     assert [(a["action"], a["actor"], a["target"]) for a in audit] == [
