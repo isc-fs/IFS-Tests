@@ -23,7 +23,7 @@ the options are laid out in `docs/proposals/`.
 
 | Phase | Title | Branches | Milestone tag |
 |:---:|---|---|---|
-| 1 | Foundations | 🔜 planned `feat/1-project-scope` · 🔜 planned `feat/2-fsquiz-client` · 🔜 planned `feat/3-team-proposal` | `v0.1.0` |
+| 1 | Foundations | 🔄 active `feat/1-project-scope` · 🔄 active `feat/2-fsquiz-client` · 🔄 active `feat/3-team-proposal` | `v0.1.0` |
 | 2 | Question bank & practice<br><sub>Offline, no accounts: usable by anyone with the repo</sub> | 🔜 planned `feat/4-topic-taxonomy` · 🔜 planned `feat/5-mock-quiz` · 🔜 planned `feat/6-bank-export` | `v0.2.0` |
 | 3 | Team platform _(deferred)_<br><sub>Pending team decision: format, hosting, sign-in (see docs/proposals)</sub> | ⏸ deferred `feat/7-web-app` · ⏸ deferred `feat/8-uni-sign-in` · ⏸ deferred `feat/9-daily-question` · ⏸ deferred `feat/10-leaderboard` | `v0.3.0` |
 | 4 | Tracking & quiz day _(deferred)_<br><sub>Pending team decision: what we track and where</sub> | ⏸ deferred `feat/11-notion-sync` · ⏸ deferred `feat/12-quiz-day-drill` | `v0.4.0` |
@@ -40,15 +40,15 @@ gitGraph
 
     %% Phase 1 — Foundations
     branch feat/1-project-scope
-    commit id: "○ README, roadmap and agent instructions for the quiz practice system"
+    commit id: "… README, roadmap and agent instructions for the quiz practice system"
     checkout dev
     merge feat/1-project-scope
     branch feat/2-fsquiz-client
-    commit id: "○ FS-Quiz API v2 client, polite full mirror and API reference"
+    commit id: "… FS-Quiz API v2 client, polite full mirror and API reference"
     checkout dev
     merge feat/2-fsquiz-client
     branch feat/3-team-proposal
-    commit id: "○ Gamification options deck and ideas doc for the team decision"
+    commit id: "… Gamification options deck and ideas doc for the team decision"
     checkout dev
     merge feat/3-team-proposal
     checkout main
