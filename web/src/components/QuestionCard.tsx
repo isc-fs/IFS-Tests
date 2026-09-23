@@ -117,6 +117,8 @@ export function QuestionCard({
   submitLabel = 'Check answer',
   preset,
   allowUnsure = true,
+  answerLabel = 'Your answer',
+  optionNotes,
 }: {
   question: PlayQuestion
   feedback?: Feedback
@@ -137,6 +139,10 @@ export function QuestionCard({
   preset?: AnswerIn
   /** Offer "I'm not sure" (not for proposals, which are only suggestions). */
   allowUnsure?: boolean
+  /** What the player is giving: "Your answer", or "Your proposal" to a live quiz captain. */
+  answerLabel?: string
+  /** A short note after an option, e.g. who proposed it. */
+  optionNotes?: Record<number, string>
 }) {
   const [chosen, setChosen] = useState<number[]>(preset?.options ?? [])
   const [value, setValue] = useState(preset?.value ?? '')
@@ -208,7 +214,7 @@ export function QuestionCard({
       <Form onSubmit={submit} error={missing} className="stack">
         {choice && (
           <fieldset className="choices" aria-describedby={missing ? `${legend}-missing` : undefined}>
-            <legend>{kind === 'choice-many' ? 'Your answer: select all that apply' : 'Your answer'}</legend>
+            <legend>{kind === 'choice-many' ? `${answerLabel}: select all that apply` : answerLabel}</legend>
             {question.options.map((o) => {
               const right = feedback?.correct_options.includes(o.id)
               const picked = chosen.includes(o.id)
@@ -224,7 +230,13 @@ export function QuestionCard({
                     aria-invalid={!!missing}
                     onChange={() => toggle(o.id)}
                   />
-                  <span>{o.text}</span>
+                  <span>
+                    <span className="choice-letter" aria-hidden="true">
+                      {String.fromCharCode(65 + question.options.indexOf(o))}
+                    </span>
+                    {o.text}
+                  </span>
+                  {optionNotes?.[o.id] && <span className="choice-note">{optionNotes[o.id]}</span>}
                   {state === 'right' && <span className="choice-note">Correct answer</span>}
                   {state === 'wrong' && <span className="choice-note">Your pick</span>}
                 </label>
@@ -239,7 +251,7 @@ export function QuestionCard({
         )}
         {!choice && kind !== 'self' && (
           <Field
-            label="Your answer"
+            label={answerLabel}
             inputMode={kind === 'text' ? 'text' : 'decimal'}
             autoComplete="off"
             value={value}

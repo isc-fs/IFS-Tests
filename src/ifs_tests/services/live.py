@@ -176,11 +176,16 @@ def seat(db: DB, host: User, code: str, tables: list[dict[str, Any]]) -> None:
         seen |= members
     db.execute(update(LivePlayer).where(LivePlayer.session_id == s.id).values(table_id=None))
     db.execute(delete(LiveTable).where(LiveTable.session_id == s.id))
+    levels = dict(db.execute(select(User.id, User.xp).where(User.id.in_(seen))).tuples().all())
     for t in tables:
+        # A table built by hand gets its most experienced member as captain until the host picks another.
+        captain = t.get("captain_id") or max(
+            t["member_ids"], key=lambda uid: (levels[uid], -uid), default=None
+        )
         table = LiveTable(
             session_id=s.id,
             name=t["name"],
-            captain_id=t.get("captain_id"),
+            captain_id=captain,
             topics=t.get("topics") or [],
             catch_all=bool(t.get("catch_all")),
         )
@@ -321,7 +326,9 @@ def _start(db: DB, s: LiveSession, now: datetime) -> None:
     if not questions:
         raise UserError("No questions match these settings.", 409)
     owners = [(t.id, list(t.topics)) for t in tables]
-    catch_all = next((t.id for t in tables if t.catch_all), tables[0].id)
+    # Questions no table owns go to the chosen table, else the biggest: it has the widest mix of people.
+    sizes = {t.id: len([p for p in _players(db, s).values() if p.table_id == t.id]) for t in tables}
+    catch_all = next((t.id for t in tables if t.catch_all), max(tables, key=lambda t: sizes[t.id]).id)
     specialists = s.config["routing"] == "owners"
     for i, q in enumerate(questions):
         db.add(

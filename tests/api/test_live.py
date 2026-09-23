@@ -577,3 +577,25 @@ def test_one_catch_all_table_at_most_and_auto_seating_picks_everyone_else(
     loner.post(f"/api/live/sessions/{code}/join")
     room["Tere"].post(f"{url}/auto")
     assert {t["name"]: t["catch_all"] for t in state(room["Tere"], code)["tables"]}["Everyone else"] is True
+
+
+def test_tables_built_by_hand_get_a_captain_and_unowned_questions_go_to_the_biggest(
+    room: dict[str, Any],
+) -> None:
+    code = create(room["Tere"], topics=["hv"], areas=[], count=1, routing="owners")
+    for name in ("Ana", "Leo", "Marta", "Pau"):
+        room[name].post(f"/api/live/sessions/{code}/join")
+    big = {
+        "name": "Big",
+        "member_ids": [room["Ana_id"], room["Leo_id"], room["Marta_id"]],
+        "topics": ["aero"],
+    }
+    small = {"name": "Small", "member_ids": [room["Pau_id"]]}
+    assert (
+        room["Tere"].put(f"/api/live/sessions/{code}/tables", json={"tables": [big, small]}).status_code
+        == 204
+    )
+    t = tables(room, code)
+    assert (t["Big"]["captain_id"], t["Small"]["captain_id"]) == (room["Leo_id"], room["Pau_id"])
+    advance(room, code)
+    assert state(room["Pau"], code)["question_table_id"] == t["Big"]["id"]

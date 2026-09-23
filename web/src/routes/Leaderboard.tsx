@@ -62,7 +62,7 @@ export default function Leaderboard() {
   const board = pick<Board>(BOARDS, params.get('board'), 'everyone')
   const period = pick<Period>(PERIODS, params.get('period'), 'season')
   return (
-    <Page title="Leaderboard" eyebrow="XP from practice, daily questions and mock quizzes">
+    <Page title="Leaderboard" eyebrow="XP from practice, daily questions, mock quizzes and live quizzes">
       <div className="stack">
         <Chips label="Board" options={BOARDS} current={board} to={(b) => href(b, period)} />
         <Chips label="Period" options={PERIODS} current={period} to={(p) => href(board, p)} />

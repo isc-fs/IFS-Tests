@@ -6,13 +6,14 @@ import {
   editTableMutation,
   endSessionMutation,
   movePlayerMutation,
+  removePlayerMutation,
   seatBySubdepartmentMutation,
   seatTablesMutation,
 } from '../api/@tanstack/react-query.gen'
 import type { AdvanceIn, LiveState, TableIn } from '../api/types.gen'
 import { Countdown } from '../components/Countdown'
 import { ErrorNotice, Notice } from '../components/Form'
-import { Reveal, Results, RoomScore, Tables } from '../components/LiveParts'
+import { Answered, Reveal, Results, RoomScore, ScreenOptions, Tables } from '../components/LiveParts'
 import { Qr } from '../components/Qr'
 import { TOPICS } from '../lib/areas'
 import { joinUrl, refresh, tableName, toggle } from '../lib/live'
@@ -33,6 +34,7 @@ export function HostControls({ s }: { s: LiveState }) {
   const [ending, setEnding] = useState(false)
   const last = s.state === 'closed' && s.position + 1 >= s.total
   const path = { path: { code: s.code } }
+  const unseated = s.players.filter((p) => p.table_id == null).length
   return (
     <div className="stack">
       <div className="panel host-bar">
@@ -52,11 +54,20 @@ export function HostControls({ s }: { s: LiveState }) {
           <h2 id="running-title">
             Question {s.position + 1} of {s.total}
           </h2>
-          <p className="muted">For {tableName(s, s.question_table_id)}.</p>
+          <p className="muted">
+            For {tableName(s, s.question_table_id)}. <Answered s={s} />
+          </p>
           {s.state === 'open' && s.deadline_at && (
             <Countdown deadline={s.deadline_at} serverNow={s.server_now} onExpire={() => refresh(s.code)} />
           )}
           {s.question && <p className="question-text">{s.question.text}</p>}
+          {s.state === 'open' && <ScreenOptions s={s} />}
+          {unseated > 0 && (
+            <Notice tone="info">
+              {unseated === 1 ? 'Someone joined late and is' : `${unseated} people joined late and are`} not seated yet:
+              seat them under Seating.
+            </Notice>
+          )}
           <Tables s={s} />
           {s.state === 'closed' && s.reveals?.[0] && (
             <>
@@ -75,7 +86,7 @@ export function HostControls({ s }: { s: LiveState }) {
           </a>
         </>
       ) : (
-        <div className="answer-actions">
+        <div className="answer-actions host-actions">
           <button
             type="button"
             onClick={() =>
@@ -142,6 +153,12 @@ function Lobby({ s, dirty, onDirty }: { s: LiveState; dirty: boolean; onDirty: (
       })),
     )
   const names = new Map(s.players.map((p) => [p.user_id, p.name]))
+  // Someone removed after the draft was made is no longer a player.
+  const present = (t: Draft) => ({
+    ...t,
+    member_ids: t.member_ids.filter((id) => names.has(id)),
+    captain_id: t.captain_id != null && names.has(t.captain_id) ? t.captain_id : null,
+  })
   return (
     <>
       <section className="panel stack" aria-labelledby="tables-title">
@@ -221,6 +238,7 @@ function Lobby({ s, dirty, onDirty }: { s: LiveState; dirty: boolean; onDirty: (
             </button>
           </fieldset>
         ))}
+        {s.config.routing === 'owners' && <Routing draft={draft} />}
         <h3>Players</h3>
         <ul className="seat-list">
           {s.players.map((p) => (
@@ -236,13 +254,14 @@ function Lobby({ s, dirty, onDirty }: { s: LiveState; dirty: boolean; onDirty: (
                   ))}
                 </select>
               </label>
+              <Remove s={s} p={p} />
             </li>
           ))}
           {s.players.length === 0 && <li className="muted">Nobody has joined yet.</li>}
         </ul>
         <button
           type="button"
-          onClick={() => save.mutate({ ...path, body: { tables: draft } })}
+          onClick={() => save.mutate({ ...path, body: { tables: draft.map(present) } })}
           disabled={!dirty || save.isPending}
         >
           {dirty ? 'Save the tables' : 'Tables saved'}
@@ -304,6 +323,7 @@ function SeatRow({ s, p }: { s: LiveState; p: LiveState['players'][number] }) {
           Make captain
         </button>
       )}
+      <Remove s={s} p={p} />
       <ErrorNotice error={move.error ?? captain.error} />
     </li>
   )
@@ -320,5 +340,49 @@ function Seating({ s }: { s: LiveState }) {
         ))}
       </ul>
     </details>
+  )
+}
+
+/** Where each question goes in specialists mode, so gaps show before the start. */
+function Routing({ draft }: { draft: Draft[] }) {
+  const owned = new Set(draft.flatMap((t) => t.topics))
+  const loose = Object.entries(TOPICS).filter(([topic]) => !owned.has(topic))
+  if (loose.length === 0 || draft.length === 0) return null
+  const fallback =
+    draft.find((t) => t.catch_all) ?? [...draft].sort((a, b) => b.member_ids.length - a.member_ids.length)[0]
+  return (
+    <p className="muted">
+      No table owns {loose.map(([, label]) => label).join(', ')}: those questions go to {fallback.name}.
+    </p>
+  )
+}
+
+/** Take someone out of the session for good: they can't rejoin with the code. */
+function Remove({ s, p }: { s: LiveState; p: LiveState['players'][number] }) {
+  const [asking, setAsking] = useState(false)
+  const remove = useMutation({ ...removePlayerMutation(), onSuccess: () => refresh(s.code) })
+  if (!asking) {
+    return (
+      <button type="button" className="link-button" onClick={() => setAsking(true)}>
+        Remove
+      </button>
+    )
+  }
+  return (
+    <>
+      <span>Remove {p.name}? They can't rejoin.</span>
+      <button
+        type="button"
+        className="link-button"
+        disabled={remove.isPending}
+        onClick={() => remove.mutate({ path: { code: s.code, user_id: p.user_id } })}
+      >
+        Remove them
+      </button>
+      <button type="button" className="link-button" onClick={() => setAsking(false)}>
+        Keep
+      </button>
+      <ErrorNotice error={remove.error} />
+    </>
   )
 }

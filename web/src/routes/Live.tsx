@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import {
   answerMutation,
@@ -12,7 +12,7 @@ import {
 import type { AnswerIn, LiveConfig, LiveState } from '../api/types.gen'
 import { Countdown } from '../components/Countdown'
 import { ErrorNotice, Field, Form, Notice, SelectField } from '../components/Form'
-import { answerText, Reveal, Results, RoomScore, Tables } from '../components/LiveParts'
+import { Answered, answerText, Reveal, Results, RoomScore, ScreenOptions, Tables } from '../components/LiveParts'
 import { APP_NAME, Page } from '../components/Page'
 import { Qr } from '../components/Qr'
 import { QuestionCard } from '../components/QuestionCard'
@@ -237,13 +237,23 @@ export function LiveSession() {
   const { code = '' } = useParams()
   const live = useLive(code)
   const join = useMutation({ ...joinSessionMutation(), onSuccess: () => refresh(code) })
+  // Opened from the QR code or a link: join straight away instead of showing an error first.
+  const notJoined = errorMessage(live.error) === 'Join the live quiz first.'
+  const tried = useRef(false)
+  useEffect(() => {
+    if (notJoined && !tried.current) {
+      tried.current = true
+      join.mutate({ path: { code } })
+    }
+  }, [notJoined, code, join])
   if (live.isError && !live.data) {
     return (
       <Page title="Live quiz">
-        <Notice tone="error">{errorMessage(live.error)}</Notice>
-        <button type="button" onClick={() => join.mutate({ path: { code } })} disabled={join.isPending}>
-          Join {code}
-        </button>
+        {notJoined ? (
+          <Notice tone="info">Joining {code}…</Notice>
+        ) : (
+          <Notice tone="error">{errorMessage(live.error)}</Notice>
+        )}
         <ErrorNotice error={join.error} />
       </Page>
     )
@@ -258,12 +268,26 @@ export function LiveSession() {
   )
 }
 
+const settings = (s: LiveState) =>
+  [
+    s.config.questions === 'quiz' ? 'a full past quiz' : `${s.config.count} questions`,
+    s.config.routing === 'owners' ? 'each question to its specialist table' : 'every table answers',
+    s.config.feedback === 'end' ? 'right and wrong at the end' : 'right and wrong after each question',
+    s.config.speed_points && 'speed points on',
+  ]
+    .filter(Boolean)
+    .join(' · ')
+
 function PlayerView({ s }: { s: LiveState }) {
   const table = s.tables.find((t) => t.id === s.my_table_id)
+  const names = new Map(s.players.map((p) => [p.user_id, p.name]))
+  const mates = table?.member_ids.filter((id) => id !== table.captain_id).map((id) => names.get(id)) ?? []
   const seat = table ? (
     <p className="muted">
       You're at <strong>{table.name}</strong>
-      {s.captain ? ' as its captain: you send the table’s answers.' : '.'}
+      {s.captain
+        ? `, as its captain: you send its answers${s.config.routing === 'owners' ? ' to the questions on its topics' : ''}.`
+        : `. Your captain is ${names.get(table.captain_id ?? -1) ?? 'still to be chosen'}.`}
     </p>
   ) : (
     <p className="muted">Waiting for {s.host_name} to seat you at a table.</p>
@@ -273,6 +297,8 @@ function PlayerView({ s }: { s: LiveState }) {
       <div className="stack">
         <Notice tone="info">You're in. {s.host_name} starts the quiz from their screen.</Notice>
         {seat}
+        {mates.length > 0 && <p className="muted">At your table: {mates.join(', ')}.</p>}
+        <p className="muted">This session: {settings(s)}.</p>
       </div>
     )
   }
@@ -303,7 +329,7 @@ function announce(s: LiveState): string {
 
 function Closed({ s }: { s: LiveState }) {
   const reveal = s.reveals?.find((r) => r.position === s.position)
-  if (!reveal) return <Notice tone="info">Time's up. Right and wrong come at the end.</Notice>
+  if (!reveal) return <Notice tone="info">This question is closed. Right and wrong come at the end.</Notice>
   return (
     <>
       <RoomScore s={s} />
@@ -322,6 +348,12 @@ function Answering({ s }: { s: LiveState }) {
   if (!question) return null
   const target = s.question_table_id ?? s.my_table_id
   const answering = s.captain && target === s.my_table_id
+  const tableOf = new Map(s.players.map((p) => [p.user_id, p.table_id]))
+  const who = (p: { user_id: number; name: string }) =>
+    tableOf.get(p.user_id) === target ? p.name : `${p.name} (${tableName(s, tableOf.get(p.user_id))})`
+  const backers: Record<number, string[]> = {}
+  for (const p of s.proposals ?? []) for (const id of p.options ?? []) (backers[id] ??= []).push(who(p))
+  const notes = Object.fromEntries(Object.entries(backers).map(([id, n]) => [id, `Proposed by ${n.join(', ')}`]))
   const clock = s.deadline_at ? (
     <Countdown deadline={s.deadline_at} serverNow={s.server_now} onExpire={expire} />
   ) : undefined
@@ -335,6 +367,7 @@ function Answering({ s }: { s: LiveState }) {
   }
   if (target == null) return <Notice tone="info">Watch the screen: you'll be seated soon.</Notice>
   if (!answering && expired) return <Notice tone="info">Time's up: the captain's answer is what counts.</Notice>
+  const typed = (s.proposals ?? []).filter((p) => p.value)
   return (
     <div className="stack">
       <QuestionCard
@@ -344,6 +377,8 @@ function Answering({ s }: { s: LiveState }) {
         expired={expired}
         clock={clock}
         preset={preset}
+        answerLabel={answering ? 'Your table’s answer' : 'Your proposal'}
+        optionNotes={notes}
         submitLabel={answering ? 'Send the table’s answer' : `Propose to ${tableName(s, target)}'s captain`}
         allowUnsure={answering}
         onAnswer={(body) =>
@@ -355,12 +390,12 @@ function Answering({ s }: { s: LiveState }) {
       {propose.isSuccess && !answering && <Notice tone="ok">Proposal sent. The captain decides.</Notice>}
       <ErrorNotice error={send.error ?? propose.error} />
       {(s.proposals?.length ?? 0) > 0 && (
-        <section className="panel stack" aria-labelledby="proposals-title">
+        <section className="stack" aria-labelledby="proposals-title">
           <h2 id="proposals-title">Proposals</h2>
           <ul className="proposals">
             {s.proposals?.map((p) => (
               <li key={p.user_id}>
-                <strong>{p.name}:</strong> {answerText(question, p)}
+                <strong>{who(p)}:</strong> {answerText(question, p)}
                 {answering && (
                   <button
                     type="button"
@@ -373,6 +408,9 @@ function Answering({ s }: { s: LiveState }) {
               </li>
             ))}
           </ul>
+          {typed.length === 0 && question.options.length > 0 && (
+            <p className="muted">Names next to the options show who proposed what.</p>
+          )}
         </section>
       )}
     </div>
@@ -388,6 +426,7 @@ export function LiveScreen() {
   }, [code])
   if (error && !s) return <Notice tone="error">{errorMessage(error)}</Notice>
   if (!s) return <p className="muted">Loading…</p>
+  const reveal = s.state === 'closed' ? s.reveals?.find((r) => r.position === s.position) : undefined
   return (
     <div className="live-screen stack">
       <h1 className="sr-only">Live quiz {s.code}</h1>
@@ -403,27 +442,25 @@ export function LiveScreen() {
       )}
       {(s.state === 'open' || s.state === 'closed') && s.question && (
         <>
-          <p className="muted">
-            Question {s.position + 1} of {s.total} · for {tableName(s, s.question_table_id)}
-          </p>
-          {s.state === 'open' && s.deadline_at && (
-            <Countdown deadline={s.deadline_at} serverNow={s.server_now} onExpire={() => refresh(s.code)} />
-          )}
+          <div className="screen-head">
+            <span>
+              Question {s.position + 1} of {s.total} · for {tableName(s, s.question_table_id)}
+            </span>
+            <Answered s={s} />
+            {s.state === 'open' && s.deadline_at && (
+              <Countdown deadline={s.deadline_at} serverNow={s.server_now} onExpire={() => refresh(s.code)} />
+            )}
+          </div>
           <p className="screen-question">{s.question.text}</p>
           {s.question.images.map((src) => (
             <img key={src} src={src} alt="Figure for this question" className="screen-image" />
           ))}
-          {s.question.options.length > 0 && (
-            <ol className="screen-options" type="A">
-              {s.question.options.map((o) => (
-                <li key={o.id}>{o.text}</li>
-              ))}
-            </ol>
-          )}
-          {s.state === 'closed' && <Closed s={s} />}
+          <ScreenOptions s={s} reveal={reveal} />
+          {s.state === 'closed' && reveal && <RoomScore s={s} />}
+          {s.state === 'closed' && !reveal && <p>Closed. Right and wrong come at the end.</p>}
         </>
       )}
-      {s.state !== 'finished' && <Tables s={s} />}
+      {s.state === 'lobby' && <Tables s={s} />}
       {s.state === 'finished' && <Results s={s} />}
       <p className="muted">
         <Link to={`/live/${s.code}`}>Back to the session</Link>

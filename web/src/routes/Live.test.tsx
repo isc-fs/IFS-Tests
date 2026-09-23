@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { expect, test, vi } from 'vitest'
 import { refresh } from '../lib/live'
@@ -146,8 +146,9 @@ test('the captain sends the table answer, and can take a teammate proposal', asy
   })
   expect(await screen.findByText('Marta:')).toBeInTheDocument()
   expect(screen.getByRole('button', { name: "I'm not sure" })).toBeInTheDocument()
+  expect(screen.getByRole('radio', { name: /Red and yellow.*Proposed by Marta/ })).toBeInTheDocument()
   await userEvent.click(screen.getByRole('button', { name: 'Use this' }))
-  expect(screen.getByRole('radio', { name: 'Red and yellow' })).toBeChecked()
+  expect(screen.getByRole('radio', { name: /^Red and yellow/ })).toBeChecked()
   await userEvent.click(screen.getByRole('button', { name: 'Send the table’s answer' }))
   await waitFor(() => expect(sent('POST /api/live/sessions/ABC234/answer')[0].body).toEqual({ options: [71] }))
 })
@@ -190,7 +191,7 @@ test('after the close everyone sees the answer and how each table did', async ()
 
 test('a rehearsal keeps right and wrong for the end', async () => {
   at('/live/ABC234', { ...MEMBER, id: 2 }, { ...open, state: 'closed', config: { ...base.config, feedback: 'end' } })
-  expect(await screen.findByText("Time's up. Right and wrong come at the end.")).toBeInTheDocument()
+  expect(await screen.findByText('This question is closed. Right and wrong come at the end.')).toBeInTheDocument()
 })
 
 test('the projector shows the code and QR in the lobby and never an answer while open', async () => {
@@ -206,17 +207,51 @@ test('the projector during a question', async () => {
   expect(screen.getByRole('timer')).toBeInTheDocument()
 })
 
+test('the projector marks the right option with how many tables picked each', async () => {
+  const reveal = {
+    position: 0,
+    question: QUESTION,
+    table_id: null,
+    feedback: { correct: null, official: 'Red and yellow', correct_options: [71], solutions: [] },
+    answers: [{ table_id: 5, correct: true, passed: false, points: 0, options: [71], value: null }],
+  }
+  at('/live/ABC234/screen', HOST, { ...open, role: 'host', state: 'closed', reveals: [reveal], room_right: 1 })
+  expect((await screen.findByText('Red and yellow')).closest('li')).toHaveClass('right')
+  expect(screen.getByText('Correct · 1 table')).toBeInTheDocument()
+  expect(screen.getByText('0 tables')).toBeInTheDocument()
+})
+
+test('the host removes a player only after confirming', async () => {
+  const { sent } = at(
+    '/live/ABC234',
+    HOST,
+    { ...base, role: 'host' },
+    { 'DELETE /api/live/sessions/ABC234/players/3': { status: 204 } },
+  )
+  const leo = (await screen.findByText('Leo')).closest('li') as HTMLElement
+  await userEvent.click(within(leo).getByRole('button', { name: 'Remove' }))
+  expect(sent('DELETE /api/live/sessions/ABC234/players/3')).toHaveLength(0)
+  await userEvent.click(within(leo).getByRole('button', { name: 'Remove them' }))
+  await waitFor(() => expect(sent('DELETE /api/live/sessions/ABC234/players/3')).toHaveLength(1))
+})
+
+test('specialists mode says where the questions no table owns go', async () => {
+  const lobby = { ...base, role: 'host', config: { ...base.config, routing: 'owners' }, tables: [table] }
+  at('/live/ABC234', HOST, lobby)
+  expect(await screen.findByText(/those questions go to Aerodynamics\./)).toBeInTheDocument()
+})
+
 test('a failed refresh keeps the question and the answer being picked', async () => {
   let fail = false
   at('/live/ABC234', { ...MEMBER, id: 3 }, open, {
     'GET /api/live/sessions/ABC234': () =>
       fail ? { status: 502, body: undefined } : { body: { ...open, captain: true } },
   })
-  await userEvent.click(await screen.findByRole('radio', { name: 'Red and yellow' }))
+  await userEvent.click(await screen.findByRole('radio', { name: /^Red and yellow/ }))
   fail = true
   await refresh('ABC234')
   expect(await screen.findByText(/Reconnecting/, {}, { timeout: 4000 })).toBeInTheDocument()
-  expect(screen.getByRole('radio', { name: 'Red and yellow' })).toBeChecked()
+  expect(screen.getByRole('radio', { name: /^Red and yellow/ })).toBeChecked()
 })
 
 test('opening the link before joining: join, then the live stream opens', async () => {
@@ -237,8 +272,8 @@ test('opening the link before joining: join, then the live stream opens', async 
       joined ? { body: base } : { status: 403, body: { detail: 'Join the live quiz first.' } },
     'POST /api/live/sessions/ABC234/join': () => ((joined = true), { body: base }),
   })
-  await userEvent.click(await screen.findByRole('button', { name: 'Join ABC234' }))
   expect(await screen.findByText(/You're in\./)).toBeInTheDocument()
+  expect(joined).toBe(true)
   expect(opened).toEqual(['/api/live/sessions/ABC234/events'])
   vi.unstubAllGlobals()
 })

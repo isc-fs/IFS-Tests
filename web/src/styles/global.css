@@ -1266,6 +1266,8 @@ details[open] > summary::before {
   display: grid;
   gap: 12px;
   font-size: clamp(20px, 2.6vw, 34px);
+  list-style: upper-alpha;
+  padding-left: 1.6em;
 }
 .screen-image {
   max-height: 50vh;
@@ -1280,4 +1282,68 @@ details[open] > summary::before {
 .live-screen .muted,
 .live-screen .badge {
   font-size: inherit;
+}
+.subdepartments {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.subdepartments legend {
+  font-weight: 600;
+}
+.subdepartments .checks legend {
+  font-weight: 600;
+  font-size: var(--isc-fs-body-s);
+  color: var(--isc-c-text-mut);
+  width: 100%;
+}
+.choice-letter {
+  display: inline-block;
+  min-width: 1.6em;
+  font-family: var(--isc-font-mono);
+  font-weight: 600;
+  color: var(--isc-c-text-mut);
+}
+.reveal .choice {
+  grid-template-columns: 1fr;
+  cursor: default;
+}
+.screen-options li {
+  padding: 4px 12px;
+  border-radius: var(--radius);
+}
+.screen-options li.right {
+  background: color-mix(in srgb, var(--isc-green) 14%, transparent);
+  font-weight: 600;
+}
+.screen-options .choice-note {
+  margin-left: 12px;
+  font-size: 0.7em;
+  color: var(--isc-c-text-mut);
+}
+.screen-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 24px;
+}
+.shell:has(.live-screen) .footer {
+  display: none;
+}
+.live-tables li.mine,
+.live-answers li.mine {
+  font-weight: 600;
+}
+.live-tables li.mine {
+  box-shadow: inset 4px 0 0 var(--isc-gold);
+}
+.host-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  padding: 12px 0 calc(12px + env(safe-area-inset-bottom, 0px));
+  background: var(--isc-c-bg);
 }

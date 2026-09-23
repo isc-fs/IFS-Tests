@@ -1,13 +1,19 @@
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
-import { changePasswordMutation, logoutMutation, updateMeMutation } from '../api/@tanstack/react-query.gen'
+import {
+  changePasswordMutation,
+  logoutMutation,
+  subdepartmentsOptions,
+  updateMeMutation,
+} from '../api/@tanstack/react-query.gen'
 import { type Me, Vertical } from '../api/types.gen'
 import { ErrorNotice, Field, Form, Notice, PASSWORD_HINT, SelectField, useFieldErrors } from '../components/Form'
 import { LevelCard } from '../components/LevelCard'
 import { RankRoad } from '../components/RankRoad'
 import { Page } from '../components/Page'
 import { ME_KEY, queryClient, useMe } from '../lib/api'
+import { toggle } from '../lib/live'
 import { POSITION_NAMES } from '../lib/xp'
 
 export default function Profile() {
@@ -42,7 +48,9 @@ function ProfileForm({ user }: { user: Me }) {
     display_name: user.display_name,
     vertical: user.vertical ?? '',
     leaderboard_opt_out: user.leaderboard_opt_out,
+    subdepartments: user.subdepartments,
   })
+  const departments = useQuery(subdepartmentsOptions())
   const save = useMutation({
     ...updateMeMutation(),
     onSuccess: (me) => queryClient.setQueryData(ME_KEY, me),
@@ -78,6 +86,29 @@ function ProfileForm({ user }: { user: Me }) {
           <option key={v}>{v}</option>
         ))}
       </SelectField>
+      {departments.data && (
+        <fieldset className="subdepartments">
+          <legend>Sub-departments</legend>
+          <p className="hint">Live quizzes seat you with your first one. The Team Directory's departments.</p>
+          {[...new Set(departments.data.map((d) => d.vertical))].map((vertical) => (
+            <fieldset key={vertical} className="checks">
+              <legend>{vertical}</legend>
+              {departments.data
+                .filter((d) => d.vertical === vertical)
+                .map((d) => (
+                  <label key={d.code} className="check">
+                    <input
+                      type="checkbox"
+                      checked={form.subdepartments.includes(d.code)}
+                      onChange={() => edit({ subdepartments: toggle(form.subdepartments, d.code) })}
+                    />
+                    {d.name}
+                  </label>
+                ))}
+            </fieldset>
+          ))}
+        </fieldset>
+      )}
       <p className="position">
         <strong>Position on the team:</strong> {POSITION_NAMES[user.position]}.{' '}
         <span className="muted">Only an admin can change it.</span>
