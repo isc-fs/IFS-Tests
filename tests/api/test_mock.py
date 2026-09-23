@@ -7,11 +7,12 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from ifs_tests.bank.mirror import load_bank
 from ifs_tests.bank.sample import SAMPLE_DIR
-from ifs_tests.db.models import User
+from ifs_tests.db.models import Question, QuizQuestion, User
 from ifs_tests.services.bank import import_bank
 
 from ..conftest import Clock
@@ -153,3 +154,38 @@ def test_runs_belong_to_their_player(
     )
     assert stolen.status_code == 404
     assert player.post("/api/mock/quizzes/424242/start").status_code == 404
+
+
+def test_a_question_disappearing_mid_run_does_not_derail_it(player: TestClient, db: Session) -> None:
+    """Images can arrive or go missing, and reviewers can hide questions, while someone is mid-run."""
+    state = player.post(f"/api/mock/quizzes/{CV}/start").json()
+    first = state["current"]["question"]["id"]
+    state = answer(player, state, right_answer(db, first))
+    second = state["current"]["question"]["id"]
+    db.execute(update(Question).where(Question.id.in_([first, second])).values(playable=False))
+    db.commit()
+
+    again = player.get(f"/api/mock/sessions/{state['session_id']}").json()
+    assert (again["current"]["question"]["id"], again["position"], again["total"]) == (second, 1, 5)
+    state = answer(player, again, right_answer(db, second))
+    while state["current"]:
+        state = answer(player, state, right_answer(db, state["current"]["question"]["id"]))
+    s = state["summary"]
+    assert (s["correct"], s["graded"], s["points"], len(s["items"])) == (5, 5, 10, 5)
+
+
+def test_a_question_that_becomes_playable_mid_run_joins_it(player: TestClient, db: Session) -> None:
+    last = db.scalars(
+        select(QuizQuestion.question_id)
+        .where(QuizQuestion.quiz_id == CV)
+        .order_by(QuizQuestion.position.desc())
+    ).first()
+    db.execute(update(Question).where(Question.id == last).values(playable=False))
+    db.commit()
+    state = player.post(f"/api/mock/quizzes/{CV}/start").json()
+    assert state["total"] == 4
+    db.execute(update(Question).where(Question.id == last).values(playable=True))
+    db.commit()
+    while state["current"]:
+        state = answer(player, state, right_answer(db, state["current"]["question"]["id"]))
+    assert len(state["summary"]["items"]) == 5

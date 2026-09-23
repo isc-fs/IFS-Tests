@@ -125,6 +125,7 @@ def test_next_prefers_questions_not_yet_practised(player: TestClient, bank: dict
     assert player.get("/api/practice/next", params={"area": "rules", "skip": other}).json()["id"] == first
     assert player.get("/api/practice/next", params={"topic": "nope"}).status_code == 404
     assert player.get("/api/practice/next", params={"area": "chassis"}).status_code == 422
+    assert player.get("/api/practice/next", params={"topic": "a\x00b"}).status_code == 422
 
 
 def test_hidden_questions_are_never_served(player: TestClient, db: Session, bank: dict[int, int]) -> None:
