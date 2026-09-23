@@ -503,6 +503,9 @@ def test_the_open_live_question_is_not_answered_by_practice_mode(room: dict[str,
     qid = state(room["Ana"], code)["question"]["id"]
     r = room["Ana"].post(f"/api/practice/questions/{qid}/answer", json={"unsure": True})
     assert r.status_code == 409 or not (r.json().get("official") or r.json().get("correct_options")), r.json()
+    served = {room["Ana"].get("/api/practice/next", params={"area": "rules"}).json().get("id") for _ in range(12)}
+    assert qid not in served  # nor offered: it would stop at the check
+    assert qid in {room["Tere"].get("/api/practice/next", params={"area": "rules"}).json()["id"] for _ in range(12)}
 
 
 # From the backend and security reviews

@@ -35,8 +35,9 @@ test('a host runs a live quiz: players join with the code, one proposes, the cap
 
   const proposal = mate.getByRole('article')
   await expect(mate.getByRole('button', { name: /Propose to Table 1/ })).toBeVisible()
-  const choices = proposal.getByRole('radio')
-  await choices.first().check()
+  const choices = proposal.getByRole('radio').or(proposal.getByRole('checkbox'))
+  if (await choices.count()) await choices.first().check()
+  else await proposal.getByLabel('Your proposal').fill('1')
   await mate.getByRole('button', { name: /Propose to Table 1/ }).click()
   await expect(mate.getByText('Proposal sent. The captain decides.')).toBeVisible()
 

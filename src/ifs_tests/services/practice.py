@@ -12,7 +12,7 @@ from ..db.models import AREAS, Attempt, Question, User
 from ..domain.daily import madrid_day
 from . import hints, xp
 from .errors import UserError
-from .questions import Checked, check, not_running, playable
+from .questions import Checked, check, not_running, playable, running
 
 
 @dataclass
@@ -50,9 +50,15 @@ def areas(db: DB, user: User) -> list[AreaProgress]:
 
 
 def next_question(
-    db: DB, user: User, area: str | None = None, topic: str | None = None, skip: int | None = None
+    db: DB,
+    user: User,
+    now: datetime,
+    area: str | None = None,
+    topic: str | None = None,
+    skip: int | None = None,
 ) -> Question:
-    """A random question, preferring the ones this person has practised least."""
+    """A random question, preferring the ones this person has practised least, never one they still have to
+    answer in a daily, mock or live quiz."""
     mine = (
         select(Attempt.question_id, func.count().label("n"))
         .where(Attempt.user_id == user.id, Attempt.mode == "practice")
@@ -66,6 +72,8 @@ def next_question(
         stmt = stmt.where(Question.topic == topic)
     if skip:
         stmt = stmt.where(Question.id != skip)
+    if busy := running(db, user.id, now):
+        stmt = stmt.where(Question.id.not_in(busy))
     q = db.scalars(stmt.order_by(func.coalesce(mine.c.n, 0), func.random()).limit(1)).first()
     if q is None:
         raise UserError("No questions match that filter yet.", 404)
