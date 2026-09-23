@@ -1,41 +1,26 @@
+"""Public endpoints. Invite and reset tokens travel in POST bodies (the SPA reads them from the URL
+fragment), so they never appear in access logs."""
+
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, Request, Response
 
-from ...auth.sessions import ABSOLUTE, COOKIE, create_session, end_session
+from ...auth.sessions import COOKIE, end_session
+from ...domain.accounts import SESSION_ABSOLUTE
 from ...services import accounts
 from ..deps import Db, Now
-from ..schemas import InviteInfo, LoginIn, Me, RegisterIn, ResetIn, ResetInfo
+from ..schemas import InviteInfo, LoginIn, Me, RegisterIn, ResetIn, ResetInfo, TokenIn
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-def _set_cookie(response: Response, token: str) -> None:
-    response.set_cookie(
-        COOKIE,
-        token,
-        max_age=int(ABSOLUTE.total_seconds()),
-        path="/",
-        secure=True,
-        httponly=True,
-        samesite="lax",
-    )
-
-
-def _fail(e: accounts.AccountError) -> HTTPException:
-    return HTTPException(e.status, e.message)
+def _set_cookie(response: Response, token: str, max_age: int = int(SESSION_ABSOLUTE.total_seconds())) -> None:
+    response.set_cookie(COOKIE, token, max_age=max_age, path="/", secure=True, httponly=True, samesite="lax")
 
 
 @router.post("/login")
 def login(body: LoginIn, request: Request, response: Response, db: Db, now: Now) -> Me:
-    try:
-        user = accounts.authenticate(db, body.email, body.password, now)
-    except accounts.AccountError as e:
-        raise _fail(e) from None
-    if old := request.cookies.get(COOKIE):
-        end_session(db, old)
-    token = create_session(db, user, now)
-    db.commit()
+    user, token = accounts.login(db, body.email, body.password, now, request.cookies.get(COOKIE))
     _set_cookie(response, token)
     return Me.model_validate(user)
 
@@ -45,39 +30,28 @@ def logout(request: Request, response: Response, db: Db) -> None:
     if token := request.cookies.get(COOKIE):
         end_session(db, token)
         db.commit()
-    response.delete_cookie(COOKIE, path="/", secure=True, httponly=True, samesite="lax")
+    _set_cookie(response, "", max_age=0)
 
 
-@router.get("/invites/{token}")
-def invite_info(token: str, db: Db, now: Now) -> InviteInfo:
-    try:
-        return InviteInfo.model_validate(accounts.open_invite(db, token, now))
-    except accounts.AccountError as e:
-        raise _fail(e) from None
+@router.post("/invites/lookup")
+def invite_info(body: TokenIn, db: Db, now: Now) -> InviteInfo:
+    return InviteInfo.model_validate(accounts.open_invite(db, body.token, now))
 
 
 @router.post("/register", status_code=201)
 def register(body: RegisterIn, response: Response, db: Db, now: Now) -> Me:
-    try:
-        user = accounts.register(db, body.token, body.email, body.display_name, body.password, now)
-    except accounts.AccountError as e:
-        raise _fail(e) from None
-    _set_cookie(response, create_session(db, user, now))
-    db.commit()
+    user, token = accounts.register(
+        db, body.token, body.email, body.display_name, body.password, now, body.vertical
+    )
+    _set_cookie(response, token)
     return Me.model_validate(user)
 
 
-@router.get("/resets/{token}")
-def reset_info(token: str, db: Db, now: Now) -> ResetInfo:
-    try:
-        return ResetInfo.model_validate(accounts.open_reset(db, token, now))
-    except accounts.AccountError as e:
-        raise _fail(e) from None
+@router.post("/resets/lookup")
+def reset_info(body: TokenIn, db: Db, now: Now) -> ResetInfo:
+    return ResetInfo.model_validate(accounts.open_reset(db, body.token, now))
 
 
 @router.post("/reset", status_code=204)
 def reset(body: ResetIn, db: Db, now: Now) -> None:
-    try:
-        accounts.reset_password(db, body.token, body.password, now)
-    except accounts.AccountError as e:
-        raise _fail(e) from None
+    accounts.reset_password(db, body.token, body.password, now)

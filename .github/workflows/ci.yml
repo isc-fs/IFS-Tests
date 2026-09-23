@@ -24,8 +24,10 @@ jobs:
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run mypy
-      # Integration tests start Postgres with testcontainers (Docker is available on the runner).
-      - run: uv run pytest -q
+      - name: Tests with coverage (integration tests start Postgres with testcontainers)
+        run: |
+          uv run pytest -q --cov=ifs_tests --cov-branch --cov-report=term-missing:skip-covered --cov-fail-under=78
+          uv run coverage report --include='src/ifs_tests/api/*,src/ifs_tests/auth/*,src/ifs_tests/services/*,src/ifs_tests/domain/*' --fail-under=92
       - name: OpenAPI schema is up to date (regenerate with `uv run ifs-tests openapi > web/openapi.json`)
         run: uv run ifs-tests openapi > web/openapi.json && git diff --exit-code web/openapi.json
 
@@ -44,6 +46,7 @@ jobs:
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Generated API client matches openapi.json (regenerate with `npm run gen:api`)
         run: npm run gen:api && git diff --exit-code src/api
+      - run: npm run format:check
       - run: npm run typecheck
       - run: npm run lint
       - run: npm test
@@ -74,6 +77,12 @@ jobs:
           npm run e2e
       - if: failure()
         run: docker compose logs api
+      - if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: playwright-traces
+          path: web/test-results
+          retention-days: 7
 
   image:
     runs-on: ubuntu-latest

@@ -60,24 +60,23 @@
     }
    }
   },
-  "/auth/invites/{token}": {
-   "get": {
+  "/auth/invites/lookup": {
+   "post": {
     "tags": [
      "auth"
     ],
     "summary": "Invite Info",
     "operationId": "invite_info",
-    "parameters": [
-     {
-      "name": "token",
-      "in": "path",
-      "required": true,
-      "schema": {
-       "type": "string",
-       "title": "Token"
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/TokenIn"
+       }
       }
-     }
-    ],
+     },
+     "required": true
+    },
     "responses": {
      "200": {
       "description": "Successful Response",
@@ -143,24 +142,23 @@
     }
    }
   },
-  "/auth/resets/{token}": {
-   "get": {
+  "/auth/resets/lookup": {
+   "post": {
     "tags": [
      "auth"
     ],
     "summary": "Reset Info",
     "operationId": "reset_info",
-    "parameters": [
-     {
-      "name": "token",
-      "in": "path",
-      "required": true,
-      "schema": {
-       "type": "string",
-       "title": "Token"
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/TokenIn"
+       }
       }
-     }
-    ],
+     },
+     "required": true
+    },
     "responses": {
      "200": {
       "description": "Successful Response",
@@ -352,6 +350,8 @@
       "required": true,
       "schema": {
        "type": "integer",
+       "maximum": 2147483647,
+       "minimum": 1,
        "title": "User Id"
       }
      }
@@ -404,6 +404,8 @@
       "required": true,
       "schema": {
        "type": "integer",
+       "maximum": 2147483647,
+       "minimum": 1,
        "title": "User Id"
       }
      }
@@ -414,7 +416,7 @@
       "content": {
        "application/json": {
         "schema": {
-         "$ref": "#/components/schemas/ResetLink"
+         "$ref": "#/components/schemas/Link"
         }
        }
       }
@@ -446,6 +448,8 @@
       "required": true,
       "schema": {
        "type": "integer",
+       "maximum": 2147483647,
+       "minimum": 1,
        "title": "User Id"
       }
      }
@@ -513,7 +517,7 @@
       "content": {
        "application/json": {
         "schema": {
-         "$ref": "#/components/schemas/InviteCreated"
+         "$ref": "#/components/schemas/Link"
         }
        }
       }
@@ -545,6 +549,8 @@
       "required": true,
       "schema": {
        "type": "integer",
+       "maximum": 2147483647,
+       "minimum": 1,
        "title": "Invite Id"
       }
      }
@@ -635,40 +641,18 @@
      "vertical": {
       "anyOf": [
        {
-        "type": "string",
-        "enum": [
-         "Management",
-         "Mechanical",
-         "Tractive System",
-         "Electronics",
-         "Driverless",
-         "Business",
-         "Board"
-        ]
+        "$ref": "#/components/schemas/Vertical"
        },
        {
         "type": "null"
        }
-      ],
-      "title": "Vertical"
+      ]
      },
      "role": {
-      "type": "string",
-      "enum": [
-       "member",
-       "reviewer",
-       "admin"
-      ],
-      "title": "Role"
+      "$ref": "#/components/schemas/Role"
      },
      "status": {
-      "type": "string",
-      "enum": [
-       "active",
-       "alumni",
-       "disabled"
-      ],
-      "title": "Status"
+      "$ref": "#/components/schemas/Status"
      },
      "leaderboard_opt_out": {
       "type": "boolean",
@@ -730,20 +714,20 @@
       "format": "date-time",
       "title": "At"
      },
-     "actor_id": {
+     "action": {
+      "type": "string",
+      "title": "Action"
+     },
+     "actor": {
       "anyOf": [
        {
-        "type": "integer"
+        "type": "string"
        },
        {
         "type": "null"
        }
       ],
-      "title": "Actor Id"
-     },
-     "action": {
-      "type": "string",
-      "title": "Action"
+      "title": "Actor"
      },
      "target": {
       "anyOf": [
@@ -766,8 +750,8 @@
     "required": [
      "id",
      "at",
-     "actor_id",
      "action",
+     "actor",
      "target",
      "details"
     ],
@@ -786,7 +770,69 @@
     "type": "object",
     "title": "HTTPValidationError"
    },
-   "InviteCreated": {
+   "InviteIn": {
+    "properties": {
+     "role": {
+      "$ref": "#/components/schemas/Role",
+      "default": "member"
+     },
+     "vertical": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Vertical"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "note": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 80
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Note"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "title": "InviteIn"
+   },
+   "InviteInfo": {
+    "properties": {
+     "role": {
+      "$ref": "#/components/schemas/Role"
+     },
+     "vertical": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Vertical"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Expires At"
+     }
+    },
+    "type": "object",
+    "required": [
+     "role",
+     "vertical",
+     "expires_at"
+    ],
+    "title": "InviteInfo"
+   },
+   "Link": {
     "properties": {
      "url": {
       "type": "string",
@@ -803,100 +849,7 @@
      "url",
      "expires_at"
     ],
-    "title": "InviteCreated"
-   },
-   "InviteIn": {
-    "properties": {
-     "role": {
-      "type": "string",
-      "enum": [
-       "member",
-       "reviewer",
-       "admin"
-      ],
-      "title": "Role",
-      "default": "member"
-     },
-     "vertical": {
-      "anyOf": [
-       {
-        "type": "string",
-        "enum": [
-         "Management",
-         "Mechanical",
-         "Tractive System",
-         "Electronics",
-         "Driverless",
-         "Business",
-         "Board"
-        ]
-       },
-       {
-        "type": "null"
-       }
-      ],
-      "title": "Vertical"
-     },
-     "note": {
-      "anyOf": [
-       {
-        "type": "string",
-        "maxLength": 80
-       },
-       {
-        "type": "null"
-       }
-      ],
-      "title": "Note"
-     }
-    },
-    "type": "object",
-    "title": "InviteIn"
-   },
-   "InviteInfo": {
-    "properties": {
-     "role": {
-      "type": "string",
-      "enum": [
-       "member",
-       "reviewer",
-       "admin"
-      ],
-      "title": "Role"
-     },
-     "vertical": {
-      "anyOf": [
-       {
-        "type": "string",
-        "enum": [
-         "Management",
-         "Mechanical",
-         "Tractive System",
-         "Electronics",
-         "Driverless",
-         "Business",
-         "Board"
-        ]
-       },
-       {
-        "type": "null"
-       }
-      ],
-      "title": "Vertical"
-     },
-     "expires_at": {
-      "type": "string",
-      "format": "date-time",
-      "title": "Expires At"
-     }
-    },
-    "type": "object",
-    "required": [
-     "role",
-     "vertical",
-     "expires_at"
-    ],
-    "title": "InviteInfo"
+    "title": "Link"
    },
    "LoginIn": {
     "properties": {
@@ -911,6 +864,7 @@
       "title": "Password"
      }
     },
+    "additionalProperties": false,
     "type": "object",
     "required": [
      "email",
@@ -935,31 +889,15 @@
      "vertical": {
       "anyOf": [
        {
-        "type": "string",
-        "enum": [
-         "Management",
-         "Mechanical",
-         "Tractive System",
-         "Electronics",
-         "Driverless",
-         "Business",
-         "Board"
-        ]
+        "$ref": "#/components/schemas/Vertical"
        },
        {
         "type": "null"
        }
-      ],
-      "title": "Vertical"
+      ]
      },
      "role": {
-      "type": "string",
-      "enum": [
-       "member",
-       "reviewer",
-       "admin"
-      ],
-      "title": "Role"
+      "$ref": "#/components/schemas/Role"
      },
      "leaderboard_opt_out": {
       "type": "boolean",
@@ -984,33 +922,17 @@
       "title": "Id"
      },
      "role": {
-      "type": "string",
-      "enum": [
-       "member",
-       "reviewer",
-       "admin"
-      ],
-      "title": "Role"
+      "$ref": "#/components/schemas/Role"
      },
      "vertical": {
       "anyOf": [
        {
-        "type": "string",
-        "enum": [
-         "Management",
-         "Mechanical",
-         "Tractive System",
-         "Electronics",
-         "Driverless",
-         "Business",
-         "Board"
-        ]
+        "$ref": "#/components/schemas/Vertical"
        },
        {
         "type": "null"
        }
-      ],
-      "title": "Vertical"
+      ]
      },
      "note": {
       "anyOf": [
@@ -1058,6 +980,7 @@
       "title": "New Password"
      }
     },
+    "additionalProperties": false,
     "type": "object",
     "required": [
      "current_password",
@@ -1082,27 +1005,12 @@
      "vertical": {
       "anyOf": [
        {
-        "type": "string",
-        "enum": [
-         "Management",
-         "Mechanical",
-         "Tractive System",
-         "Electronics",
-         "Driverless",
-         "Business",
-         "Board"
-        ]
+        "$ref": "#/components/schemas/Vertical"
        },
        {
         "type": "null"
        }
-      ],
-      "title": "Vertical"
-     },
-     "clear_vertical": {
-      "type": "boolean",
-      "title": "Clear Vertical",
-      "default": false
+      ]
      },
      "leaderboard_opt_out": {
       "anyOf": [
@@ -1116,6 +1024,7 @@
       "title": "Leaderboard Opt Out"
      }
     },
+    "additionalProperties": false,
     "type": "object",
     "title": "ProfileIn"
    },
@@ -1140,8 +1049,19 @@
       "type": "string",
       "maxLength": 256,
       "title": "Password"
+     },
+     "vertical": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Vertical"
+       },
+       {
+        "type": "null"
+       }
+      ]
      }
     },
+    "additionalProperties": false,
     "type": "object",
     "required": [
      "token",
@@ -1164,6 +1084,7 @@
       "title": "Password"
      }
     },
+    "additionalProperties": false,
     "type": "object",
     "required": [
      "token",
@@ -1185,60 +1106,63 @@
     ],
     "title": "ResetInfo"
    },
-   "ResetLink": {
+   "Role": {
+    "type": "string",
+    "enum": [
+     "member",
+     "reviewer",
+     "admin"
+    ],
+    "title": "Role"
+   },
+   "Status": {
+    "type": "string",
+    "enum": [
+     "active",
+     "alumni",
+     "disabled"
+    ],
+    "title": "Status"
+   },
+   "TokenIn": {
     "properties": {
-     "url": {
+     "token": {
       "type": "string",
-      "title": "Url"
-     },
-     "expires_at": {
-      "type": "string",
-      "format": "date-time",
-      "title": "Expires At"
+      "maxLength": 128,
+      "title": "Token"
      }
     },
+    "additionalProperties": false,
     "type": "object",
     "required": [
-     "url",
-     "expires_at"
+     "token"
     ],
-    "title": "ResetLink"
+    "title": "TokenIn"
    },
    "UserPatch": {
     "properties": {
      "role": {
       "anyOf": [
        {
-        "type": "string",
-        "enum": [
-         "member",
-         "reviewer",
-         "admin"
-        ]
+        "$ref": "#/components/schemas/Role"
        },
        {
         "type": "null"
        }
-      ],
-      "title": "Role"
+      ]
      },
      "status": {
       "anyOf": [
        {
-        "type": "string",
-        "enum": [
-         "active",
-         "alumni",
-         "disabled"
-        ]
+        "$ref": "#/components/schemas/Status"
        },
        {
         "type": "null"
        }
-      ],
-      "title": "Status"
+      ]
      }
     },
+    "additionalProperties": false,
     "type": "object",
     "title": "UserPatch"
    },
@@ -1281,6 +1205,19 @@
      "type"
     ],
     "title": "ValidationError"
+   },
+   "Vertical": {
+    "type": "string",
+    "enum": [
+     "Management",
+     "Mechanical",
+     "Tractive System",
+     "Electronics",
+     "Driverless",
+     "Business",
+     "Board"
+    ],
+    "title": "Vertical"
    }
   }
  }

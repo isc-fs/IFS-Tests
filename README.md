@@ -38,7 +38,7 @@ docker compose up --build                # app + database on http://localhost:80
 docker compose run --rm api alembic upgrade head
 ```
 
-For frontend work, run the API with `uv run uvicorn ifs_tests.api.app:app --reload` and the SPA with `cd web && npm install && npm run dev` (Vite proxies API calls to port 8000).
+For frontend work, run the API with `uv run uvicorn ifs_tests.api.app:app --reload` and the SPA with `cd web && npm ci --ignore-scripts && npm run dev` (Vite proxies API calls to port 8000).
 
 Deploying to the team server: [`docs/runbook.md`](docs/runbook.md).
 
@@ -46,7 +46,8 @@ Checks that CI runs:
 
 ```bash
 uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pytest
-cd web && npm run typecheck && npm run lint && npm test && npm run build && npm run size
+cd web && npm run format:check && npm run typecheck && npm run lint && npm test && npm run build && npm run size
+cd web && npm run e2e                     # needs the local stack and an admin, see .github/workflows/ci.yml
 ```
 
 ---

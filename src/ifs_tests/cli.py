@@ -11,6 +11,7 @@ from pathlib import Path
 
 from .bank.client import FSQuiz
 from .bank.mirror import DATA_DIR, load_bank, mirror
+from .db.models import ROLES, VERTICALS
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -44,8 +45,8 @@ def main(argv: list[str] | None = None) -> None:
     a.add_argument("--password-stdin", action="store_true", help="read the password from stdin (automation)")
 
     i = sub.add_parser("invite", help="print a one-time invite link")
-    i.add_argument("--role", choices=["member", "reviewer", "admin"], default="member")
-    i.add_argument("--vertical")
+    i.add_argument("--role", choices=ROLES, default="member")
+    i.add_argument("--vertical", choices=VERTICALS)
     i.add_argument("--note", help="who it's for, shown to admins")
 
     r = sub.add_parser("reset-link", help="print a one-time password reset link for a user")
@@ -79,10 +80,9 @@ def main(argv: list[str] | None = None) -> None:
 
 def _app_command(args: argparse.Namespace) -> None:
     from sqlalchemy import select
-    from sqlalchemy.orm import sessionmaker
 
     from .db.models import User
-    from .db.session import get_engine
+    from .db.session import session_factory
     from .services import accounts, maintenance
     from .settings import get_settings
 
@@ -92,8 +92,8 @@ def _app_command(args: argparse.Namespace) -> None:
         print(json.dumps(create_app().openapi(), indent=1))
         return
 
-    make_db = sessionmaker(get_engine(), expire_on_commit=False)
-    origin = get_settings().public_origin.rstrip("/")
+    make_db = session_factory()
+    settings = get_settings()
     now = datetime.now(UTC)
 
     if args.cmd == "scheduler":
@@ -120,7 +120,9 @@ def _app_command(args: argparse.Namespace) -> None:
                     if password != getpass.getpass("Repeat password: "):
                         sys.exit("Passwords don't match.")
                 user = accounts.create_first_admin(db, args.email, args.name, password, now)
-                print(f"Admin {user.display_name} created. Sign in at {origin}/login")
+                print(
+                    f"Admin {user.display_name} created. Sign in at {settings.public_origin.rstrip('/')}/login"
+                )
             else:
                 admin = db.scalar(
                     select(User).where(User.role == "admin", User.status == "active").order_by(User.id)
@@ -131,11 +133,15 @@ def _app_command(args: argparse.Namespace) -> None:
                     token, invite = accounts.create_invite(
                         db, admin, now, args.role, args.vertical, args.note
                     )
-                    print(f"{origin}/invite/{token}  (expires {invite.expires_at:%Y-%m-%d %H:%M} UTC)")
+                    print(
+                        f"{settings.link('invite', token)}  (expires {invite.expires_at:%Y-%m-%d %H:%M} UTC)"
+                    )
                 else:
                     target = db.scalar(select(User.id).where(User.email == args.email.strip().lower()))
                     if target is None:
                         sys.exit("No user with that email.")
-                    print(f"{origin}/reset/{accounts.create_reset(db, admin, target, now)}  (valid 24 h)")
+                    print(
+                        f"{settings.link('reset', accounts.create_reset(db, admin, target, now))}  (valid 24 h)"
+                    )
         except accounts.AccountError as e:
             sys.exit(e.message)

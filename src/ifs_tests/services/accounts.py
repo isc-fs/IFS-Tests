@@ -1,59 +1,89 @@
 from __future__ import annotations
 
-import re
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DB
 
 from ..auth.passwords import dummy_hash, hash_password, needs_rehash, password_problem, verify_password
-from ..auth.sessions import end_all_sessions
+from ..auth.sessions import create_session, end_all_sessions, end_session
 from ..auth.tokens import new_token, token_hash
 from ..db.models import ROLES, STATUSES, VERTICALS, AuditLog, Invite, PasswordReset, User
+from ..domain import accounts as rules
 
 INVITE_TTL = timedelta(days=7)
 RESET_TTL = timedelta(hours=24)
-LOCK_AFTER = 5
-LOCK_FOR = timedelta(minutes=15)
-
-LOGIN_FAILED = "Wrong email or password. After 5 failed attempts the account is locked for 15 minutes."
-
-_EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
-_DISPLAY_NAME = re.compile(r"^[\w][\w .'-]*$")
+LOGIN_FAILED = (
+    f"Wrong email or password. After {rules.LOCK_AFTER} failed attempts the account is locked for "
+    f"{rules.LOCK_FOR.seconds // 60} minutes; an admin can send you a reset link."
+)
+NAME_RULE = "Use 2–24 Latin letters, numbers, spaces, dots, dashes or apostrophes."
 
 
 class AccountError(Exception):
-    def __init__(self, message: str, status: int = 400) -> None:
+    """A user-facing error. `fields` maps form fields to messages when the form can show them inline."""
+
+    def __init__(self, message: str, status: int = 400, fields: dict[str, str] | None = None) -> None:
         super().__init__(message)
         self.message = message
         self.status = status
+        self.fields = fields or {}
 
 
 def audit(db: DB, actor: User | None, action: str, target: str | None = None, **details: Any) -> None:
     db.add(AuditLog(actor_id=actor.id if actor else None, action=action, target=target, details=details))
 
 
-def normalize_email(email: str) -> str:
-    email = email.strip().lower()
-    if len(email) > 254 or not _EMAIL.match(email):
-        raise AccountError("Enter a valid email address.")
-    return email
+def _name_taken(db: DB, name: str, exclude_user: int | None = None) -> bool:
+    clash = db.scalar(select(User.id).where(func.lower(User.display_name) == func.lower(name)))
+    return clash is not None and clash != exclude_user
 
 
-def clean_display_name(db: DB, name: str, exclude_user: int | None = None) -> str:
-    name = " ".join(name.split())
-    if not 2 <= len(name) <= 24 or not _DISPLAY_NAME.match(name):
-        raise AccountError("Display names are 2–24 letters, numbers, spaces, dots, dashes or apostrophes.")
-    clash = db.scalar(select(User.id).where(func.lower(User.display_name) == name.lower()))
-    if clash is not None and clash != exclude_user:
-        raise AccountError("That display name is taken.", 409)
-    return name
+def _check_new_user(db: DB, email: str, display_name: str, password: str) -> tuple[str, str]:
+    """Validate a whole registration at once, so the form can show every problem together."""
+    errors: dict[str, str] = {}
+    clean_email = rules.clean_email(email)
+    name = rules.clean_display_name(display_name)
+    if clean_email is None:
+        errors["email"] = "Enter a valid email address."
+    elif db.scalar(select(User.id).where(User.email == clean_email)) is not None:
+        errors["email"] = "An account with this email already exists. Sign in instead."
+    if name is None:
+        errors["display_name"] = NAME_RULE
+    elif _name_taken(db, name):
+        errors["display_name"] = "That display name is taken."
+    if problem := password_problem(password, email=clean_email or "", display_name=name or ""):
+        errors["password"] = problem
+    if errors or clean_email is None or name is None:
+        raise AccountError(next(iter(errors.values())), 400, errors)
+    return clean_email, name
 
 
-def check_vertical(vertical: str | None) -> str | None:
+@contextmanager
+def _unique(db: DB) -> Iterator[None]:
+    """Uniqueness is checked first for friendly messages; the constraint still wins a race."""
+    try:
+        yield
+    except IntegrityError:
+        db.rollback()
+        raise AccountError("That email or display name was just taken. Try another.", 409) from None
+
+
+def _close_resets(db: DB, user_id: int, now: datetime) -> None:
+    db.execute(
+        update(PasswordReset)
+        .where(PasswordReset.user_id == user_id, PasswordReset.used_at.is_(None))
+        .values(used_at=now)
+    )
+
+
+def _check_vertical(vertical: str | None) -> str | None:
     if vertical is not None and vertical not in VERTICALS:
-        raise AccountError("Unknown vertical.")
+        raise AccountError("Unknown vertical.", fields={"vertical": "Unknown vertical."})
     return vertical
 
 
@@ -74,7 +104,7 @@ def create_invite(
     invite = Invite(
         token_hash=token_hash(token),
         role=role,
-        vertical=check_vertical(vertical),
+        vertical=_check_vertical(vertical),
         note=(note or "").strip()[:80] or None,
         created_by=actor.id,
         created_at=now,
@@ -90,59 +120,90 @@ def create_invite(
 def open_invite(db: DB, token: str, now: datetime, lock: bool = False) -> Invite:
     stmt = select(Invite).where(Invite.token_hash == token_hash(token))
     invite = db.scalar(stmt.with_for_update() if lock else stmt)
-    if invite is None or invite.used_at is not None or invite.expires_at <= now:
+    if invite is None or not rules.link_open(invite.used_at, invite.expires_at, now):
         raise AccountError("This invite link is invalid, used or expired. Ask an admin for a new one.", 404)
     return invite
 
 
-def register(db: DB, token: str, email: str, display_name: str, password: str, now: datetime) -> User:
+def register(
+    db: DB,
+    token: str,
+    email: str,
+    display_name: str,
+    password: str,
+    now: datetime,
+    vertical: str | None = None,
+) -> tuple[User, str]:
     invite = open_invite(db, token, now, lock=True)
-    email = normalize_email(email)
-    if db.scalar(select(User.id).where(User.email == email)) is not None:
-        raise AccountError("An account with this email already exists. Sign in instead.", 409)
-    name = clean_display_name(db, display_name)
-    problem = password_problem(password, email=email, display_name=name)
-    if problem:
-        raise AccountError(problem)
-    user = User(
-        email=email,
-        password_hash=hash_password(password),
-        display_name=name,
-        vertical=invite.vertical,
-        role=invite.role,
-        created_at=now,
-    )
-    db.add(user)
-    db.flush()
-    invite.used_at, invite.used_by = now, user.id
-    audit(db, user, "user.register", f"user:{user.id}", invite=invite.id, role=user.role)
-    db.commit()
+    email, name = _check_new_user(db, email, display_name, password)
+    with _unique(db):
+        user = User(
+            email=email,
+            password_hash=hash_password(password),
+            display_name=name,
+            vertical=invite.vertical or _check_vertical(vertical),
+            role=invite.role,
+            created_at=now,
+        )
+        db.add(user)
+        db.flush()
+        invite.used_at, invite.used_by = now, user.id
+        audit(db, user, "user.register", f"user:{user.id}", invite=invite.id, role=user.role)
+        session = create_session(db, user, now)
+        db.commit()
+    return user, session
+
+
+def create_first_admin(db: DB, email: str, display_name: str, password: str, now: datetime) -> User:
+    """Bootstrap from the CLI on the server. Refuses once any active admin exists."""
+    if _active_admin_ids(db, lock=False):
+        raise AccountError("An admin already exists. Use an invite with role 'admin' instead.", 409)
+    email, name = _check_new_user(db, email, display_name, password)
+    with _unique(db):
+        user = User(
+            email=email,
+            password_hash=hash_password(password),
+            display_name=name,
+            role="admin",
+            created_at=now,
+        )
+        db.add(user)
+        db.flush()
+        audit(db, user, "user.bootstrap_admin", f"user:{user.id}")
+        db.commit()
     return user
 
 
 # Sign-in
 
 
-def authenticate(db: DB, email: str, password: str, now: datetime) -> User:
+def login(db: DB, email: str, password: str, now: datetime, old_session: str | None) -> tuple[User, str]:
+    """Check the credentials and start a new session; the old one, if any, is ended (no fixation)."""
     user = db.scalar(select(User).where(User.email == email.strip().lower()).with_for_update())
-    if user is None:
+    if user is None or rules.is_locked(user.locked_until, now):
         verify_password(dummy_hash(), password)
         raise AccountError(LOGIN_FAILED, 401)
-    if user.locked_until and user.locked_until > now:
-        raise AccountError(LOGIN_FAILED, 401)
     if not verify_password(user.password_hash, password):
-        user.failed_logins += 1
-        if user.failed_logins >= LOCK_AFTER:
-            user.failed_logins, user.locked_until = 0, now + LOCK_FOR
-            audit(db, None, "user.locked", f"user:{user.id}")
-        db.commit()
+        _record_failure(db, user, now)
         raise AccountError(LOGIN_FAILED, 401)
     if user.status != "active":
         raise AccountError(LOGIN_FAILED, 401)
     user.failed_logins, user.locked_until = 0, None
     if needs_rehash(user.password_hash):
         user.password_hash = hash_password(password)
-    return user
+    if old_session:
+        end_session(db, old_session)
+    session = create_session(db, user, now)
+    db.commit()
+    return user, session
+
+
+def _record_failure(db: DB, user: User, now: datetime) -> None:
+    lockout = rules.after_failed_login(user.failed_logins, now)
+    user.failed_logins, user.locked_until = lockout.failed, lockout.locked_until
+    if lockout.locked_until:
+        audit(db, None, "user.locked", f"user:{user.id}")
+    db.commit()
 
 
 # Passwords
@@ -170,81 +231,89 @@ def create_reset(db: DB, actor: User, user_id: int, now: datetime) -> str:
 def open_reset(db: DB, token: str, now: datetime, lock: bool = False) -> PasswordReset:
     stmt = select(PasswordReset).where(PasswordReset.token_hash == token_hash(token))
     reset = db.scalar(stmt.with_for_update() if lock else stmt)
-    if reset is None or reset.used_at is not None or reset.expires_at <= now:
+    if reset is None or not rules.link_open(reset.used_at, reset.expires_at, now):
         raise AccountError("This reset link is invalid, used or expired. Ask an admin for a new one.", 404)
     return reset
+
+
+def _set_password(user: User, password: str, field: str = "password") -> None:
+    if problem := password_problem(password, email=user.email, display_name=user.display_name):
+        raise AccountError(problem, fields={field: problem})
+    user.password_hash = hash_password(password)
 
 
 def reset_password(db: DB, token: str, password: str, now: datetime) -> User:
     reset = open_reset(db, token, now, lock=True)
     user = db.get_one(User, reset.user_id)
-    problem = password_problem(password, email=user.email, display_name=user.display_name)
-    if problem:
-        raise AccountError(problem)
-    user.password_hash = hash_password(password)
+    _set_password(user, password)
     user.failed_logins, user.locked_until = 0, None
-    reset.used_at = now
+    _close_resets(db, user.id, now)
     end_all_sessions(db, user.id)
     audit(db, user, "password.reset", f"user:{user.id}", reset=reset.id)
     db.commit()
     return user
 
 
-def change_password(db: DB, user: User, current: str, new: str, keep_token: str) -> None:
+def change_password(db: DB, user: User, current: str, new: str, keep_token: str, now: datetime) -> None:
+    if rules.is_locked(user.locked_until, now):
+        raise AccountError("Too many wrong attempts. Try again in 15 minutes.", 429)
     if not verify_password(user.password_hash, current):
-        raise AccountError("Your current password is wrong.", 403)
-    problem = password_problem(new, email=user.email, display_name=user.display_name)
-    if problem:
-        raise AccountError(problem)
-    user.password_hash = hash_password(new)
+        _record_failure(db, user, now)
+        raise AccountError("Your current password is wrong.", 403, {"current_password": "Wrong password."})
+    _set_password(user, new, field="new_password")
+    user.failed_logins = 0
+    _close_resets(db, user.id, now)
     end_all_sessions(db, user.id, keep_token=keep_token)
     audit(db, user, "password.change", f"user:{user.id}")
     db.commit()
 
 
-# Profile and administration
+# Profile
 
 
-def update_profile(
-    db: DB,
-    user: User,
-    display_name: str | None = None,
-    vertical: str | None = None,
-    leaderboard_opt_out: bool | None = None,
-    clear_vertical: bool = False,
-) -> User:
-    if display_name is not None:
-        user.display_name = clean_display_name(db, display_name, exclude_user=user.id)
-    if vertical is not None or clear_vertical:
-        user.vertical = check_vertical(vertical)
-    if leaderboard_opt_out is not None:
-        user.leaderboard_opt_out = leaderboard_opt_out
-    db.commit()
+def update_profile(db: DB, user: User, changes: dict[str, Any]) -> User:
+    """`changes` holds only the fields the client sent, so `vertical: null` clears it."""
+    if "display_name" in changes:
+        name = rules.clean_display_name(changes["display_name"] or "")
+        if name is None:
+            raise AccountError(NAME_RULE, fields={"display_name": NAME_RULE})
+        if _name_taken(db, name, exclude_user=user.id):
+            raise AccountError(
+                "That display name is taken.", 409, {"display_name": "That display name is taken."}
+            )
+        user.display_name = name
+    if "vertical" in changes:
+        user.vertical = _check_vertical(changes["vertical"])
+    if changes.get("leaderboard_opt_out") is not None:
+        user.leaderboard_opt_out = changes["leaderboard_opt_out"]
+    with _unique(db):
+        db.commit()
     return user
 
 
-def _active_admins(db: DB) -> int:
-    return db.scalar(select(func.count()).where(User.role == "admin", User.status == "active")) or 0
+# Administration
+
+
+def _active_admin_ids(db: DB, lock: bool = True) -> list[int]:
+    stmt = select(User.id).where(User.role == "admin", User.status == "active").order_by(User.id)
+    return list(db.scalars(stmt.with_for_update() if lock else stmt))
 
 
 def update_user(
     db: DB, actor: User, user_id: int, role: str | None = None, status: str | None = None
 ) -> User:
-    user = db.get(User, user_id, with_for_update=True)
-    if user is None:
-        raise AccountError("No such user.", 404)
-    if user.id == actor.id:
+    if user_id == actor.id:
         raise AccountError("You can't change your own role or status.", 403)
     if role is not None and role not in ROLES:
         raise AccountError("Unknown role.")
     if status is not None and status not in STATUSES:
         raise AccountError("Unknown status.")
-    loses_admin = (
-        user.role == "admin"
-        and user.status == "active"
-        and ((role is not None and role != "admin") or (status is not None and status != "active"))
-    )
-    if loses_admin and _active_admins(db) <= 1:
+    # Lock every active admin row first, so two admins demoting each other can't both succeed.
+    admins = _active_admin_ids(db)
+    user = db.get(User, user_id, with_for_update=True)
+    if user is None:
+        raise AccountError("No such user.", 404)
+    if rules.loses_admin(user.role, user.status, role, status) and len(admins) <= 1:
         raise AccountError("There must always be at least one active admin.", 409)
     changes: dict[str, Any] = {}
     if role is not None and role != user.role:
@@ -271,27 +340,40 @@ def revoke_sessions(db: DB, actor: User, user_id: int) -> None:
 
 def revoke_invite(db: DB, actor: User, invite_id: int, now: datetime) -> None:
     invite = db.get(Invite, invite_id)
-    if invite is None or invite.used_at is not None:
+    if invite is None or not rules.link_open(invite.used_at, invite.expires_at, now):
         raise AccountError("No such open invite.", 404)
     invite.expires_at = now
     audit(db, actor, "invite.revoke", f"invite:{invite.id}")
     db.commit()
 
 
-def create_first_admin(db: DB, email: str, display_name: str, password: str, now: datetime) -> User:
-    """Bootstrap from the CLI on the server. Refuses once any admin exists."""
-    if _active_admins(db) > 0:
-        raise AccountError("An admin already exists. Use an invite with role 'admin' instead.", 409)
-    email = normalize_email(email)
-    name = clean_display_name(db, display_name)
-    problem = password_problem(password, email=email, display_name=name)
-    if problem:
-        raise AccountError(problem)
-    user = User(
-        email=email, password_hash=hash_password(password), display_name=name, role="admin", created_at=now
+def list_users(db: DB) -> Sequence[User]:
+    return db.scalars(select(User).order_by(func.lower(User.display_name))).all()
+
+
+def list_open_invites(db: DB, now: datetime) -> Sequence[Invite]:
+    stmt = (
+        select(Invite)
+        .where(Invite.used_at.is_(None), Invite.expires_at > now)
+        .order_by(Invite.created_at.desc())
     )
-    db.add(user)
-    db.flush()
-    audit(db, user, "user.bootstrap_admin", f"user:{user.id}")
-    db.commit()
-    return user
+    return db.scalars(stmt).all()
+
+
+def recent_audit(db: DB, limit: int) -> list[dict[str, Any]]:
+    """Audit entries with the people involved resolved to display names."""
+    entries = db.scalars(select(AuditLog).order_by(AuditLog.id.desc()).limit(limit)).all()
+    targets = {e.id: int(e.target[5:]) for e in entries if e.target and e.target.startswith("user:")}
+    ids = {e.actor_id for e in entries if e.actor_id} | set(targets.values())
+    names = dict(db.execute(select(User.id, User.display_name).where(User.id.in_(ids))).tuples().all())
+    return [
+        {
+            "id": e.id,
+            "at": e.at,
+            "action": e.action,
+            "actor": names.get(e.actor_id) if e.actor_id else None,
+            "target": names.get(targets[e.id], e.target) if e.id in targets else e.target,
+            "details": e.details,
+        }
+        for e in entries
+    ]

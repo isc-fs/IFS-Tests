@@ -4,9 +4,9 @@ from pathlib import Path
 
 import psycopg
 import pytest
-from alembic import command
-from alembic.config import Config
 from sqlalchemy.engine import make_url
+
+from ..conftest import migrate
 
 pytestmark = pytest.mark.integration
 
@@ -36,9 +36,7 @@ def db(postgres_url: str) -> str:
             (PASSWORDS["migrator"], PASSWORDS["app_rt"], PASSWORDS["backup_ro"]),
         )
         c.execute(Path("deploy/db/roles.sql").read_text())
-    cfg = Config("alembic.ini")
-    cfg.cmd_opts = type("Opts", (), {"x": [f"url={as_role(url, 'migrator')}"]})()
-    command.upgrade(cfg, "head")
+    migrate(as_role(url, "migrator"))
     return url
 
 
@@ -60,6 +58,15 @@ def test_app_role_reads_and_writes_data_but_cannot_change_schema(db: str) -> Non
         ):
             with pytest.raises(psycopg.errors.InsufficientPrivilege):
                 c.execute(ddl)
+            c.rollback()
+
+
+def test_app_role_cannot_rewrite_the_audit_log(db: str) -> None:
+    with connect(db, "app_rt") as c:
+        c.execute("INSERT INTO audit_log (action) VALUES ('probe')")
+        for stmt in ("UPDATE audit_log SET action = 'x'", "DELETE FROM audit_log"):
+            with pytest.raises(psycopg.errors.InsufficientPrivilege):
+                c.execute(stmt)
             c.rollback()
 
 

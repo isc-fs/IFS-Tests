@@ -1,7 +1,9 @@
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from datetime import time as clock_time
 
-from ifs_tests.scheduler import Job, due
+import pytest
+
+from ifs_tests.scheduler import Job, due, tick
 
 JOB = Job("maintenance", clock_time(3, 0), lambda now: None)
 
@@ -20,3 +22,28 @@ def test_madrid_day_boundary_not_utc() -> None:
     late = datetime(2026, 10, 1, 22, 30, tzinfo=UTC)
     assert due([daily], {"ensure-daily": datetime(2026, 10, 1).date()}, late) == [daily]
     assert due([daily], {"ensure-daily": datetime(2026, 10, 2).date()}, late) == []
+
+
+def test_a_failing_job_is_logged_and_not_retried_the_same_day(caplog: pytest.LogCaptureFixture) -> None:
+    calls: list[datetime] = []
+
+    def boom(now: datetime) -> None:
+        calls.append(now)
+        raise RuntimeError("database down")
+
+    job = Job("maintenance", clock_time(3, 0), boom)
+    last_run: dict[str, date] = {}
+    at = datetime(2026, 10, 1, 2, 0, tzinfo=UTC)  # 04:00 Madrid
+    tick([job], last_run, at)
+    tick([job], last_run, at)
+    assert len(calls) == 1 and "maintenance failed" in caplog.text
+
+
+@pytest.mark.parametrize("day", [datetime(2026, 3, 29), datetime(2026, 10, 25)])
+def test_runs_exactly_once_on_daylight_saving_days(day: datetime) -> None:
+    calls: list[datetime] = []
+    job = Job("maintenance", clock_time(3, 0), calls.append)
+    last_run: dict[str, date] = {}
+    for minute in range(0, 24 * 60, 10):
+        tick([job], last_run, day.replace(tzinfo=UTC) + timedelta(minutes=minute))
+    assert len(calls) == 1

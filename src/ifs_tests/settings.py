@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     def is_deployed(self) -> bool:
         return self.env in ("staging", "prod")
 
+    def link(self, kind: str, token: str) -> str:
+        """Invite/reset link. The token goes in the fragment: browsers never send it to any server."""
+        return f"{self.public_origin.rstrip('/')}/{kind}#{token}"
+
     @property
     def allowed_origins(self) -> frozenset[str]:
         """Origins allowed to make state-changing requests (CSRF check). Vite's dev server is added locally."""

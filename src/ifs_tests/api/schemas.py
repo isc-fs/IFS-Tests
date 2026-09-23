@@ -3,35 +3,46 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-Role = Literal["member", "reviewer", "admin"]
-Status = Literal["active", "alumni", "disabled"]
-Vertical = Literal[
-    "Management", "Mechanical", "Tractive System", "Electronics", "Driverless", "Business", "Board"
-]
+from ..db.models import Role, Status, Vertical
+
+
+class In(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    @field_validator("*", mode="before")
+    @classmethod
+    def no_nul(cls, value: Any) -> Any:
+        # Postgres rejects NUL in text; refusing it here keeps those requests a 422, not a 500.
+        if isinstance(value, str) and "\x00" in value:
+            raise ValueError("contains a NUL character")
+        return value
 
 
 class Out(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class LoginIn(BaseModel):
+class TokenIn(In):
+    token: str = Field(max_length=128)
+
+
+class LoginIn(In):
     email: str = Field(max_length=254)
     password: str = Field(max_length=256)
 
 
-class RegisterIn(BaseModel):
-    token: str = Field(max_length=128)
+class RegisterIn(TokenIn):
     email: str = Field(max_length=254)
     display_name: str = Field(max_length=64)
     password: str = Field(max_length=256)
+    vertical: Vertical | None = None
 
 
-class ResetIn(BaseModel):
-    token: str = Field(max_length=128)
+class ResetIn(TokenIn):
     password: str = Field(max_length=256)
 
 
@@ -54,25 +65,24 @@ class Me(Out):
     leaderboard_opt_out: bool
 
 
-class ProfileIn(BaseModel):
+class ProfileIn(In):
     display_name: str | None = Field(default=None, max_length=64)
     vertical: Vertical | None = None
-    clear_vertical: bool = False
     leaderboard_opt_out: bool | None = None
 
 
-class PasswordChangeIn(BaseModel):
+class PasswordChangeIn(In):
     current_password: str = Field(max_length=256)
     new_password: str = Field(max_length=256)
 
 
-class InviteIn(BaseModel):
-    role: Role = "member"
+class InviteIn(In):
+    role: Role = Role.member
     vertical: Vertical | None = None
     note: str | None = Field(default=None, max_length=80)
 
 
-class InviteCreated(BaseModel):
+class Link(BaseModel):
     url: str
     expires_at: datetime
 
@@ -99,20 +109,15 @@ class AdminUser(Out):
     locked_until: datetime | None
 
 
-class UserPatch(BaseModel):
+class UserPatch(In):
     role: Role | None = None
     status: Status | None = None
 
 
-class ResetLink(BaseModel):
-    url: str
-    expires_at: datetime
-
-
-class AuditEntry(Out):
+class AuditEntry(BaseModel):
     id: int
     at: datetime
-    actor_id: int | None
     action: str
+    actor: str | None
     target: str | None
-    details: dict[str, object]
+    details: dict[str, Any]

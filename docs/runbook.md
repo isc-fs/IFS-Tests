@@ -27,7 +27,7 @@ done
 Edit each `.env`: set `QUIZ_ENV` and `QUIZ_HOST`, and fill every password with a fresh `openssl rand -hex 24`. Store a copy of the prod `.env` in the team's password manager, not in a shared document.
 
 ### 1.3 Network and Nginx (consultant)
-1. The api containers join the Docker network the Nginx container uses (default name `proxy`, set `PROXY_NETWORK` in `.env` if it differs). If it doesn't exist yet: `docker network create proxy`.
+1. The api containers join the Docker network the Nginx container uses (default name `proxy`, set `PROXY_NETWORK` in `.env` if it differs). If it doesn't exist yet: `docker network create proxy`. Set `FORWARDED_ALLOW_IPS` in `.env` to the Nginx container's address so only Nginx can set the client IP.
 2. Add [`deploy/nginx/quiz.conf`](../deploy/nginx/quiz.conf) to the Nginx configuration.
 3. DNS (Squarespace Domains): `A` (and `AAAA`) records for `quiz` and `quiz-staging` pointing at the server.
 4. Certificate for both names: `certbot certonly --webroot -w /var/www/certbot -d quiz.iscracingteam.com -d quiz-staging.iscracingteam.com`, then reload Nginx.
@@ -66,14 +66,15 @@ Migrations are written expand/contract, so the previous release works with the n
 
 ## 4. Backups and restore
 
-- **Nightly** at 02:30 Madrid time the `backup` service writes `pg_dump` files to the `backups` volume and keeps 14 days. **Before every deploy** `deploy.sh` takes one more.
+- **Nightly** at 03:30 Madrid time (a time that exists on daylight-saving nights) the `backup` service writes `pg_dump` files to the `backups` volume and keeps 14 days. **Before every deploy** `deploy.sh` takes one more.
 - **Hetzner** also snapshots the whole server daily (7 kept).
 - If `BACKUP_HEARTBEAT_URL` is set, each nightly dump pings it; the monitor alerts when a ping is missing.
 
 ```bash
 deploy/restore.sh prod                                   # list dumps
-deploy/restore.sh prod quiz-20261003-023000-nightly.dump # restore (asks for confirmation)
+deploy/restore.sh prod quiz-20261003-033000-nightly.dump # restore (asks for confirmation)
 ```
+Restoring stops the app, restores the dump, runs the migrations (older dumps predate newer releases) and starts the app again.
 
 **Restore drill, once per term:** copy a prod dump into the staging volume and restore it there.
 ```bash
@@ -94,7 +95,7 @@ Staging then holds real member data: restore a staging dump again afterwards, or
 | Database shell (read-only) | `docker exec -it quiz-prod-db-1 psql -U backup_ro -d quiz` |
 | Disk used by the app | `docker system df -v \| grep quiz-` |
 
-- The server reboots itself at 04:00 when security updates need it. Containers restart on their own; nightly jobs run earlier (backup 02:30).
+- The server reboots itself at 04:00 when security updates need it. Containers restart on their own; nightly jobs run earlier (clean-up 03:00, backup 03:30).
 - Logs rotate automatically (3 × 10 MB per container).
 
 ## 6. Secrets rotation

@@ -1,26 +1,31 @@
 from __future__ import annotations
 
+import threading
 from functools import cache
 from importlib.resources import files
 
 from argon2 import PasswordHasher
-from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
+from argon2.exceptions import InvalidHashError, VerificationError
 
 MIN_LENGTH = 10
 MAX_LENGTH = 128
 
-# argon2-cffi defaults: Argon2id with the RFC 9106 low-memory profile.
-_hasher = PasswordHasher()
+# OWASP's Argon2id profile (19 MiB, 2 passes). Hashing releases the GIL, so without a cap a burst of
+# logins would allocate 19 MiB each in parallel; two at a time per worker keeps memory flat.
+_hasher = PasswordHasher(time_cost=2, memory_cost=19456, parallelism=1)
+_slots = threading.BoundedSemaphore(2)
 
 
 def hash_password(password: str) -> str:
-    return _hasher.hash(password)
+    with _slots:
+        return _hasher.hash(password)
 
 
 def verify_password(password_hash: str, password: str) -> bool:
     try:
-        return _hasher.verify(password_hash, password)
-    except (VerifyMismatchError, VerificationError, InvalidHashError):
+        with _slots:
+            return _hasher.verify(password_hash, password)
+    except (VerificationError, InvalidHashError):
         return False
 
 
@@ -30,7 +35,7 @@ def needs_rehash(password_hash: str) -> bool:
 
 @cache
 def dummy_hash() -> str:
-    """Verified against when the email doesn't exist, so response time doesn't reveal accounts."""
+    """Verified against when no real check happens, so response time doesn't reveal accounts."""
     return _hasher.hash("not-a-real-password-just-timing")
 
 

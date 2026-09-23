@@ -24,12 +24,12 @@ Internet ──443──> Nginx (shared on the team server, TLS, rate limit on /
 ```
 src/ifs_tests/
   bank/          FS-Quiz client, mirror, normalisation, topic tagging (and later: answer keys, push)
-  domain/        rules of the game as pure functions: grading, scoring, daily selection, streaks, seasons
+  domain/        rules as pure functions: account rules now; grading, scoring, daily selection, streaks later
   db/            SQLAlchemy models and sessions
-  repositories/  queries
-  services/      use cases: transactions, locking, orchestration
-  auth/          passwords, invites, sessions, CSRF, rate limiting
-  api/           FastAPI app, security headers, routes, request/response schemas
+  services/      use cases: queries, transactions, locking, audit
+  auth/          password hashing and policy, tokens, server-side sessions
+  api/           FastAPI app, security headers and CSRF guard, routes, request/response schemas
+  scheduler.py   nightly jobs for the scheduler service
   cli.py         ifs-tests <command>
 migrations/      Alembic
 web/             Vite + React + TypeScript SPA
@@ -38,7 +38,8 @@ deploy/          production compose files, deploy/restore scripts, Nginx snippet
 
 Rules for contributors:
 - **Domain code has no I/O.** It receives data and the current time as arguments, so it's unit-testable without a database.
-- **Authorization lives in the service layer** through FastAPI dependencies (`current_member`, `require_reviewer`, `require_admin`). The user ID always comes from the session, never from the request body.
+- **Authorization happens at the API boundary** through FastAPI dependencies (`current_member`, `require_reviewer`, `require_admin`); services receive the acting user. The user ID always comes from the session, never from the request body.
+- **Errors users should see are `AccountError`s** raised by services; one exception handler turns them into JSON (`detail`, plus `fields` for form fields).
 - **Answer keys never leave the server** except in the response to the user's own submission. Response models are explicit Pydantic schemas; a test scans them.
 - **Migrations are forward-only and expand/contract**, so the previous release keeps working during a deploy.
 

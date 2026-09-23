@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session as DB
 from ..auth.sessions import COOKIE, resolve_session
 from ..db.models import User
 from ..db.session import get_session
+from ..settings import Settings
 
 
 def get_db() -> Iterator[DB]:
@@ -20,8 +21,14 @@ def get_now() -> datetime:
     return datetime.now(UTC)
 
 
+def get_app_settings(request: Request) -> Settings:
+    settings: Settings = request.app.state.settings
+    return settings
+
+
 Db = Annotated[DB, Depends(get_db)]
 Now = Annotated[datetime, Depends(get_now)]
+AppSettings = Annotated[Settings, Depends(get_app_settings)]
 
 
 def current_user(request: Request, db: Db, now: Now) -> User | None:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from enum import StrEnum
 from typing import Any
 
 from sqlalchemy import (
@@ -53,9 +54,31 @@ class AuditLog(Base):
     details: Mapped[dict[str, Any]] = mapped_column(server_default="{}")
 
 
-ROLES = ("member", "reviewer", "admin")
-STATUSES = ("active", "alumni", "disabled")
-VERTICALS = ("Management", "Mechanical", "Tractive System", "Electronics", "Driverless", "Business", "Board")
+class Role(StrEnum):
+    member = "member"
+    reviewer = "reviewer"
+    admin = "admin"
+
+
+class Status(StrEnum):
+    active = "active"
+    alumni = "alumni"
+    disabled = "disabled"
+
+
+class Vertical(StrEnum):
+    management = "Management"
+    mechanical = "Mechanical"
+    tractive_system = "Tractive System"
+    electronics = "Electronics"
+    driverless = "Driverless"
+    business = "Business"
+    board = "Board"
+
+
+ROLES: tuple[str, ...] = tuple(Role)
+STATUSES: tuple[str, ...] = tuple(Status)
+VERTICALS: tuple[str, ...] = tuple(Vertical)
 
 
 def _in(column: str, values: tuple[str, ...]) -> str:

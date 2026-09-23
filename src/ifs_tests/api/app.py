@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import FileResponse, JSONResponse
 from starlette.staticfiles import StaticFiles
 
 from .. import __version__
+from ..services.accounts import AccountError
 from ..settings import Settings, get_settings
 from .routes import admin, auth, me
 from .security import CSRFGuard, SecurityHeaders
@@ -23,8 +25,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         openapi_url="/api/openapi.json" if docs else None,
         generate_unique_id_function=lambda route: route.name,
     )
+    app.state.settings = settings
     app.add_middleware(CSRFGuard, allowed_origins=settings.allowed_origins)
     app.add_middleware(SecurityHeaders)
+
+    @app.exception_handler(AccountError)
+    async def account_error(_: Request, e: AccountError) -> JSONResponse:
+        return JSONResponse({"detail": e.message, "fields": e.fields}, status_code=e.status)
+
+    @app.exception_handler(RequestValidationError)
+    async def invalid_request(_: Request, e: RequestValidationError) -> JSONResponse:
+        # FastAPI echoes the submitted value back by default; that would include passwords.
+        errors = [{"loc": err["loc"], "msg": err["msg"], "type": err["type"]} for err in e.errors()]
+        return JSONResponse({"detail": errors}, status_code=422)
+
     for router in (auth.router, me.router, admin.router):
         app.include_router(router)
 
@@ -33,29 +47,35 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # Process-only on purpose: uptime probes must not wake or load the database.
         return {"status": "ok", "version": __version__}
 
-    @app.api_route(
-        "/api/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"], include_in_schema=False
-    )
-    def api_not_found(path: str) -> None:
-        raise HTTPException(status_code=404)
+    methods = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"]
+    for prefix in ("/api", "/auth"):
+        app.add_api_route(prefix, _not_found, methods=methods, include_in_schema=False)
+        app.add_api_route(prefix + "/{path:path}", _not_found, methods=methods, include_in_schema=False)
 
     _mount_spa(app, settings.web_dist)
     return app
+
+
+def _not_found() -> None:
+    raise HTTPException(status_code=404)
 
 
 def _mount_spa(app: FastAPI, dist: Path) -> None:
     index = dist / "index.html"
     if not index.is_file():
         return
-
+    root = dist.resolve()
     if (dist / "assets").is_dir():
         app.mount("/assets", ImmutableStatic(directory=dist / "assets"), name="assets")
 
     @app.api_route("/{path:path}", methods=["GET", "HEAD"], include_in_schema=False)
     def spa(path: str) -> FileResponse:
-        file = (dist / path).resolve()
-        if path and file.is_file() and file.is_relative_to(dist.resolve()):
-            return FileResponse(file)
+        try:
+            file = (dist / path).resolve()
+            if path and file.is_file() and file.is_relative_to(root):
+                return FileResponse(file)
+        except (ValueError, OSError):  # NUL bytes, over-long names
+            pass
         return FileResponse(index, headers={"Cache-Control": "no-cache"})
 
 

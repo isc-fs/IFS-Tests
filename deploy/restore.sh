@@ -16,6 +16,8 @@ env=$1 file=${2:-}
 repo=$(cd "$(dirname "$0")/.." && pwd)
 dir=${QUIZ_ROOT:-/srv/quiz}/$env
 envfile=$dir/.env
+[[ -f $envfile ]] || die "missing $envfile"
+[[ $(stat -c %a "$envfile" 2>/dev/null || stat -f %Lp "$envfile") == 600 ]] || die "$envfile must be chmod 600"
 set -a
 # shellcheck source=/dev/null
 . "$envfile"
@@ -36,8 +38,13 @@ fi
 read -r -p "This replaces all $env data with $file. Type '$env' to continue: " answer
 [[ $answer == "$env" ]] || die "aborted"
 
-compose stop api
-compose exec -T -e PGUSER=migrator -e PGPASSWORD="$MIGRATOR_PASSWORD" backup \
+compose stop api scheduler
+export PGPASSWORD=$MIGRATOR_PASSWORD
+compose exec -T -e PGUSER=migrator -e PGPASSWORD backup \
   pg_restore --clean --if-exists --no-owner --role=migrator --dbname=quiz "/backups/$file"
-compose up -d --wait api
+# An older dump may predate the current schema: bring it up to what this release expects.
+export IFS_DATABASE_URL="postgresql+psycopg://migrator:${MIGRATOR_PASSWORD}@db:5432/quiz"
+compose run --rm --no-deps -e IFS_DATABASE_URL api alembic upgrade head
+unset PGPASSWORD IFS_DATABASE_URL
+compose up -d --wait api scheduler
 echo "restore: $env restored from $file"

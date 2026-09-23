@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import argparse
 import os
 import shutil
 import sys
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
@@ -23,9 +24,18 @@ def _docker_available() -> bool:
     return shutil.which("docker") is not None and os.system("docker info >/dev/null 2>&1") == 0
 
 
+def migrate(url: str, revision: str = "head") -> Config:
+    cfg = Config("alembic.ini")
+    cfg.cmd_opts = argparse.Namespace(x=[f"url={url}"])
+    command.upgrade(cfg, revision)
+    return cfg
+
+
 @pytest.fixture(scope="session")
 def postgres_url() -> Iterator[str]:
     if not _docker_available():
+        if os.environ.get("CI"):
+            pytest.fail("Docker is required in CI: database tests must not be skipped silently")
         pytest.skip("Docker is not available")
     if sys.platform == "darwin":
         # Docker Desktop exposes the socket under ~/.docker/run, which the Ryuk reaper can't bind-mount.
@@ -43,9 +53,7 @@ def app_engine(postgres_url: str) -> Engine:
     with admin.connect() as c:
         c.execute(text("CREATE DATABASE app_tests"))
     url = postgres_url.rsplit("/", 1)[0] + "/app_tests"
-    cfg = Config("alembic.ini")
-    cfg.cmd_opts = type("Opts", (), {"x": [f"url={url}"]})()
-    command.upgrade(cfg, "head")
+    migrate(url)
     return create_engine(url)
 
 
@@ -75,9 +83,12 @@ def db(app_engine: Engine) -> Iterator[Session]:
         yield session
 
 
+PUBLIC_ORIGIN = "https://testserver"
+
+
 @pytest.fixture
 def app_client(app_engine: Engine, clock: Clock, db: Session) -> Iterator[TestClient]:
-    app = create_app(Settings(env="test", public_origin="https://testserver"))
+    app = create_app(Settings(env="test", public_origin=PUBLIC_ORIGIN))
     make = sessionmaker(app_engine, expire_on_commit=False)
 
     def _db() -> Iterator[Session]:
@@ -88,3 +99,9 @@ def app_client(app_engine: Engine, clock: Clock, db: Session) -> Iterator[TestCl
     app.dependency_overrides[get_now] = lambda: clock.now
     with TestClient(app, base_url="https://testserver", headers={"X-CSRF": "1"}) as c:
         yield c
+
+
+@pytest.fixture
+def new_client(app_client: TestClient) -> Callable[[], TestClient]:
+    """Another browser: same app, separate cookie jar."""
+    return lambda: TestClient(app_client.app, base_url=PUBLIC_ORIGIN, headers={"X-CSRF": "1"})

@@ -1,18 +1,16 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
-from typing import Any, cast
+from datetime import datetime
 
-from sqlalchemy import CursorResult, delete, or_
+from sqlalchemy import delete, or_, update
 from sqlalchemy.orm import Session as DB
 
 from ..db.models import Session, User
+from ..db.session import rowcount
+from ..domain.accounts import SESSION_ABSOLUTE, SESSION_IDLE, SessionState, session_state
 from .tokens import new_token, token_hash
 
 COOKIE = "__Host-sid"
-IDLE = timedelta(hours=12)
-ABSOLUTE = timedelta(days=30)
-TOUCH_EVERY = timedelta(minutes=5)
 
 
 def create_session(db: DB, user: User, now: datetime) -> str:
@@ -23,7 +21,7 @@ def create_session(db: DB, user: User, now: datetime) -> str:
             user_id=user.id,
             created_at=now,
             last_seen=now,
-            expires_at=now + ABSOLUTE,
+            expires_at=now + SESSION_ABSOLUTE,
         )
     )
     user.last_seen = now
@@ -35,16 +33,21 @@ def resolve_session(db: DB, token: str, now: datetime) -> User | None:
     row = db.get(Session, token_hash(token))
     if row is None:
         return None
-    if now >= row.expires_at or now - row.last_seen >= IDLE:
-        db.delete(row)
+    state = session_state(row.expires_at, row.last_seen, now)
+    if state is SessionState.EXPIRED:
+        db.execute(delete(Session).where(Session.id_hash == row.id_hash))
         db.commit()
         return None
     user = db.get(User, row.user_id)
     if user is None or user.status != "active":
         return None
-    if now - row.last_seen >= TOUCH_EVERY:
-        row.last_seen = now
-        user.last_seen = now
+    if state is SessionState.NEEDS_TOUCH:
+        # Core UPDATE: if the session was revoked meanwhile (other tab, admin), nothing breaks.
+        touched = db.execute(update(Session).where(Session.id_hash == row.id_hash).values(last_seen=now))
+        if rowcount(touched) == 0:
+            db.rollback()
+            return None
+        db.execute(update(User).where(User.id == user.id).values(last_seen=now))
         db.commit()
     return user
 
@@ -61,5 +64,5 @@ def end_all_sessions(db: DB, user_id: int, keep_token: str | None = None) -> Non
 
 
 def purge_expired(db: DB, now: datetime) -> int:
-    stmt = delete(Session).where(or_(Session.expires_at <= now, Session.last_seen <= now - IDLE))
-    return cast(CursorResult[Any], db.execute(stmt)).rowcount
+    stmt = delete(Session).where(or_(Session.expires_at <= now, Session.last_seen <= now - SESSION_IDLE))
+    return rowcount(db.execute(stmt))
