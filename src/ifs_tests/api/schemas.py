@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Annotated, Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -122,6 +122,58 @@ class BankSummary(BaseModel):
     quizzes: int
     key_changes: int
     imported_at: datetime | None
+
+
+def media_url(name: str) -> str:
+    return f"/media/{name}"
+
+
+class Option(Out):
+    id: int
+    text: str
+
+
+class PlayQuestion(BaseModel):
+    """A question before it is answered: nothing here may reveal the answer."""
+
+    id: int
+    text: str
+    answer_kind: str
+    graded: bool
+    values: int | None = Field(description="How many values a list answer needs, when known")
+    time_s: int | None
+    area: str
+    topic: str | None
+    images: list[str]
+    options: list[Option]
+    quizzes: list[str]
+
+
+class AnswerIn(In):
+    options: list[Annotated[int, Field(ge=1, le=2**31 - 1)]] | None = Field(default=None, max_length=40)
+    value: str | None = Field(default=None, max_length=200)
+
+
+class SolutionOut(BaseModel):
+    text: str | None
+    images: list[str]
+
+
+class Feedback(BaseModel):
+    """What the player sees after answering: the official answer and any worked solution."""
+
+    correct: bool | None
+    official: str | None
+    correct_options: list[int]
+    solutions: list[SolutionOut]
+
+
+class AreaProgress(BaseModel):
+    area: str
+    questions: int
+    answered: int
+    correct: int
+    topics: dict[str, int]
 
 
 class AuditEntry(BaseModel):

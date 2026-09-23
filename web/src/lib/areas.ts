@@ -5,3 +5,14 @@ export const AREAS: Record<string, string> = {
   rules: 'Rules',
   unclassified: 'Unclassified',
 }
+
+export const TOPICS: Record<string, string> = {
+  dynamics: 'Vehicle dynamics',
+  aero: 'Aerodynamics',
+  structures: 'Structures',
+  powertrain: 'Powertrain',
+  hv: 'High voltage',
+  dv: 'Driverless',
+  electronics: 'Electronics',
+  scoring: 'Scoring and events',
+}

@@ -5,6 +5,7 @@ import Home from './Home'
 import Invite from './Invite'
 import Layout from './Layout'
 import Login from './Login'
+import Practice from './Practice'
 import Profile from './Profile'
 import Reset from './Reset'
 
@@ -41,6 +42,7 @@ export const routes: RouteObject[] = [
     errorElement: <Crashed />,
     children: [
       { index: true, element: <Home /> },
+      { path: 'practice', element: <Practice /> },
       { path: 'profile', element: <Profile /> },
       { path: 'admin', element: <Admin /> },
     ],

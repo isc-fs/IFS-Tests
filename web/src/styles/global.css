@@ -362,6 +362,125 @@ button.secondary:hover {
   }
 }
 
+/* Questions */
+.question-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  margin: 0;
+  font-size: var(--isc-fs-caption);
+}
+.question-meta .badge {
+  margin-left: 0;
+}
+.badge.quiet {
+  background: transparent;
+  border: 1px solid var(--isc-c-border);
+  color: var(--isc-c-text-mut);
+}
+.question-text {
+  white-space: pre-line;
+  margin: 0;
+  font-size: var(--isc-fs-body-l);
+  overflow-wrap: anywhere;
+}
+.solution .question-text {
+  font-size: var(--isc-fs-body);
+}
+.question-image img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--isc-c-border);
+  border-radius: 6px;
+  background: var(--isc-white);
+}
+.choices {
+  display: grid;
+  gap: 8px;
+}
+.choices legend {
+  font-weight: 600;
+  font-size: var(--isc-fs-body-s);
+  margin-bottom: 8px;
+}
+.choice {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  align-items: start;
+  padding: 12px 14px;
+  min-height: 44px;
+  border: 1px solid var(--isc-c-border);
+  border-radius: 6px;
+  font-weight: 400;
+  font-size: var(--isc-fs-body);
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.choice input {
+  width: 20px;
+  height: 20px;
+  min-height: auto;
+  margin: 2px 0 0;
+}
+.choice:has(input:checked) {
+  border-color: var(--isc-green);
+  background: var(--isc-cream);
+}
+.choice.right {
+  border-color: var(--isc-green);
+  background: #e7f3ec;
+}
+.choice.wrong {
+  border-color: var(--isc-c-error);
+  background: #fdecea;
+}
+.choice-note {
+  grid-column: 2;
+  font-size: var(--isc-fs-caption);
+  font-weight: 600;
+}
+.official {
+  font-family: var(--isc-font-mono);
+  white-space: pre-line;
+}
+.chips {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.chips a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 6px 14px;
+  border: 1px solid var(--isc-c-border);
+  border-radius: 999px;
+  background: var(--isc-white);
+  color: var(--isc-graphite);
+  text-decoration: none;
+  font-size: var(--isc-fs-body-s);
+}
+.chips a[aria-current='page'] {
+  border-color: var(--isc-green);
+  background: var(--isc-green);
+  color: var(--isc-white);
+}
+.chips .count {
+  font-family: var(--isc-font-mono);
+  font-size: var(--isc-fs-caption);
+  opacity: 0.8;
+}
+.filters .topic {
+  max-width: 320px;
+}
+
 .stats {
   list-style: none;
   margin: 0;

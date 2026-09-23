@@ -14,6 +14,7 @@ from ..auth.sessions import create_session, end_all_sessions, end_session
 from ..auth.tokens import new_token, token_hash
 from ..db.models import ROLES, STATUSES, VERTICALS, AuditLog, Invite, PasswordReset, User
 from ..domain import accounts as rules
+from .errors import UserError
 
 INVITE_TTL = timedelta(days=7)
 RESET_TTL = timedelta(hours=24)
@@ -24,14 +25,8 @@ LOGIN_FAILED = (
 NAME_RULE = "Use 2–24 Latin letters, numbers, spaces, dots, dashes or apostrophes."
 
 
-class AccountError(Exception):
-    """A user-facing error. `fields` maps form fields to messages when the form can show them inline."""
-
-    def __init__(self, message: str, status: int = 400, fields: dict[str, str] | None = None) -> None:
-        super().__init__(message)
-        self.message = message
-        self.status = status
-        self.fields = fields or {}
+class AccountError(UserError):
+    pass
 
 
 def audit(db: DB, actor: User | None, action: str, target: str | None = None, **details: Any) -> None:

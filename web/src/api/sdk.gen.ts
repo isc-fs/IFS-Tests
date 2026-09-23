@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { AuditLogData, AuditLogErrors, AuditLogResponses, BankSummaryData, BankSummaryResponses, ChangePasswordData, ChangePasswordErrors, ChangePasswordResponses, CreateInviteData, CreateInviteErrors, CreateInviteResponses, InviteInfoData, InviteInfoErrors, InviteInfoResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutResponses, MeData, MeResponses, OpenInvitesData, OpenInvitesResponses, RegisterData, RegisterErrors, RegisterResponses, ResetData, ResetErrors, ResetInfoData, ResetInfoErrors, ResetInfoResponses, ResetLinkData, ResetLinkErrors, ResetLinkResponses, ResetResponses, RevokeInviteData, RevokeInviteErrors, RevokeInviteResponses, RevokeSessionsData, RevokeSessionsErrors, RevokeSessionsResponses, UpdateMeData, UpdateMeErrors, UpdateMeResponses, UpdateUserData, UpdateUserErrors, UpdateUserResponses, UsersData, UsersResponses } from './types.gen';
+import type { AnswerPracticeData, AnswerPracticeErrors, AnswerPracticeResponses, AuditLogData, AuditLogErrors, AuditLogResponses, BankSummaryData, BankSummaryResponses, ChangePasswordData, ChangePasswordErrors, ChangePasswordResponses, CreateInviteData, CreateInviteErrors, CreateInviteResponses, InviteInfoData, InviteInfoErrors, InviteInfoResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutResponses, MeData, MeResponses, NextQuestionData, NextQuestionErrors, NextQuestionResponses, OpenInvitesData, OpenInvitesResponses, PracticeAreasData, PracticeAreasResponses, PracticeQuestionData, PracticeQuestionErrors, PracticeQuestionResponses, RegisterData, RegisterErrors, RegisterResponses, ResetData, ResetErrors, ResetInfoData, ResetInfoErrors, ResetInfoResponses, ResetLinkData, ResetLinkErrors, ResetLinkResponses, ResetResponses, RevokeInviteData, RevokeInviteErrors, RevokeInviteResponses, RevokeSessionsData, RevokeSessionsErrors, RevokeSessionsResponses, UpdateMeData, UpdateMeErrors, UpdateMeResponses, UpdateUserData, UpdateUserErrors, UpdateUserResponses, UsersData, UsersResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -170,3 +170,30 @@ export const auditLog = <ThrowOnError extends boolean = false>(options?: Options
  * Bank Summary
  */
 export const bankSummary = <ThrowOnError extends boolean = false>(options?: Options<BankSummaryData, ThrowOnError>): RequestResult<BankSummaryResponses, unknown, ThrowOnError> => (options?.client ?? client).get<BankSummaryResponses, unknown, ThrowOnError>({ url: '/api/admin/bank', ...options });
+
+/**
+ * Practice Areas
+ */
+export const practiceAreas = <ThrowOnError extends boolean = false>(options?: Options<PracticeAreasData, ThrowOnError>): RequestResult<PracticeAreasResponses, unknown, ThrowOnError> => (options?.client ?? client).get<PracticeAreasResponses, unknown, ThrowOnError>({ url: '/api/practice/areas', ...options });
+
+/**
+ * Next Question
+ */
+export const nextQuestion = <ThrowOnError extends boolean = false>(options?: Options<NextQuestionData, ThrowOnError>): RequestResult<NextQuestionResponses, NextQuestionErrors, ThrowOnError> => (options?.client ?? client).get<NextQuestionResponses, NextQuestionErrors, ThrowOnError>({ url: '/api/practice/next', ...options });
+
+/**
+ * Practice Question
+ */
+export const practiceQuestion = <ThrowOnError extends boolean = false>(options: Options<PracticeQuestionData, ThrowOnError>): RequestResult<PracticeQuestionResponses, PracticeQuestionErrors, ThrowOnError> => (options.client ?? client).get<PracticeQuestionResponses, PracticeQuestionErrors, ThrowOnError>({ url: '/api/practice/questions/{question_id}', ...options });
+
+/**
+ * Answer Practice
+ */
+export const answerPractice = <ThrowOnError extends boolean = false>(options: Options<AnswerPracticeData, ThrowOnError>): RequestResult<AnswerPracticeResponses, AnswerPracticeErrors, ThrowOnError> => (options.client ?? client).post<AnswerPracticeResponses, AnswerPracticeErrors, ThrowOnError>({
+    url: '/api/practice/questions/{question_id}/answer',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});

@@ -9,9 +9,9 @@ from starlette.staticfiles import StaticFiles
 
 from .. import __version__
 from ..auth.passwords import HashingBusy
-from ..services.accounts import AccountError
+from ..services.errors import UserError
 from ..settings import Settings, get_settings
-from .routes import admin, auth, me
+from .routes import admin, auth, me, practice
 from .security import CSRFGuard, SecurityHeaders
 
 
@@ -30,8 +30,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_middleware(CSRFGuard, allowed_origins=settings.allowed_origins)
     app.add_middleware(SecurityHeaders)
 
-    @app.exception_handler(AccountError)
-    async def account_error(_: Request, e: AccountError) -> JSONResponse:
+    @app.exception_handler(UserError)
+    async def user_error(_: Request, e: UserError) -> JSONResponse:
         return JSONResponse({"detail": e.message, "fields": e.fields}, status_code=e.status)
 
     @app.exception_handler(HashingBusy)
@@ -45,7 +45,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         errors = [{"loc": err["loc"], "msg": err["msg"], "type": err["type"]} for err in e.errors()]
         return JSONResponse({"detail": errors}, status_code=422)
 
-    for router in (auth.router, me.router, admin.router):
+    for router in (auth.router, me.router, admin.router, practice.router):
         app.include_router(router)
 
     @app.api_route("/healthz", methods=["GET", "HEAD"], include_in_schema=False)
