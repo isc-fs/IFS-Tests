@@ -82,7 +82,7 @@ VERTICALS: tuple[str, ...] = tuple(Vertical)
 
 
 def _in(column: str, values: tuple[str, ...]) -> str:
-    return f"{column} IN ({', '.join(repr(v) for v in values)})"
+    return f"{column} IN ({', '.join(f"'{v}'" for v in values)})"
 
 
 class User(Base):

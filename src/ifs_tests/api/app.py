@@ -8,6 +8,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from starlette.staticfiles import StaticFiles
 
 from .. import __version__
+from ..auth.passwords import HashingBusy
 from ..services.accounts import AccountError
 from ..settings import Settings, get_settings
 from .routes import admin, auth, me
@@ -32,6 +33,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.exception_handler(AccountError)
     async def account_error(_: Request, e: AccountError) -> JSONResponse:
         return JSONResponse({"detail": e.message, "fields": e.fields}, status_code=e.status)
+
+    @app.exception_handler(HashingBusy)
+    async def hashing_busy(_: Request, __: HashingBusy) -> JSONResponse:
+        detail = "Lots of people are signing in right now. Try again in a few seconds."
+        return JSONResponse({"detail": detail, "fields": {}}, status_code=503, headers={"Retry-After": "5"})
 
     @app.exception_handler(RequestValidationError)
     async def invalid_request(_: Request, e: RequestValidationError) -> JSONResponse:

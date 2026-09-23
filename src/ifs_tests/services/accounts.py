@@ -39,8 +39,13 @@ def audit(db: DB, actor: User | None, action: str, target: str | None = None, **
 
 
 def _name_taken(db: DB, name: str, exclude_user: int | None = None) -> bool:
-    clash = db.scalar(select(User.id).where(func.lower(User.display_name) == func.lower(name)))
-    return clash is not None and clash != exclude_user
+    """Compares skeletons, so look-alikes of an existing name count as taken. A team has at most a few
+    hundred members; the unique index on lower(display_name) still guards exact duplicates in a race."""
+    skeleton = rules.name_skeleton(name)
+    return any(
+        uid != exclude_user and rules.name_skeleton(other) == skeleton
+        for uid, other in db.execute(select(User.id, User.display_name)).tuples()
+    )
 
 
 def _check_new_user(db: DB, email: str, display_name: str, password: str) -> tuple[str, str]:
@@ -134,14 +139,18 @@ def register(
     now: datetime,
     vertical: str | None = None,
 ) -> tuple[User, str]:
-    invite = open_invite(db, token, now, lock=True)
+    open_invite(db, token, now)
     email, name = _check_new_user(db, email, display_name, password)
+    vertical = _check_vertical(vertical)
+    db.rollback()  # no transaction or connection held while hashing
+    hashed = hash_password(password)
     with _unique(db):
+        invite = open_invite(db, token, now, lock=True)
         user = User(
             email=email,
-            password_hash=hash_password(password),
+            password_hash=hashed,
             display_name=name,
-            vertical=invite.vertical or _check_vertical(vertical),
+            vertical=invite.vertical or vertical,
             role=invite.role,
             created_at=now,
         )
@@ -159,14 +168,10 @@ def create_first_admin(db: DB, email: str, display_name: str, password: str, now
     if _active_admin_ids(db, lock=False):
         raise AccountError("An admin already exists. Use an invite with role 'admin' instead.", 409)
     email, name = _check_new_user(db, email, display_name, password)
+    db.rollback()
+    hashed = hash_password(password)
     with _unique(db):
-        user = User(
-            email=email,
-            password_hash=hash_password(password),
-            display_name=name,
-            role="admin",
-            created_at=now,
-        )
+        user = User(email=email, password_hash=hashed, display_name=name, role="admin", created_at=now)
         db.add(user)
         db.flush()
         audit(db, user, "user.bootstrap_admin", f"user:{user.id}")
@@ -178,23 +183,29 @@ def create_first_admin(db: DB, email: str, display_name: str, password: str, now
 
 
 def login(db: DB, email: str, password: str, now: datetime, old_session: str | None) -> tuple[User, str]:
-    """Check the credentials and start a new session; the old one, if any, is ended (no fixation)."""
-    user = db.scalar(select(User).where(User.email == email.strip().lower()).with_for_update())
-    if user is None or rules.is_locked(user.locked_until, now):
-        verify_password(dummy_hash(), password)
+    """Check the credentials and start a new session; the old one, if any, is ended (no fixation).
+    The hash is checked with no transaction open; the row is locked only to record the outcome."""
+    found = db.execute(select(User.id, User.password_hash).where(User.email == email.strip().lower())).first()
+    db.rollback()
+    matches = verify_password(found.password_hash if found else dummy_hash(), password)
+    if found is None:
         raise AccountError(LOGIN_FAILED, 401)
-    if not verify_password(user.password_hash, password):
+    user = db.get_one(User, found.id, with_for_update=True, populate_existing=True)
+    if rules.is_locked(user.locked_until, now) or user.status != "active":
+        db.rollback()
+        raise AccountError(LOGIN_FAILED, 401)
+    if not matches:
         _record_failure(db, user, now)
         raise AccountError(LOGIN_FAILED, 401)
-    if user.status != "active":
-        raise AccountError(LOGIN_FAILED, 401)
     user.failed_logins, user.locked_until = 0, None
-    if needs_rehash(user.password_hash):
-        user.password_hash = hash_password(password)
     if old_session:
         end_session(db, old_session)
     session = create_session(db, user, now)
     db.commit()
+    if needs_rehash(user.password_hash):
+        rehashed = hash_password(password)
+        db.execute(update(User).where(User.id == user.id).values(password_hash=rehashed))
+        db.commit()
     return user, session
 
 
@@ -236,16 +247,18 @@ def open_reset(db: DB, token: str, now: datetime, lock: bool = False) -> Passwor
     return reset
 
 
-def _set_password(user: User, password: str, field: str = "password") -> None:
+def _check_password(user: User, password: str, field: str = "password") -> None:
     if problem := password_problem(password, email=user.email, display_name=user.display_name):
         raise AccountError(problem, fields={field: problem})
-    user.password_hash = hash_password(password)
 
 
 def reset_password(db: DB, token: str, password: str, now: datetime) -> User:
+    _check_password(db.get_one(User, open_reset(db, token, now).user_id), password)
+    db.rollback()
+    hashed = hash_password(password)
     reset = open_reset(db, token, now, lock=True)
-    user = db.get_one(User, reset.user_id)
-    _set_password(user, password)
+    user = db.get_one(User, reset.user_id, with_for_update=True)
+    user.password_hash = hashed
     user.failed_logins, user.locked_until = 0, None
     _close_resets(db, user.id, now)
     end_all_sessions(db, user.id)
@@ -257,10 +270,20 @@ def reset_password(db: DB, token: str, password: str, now: datetime) -> User:
 def change_password(db: DB, user: User, current: str, new: str, keep_token: str, now: datetime) -> None:
     if rules.is_locked(user.locked_until, now):
         raise AccountError("Too many wrong attempts. Try again in 15 minutes.", 429)
-    if not verify_password(user.password_hash, current):
+    _check_password(user, new, field="new_password")
+    stored = user.password_hash
+    db.rollback()
+    matches = verify_password(stored, current)
+    hashed = hash_password(new) if matches else None
+    # Re-read under a row lock: parallel wrong guesses must each count, and none may slip past a lock.
+    user = db.get_one(User, user.id, with_for_update=True, populate_existing=True)
+    if rules.is_locked(user.locked_until, now):
+        db.rollback()
+        raise AccountError("Too many wrong attempts. Try again in 15 minutes.", 429)
+    if hashed is None:
         _record_failure(db, user, now)
         raise AccountError("Your current password is wrong.", 403, {"current_password": "Wrong password."})
-    _set_password(user, new, field="new_password")
+    user.password_hash = hashed
     user.failed_logins = 0
     _close_resets(db, user.id, now)
     end_all_sessions(db, user.id, keep_token=keep_token)

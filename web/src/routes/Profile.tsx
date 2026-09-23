@@ -3,9 +3,9 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router'
 import { changePasswordMutation, logoutMutation, updateMeMutation } from '../api/@tanstack/react-query.gen'
 import { type Me, Vertical } from '../api/types.gen'
-import { ErrorNotice, Field, Form, Notice, PASSWORD_HINT, SelectField } from '../components/Form'
+import { ErrorNotice, Field, Form, Notice, PASSWORD_HINT, SelectField, useFieldErrors } from '../components/Form'
 import { Page } from '../components/Page'
-import { fieldErrors, ME_KEY, queryClient, useMe } from '../lib/api'
+import { ME_KEY, queryClient, useMe } from '../lib/api'
 
 export default function Profile() {
   const { data: user } = useMe()
@@ -19,7 +19,7 @@ export default function Profile() {
   })
   if (!user) return null
   return (
-    <Page title="Profile">
+    <Page title="Profile" eyebrow="Your account">
       <p className="muted">Signed in as {user.email}</p>
       <ProfileForm user={user} />
       <PasswordForm />
@@ -42,15 +42,16 @@ function ProfileForm({ user }: { user: Me }) {
     ...updateMeMutation(),
     onSuccess: (me) => queryClient.setQueryData(ME_KEY, me),
   })
-  const errors = fieldErrors(save.error)
+  const { errors, touch } = useFieldErrors(save.error)
   const edit = (patch: Partial<typeof form>) => {
     setForm({ ...form, ...patch })
-    save.reset()
+    Object.keys(patch).forEach(touch)
+    if (save.isSuccess) save.reset()
   }
   const submit = () => save.mutate({ body: { ...form, vertical: (form.vertical || null) as Vertical | null } })
 
   return (
-    <Form onSubmit={submit} className="stack panel" aria-labelledby="profile-title">
+    <Form onSubmit={submit} error={save.error} className="stack panel" aria-labelledby="profile-title">
       <h2 id="profile-title">How others see you</h2>
       <Field
         label="Display name"
@@ -93,14 +94,20 @@ function PasswordForm() {
   const empty = { current_password: '', new_password: '' }
   const [form, setForm] = useState(empty)
   const save = useMutation({ ...changePasswordMutation(), onSuccess: () => setForm(empty) })
-  const errors = fieldErrors(save.error)
+  const { errors, touch } = useFieldErrors(save.error)
   const edit = (key: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) => {
     setForm({ ...form, [key]: e.target.value })
-    save.reset()
+    touch(key)
+    if (save.isSuccess) save.reset()
   }
 
   return (
-    <Form onSubmit={() => save.mutate({ body: form })} className="stack panel" aria-labelledby="password-title">
+    <Form
+      onSubmit={() => save.mutate({ body: form })}
+      error={save.error}
+      className="stack panel"
+      aria-labelledby="password-title"
+    >
       <h2 id="password-title">Password</h2>
       <Field
         label="Current password"

@@ -14,6 +14,7 @@ SESSION_TOUCH_EVERY = timedelta(minutes=5)
 LOCK_AFTER = 5
 LOCK_FOR = timedelta(minutes=15)
 
+_DIGITS = set("0123456789")
 _EMAIL = re.compile(r"^[^@\s\x00-\x1f]+@[^@\s\x00-\x1f]+\.[^@\s\x00-\x1f]+$")
 _NAME_PUNCTUATION = set(" .'-")
 
@@ -65,14 +66,21 @@ def clean_email(email: str) -> str | None:
 
 
 def clean_display_name(name: str) -> str | None:
-    """NFKC-normalised, single-spaced, 2–24 characters of Latin letters, digits and . ' -.
-    Latin-only blocks look-alike names built from Cyrillic or Greek letters."""
+    """NFKC-normalised, single-spaced, 2–24 characters of Latin letters, ASCII digits and . ' -.
+    Latin-only blocks look-alike names built from Cyrillic or Greek letters or foreign digits."""
     name = " ".join(unicodedata.normalize("NFKC", name).split())
     if not 2 <= len(name) <= 24 or not name[0].isalnum():
         return None
     for ch in name:
-        if ch in _NAME_PUNCTUATION or ch.isdigit():
+        if ch in _NAME_PUNCTUATION or ch in _DIGITS:
             continue
         if not ch.isalpha() or not unicodedata.name(ch, "").startswith("LATIN"):
             return None
     return name
+
+
+def name_skeleton(name: str) -> str:
+    """What a name looks like, for uniqueness: accents, dotless i, case and punctuation are ignored,
+    so "E2E Admın" and "e2e-admin" collide with "E2E Admin"."""
+    decomposed = unicodedata.normalize("NFKD", name.replace("ı", "i")).casefold()
+    return "".join(ch for ch in decomposed if ch.isalnum() and not unicodedata.combining(ch))

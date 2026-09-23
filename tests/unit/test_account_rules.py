@@ -12,6 +12,7 @@ from ifs_tests.domain.accounts import (
     is_locked,
     link_open,
     loses_admin,
+    name_skeleton,
     session_state,
 )
 
@@ -96,6 +97,8 @@ def test_clean_email(raw: str, clean: str | None) -> None:
         (".dot", None),
         ("tab\tname", "tab name"),
         ("nul\x00l", None),
+        ("E2E Admin ০", None),  # Bengali digit zero
+        ("E2E Admın", "E2E Admın"),  # dotless ı is Latin: allowed, but see the skeleton test
     ],
 )
 def test_clean_display_name(raw: str, clean: str | None) -> None:
@@ -106,3 +109,14 @@ def test_clean_display_name_is_idempotent() -> None:
     for raw in ["  Chief   Admin ", "Ｍarta", "Álvaro"]:
         once = clean_display_name(raw)
         assert once is not None and clean_display_name(once) == once
+
+
+@pytest.mark.parametrize(
+    "variant", ["E2E Admın", "e2e admin", "E2E-Admin", "E2E.Admin", "Ｅ2Ｅ Admin", "E2E Ädmin"]
+)
+def test_look_alikes_share_a_skeleton(variant: str) -> None:
+    assert name_skeleton(variant) == name_skeleton("E2E Admin")
+
+
+def test_different_names_have_different_skeletons() -> None:
+    assert name_skeleton("Marta") != name_skeleton("Martin")

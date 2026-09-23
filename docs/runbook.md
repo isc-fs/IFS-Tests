@@ -27,7 +27,7 @@ done
 Edit each `.env`: set `QUIZ_ENV` and `QUIZ_HOST`, and fill every password with a fresh `openssl rand -hex 24`. Store a copy of the prod `.env` in the team's password manager, not in a shared document.
 
 ### 1.3 Network and Nginx (consultant)
-1. The api containers join the Docker network the Nginx container uses (default name `proxy`, set `PROXY_NETWORK` in `.env` if it differs). If it doesn't exist yet: `docker network create proxy`. Set `FORWARDED_ALLOW_IPS` in `.env` to the Nginx container's address so only Nginx can set the client IP.
+1. The api containers join the Docker network the Nginx container uses (default name `proxy`, set `PROXY_NETWORK` in `.env` if it differs). If it doesn't exist yet: `docker network create proxy`. Set `FORWARDED_ALLOW_IPS` in `.env` to the Nginx container's address (`docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' <nginx container>`) so only Nginx can set the client IP; the stack refuses to start without it. If the Nginx container is recreated with a new address, update it and redeploy.
 2. Add [`deploy/nginx/quiz.conf`](../deploy/nginx/quiz.conf) to the Nginx configuration.
 3. DNS (Squarespace Domains): `A` (and `AAAA`) records for `quiz` and `quiz-staging` pointing at the server.
 4. Certificate for both names: `certbot certonly --webroot -w /var/www/certbot -d quiz.iscracingteam.com -d quiz-staging.iscracingteam.com`, then reload Nginx.

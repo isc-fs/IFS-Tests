@@ -19,6 +19,9 @@ test('the token is read from the fragment and sent in the body', async () => {
   expect(await screen.findByText(/invited to the Driverless vertical/)).toBeInTheDocument()
   expect(sent('POST /auth/invites/lookup')[0].body).toEqual({ token: 'tok-123' })
   expect(screen.queryByLabelText('Vertical')).toBeNull()
+  expect(window.location.hash).toBe('')
+  expect(document.title).toBe('Join · IFS-Tests')
+  expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Join IFS-Tests')
 })
 
 test('field problems are shown next to each field and linked for screen readers', async () => {
@@ -36,6 +39,11 @@ test('field problems are shown next to each field and linked for screen readers'
   expect(name).toHaveAccessibleDescription(/Shown on the leaderboard.*That display name is taken\./)
   expect(screen.getByLabelText('Password')).toHaveAccessibleDescription(/Too common\./)
   expect(screen.queryByRole('alert')).toBeNull()
+  expect(name).toHaveFocus()
+
+  await userEvent.type(name, 'x')
+  expect(name).toHaveAttribute('aria-invalid', 'false')
+  expect(screen.getByLabelText('Password')).toHaveAttribute('aria-invalid', 'true')
 })
 
 test('members choose a vertical when the invite has none, then land home', async () => {

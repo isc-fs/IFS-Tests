@@ -37,7 +37,7 @@ export default function Admin() {
     )
   }
   return (
-    <Page title="Admin">
+    <Page title="Admin" eyebrow="Team">
       <InvitePanel />
       <Members selfId={me.id} />
       <AuditTrail />
@@ -77,9 +77,21 @@ function OneTimeLink({ label, url, expires }: { label: string; url: string; expi
 
 function InvitePanel() {
   const [form, setForm] = useState<InviteIn>({ role: Role.MEMBER, vertical: null, note: '' })
+  const [created, setCreated] = useState<{ note: string; url: string; expires: string } | null>(null)
   const invites = useQuery(openInvitesOptions())
-  const create = useMutation({ ...createInviteMutation(), onSuccess: () => refresh(openInvitesQueryKey()) })
+  const create = useMutation({
+    ...createInviteMutation(),
+    onSuccess: (l, { body }) => {
+      setCreated({ note: body.note ?? '', url: l.url, expires: l.expires_at })
+      setForm({ ...form, note: '' })
+      refresh(openInvitesQueryKey())
+    },
+  })
   const revoke = useMutation({ ...revokeInviteMutation(), onSuccess: () => refresh(openInvitesQueryKey()) })
+  const revokeInvite = (id: number, note: string) => {
+    if (window.confirm(`Revoke the invite for ${note}? The link stops working.`))
+      revoke.mutate({ path: { invite_id: id } })
+  }
 
   return (
     <section className="panel stack" aria-labelledby="invite-title">
@@ -118,13 +130,12 @@ function InvitePanel() {
         </button>
       </Form>
       <ErrorNotice error={create.error} />
-      {create.data && (
-        <OneTimeLink label={`Invite for ${form.note}.`} url={create.data.url} expires={create.data.expires_at} />
-      )}
+      <ErrorNotice error={revoke.error} />
+      {created && <OneTimeLink label={`Invite for ${created.note}.`} url={created.url} expires={created.expires} />}
       {!!invites.data?.length && (
         <>
           <h3>Open invites</h3>
-          <ul className="list">
+          <ul className="list invites">
             {invites.data.map((i) => (
               <li key={i.id} className="item">
                 <span className="item-title">{i.note ?? 'No note'}</span>
@@ -136,7 +147,7 @@ function InvitePanel() {
                   type="button"
                   className="link-button"
                   aria-label={`Revoke invite for ${i.note ?? 'unnamed'}`}
-                  onClick={() => revoke.mutate({ path: { invite_id: i.id } })}
+                  onClick={() => revokeInvite(i.id, i.note ?? 'unnamed')}
                 >
                   Revoke
                 </button>
@@ -155,8 +166,12 @@ const CONFIRM: Partial<Record<string, (name: string) => string>> = {
   admin: (n) => `Make ${n} an admin? Admins can invite people and change anyone's role.`,
 }
 
+const matches = (u: AdminUser, q: string) =>
+  [u.display_name, u.email, u.vertical ?? '', u.role, u.status].some((s) => s.toLowerCase().includes(q))
+
 function Members({ selfId }: { selfId: number }) {
   const users = useQuery(usersOptions())
+  const [query, setQuery] = useState('')
   const [changed, setChanged] = useState('')
   const [link, setLink] = useState<{ userId: number; url: string; expires: string } | null>(null)
   const update = useMutation({
@@ -175,68 +190,84 @@ function Members({ selfId }: { selfId: number }) {
   const change = (u: AdminUser, body: { role?: Role; status?: Status }) => {
     const ask = CONFIRM[body.role ?? body.status ?? '']
     if (ask && !window.confirm(ask(u.display_name))) return
+    setChanged('')
     update.mutate({ path: { user_id: u.id }, body })
   }
+  const q = query.trim().toLowerCase()
+  const shown = users.data?.filter((u) => matches(u, q))
 
   return (
     <section className="panel stack" aria-labelledby="members-title">
       <h2 id="members-title">Members ({users.data?.length ?? '…'})</h2>
+      {(users.data?.length ?? 0) > 5 && (
+        <Field
+          label="Find a member"
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          hint="Name, email, vertical, role or status."
+        />
+      )}
       <ErrorNotice error={update.error} />
-      <output className="sr-only">{changed}</output>
+      {changed && <Notice tone="ok">{changed}</Notice>}
+      {q && shown?.length === 0 && <p className="muted">Nobody matches “{query.trim()}”.</p>}
       <ul className="list members">
-        {users.data?.map((u) => {
+        {shown?.map((u) => {
           const self = u.id === selfId
           const locked = u.locked_until && new Date(u.locked_until) > new Date()
           return (
-            <li key={u.id} className="item member">
-              <div className="who">
-                <span className="item-title">
-                  {u.display_name}
-                  {self && <span className="badge">you</span>}
-                  {u.leaderboard_opt_out && <span className="badge">off leaderboard</span>}
-                  {locked && <span className="badge warn">locked until {when(u.locked_until)}</span>}
-                </span>
-                <span className="muted">
-                  {u.email} · {u.vertical ?? 'no vertical'} · seen {when(u.last_seen)}
-                </span>
-              </div>
-              <SelectField
-                label="Role"
-                value={u.role}
-                disabled={self}
-                onChange={(e) => change(u, { role: e.target.value as Role })}
-              >
-                {Object.values(Role).map((r) => (
-                  <option key={r}>{r}</option>
-                ))}
-              </SelectField>
-              <SelectField
-                label="Status"
-                value={u.status}
-                disabled={self}
-                onChange={(e) => change(u, { status: e.target.value as Status })}
-              >
-                {Object.values(Status).map((s) => (
-                  <option key={s}>{s}</option>
-                ))}
-              </SelectField>
-              <button
-                type="button"
-                className="secondary"
-                aria-label={`Reset link for ${u.display_name}`}
-                onClick={() => reset.mutate({ path: { user_id: u.id } })}
-              >
-                Reset link
-              </button>
-              {link?.userId === u.id && (
-                <div className="full">
-                  <OneTimeLink
-                    label={`Password reset link for ${u.display_name}.`}
-                    url={link.url}
-                    expires={link.expires}
-                  />
+            <li key={u.id}>
+              <fieldset className="item member">
+                <legend className="sr-only">{u.display_name}</legend>
+                <div className="who">
+                  <span className="item-title">
+                    {u.display_name}
+                    {self && <span className="badge">you</span>}
+                    {u.leaderboard_opt_out && <span className="badge">off leaderboard</span>}
+                    {locked && <span className="badge warn">locked until {when(u.locked_until)}</span>}
+                  </span>
+                  <span className="muted">
+                    {u.email} · {u.vertical ?? 'no vertical'} · seen {when(u.last_seen)}
+                  </span>
                 </div>
-              )}
+                <SelectField
+                  label="Role"
+                  value={u.role}
+                  disabled={self}
+                  onChange={(e) => change(u, { role: e.target.value as Role })}
+                >
+                  {Object.values(Role).map((r) => (
+                    <option key={r}>{r}</option>
+                  ))}
+                </SelectField>
+                <SelectField
+                  label="Status"
+                  value={u.status}
+                  disabled={self}
+                  onChange={(e) => change(u, { status: e.target.value as Status })}
+                >
+                  {Object.values(Status).map((s) => (
+                    <option key={s}>{s}</option>
+                  ))}
+                </SelectField>
+                <button
+                  type="button"
+                  className="secondary"
+                  aria-label={`Reset link for ${u.display_name}`}
+                  onClick={() => reset.mutate({ path: { user_id: u.id } })}
+                >
+                  Reset link
+                </button>
+                {link?.userId === u.id && (
+                  <div className="full">
+                    <OneTimeLink
+                      label={`Password reset link for ${u.display_name}.`}
+                      url={link.url}
+                      expires={link.expires}
+                    />
+                  </div>
+                )}
+              </fieldset>
             </li>
           )
         })}

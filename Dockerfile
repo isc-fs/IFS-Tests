@@ -24,7 +24,9 @@ COPY --from=build /app/src /app/src
 COPY alembic.ini ./
 COPY migrations ./migrations
 COPY --from=web /web/dist ./web/dist
-ENV PATH="/app/.venv/bin:$PATH" PYTHONUNBUFFERED=1 IFS_WEB_DIST=/app/web/dist IFS_MEDIA_DIR=/data/media
+# Return large freed buffers to the OS (Argon2 allocates 19 MiB per hash).
+ENV PATH="/app/.venv/bin:$PATH" PYTHONUNBUFFERED=1 IFS_WEB_DIST=/app/web/dist IFS_MEDIA_DIR=/data/media \
+    GLIBC_TUNABLES=glibc.malloc.mmap_threshold=1048576
 USER 10001
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=3s --retries=3 CMD ["python", "-c", "import urllib.request,sys; sys.exit(urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=2).status != 200)"]

@@ -19,7 +19,7 @@ x-app: &app
     IFS_ENV: ${QUIZ_ENV}
     IFS_DATABASE_URL: postgresql+psycopg://app_rt:${APP_PASSWORD:?}@db:5432/quiz
     IFS_PUBLIC_ORIGIN: https://${QUIZ_HOST:?}
-    FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-*}
+    FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:?set to the Nginx container's IP}
   depends_on:
     db: { condition: service_healthy }
 

@@ -77,7 +77,7 @@ def test_duplicate_email_is_a_409_and_keeps_the_invite_usable(
     assert register(new_client(), token, "someone@alu.comillas.edu", "Someone").status_code == 201
 
 
-@pytest.mark.parametrize("name", ["ADMIN", "admin", "Е2E Аdmin"])
+@pytest.mark.parametrize("name", ["ADMIN", "admin", "Е2E Аdmin", "Admın", "A.d-min"])
 def test_display_names_are_unique_and_look_alikes_are_refused(
     app_client: TestClient, admin: User, new_client: NewClient, name: str
 ) -> None:
@@ -220,3 +220,17 @@ def test_outdated_hashes_are_upgraded_at_login(app_client: TestClient, admin: Us
     upgraded = db.get_one(User, admin.id).password_hash
     assert upgraded != old and upgraded.startswith("$argon2id$v=19$m=19456,t=2,p=1")
     assert hash_password("x") != hash_password("x")
+
+
+def test_a_saturated_hashing_pool_answers_503_not_a_timeout(
+    app_client: TestClient, admin: User, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from ifs_tests.auth.passwords import HashingBusy
+    from ifs_tests.services import accounts
+
+    def busy(*_: object) -> bool:
+        raise HashingBusy
+
+    monkeypatch.setattr(accounts, "verify_password", busy)
+    r = app_client.post("/auth/login", json=ADMIN)
+    assert r.status_code == 503 and r.headers["retry-after"] == "5"

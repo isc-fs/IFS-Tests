@@ -204,6 +204,12 @@ select {
   color: var(--isc-c-error);
   font-weight: 600;
 }
+fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
 .check {
   display: flex;
   gap: 10px;
@@ -324,7 +330,11 @@ button.secondary:hover {
   border-top: 1px solid var(--isc-c-border);
 }
 .item-title {
+  display: block;
   font-weight: 600;
+}
+.item .link-button {
+  justify-self: start;
 }
 .item .muted {
   overflow-wrap: anywhere;
@@ -339,6 +349,9 @@ button.secondary:hover {
   .item {
     grid-template-columns: 1fr auto;
     align-items: center;
+  }
+  .invites .item {
+    grid-template-columns: minmax(0, 1fr) auto auto;
   }
   .member {
     grid-template-columns: minmax(0, 1fr) 140px 140px auto;
@@ -365,4 +378,16 @@ summary {
   min-height: 44px;
   display: flex;
   align-items: center;
+  gap: 8px;
+  list-style: none;
+}
+summary::-webkit-details-marker {
+  display: none;
+}
+summary::before {
+  content: '▸';
+  color: var(--isc-gold-ink);
+}
+details[open] > summary::before {
+  content: '▾';
 }

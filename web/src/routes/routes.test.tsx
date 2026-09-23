@@ -32,6 +32,19 @@ test('sign in shows the server message, clears it on edit and sends the CSRF hea
   expect(screen.queryByRole('alert')).toBeNull()
 })
 
+test('an empty sign-in form says what is missing and sends nothing', async () => {
+  const { sent } = renderApp('/login', signedOut)
+  await userEvent.click(await screen.findByRole('button', { name: 'Sign in' }))
+  const email = screen.getByLabelText('Email')
+  expect(email).toHaveAccessibleDescription('Enter your email.')
+  expect(email).toHaveFocus()
+  expect(screen.getByLabelText('Password')).toHaveAccessibleDescription('Enter your password.')
+  await userEvent.type(email, 'm')
+  expect(email).toHaveAttribute('aria-invalid', 'false')
+  expect(email).toHaveFocus()
+  expect(sent('POST /auth/login')).toHaveLength(0)
+})
+
 test('successful sign in lands on the requested page with the page title set', async () => {
   const { router } = renderApp('/login?next=/profile', { ...signedOut, 'POST /auth/login': { body: MEMBER } })
   await userEvent.type(await screen.findByLabelText('Email'), MEMBER.email)

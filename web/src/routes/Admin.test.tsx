@@ -24,7 +24,7 @@ const base = {
 
 afterEach(() => vi.unstubAllGlobals())
 
-const row = async (name: string) => (await screen.findByText(name)).closest('li') as HTMLElement
+const row = (name: string) => screen.findByRole('group', { name })
 
 test('creating an invite shows a focused, copyable link and refreshes the open invites', async () => {
   const { sent } = renderApp('/admin', {
@@ -43,6 +43,48 @@ test('creating an invite shows a focused, copyable link and refreshes the open i
   expect(link).toHaveFocus()
   expect(sent('POST /api/admin/invites')[0].body).toEqual({ role: 'member', vertical: null, note: 'Leo, new DV' })
   await waitFor(() => expect(sent('GET /api/admin/invites').length).toBeGreaterThan(1))
+
+  expect(screen.getByLabelText("Who it's for")).toHaveValue('')
+  await userEvent.type(screen.getByLabelText("Who it's for"), 'Someone else')
+  expect(screen.getByLabelText('Invite for Leo, new DV.')).toBeInTheDocument()
+})
+
+test('revoking an invite asks first', async () => {
+  const confirm = vi.fn(() => true)
+  vi.stubGlobal('confirm', confirm)
+  const { sent } = renderApp('/admin', {
+    ...base,
+    'GET /api/admin/invites': {
+      body: [{ id: 7, note: 'Leo', role: 'member', vertical: null, expires_at: '2026-10-08T10:00:00Z' }],
+    },
+    'DELETE /api/admin/invites/7': { status: 204 },
+  })
+  await userEvent.click(await screen.findByRole('button', { name: 'Revoke invite for Leo' }))
+  expect(confirm).toHaveBeenCalledWith(expect.stringContaining('Revoke the invite for Leo?'))
+  await waitFor(() => expect(sent('DELETE /api/admin/invites/7')).toHaveLength(1))
+})
+
+test('a role change is confirmed on screen', async () => {
+  renderApp('/admin', { ...base, 'PATCH /api/admin/users/2': { body: { ...USERS[1], role: 'reviewer' } } })
+  await userEvent.selectOptions(within(await row('Marta')).getByLabelText('Role'), 'reviewer')
+  expect(await screen.findByRole('status')).toHaveTextContent('Marta is now reviewer, active.')
+})
+
+test('the member list can be filtered once the team grows', async () => {
+  const many = Array.from({ length: 6 }, (_, i) => ({
+    ...USERS[1],
+    id: 10 + i,
+    display_name: `Member ${i}`,
+    email: `m${i}@alu.comillas.edu`,
+    vertical: i === 3 ? 'Electronics' : 'Driverless',
+  }))
+  renderApp('/admin', { ...base, 'GET /api/admin/users': { body: many } })
+  await userEvent.type(await screen.findByLabelText('Find a member'), 'electr')
+  expect(document.querySelectorAll('.members fieldset')).toHaveLength(1)
+  expect(await row('Member 3')).toBeInTheDocument()
+  await userEvent.clear(screen.getByLabelText('Find a member'))
+  await userEvent.type(screen.getByLabelText('Find a member'), 'nobody')
+  expect(screen.getByText(/Nobody matches/)).toBeInTheDocument()
 })
 
 test('disabling a member asks first; cancelling sends nothing', async () => {

@@ -77,3 +77,20 @@ def test_case_variants_that_lowercase_the_same_in_postgres_are_one_name(db: Sess
     with pytest.raises(accounts.AccountError) as e:
         accounts.register(db, token, "b@x.com", "İvan", "tractive system 900V!", NOW)
     assert e.value.status in (400, 409)
+
+
+def test_parallel_wrong_current_passwords_cannot_beat_the_lockout(db: Session, app_engine: Engine) -> None:
+    admin = accounts.create_first_admin(db, "a@x.com", "Alpha", "pit lane boss 2026", NOW)
+    guesses = [
+        (
+            lambda s, i=i: accounts.change_password(
+                s, s.get_one(User, admin.id), f"wrong guess {i}", "new valid pass!", "tok", NOW
+            )
+        )
+        for i in range(20)
+    ]
+    results = race(app_engine, *guesses)
+    statuses = sorted(r.status for r in results if isinstance(r, accounts.AccountError))
+    assert len(statuses) == 20 and statuses.count(403) <= 5 and 429 in statuses
+    db.expire_all()
+    assert db.get_one(User, admin.id).locked_until is not None

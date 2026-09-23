@@ -1,8 +1,18 @@
-import { type ReactNode, useEffect, useRef } from 'react'
+import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
 
 /** Sets the tab title and moves focus to the heading, so screen readers announce the new page. */
-export function Page({ title, heading, children }: { title: string; heading?: string; children: ReactNode }) {
+export function Page({
+  title,
+  heading,
+  eyebrow,
+  children,
+}: {
+  title: string
+  heading?: string
+  eyebrow?: string
+  children: ReactNode
+}) {
   const h1 = useRef<HTMLHeadingElement>(null)
   useEffect(() => {
     document.title = `${title} · IFS-Tests`
@@ -10,6 +20,7 @@ export function Page({ title, heading, children }: { title: string; heading?: st
   }, [title])
   return (
     <>
+      {eyebrow && <p className="eyebrow">{eyebrow}</p>}
       <h1 ref={h1} tabIndex={-1}>
         {heading ?? title}
       </h1>
@@ -39,20 +50,28 @@ export function Brand() {
 }
 
 /** Pages shown to signed-out visitors: sign-in, invite, reset, not found. */
-export function PublicPage({ title, children }: { title: string; children: ReactNode }) {
+export function PublicPage({ title, heading, children }: { title: string; heading?: string; children: ReactNode }) {
   return (
     <Shell>
       <header className="topbar">
         <Brand />
       </header>
-      <main className="content narrow">
-        <Page title={title}>{children}</Page>
+      <main className="content narrow stack">
+        <Page title={title} heading={heading}>
+          {children}
+        </Page>
       </main>
     </Shell>
   )
 }
 
-/** Invite and reset tokens travel in the URL fragment, which browsers never send to a server. */
-export function tokenFromHash(): string {
-  return window.location.hash.slice(1)
+/** Invite and reset tokens travel in the URL fragment, which browsers never send to a server.
+ *  Read it once, then drop it from the address bar and history. */
+export function useFragmentToken(): string {
+  const [token] = useState(() => window.location.hash.slice(1))
+  useEffect(() => {
+    const { pathname, search, hash } = window.location
+    if (hash) window.history.replaceState(window.history.state, '', pathname + search)
+  }, [])
+  return token
 }

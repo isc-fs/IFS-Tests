@@ -18,6 +18,7 @@ export default function Login() {
   const navigate = useNavigate()
   const { data: user } = useMe()
   const [form, setForm] = useState({ email: '', password: '' })
+  const [missing, setMissing] = useState<Partial<Record<keyof typeof form, string>>>({})
   const signIn = useMutation({
     ...loginMutation(),
     onSuccess: (me) => {
@@ -30,13 +31,22 @@ export default function Login() {
 
   const edit = (key: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) => {
     setForm({ ...form, [key]: e.target.value })
+    setMissing({ ...missing, [key]: undefined })
     signIn.reset()
+  }
+  const submit = () => {
+    const empty = {
+      email: form.email.trim() ? undefined : 'Enter your email.',
+      password: form.password ? undefined : 'Enter your password.',
+    }
+    setMissing(empty)
+    if (!empty.email && !empty.password) signIn.mutate({ body: form })
   }
 
   return (
     <PublicPage title="Sign in">
       {params.get('expired') && <Notice tone="ok">Your session ended. Sign in to continue.</Notice>}
-      <Form onSubmit={() => signIn.mutate({ body: form })} className="stack">
+      <Form onSubmit={submit} error={missing.email || missing.password ? missing : signIn.error} className="stack">
         <Field
           label="Email"
           type="email"
@@ -44,6 +54,7 @@ export default function Login() {
           required
           value={form.email}
           onChange={edit('email')}
+          error={missing.email}
         />
         <Field
           label="Password"
@@ -52,6 +63,7 @@ export default function Login() {
           required
           value={form.password}
           onChange={edit('password')}
+          error={missing.password}
         />
         <ErrorNotice error={signIn.error} />
         <button type="submit" disabled={signIn.isPending}>
