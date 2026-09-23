@@ -173,13 +173,24 @@ def _attempts(db: DB, s: MockSession) -> dict[int, Attempt]:
     return {a.question_id: a for a in rows}
 
 
-def _advance(
-    db: DB, s: MockSession, questions: list[Question], now: datetime
-) -> tuple[Question, Attempt] | None:
+def _run(db: DB, s: MockSession, attempts: dict[int, Attempt]) -> list[Question]:
+    """The run's questions in quiz order: every question it has already shown, plus the still-playable ones
+    (only while running). Tracking by question, not by position, keeps a run intact when a question is
+    hidden or its images arrive mid-run."""
+    everything = db.scalars(
+        select(Question)
+        .join(QuizQuestion, QuizQuestion.question_id == Question.id)
+        .where(QuizQuestion.quiz_id == s.quiz_id)
+        .order_by(QuizQuestion.position)
+    )
+    return [q for q in everything if q.id in attempts or (q.playable and s.finished_at is None)]
+
+
+def _advance(db: DB, s: MockSession, now: datetime) -> tuple[Question, Attempt] | None:
     """The question to show now: start its clock, or close it if its time ran out while away."""
     attempts = _attempts(db, s)
-    while s.position < len(questions):
-        q = questions[s.position]
+    current = None
+    for q in _run(db, s, attempts):
         a = attempts.get(q.id)
         if a is None:
             a = Attempt(
@@ -193,18 +204,22 @@ def _advance(
             )
             db.add(a)
             db.flush()
-            return q, a
+            current = q, a
+            break
         if a.submitted_at is None and a.deadline_at and not timing.is_late(now, a.deadline_at):
-            return q, a
+            current = q, a
+            break
         if a.submitted_at is None:
             a.submitted_at, a.late, a.correct = now, True, False if q.graded else None
-        s.position += 1
-    s.finished_at = s.finished_at or now
-    return None
+    s.position = sum(1 for a in attempts.values() if a.submitted_at)
+    if current is None:
+        s.finished_at = s.finished_at or now
+    return current
 
 
-def _summary(db: DB, s: MockSession, questions: list[Question]) -> Summary:
+def _summary(db: DB, s: MockSession) -> Summary:
     attempts = _attempts(db, s)
+    questions = _run(db, s, attempts)
     items = []
     for q in questions:
         a = attempts.get(q.id)
@@ -226,15 +241,14 @@ def _summary(db: DB, s: MockSession, questions: list[Question]) -> Summary:
 
 def state(db: DB, user: User, session_id: int, now: datetime) -> State:
     s = _session(db, user, session_id)
-    questions = _questions(db, s.quiz_id)
-    current = None if s.finished_at else _advance(db, s, questions, now)
+    current = None if s.finished_at else _advance(db, s, now)
     db.commit()
     return State(
         session=s,
         label=label(db, db.get_one(Quiz, s.quiz_id)),
-        total=len(questions),
+        total=len(_run(db, s, _attempts(db, s))),
         current=current,
-        summary=_summary(db, s, questions) if s.finished_at else None,
+        summary=_summary(db, s) if s.finished_at else None,
     )
 
 
@@ -268,8 +282,5 @@ def answer(
                 points=rules.POINTS_PER_CORRECT if scores else 0,
             )
         )
-        ids = [q.id for q in _questions(db, s.quiz_id)]
-        if a.question_id in ids:
-            s.position = max(s.position, ids.index(a.question_id) + 1)
         db.commit()
     return state(db, user, session_id, now)
