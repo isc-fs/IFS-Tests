@@ -25,7 +25,7 @@ after launch.
 |:---:|---|---|---|
 | 1 | Foundations | ✅ done `feat/1-project-scope` · ✅ done `feat/2-fsquiz-client` · ✅ done `feat/3-team-proposal` | `v0.1.0` |
 | 2 | Platform foundation<br><sub>Staging live on the team server, accounts and the question bank in place</sub> | ✅ done `feat/4-platform-skeleton` · ✅ done `feat/5-server-deploy` · ✅ done `feat/6-accounts-auth` · ✅ done `feat/7-bank-push` | `v0.2.0` |
-| 3 | Training MVP<br><sub>One branch per way of answering questions, then the tools around them</sub> | ✅ done `feat/8-practice` · ✅ done `feat/9-daily-question` · 🔄 active `feat/10-mock-quiz` · 🔄 active `feat/11-admin-taxonomy` · 🔄 active `feat/12-leaderboard` | `v0.3.0` |
+| 3 | Training MVP<br><sub>One branch per way of answering questions, then the tools around them</sub> | ✅ done `feat/8-practice` · ✅ done `feat/9-daily-question` · ✅ done `feat/10-mock-quiz` · 🔄 active `feat/11-admin-taxonomy` · 🔄 active `feat/12-leaderboard` | `v0.3.0` |
 | 4 | Launch | 🔜 planned `feat/13-privacy-account` · 🔜 planned `feat/14-launch` | `v1.0.0` |
 | 5 | After launch _(deferred)_<br><sub>Ideas to prioritise with the team once the MVP is in use</sub> | ⏸ deferred `feat/15-admin-totp` · ⏸ deferred `feat/16-notion-sync` · ⏸ deferred `feat/17-solution-bounty` · ⏸ deferred `feat/18-team-questions` · ⏸ deferred `feat/19-quiz-day-drill` | `v1.1.0` |
 
@@ -87,7 +87,7 @@ gitGraph
     checkout dev
     merge feat/9-daily-question
     branch feat/10-mock-quiz
-    commit id: "… Replay a real past quiz against its original clock"
+    commit id: "✔ Replay a real past quiz against its original clock"
     checkout dev
     merge feat/10-mock-quiz
     branch feat/11-admin-taxonomy
