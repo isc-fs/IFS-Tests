@@ -76,6 +76,13 @@ def test_loses_admin(
         ("a b@c.de", None),
         ("a\x00b@c.de", None),
         ("x" * 250 + "@c.de", None),
+        ("a@b@c.de", None),
+        ("@c.de", None),
+        ("a@.de", None),
+        ("a@c.", None),
+        ("a@c..de", "a@c..de"),
+        ("a@c.de\u2003", "a@c.de"),
+        ("a@c\u00a0.de", None),
     ],
 )
 def test_clean_email(raw: str, clean: str | None) -> None:
@@ -126,3 +133,12 @@ def test_sort_key_ignores_accents_and_case() -> None:
 
 def test_different_names_have_different_skeletons() -> None:
     assert name_skeleton("Marta") != name_skeleton("Martin")
+
+
+def test_clean_email_stays_fast_on_hostile_input() -> None:
+    import time
+
+    start = time.perf_counter()
+    for n in (1_000, 100_000):
+        clean_email("!@!." + "!." * n)
+    assert time.perf_counter() - start < 0.5
