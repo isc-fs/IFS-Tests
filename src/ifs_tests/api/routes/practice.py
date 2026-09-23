@@ -54,7 +54,7 @@ def next_question(
     user: Member,
     db: Db,
     area: Area | None = None,
-    topic: Annotated[str | None, Query(max_length=16)] = None,
+    topic: Annotated[str | None, Query(max_length=16, pattern="^[a-z]+$")] = None,
     skip: Annotated[int | None, Query(ge=1, le=2**31 - 1)] = None,
 ) -> PlayQuestion:
     return _one(db, practice.next_question(db, user, area, topic, skip))

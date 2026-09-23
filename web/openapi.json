@@ -705,7 +705,8 @@
        "anyOf": [
         {
          "type": "string",
-         "maxLength": 16
+         "maxLength": 16,
+         "pattern": "^[a-z]+$"
         },
         {
          "type": "null"
