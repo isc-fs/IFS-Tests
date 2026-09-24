@@ -11,9 +11,9 @@ from sqlalchemy.orm import Session
 
 from ifs_tests import cli
 from ifs_tests.auth.sessions import create_session
+from ifs_tests.db import session as db_session
 from ifs_tests.db.models import Invite, PasswordReset, User
 from ifs_tests.db.models import Session as LoginSession
-from ifs_tests.db.session import get_engine, session_factory
 from ifs_tests.services import accounts, maintenance
 from ifs_tests.settings import get_settings
 
@@ -55,11 +55,11 @@ def test_maintenance_removes_only_stale_rows_and_is_idempotent(db: Session, cloc
 def cli_db(db: Session, app_engine: Engine, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     monkeypatch.setenv("IFS_DATABASE_URL", app_engine.url.render_as_string(hide_password=False))
     monkeypatch.setenv("IFS_PUBLIC_ORIGIN", "https://quiz.example")
-    for cached in (get_settings, get_engine, session_factory):
-        cached.cache_clear()
+    get_settings.cache_clear()
+    db_session.reset()
     yield
-    for cached in (get_settings, get_engine, session_factory):
-        cached.cache_clear()
+    get_settings.cache_clear()
+    db_session.reset()
 
 
 def run(args: list[str], stdin: str = "") -> str:
