@@ -35,6 +35,7 @@ Words you don't know are in the [glossary](glossary.md).
 | Handing the project to the next maintainer | [handover.md](handover.md) |
 | Why things are the way they are | [adr/](adr/) (decision records, kept as history) |
 | The FS-Quiz API and its quirks | [fsquiz-api.md](fsquiz-api.md) |
+| Findings of the red team and their fixes, with proof | [redteam/remediation.md](redteam/remediation.md) |
 | What's planned | [ROADMAP.md](../ROADMAP.md) (generated from [.github/roadmap.yaml](../.github/roadmap.yaml)) |
 
 ## Keeping the docs true
