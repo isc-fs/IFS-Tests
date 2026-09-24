@@ -1657,8 +1657,16 @@ export type MockSummary = {
     correct: number;
     /**
      * Graded
+     *
+     * Graded questions in the run, those not reached included
      */
     graded: number;
+    /**
+     * Unreached
+     *
+     * Questions not reached because the run was ended early: not scored
+     */
+    unreached: number;
     /**
      * Xp
      */
@@ -3554,6 +3562,36 @@ export type AnswerMockResponses = {
 };
 
 export type AnswerMockResponse = AnswerMockResponses[keyof AnswerMockResponses];
+
+export type EndMockData = {
+    body?: never;
+    path: {
+        /**
+         * Session Id
+         */
+        session_id: number;
+    };
+    query?: never;
+    url: '/api/mock/sessions/{session_id}/end';
+};
+
+export type EndMockErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type EndMockError = EndMockErrors[keyof EndMockErrors];
+
+export type EndMockResponses = {
+    /**
+     * Successful Response
+     */
+    200: MockState;
+};
+
+export type EndMockResponse = EndMockResponses[keyof EndMockResponses];
 
 export type MockHintData = {
     body?: never;

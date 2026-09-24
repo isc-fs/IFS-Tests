@@ -540,7 +540,8 @@ class MockItem(BaseModel):
 
 class MockSummary(BaseModel):
     correct: int
-    graded: int
+    graded: int = Field(description="Graded questions in the run, those not reached included")
+    unreached: int = Field(description="Questions not reached because the run was ended early: not scored")
     xp: int
     lp: float
     counted: bool

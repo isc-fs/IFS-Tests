@@ -32,6 +32,7 @@ def _state(db: Db, s: mock.State, now: Now) -> MockState:
         summary = MockSummary(
             correct=s.summary.correct,
             graded=s.summary.graded,
+            unreached=s.summary.unreached,
             xp=s.summary.xp,
             lp=s.summary.lp,
             counted=s.summary.counted,
@@ -92,6 +93,12 @@ def mock_state(session_id: Id, user: Member, db: Db, now: Now) -> MockState:
 def answer_mock(session_id: Id, body: MockAnswerIn, user: Member, db: Db, now: Now) -> MockState:
     s = mock.answer(db, user, session_id, body.attempt_id, body.options, body.value, now, body.unsure)
     return _state(db, s, now)
+
+
+@router.post("/sessions/{session_id}/end")
+def end_mock(session_id: Id, user: Member, db: Db, now: Now) -> MockState:
+    """End the run early: the question on screen counts as out of time; the ones not reached aren't scored."""
+    return _state(db, mock.end(db, user, session_id, now), now)
 
 
 @router.post("/sessions/{session_id}/attempts/{attempt_id}/hint")

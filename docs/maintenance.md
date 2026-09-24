@@ -26,6 +26,7 @@ Nothing to do: the `scheduler` container runs these in Madrid time (`src/ifs_tes
 | | Invite and reset links | Deletes links used or expired more than 30 days ago | `invites`, `resets` | `maintenance.py` |
 | | Abandoned daily questions | Closes dailies left to run out as late and wrong (0 XP, LP as a wrong answer) | `dailies_closed` | `close_expired` in `src/ifs_tests/services/daily.py` |
 | | Abandoned mock questions | Charges mock questions left to run out the same way; the run stays open | `mock_questions_closed` | `close_expired` in `src/ifs_tests/services/mock.py` |
+| | Forgotten mock runs | Ends runs nobody has touched for 2 days (`STALE_AFTER` in `src/ifs_tests/domain/mock.py`), as if their player had ended them: the questions not reached aren't scored and stop being held back from the daily question and practice | `mock_runs_ended` | `end_stale` in `src/ifs_tests/services/mock.py` |
 | | Abandoned live quizzes | Finishes sessions still open a day after they were created (the host never ended them) and shares their XP | `live_sessions_finished` | `finish_abandoned` in `src/ifs_tests/services/live.py` |
 | | Live quiz XP | Shares any table answer's XP that a crash left unshared | `live_answers_shared` | `share_pending` in `src/ifs_tests/services/live.py` |
 | | Difficulty | Recalibrates graded questions from success rates ([game rules](game-rules.md#4-question-difficulty)) | `difficulty_changed` | `recalibrate` in `src/ifs_tests/services/xp.py` |

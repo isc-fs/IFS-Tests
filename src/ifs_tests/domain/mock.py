@@ -1,9 +1,11 @@
-"""Mock quiz rules: seasons and the bar to beat."""
+"""Mock quiz rules: seasons, runs left untouched and the bar to beat."""
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
+
+STALE_AFTER = timedelta(days=2)  # the nightly job ends a run nobody has touched for this long
 
 
 def season(day: date) -> int:

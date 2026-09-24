@@ -7,13 +7,14 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from ifs_tests.bank.mirror import load_bank
 from ifs_tests.bank.sample import SAMPLE_DIR
-from ifs_tests.db.models import Attempt, Question, QuizQuestion, User
+from ifs_tests.db.models import Attempt, DailyQuestion, Question, QuizQuestion, User
 from ifs_tests.domain.xp import xp_award
+from ifs_tests.services import maintenance
 from ifs_tests.services.bank import import_bank
 
 from ..conftest import Clock
@@ -61,6 +62,16 @@ def answer(c: TestClient, state: dict[str, Any], body: dict[str, Any]) -> dict[s
     )
     assert r.status_code == 200, r.text
     return dict(r.json())
+
+
+def run_questions(db: Session, quiz: int = CV) -> list[int]:
+    return list(
+        db.scalars(
+            select(QuizQuestion.question_id)
+            .where(QuizQuestion.quiz_id == quiz)
+            .order_by(QuizQuestion.position)
+        )
+    )
 
 
 def run_through(c: TestClient, db: Session, quiz: int = CV) -> dict[str, Any]:
@@ -248,3 +259,60 @@ def test_a_question_that_becomes_playable_mid_run_joins_it(player: TestClient, d
     while state["current"]:
         state = answer(player, state, right_answer(db, state["current"]["question"]["id"]))
     assert len(state["summary"]["items"]) == 5
+
+
+def test_ending_a_run_charges_the_question_on_screen_and_leaves_the_rest_unscored(
+    player: TestClient, db: Session
+) -> None:
+    state = player.post(f"/api/mock/quizzes/{CV}/start").json()
+    state = answer(player, state, right_answer(db, state["current"]["question"]["id"]))
+    on_screen = state["current"]["question"]["id"]
+    ended = player.post(f"/api/mock/sessions/{state['session_id']}/end")
+    assert ended.status_code == 200, ended.text
+    s = ended.json()["summary"]
+    assert (s["correct"], s["graded"], s["unreached"], len(s["items"])) == (1, 5, 3, 2)
+    shown = s["items"][1]
+    assert (shown["question"]["id"], shown["late"], shown["feedback"]["xp"]) == (on_screen, True, 0)
+    assert shown["feedback"]["lp"] < 0  # seen, so charged like a question left to run out
+    assert db.scalar(select(func.count()).select_from(Attempt).where(Attempt.mode == "mock")) == 2
+    again = player.post(f"/api/mock/sessions/{state['session_id']}/end").json()
+    assert again["summary"] == ended.json()["summary"]  # ending twice changes nothing
+    listed = next(q for q in player.get("/api/mock/quizzes").json() if q["id"] == CV)
+    assert (listed["open_session"], listed["best"]) == (None, 1)
+    assert player.post("/api/mock/sessions/424242/end").status_code == 404
+
+
+def test_an_ended_run_stops_holding_back_its_questions(player: TestClient, db: Session) -> None:
+    state = player.post(f"/api/mock/quizzes/{CV}/start").json()
+    unreached = [
+        db.get_one(Question, i) for i in run_questions(db) if i != state["current"]["question"]["id"]
+    ]
+    later = next(q for q in unreached if q.area in ("mech", "elec", "rules") and q.graded)
+    other = next(q for q in unreached if q.id != later.id)
+    player.get("/api/daily")
+    db.execute(update(DailyQuestion).where(DailyQuestion.area == later.area).values(question_id=later.id))
+    db.commit()
+    assert player.post(f"/api/daily/{later.area}/start").status_code == 409
+    assert player.get(f"/api/practice/questions/{other.id}").status_code == 409
+    player.post(f"/api/mock/sessions/{state['session_id']}/end")
+    assert player.get(f"/api/practice/questions/{other.id}").status_code == 200
+    started = player.post(f"/api/daily/{later.area}/start")
+    assert started.status_code == 200 and started.json()["question"]["id"] == later.id
+    r = player.post(
+        f"/api/daily/attempts/{started.json()['attempt_id']}/answer", json=right_answer(db, later.id)
+    ).json()
+    assert r["xp"] > 0 and r["lp"] > 0  # never answered in the run: the daily pays in full
+
+
+def test_the_nightly_job_ends_runs_left_untouched(player: TestClient, db: Session, clock: Clock) -> None:
+    forgotten = player.post(f"/api/mock/quizzes/{CV}/start").json()
+    clock.advance(days=1)
+    player.post("/auth/login", json={"email": "marta@alu.comillas.edu", "password": PASSWORD})
+    fresh = player.post("/api/mock/quizzes/9001/start").json()
+    clock.advance(days=1, hours=1)
+    counts = maintenance.run(db, clock.now)
+    assert counts["mock_runs_ended"] == 1 and maintenance.run(db, clock.now)["mock_runs_ended"] == 0
+    player.post("/auth/login", json={"email": "marta@alu.comillas.edu", "password": PASSWORD})
+    s = player.get(f"/api/mock/sessions/{forgotten['session_id']}").json()["summary"]
+    assert (s["unreached"], len(s["items"])) == (4, 1)
+    assert player.get(f"/api/mock/sessions/{fresh['session_id']}").json()["summary"] is None

@@ -149,7 +149,10 @@ def start(db: DB, user: User, area: str, now: datetime) -> tuple[Question, Attem
         raise UserError("There's no daily question for this area today.", 404)
     q = db.get_one(Question, qid)
     if q.id in running(db, user.id, now, daily=False):
-        raise UserError("This question is running in your mock or live quiz: answer it there first.", 409)
+        raise UserError(
+            "This question is running in your mock or live quiz: answer it there first, or end the mock run.",
+            409,
+        )
     db.execute(
         insert(Attempt)
         .values(

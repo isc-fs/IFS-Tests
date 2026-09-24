@@ -1456,6 +1456,51 @@
     }
    }
   },
+  "/api/mock/sessions/{session_id}/end": {
+   "post": {
+    "tags": [
+     "mock"
+    ],
+    "summary": "End Mock",
+    "description": "End the run early: the question on screen counts as out of time; the ones not reached aren't scored.",
+    "operationId": "end_mock",
+    "parameters": [
+     {
+      "name": "session_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "maximum": 2147483647,
+       "minimum": 1,
+       "title": "Session Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/MockState"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/api/mock/sessions/{session_id}/attempts/{attempt_id}/hint": {
    "post": {
     "tags": [
@@ -5552,7 +5597,13 @@
      },
      "graded": {
       "type": "integer",
-      "title": "Graded"
+      "title": "Graded",
+      "description": "Graded questions in the run, those not reached included"
+     },
+     "unreached": {
+      "type": "integer",
+      "title": "Unreached",
+      "description": "Questions not reached because the run was ended early: not scored"
      },
      "xp": {
       "type": "integer",
@@ -5589,6 +5640,7 @@
     "required": [
      "correct",
      "graded",
+     "unreached",
      "xp",
      "lp",
      "counted",

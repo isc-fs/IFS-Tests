@@ -1,6 +1,6 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import { MEMBER, renderApp } from '../test/render'
 
 const quiz = (id: number, label: string, vehicle: string, extra = {}) => ({
@@ -185,4 +185,27 @@ test('an unknown run explains itself', async () => {
   })
   expect(await screen.findByRole('alert')).toHaveTextContent("That quiz run doesn't exist.")
   expect(screen.getByRole('link', { name: 'Back to the quizzes' })).toBeInTheDocument()
+})
+
+test('a run can be ended early, after confirming', async () => {
+  const confirm = vi.fn(() => false)
+  vi.stubGlobal('confirm', confirm)
+  const ended = {
+    ...running(1, null),
+    summary: { ...FINISHED.summary, correct: 1, graded: 5, unreached: 3, items: FINISHED.summary.items.slice(0, 2) },
+  }
+  const { sent } = renderApp('/mock/44', {
+    'GET /api/me': { body: MEMBER },
+    'GET /api/mock/sessions/44': { body: running(0, timed(7, q(1, 'Spring rate?'))) },
+    'POST /api/mock/sessions/44/end': { body: ended },
+  })
+  await userEvent.click(await screen.findByRole('button', { name: 'End this run' }))
+  expect(confirm).toHaveBeenCalledWith(expect.stringContaining('The question on screen counts as out of time.'))
+  expect(sent('POST /api/mock/sessions/44/end')).toHaveLength(0)
+  confirm.mockReturnValue(true)
+  await userEvent.click(screen.getByRole('button', { name: 'End this run' }))
+  expect(await screen.findByRole('heading', { name: '1 of 5 right' })).toBeInTheDocument()
+  expect(screen.getByText('You ended this run early: 3 questions not reached, not scored.')).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'End this run' })).toBeNull()
+  vi.unstubAllGlobals()
 })

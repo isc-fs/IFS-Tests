@@ -203,6 +203,12 @@ quiz. You see your results only at the end.
 screen has a running clock. If its time runs out while you're away, it is closed as out of time (wrong, no XP); the
 next question starts its clock when you come back. You can have one open run per quiz.
 
+**Ending a run early.** **End this run** (below the question) stops the run after you confirm. The question on
+screen counts as out of time, like one left to run out; the questions you haven't reached aren't scored and count as
+not right in "*n* of *m* right". The run counts as your run of that quiz for the season, so running it again is a
+replay. A run you leave untouched for 2 days is ended for you by the nightly job the same way. While a run is open,
+its questions are held back from your daily questions and practice, so end a run you won't finish.
+
 **First runs and replays.** Your first run of a quiz each season moves your rank. Starting it again later is a
 replay: XP only. A question you have already answered today earns no XP again.
 
@@ -337,7 +343,7 @@ runs move LP.
 once a day.
 
 **I can't start today's daily question.** It is also in a mock run or live quiz you haven't finished; answer it
-there first.
+there first, or end the mock run (**End this run**).
 
 **Practice says a question is running elsewhere.** Same rule: a question you still have to answer in your daily
 questions, a mock run or a live quiz can't be opened, practised or hinted at until you do.

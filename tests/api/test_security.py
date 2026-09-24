@@ -81,6 +81,7 @@ MAY_REVEAL = {
     ("post", "/api/mock/quizzes/{quiz_id}/start"),
     ("get", "/api/mock/sessions/{session_id}"),
     ("post", "/api/mock/sessions/{session_id}/answer"),
+    ("post", "/api/mock/sessions/{session_id}/end"),  # the ended run's summary: the questions it reached
     # Live quiz: only once a question closes, or at the end of a rehearsal (tests/api/test_live.py).
     ("get", "/api/live/sessions/{code}"),
     ("post", "/api/live/sessions/{code}/join"),
