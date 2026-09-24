@@ -12,6 +12,8 @@ DOCS = sorted([ROOT / "README.md", ROOT / "AGENTS.md", *(ROOT / "docs").rglob("*
 LINK = re.compile(r"\]\(([^)\s]+)\)")
 # A path in backticks that starts at a top-level folder of the repository, e.g. `src/ifs_tests/services/xp.py`.
 PATH = re.compile(r"`((?:src|web|tests|docs|deploy|migrations|\.github)/[\w./-]+)`")
+# Build and test output the docs mention but git ignores: absent in a fresh checkout.
+GENERATED = ("web/dist", "web/test-results", "web/playwright-report", "web/node_modules")
 
 
 @pytest.mark.parametrize("doc", DOCS, ids=lambda d: d.relative_to(ROOT).as_posix())
@@ -33,5 +35,6 @@ CURRENT = [d for d in DOCS if "adr" not in d.relative_to(ROOT).parts]
 
 @pytest.mark.parametrize("doc", CURRENT, ids=lambda d: d.relative_to(ROOT).as_posix())
 def test_named_files_exist(doc: Path) -> None:
-    missing = [p for p in PATH.findall(doc.read_text()) if not (ROOT / p.rstrip(".")).exists()]
+    named = [p for p in PATH.findall(doc.read_text()) if not p.startswith(GENERATED)]
+    missing = [p for p in named if not (ROOT / p.rstrip(".")).exists()]
     assert not missing, missing
