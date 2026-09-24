@@ -6,7 +6,9 @@
 #
 # Pulls the image, dumps the database, runs migrations as `migrator`, restarts the stack and smoke-tests
 # it. If the smoke test fails, the previous tag is started again (migrations are expand/contract, so the
-# previous image still works with the new schema). Run it from a checkout of the repo on the server.
+# previous image still works with the new schema). Rolling back to an older tag works the same way: when
+# the database is already past every migration the older image knows, migrations are skipped. Run it from
+# a checkout of the repo on the server.
 set -euo pipefail
 
 die() { echo "deploy: $*" >&2; exit 1; }
@@ -47,10 +49,23 @@ if [[ -n $previous ]]; then
   compose "$tag" exec -T backup /bin/sh /quiz/backup.sh once "pre-$tag"
 fi
 
-log "migrating"
-# Passed by name only, so the password never shows up on a command line (`ps`).
+# Passed by name only, so the passwords never show up on a command line (`ps`).
 export IFS_DATABASE_URL="postgresql+psycopg://migrator:${MIGRATOR_PASSWORD}@db:5432/quiz"
-compose "$tag" run --rm --no-deps -e IFS_DATABASE_URL api alembic upgrade head
+export PGPASSWORD=$MIGRATOR_PASSWORD
+current=$(compose "$tag" exec -T -e PGPASSWORD db psql -h 127.0.0.1 -U migrator -d quiz -tAc \
+  "SELECT version_num FROM alembic_version" 2>/dev/null || true)
+unset PGPASSWORD
+known=1
+if [[ -n $current ]] && ! out=$(compose "$tag" run --rm --no-deps api alembic show "$current" 2>&1); then
+  grep -q "Can't locate revision" <<<"$out" || die "can't read migration $current in $tag: $out"
+  known=0
+fi
+if [[ $known == 1 ]]; then
+  log "migrating"
+  compose "$tag" run --rm --no-deps -e IFS_DATABASE_URL api alembic upgrade head
+else
+  log "the database ($current) is ahead of $tag: skipping migrations (expand/contract keeps it compatible)"
+fi
 unset IFS_DATABASE_URL
 
 smoke() {

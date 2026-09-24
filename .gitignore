@@ -21,6 +21,7 @@ web/dist/
 *.tsbuildinfo
 
 # Local env and secrets (never commit)
+compose.override.yaml
 .env
 .env.*
 !.env.example
