@@ -424,9 +424,18 @@ def _running(db: DB, code: str, now: datetime) -> tuple[LiveSession, LiveQuestio
     return s, db.get_one(LiveQuestion, (s.id, s.position))
 
 
+def _still_here(db: DB, user_id: int) -> None:
+    """Hold the sender's row (after the session, the order deleting an account takes) so the account can't
+    go while their answer or proposal is written."""
+    held = db.scalar(select(User.id).where(User.id == user_id).with_for_update(read=True, key_share=True))
+    if held is None:
+        raise UserError("This account no longer exists.", 401)
+
+
 def propose(db: DB, user: User, code: str, answer: dict[str, Any], now: datetime) -> None:
     """Suggest an answer to the captain of the table answering the question (your own, in all-tables mode)."""
     s, lq = _running(db, code, now)
+    _still_here(db, user.id)
     player = _players(db, s).get(user.id)
     if player is None or player.table_id is None:
         raise UserError("Sit at a table first.", 409)
@@ -446,6 +455,7 @@ def answer(
 ) -> None:
     """The captain sends the table's one answer. Every member seated at the table shares the XP."""
     s, lq = _running(db, code, now)
+    _still_here(db, user.id)
     table = db.scalar(select(LiveTable).where(LiveTable.session_id == s.id, LiveTable.captain_id == user.id))
     if table is None:
         raise UserError("Only a table's captain sends its answer.", 403)
