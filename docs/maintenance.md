@@ -26,21 +26,22 @@ Nothing to do: the `scheduler` container runs these in Madrid time (`src/ifs_tes
 | | Invite and reset links | Deletes links used or expired more than 30 days ago | `invites`, `resets` | `maintenance.py` |
 | | Abandoned daily questions | Closes dailies left to run out as late and wrong (0 XP, LP as a wrong answer) | `dailies_closed` | `close_expired` in `src/ifs_tests/services/daily.py` |
 | | Abandoned mock questions | Charges mock questions left to run out the same way; the run stays open | `mock_questions_closed` | `close_expired` in `src/ifs_tests/services/mock.py` |
+| | Abandoned live quizzes | Finishes sessions still open a day after they were created (the host never ended them) and shares their XP | `live_sessions_finished` | `finish_abandoned` in `src/ifs_tests/services/live.py` |
 | | Live quiz XP | Shares any table answer's XP that a crash left unshared | `live_answers_shared` | `share_pending` in `src/ifs_tests/services/live.py` |
 | | Difficulty | Recalibrates graded questions from success rates ([game rules](game-rules.md#4-question-difficulty)) | `difficulty_changed` | `recalibrate` in `src/ifs_tests/services/xp.py` |
 | | Season rollover | Applies the 1 September rank reset to active members still placed in an earlier season; 0 on every other night | `ranks_reset` | `rollover` in `src/ifs_tests/services/season.py` |
 | | Streak freezes | Spends freezes on missed days and awards new ones, catching up on up to 3 missed nights | `freezes_used`, `freezes_earned` | `nightly` in `src/ifs_tests/services/streaks.py` |
 | | Alumni deletion | Deletes alumni and disabled accounts 365 days after they stopped being active (inactive accounts with no date get one now) | `alumni_deleted` | `purge` in `src/ifs_tests/services/privacy.py` |
-| | Audit log | Deletes audit entries older than two years | `audit_purged` | same |
-| 03:30 | Backup | Dumps the database and deletes dumps older than 14 days | `backup:` lines | `deploy/db/backup.sh` |
+| | Audit log | Deletes audit entries older than two years, through the database function `purge_audit_log` (migration 0016) | `audit_purged` | same |
+| 03:30 | Backup | Dumps the database, pings `BACKUP_HEARTBEAT_URL` if set, and deletes dumps older than 14 days | `backup:` lines | `deploy/db/backup.sh` |
 | 04:00 | Server reboot | Only when security updates need it (consultant's unattended upgrades) | — | server |
 
 ---
 
 ## Weekly (maintainer, about 15 minutes)
 
-1. **Health:** `docker ps --filter name=quiz-` on the server; skim the scheduler's log for `failed` ([runbook 5.1](runbook.md#51-logs)). If `BACKUP_HEARTBEAT_URL` is set, the monitor tells you about missed backups; otherwise check `docker logs --since 7d quiz-prod-backup-1`.
-2. **Dependency updates:** Dependabot opens pull requests every week (`.github/dependabot.yml`) for Python (uv), the web app (npm, `web/`), GitHub Actions and the base images in the `Dockerfile`. Minor and patch updates are grouped into one PR per ecosystem; new versions wait 7 days before Dependabot proposes them. Let CI run, read the changelog of anything major, merge into `dev`, deploy to staging.
+1. **Health:** `docker ps --filter name=quiz-` on the server; skim the scheduler's log for `failed` ([runbook 5.1](runbook.md#51-logs)). If `BACKUP_HEARTBEAT_URL` is set, the monitor tells you about missed backups; otherwise check `docker logs --since 7d quiz-prod-backup-1` (a `backup: heartbeat ping failed` line means the dump worked but the monitor wasn't reached).
+2. **Dependency updates:** Dependabot opens pull requests every week (`.github/dependabot.yml`) for Python (uv), the web app (npm, `web/`), GitHub Actions, the base images in the `Dockerfile` and the Postgres image in `deploy/compose.yaml`. Python and npm minor and patch updates are grouped into one PR per ecosystem; new versions wait 7 days before Dependabot proposes them. Let CI run, read the changelog of anything major, merge into `dev`, deploy to staging. A Postgres update changes the digest of both the `db` and `backup` services; deploy it to staging first.
 3. **Security alerts:** GitHub → Security (Dependabot alerts, CodeQL, which also runs every Monday, and secret scanning). An alert on something reachable from the internet is fixed with a `fix/` branch and a release the same week.
 
 Reviewers, on their own rhythm: work through the **Reported** queue in Review ([reviewers' guide](guides/reviewers.md)).
@@ -49,7 +50,7 @@ Reviewers, on their own rhythm: work through the **Reported** queue in Review ([
 
 1. **Backups:** `deploy/restore.sh prod` lists the dumps. Expect 14 nightly dumps plus pre-deploy ones, all of similar size. A missing night or a much smaller file needs a look.
 2. **Disk:** `df -h` and `docker system df -v | grep quiz-`.
-3. **Postgres image:** Dependabot's `docker` entry watches the `Dockerfile` only. The Postgres image pinned by digest in `deploy/compose.yaml` (db and backup services) is not watched: check for a new `17-alpine` release, update both digests, deploy to staging, then to prod. Stay on major version 17 unless you plan an upgrade (a major upgrade needs a dump and restore).
+3. **Postgres major version:** Dependabot keeps the `17-alpine` digest in `deploy/compose.yaml` current but ignores new major versions, which need a dump and a restore into a fresh volume. Stay on 17 unless you plan that upgrade.
 
 ## Every term
 
@@ -61,13 +62,12 @@ Reviewers, on their own rhythm: work through the **Reported** queue in Review ([
 
 The registration quizzes run over the winter (FSG's is usually in January). FS-Quiz publishes them some time after. Once they are up (check fs-quiz.eu by hand; don't script it):
 
-1. **Maintainer: refresh the bank** on staging, then prod: `deploy/refresh-bank.sh staging`, check Admin → Question bank, then `deploy/refresh-bank.sh prod` ([runbook 2.3](runbook.md#23-question-bank)). That fetches the new quizzes and images only, one request a second.
-2. **Maintainer: once a season, re-fetch everything** with `mirror --refresh` ([runbook 2.3](runbook.md#23-question-bank)). Without it, the app never learns about changes to quizzes already mirrored, new rulebook and handbook editions, or the last qualifiers' new results. Don't run it more often: the FS-Quiz author asks users to avoid unnecessary queries.
-3. **Reviewers: work the queues** in Review:
+1. **Maintainer: refresh the bank** on staging, then prod: `deploy/refresh-bank.sh staging`, check Admin → Question bank, then `deploy/refresh-bank.sh prod` ([runbook 2.3](runbook.md#23-question-bank)). The script always re-fetches every quiz, the rulebook and handbook list and the last qualifiers' results (`mirror --refresh`), so changes to quizzes already mirrored arrive too; images already downloaded are kept. That is about 130 requests per environment, one a second: run it once a season, not more, since the FS-Quiz author asks users to avoid unnecessary queries.
+2. **Reviewers: work the queues** in Review:
    - **Changed upstream**: FS-Quiz changed a question or its answer; any local correction was dropped. Check it and correct again if needed.
    - **Unclassified**: new questions whose topic the keyword tagger couldn't guess. Set area and topic.
    - **Not graded**: questions the app can't grade automatically; a typed correction can make them gradable.
-4. **Technical Directors: check the new rules.** Questions show later editions of the rulebooks and handbooks they were based on. If a rule changed, hide or correct the affected questions, and check the formulas and reading panels (`src/ifs_tests/content/learning.json`) still hold; a developer changes that file.
+3. **Technical Directors: check the new rules.** Questions show later editions of the rulebooks and handbooks they were based on. If a rule changed, hide or correct the affected questions, and check the formulas and reading panels (`src/ifs_tests/content/learning.json`) still hold; a developer changes that file.
 
 ---
 
@@ -75,13 +75,7 @@ The registration quizzes run over the winter (FSG's is usually in January). FS-Q
 
 The season changes on **1 September**, Madrid time. The rank reset is automatic ([game rules 2.5](game-rules.md#25-seasons-and-the-reset)): nobody needs to do anything for it. The people around it do need attention.
 
-**Admins, in the first weeks of September** (screens in the [admins' guide](guides/admins.md)):
-
-1. **Mark leavers as alumni:** Admin → *New season: who left the team?*, tick them (the "Not seen for" filter helps), *Mark as alumni*. They are signed out, leave the boards, and their accounts are deleted 365 days later unless set back to active.
-2. **Update positions** for people whose job changed (new Department Heads and Technical Directors, Mingos who are now returning members). A higher position lifts their rank to its placement; a lower one takes the head start back ([game rules 2.4](game-rules.md#24-placement-by-position)). Hosting live quizzes comes with the Technical Director position (or the admin role).
-3. **Invite newcomers** from Admin, one link each (valid 7 days), with their vertical set. They pick "Mingo" as their position.
-4. **Check verticals and sub-departments.** Members set their sub-departments on their profile, which seats them at live quiz tables. If the team's departments change (the Team Directory in Notion), the list in `src/ifs_tests/domain/live.py` (`SUBDEPARTMENTS`) needs a code change; a new vertical also needs a migration (a database check constraint lists them, `Vertical` in `src/ifs_tests/db/models.py`).
-5. **Hand over roles:** make sure at least two active admins and a couple of reviewers remain after the leavers go.
+**Admins, in the first weeks of September:** leavers marked as alumni, positions updated, newcomers invited, verticals and sub-departments checked, at least two admins and some reviewers left. The steps, screen by screen, are the [start of season checklist](guides/admins.md#start-of-season-checklist-september) in the admins' guide.
 
 **Maintainer:**
 
@@ -90,6 +84,7 @@ The season changes on **1 September**, Madrid time. The rank reset is automatic 
 3. Restore drill for the term.
 4. Check the domain's renewal date and that certificates are renewing (consultant).
 5. With the consultant: Nginx access logs for the quiz are rotated within 14 days (the privacy notice says so).
+6. If the team's departments changed (the Team Directory in Notion), update `SUBDEPARTMENTS` in `src/ifs_tests/domain/live.py`; a new vertical also needs a migration (a database check constraint lists them, `Vertical` in `src/ifs_tests/db/models.py`).
 
 ---
 

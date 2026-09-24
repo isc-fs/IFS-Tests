@@ -123,7 +123,9 @@ Answers already given are never re-graded: a correction doesn't change past resu
 
 ### When the bank is reloaded
 
-A maintainer reloads the bank from FS-Quiz when new quizzes are published (see [maintenance](../maintenance.md)).
+A maintainer reloads the bank from FS-Quiz once a season, after new quizzes are published (see
+[maintenance](../maintenance.md#every-registration-season)); each reload re-fetches every quiz, so changes to old
+questions arrive too.
 For each question:
 
 - **Unchanged at FS-Quiz**: everything reviewers did stays: labels, correction, hidden or not.
@@ -147,12 +149,14 @@ is:
   ends.
 
 On a running question the review page hides FS-Quiz's answer, the correction and the **Correct answer** form, and
-says the answer "stays hidden until you've answered it". You can still fix its labels, hide it, and handle its
-reports. Once you have answered it (or the run or live quiz is over), everything shows again.
+says "This question is still running for you: today's daily question, a mock quiz you're running, or a live quiz
+you're playing in. Its answer stays hidden until you've answered it (in a live quiz, until the results are
+shown)." You can still fix its labels, hide it, and handle its reports. Once you have answered it (or the run or live quiz is over), everything shows again.
 
 Why: the daily questions are the same for the whole team and move the rank, and so do mock runs. A reviewer who
 could read the answer first would climb unfairly, and the rest of the team would rightly stop trusting the ranking.
-The same rule stops practice from serving or hinting at a running question, and stops a mock summary from showing it.
+The same rule stops practice from serving, opening or hinting at a running question, and stops a mock summary from
+showing it.
 
 ## FAQ
 

@@ -34,15 +34,16 @@ See [ROADMAP.md](ROADMAP.md) for the phase plan and branch status.
 Needs [uv](https://docs.astral.sh/uv/), Node 24 and Docker.
 
 ```bash
-uv sync                                  # Python dependencies
-uv run ifs-tests mirror                  # download the FS-Quiz bank into data/ (≈2 min, cached)
-uv run ifs-tests stats                   # what's in it
-
-docker compose up --build                # app + database on http://localhost:8000
-docker compose run --rm api alembic upgrade head
+uv sync                                                # Python dependencies
+docker compose up -d --build --wait                    # app + database on http://localhost:8000
+docker compose run --rm api alembic upgrade head       # create the schema
+docker compose run --rm api ifs-tests push --sample    # a small made-up bank: no calls to FS-Quiz
+docker compose exec api ifs-tests create-admin --email admin@example.com --name "Local Admin"
 ```
 
-Step by step, with the first admin and the sample bank: [`docs/development.md`](docs/development.md). For frontend work, run the API with `uv run uvicorn ifs_tests.api.app:app --reload` and the SPA with `cd web && npm ci --ignore-scripts && npm run dev` (Vite proxies API calls to port 8000).
+Then sign in at <http://localhost:8000>. Step by step, with what each command prints: [`docs/development.md`](docs/development.md).
+
+The real FS-Quiz bank is optional locally. Mirror it once (`uv run ifs-tests mirror --images`: about 130 requests plus the images, one a second, cached so a re-run only fetches what's new), then load it with `docker compose run --rm api ifs-tests push` ([development.md](docs/development.md#with-the-real-fs-quiz-bank)). Don't re-mirror without a reason: the FS-Quiz author asks users to avoid unnecessary queries. For frontend work, run the API with `uv run uvicorn ifs_tests.api.app:app --reload` and the SPA with `cd web && npm ci --ignore-scripts && npm run dev` (Vite proxies API calls to port 8000).
 
 Deploying to the team server: [`docs/runbook.md`](docs/runbook.md).
 
@@ -50,8 +51,8 @@ Checks that CI runs:
 
 ```bash
 uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pytest
-cd web && npm run format:check && npm run typecheck && npm run lint && npm test && npm run build && npm run size
-cd web && npm run e2e                     # needs the local stack and an admin, see .github/workflows/ci.yml
+(cd web && npm run format:check && npm run typecheck && npm run lint && npm test && npm run build && npm run size)
+(cd web && npm run e2e)                   # needs the local stack, the sample bank and the e2e admin: docs/testing.md
 ```
 
 ---

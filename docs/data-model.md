@@ -55,7 +55,7 @@ One row per member. **Personal data.**
 | Column | Meaning |
 |---|---|
 | `id` | Identity primary key |
-| `email` | Login identifier, lower-case (`CHECK email = lower(email)`), unique; shown to admins only |
+| `email` | Login identifier, lower-case (`CHECK email = lower(email)`), unique; shown to admins only. Only an admin can change it (audited as `user.email`, without the addresses) |
 | `password_hash` | Argon2id hash (`auth/passwords.py`); never in any response |
 | `display_name` | 2–24 characters, Latin letters, digits, `. ' -`; unique on `lower(display_name)` (index `uq_users_display_name_lower`); look-alikes are also refused in code by comparing skeletons (`domain/accounts.name_skeleton`) |
 | `vertical` | One of `Management`, `Mechanical`, `Tractive System`, `Electronics`, `Driverless`, `Business`, `Board`, or null |
@@ -263,7 +263,7 @@ All `ON DELETE CASCADE` from `live_sessions`; sessions themselves are never dele
 | `code` | Six characters without look-alikes, unique |
 | `host_id` | → `users`, `ON DELETE SET NULL` (migration 0013): a deleted host's sessions are finished and keep their results; indexed |
 | `config` | JSON of `LiveConfig` (`api/schemas.py`): `questions` (`areas`/`quiz`), `areas`, `topics`, `quiz_id`, `count`, `timing` (`real`/`fixed`/`host`), `seconds`, `feedback` (`each`/`end`), `speed_points`, `routing` (`all`/`owners`) |
-| `state` | `lobby`, `open`, `closed`, `finished` |
+| `state` | `lobby`, `open`, `closed`, `finished`. The nightly job finishes a session still unfinished a day after `created_at` |
 | `position` | Current question, −1 in the lobby |
 | `opened_at`, `deadline_at` | When the current question opened and its deadline (null when host-paced) |
 | `version` | Goes up on every change; the event stream sends it |
@@ -309,19 +309,19 @@ Key–value store (`key` varchar(64) primary key, `value` JSONB). Today it has e
 |---|---|---|
 | `hint_salt` | `{"salt": "<64 hex characters>"}`: 32 random bytes | A server secret: the HMAC seed for hints (`services/hints._seed`), the daily question draw (`domain/daily.pick`) and the XP critical roll (`services/xp._crit`). Created on first use with `INSERT ... ON CONFLICT DO NOTHING` (`services/hints.salt`), so a fresh database gets its own |
 
-Treat `hint_salt` as a secret: with it and the question bank, anyone could predict daily questions and run hints backwards. It is in every database backup. Deleting the row makes the app create a new one; hints then change, so a player who already took a hint could get a second, different one. The model's docstring still describes the table as "tunable numbers"; none are stored there.
+Treat `hint_salt` as a secret: with it and the question bank, anyone could predict daily questions and run hints backwards. It is in every database backup. Deleting the row makes the app create a new one; hints then change, so a player who already took a hint could get a second, different one.
 
 ### `audit_log`
 
 Insert-only record of privileged actions: `id` (bigint), `at`, `actor_id` (the acting user's ID, or null for the system; **no foreign key**, so accounts can be deleted while the log keeps the number), `action`, `target` (such as `user:12`, `question:345`, `invite:7`, `fsquiz`), `details` (JSONB: what changed). **Personal data** (IDs of the actor and target, and before/after values).
 
-Actions written: `user.register`, `user.bootstrap_admin`, `user.locked`, `user.update`, `user.revoke_sessions`, `user.export`, `user.delete`, `invite.create`, `invite.revoke`, `reset.create`, `password.change`, `password.reset`, `question.update`, `question.answer`, `question.answer_cleared`, `report.resolve`, `bank.import`. Invite notes are never recorded (migration 0013 removed old ones).
+Actions written: `user.register`, `user.bootstrap_admin`, `user.locked`, `user.update`, `user.email`, `user.revoke_sessions`, `user.export`, `user.delete`, `invite.create`, `invite.revoke`, `reset.create`, `password.change`, `password.reset`, `question.update`, `question.answer`, `question.answer_cleared`, `report.resolve`, `bank.import`. Invite notes are never recorded (migration 0013 removed old ones).
 
-The migration 0002 revokes `UPDATE`, `DELETE` and `TRUNCATE` on `audit_log` from the production app role `app_rt` (`deploy/db/roles.sql`), so the running app can't rewrite history. The nightly purge (`services/privacy.purge`) deletes entries older than two years **using that same app connection**; see the note under [personal data](#personal-data).
+The migration 0002 revokes `UPDATE`, `DELETE` and `TRUNCATE` on `audit_log` from the production app role `app_rt` (`deploy/db/roles.sql`), so the running app can't rewrite history. The nightly purge (`services/privacy.purge`) calls the function **`purge_audit_log(before)`** instead (migration 0016): owned by `migrator`, `SECURITY DEFINER`, executable only by `app_rt`, it deletes entries older than `before` but never any younger than 730 days by the database's own clock, and returns how many it deleted. So the app can apply the two-year keep (`AUDIT_KEEP` in `domain/accounts.py`) but can't wipe the log through it.
 
 ### `alembic_version`
 
-Alembic's current revision (`0015` at the time of writing).
+Alembic's current revision: the newest file in `migrations/versions/` (the table under [Migrations](#migrations) lists them).
 
 ## Personal data
 
@@ -329,11 +329,11 @@ Alembic's current revision (`0015` at the time of writing).
 
 | Table | Export (`GET /api/me/export`) | On account deletion |
 |---|---|---|
-| `users` | `account`: email, name, vertical, sub-departments, position, role, status, XP, rank points, opt-out, joined, last seen, failed sign-ins, lock, inactive since, deletion date | Row deleted |
+| `users` | `account`: email, name, vertical, sub-departments, position, role, status, XP (and `xp_before_ranked`, the old `users.xp`), rank points, rank season, best division this season, right and wrong answers in a row, rested XP and when it was topped up, streak freezes held and when one was last earned, opt-out, joined, last seen, failed sign-ins, lock, inactive since, deletion date. Only `id` and `password_hash` are left out | Row deleted |
 | `sessions` | `sign_ins` | Cascade |
 | `invites` | `invite`: the one they signed up with (role, vertical, note, used) | Note cleared, `used_by`/`created_by` set null |
-| `password_resets` | Not exported | Cascade (`user_id`); `created_by` set null |
-| `streak_freezes` | **Not exported** | Cascade |
+| `password_resets` | `password_resets`: created, expires, used (never the token hash) | Cascade (`user_id`); `created_by` set null |
+| `streak_freezes` | `streak_freezes_used` (the days) | Cascade |
 | `attempts` | `answers` (right/wrong, XP and LP hidden while a mock run or live quiz is unfinished) | Cascade |
 | `practice_hints` | `pending_hints` | Cascade |
 | `mock_sessions` | `mock_runs` | Cascade (and their attempts) |
@@ -347,10 +347,7 @@ Alembic's current revision (`0015` at the time of writing).
 
 Retention: alumni and disabled accounts are deleted 365 days after `left_at`; the audit log keeps two years; closed invite and reset links 30 days; backups 14 days. All of these run in the nightly job (see [architecture.md](architecture.md#background-work)).
 
-Gaps to be aware of (September 2026):
-
-- The export leaves out `streak_freezes` rows and the `users` columns added by ADR 0007 (`rank_season`, `rank_best`, `combo`, `miss_streak`, `rested_xp`, `rested_on`, `streak_freezes`, `freeze_earned_on`). They are deleted with the account.
-- In production the app connects as `app_rt`, which has no `DELETE` on `audit_log`, yet `privacy.purge` issues `DELETE FROM audit_log` in the same transaction as the alumni deletions. Postgres checks that privilege even when no row matches, so the nightly purge is expected to fail and roll back the alumni deletions with it. The test suite doesn't run the purge under the production roles. Check the scheduler log after the first night in production.
+`test_every_personal_column_is_exported_or_deliberately_left_out` in `tests/api/test_privacy.py` keeps this table honest: it lists every `users` column and every column pointing at a user, with where each lands in the export or why it is left out (an admin's work on someone else's account, such as `invites.created_by`, is in the admin's own `actions` instead), and fails when a new one appears in neither list.
 
 ## Migrations
 
@@ -373,6 +370,7 @@ Gaps to be aware of (September 2026):
 | 0013 | Privacy: `users.left_at` (set for accounts already inactive); `live_sessions.host_id` nullable with `ON DELETE SET NULL`; invite notes removed from the audit log |
 | 0014 | Ranked LP (ADR 0007): `attempts.lp`; `users.rank_points`, `rank_season`, `rank_best`, `combo`, `miss_streak`, `account_xp`. Places everyone by position, raises single-choice difficulty by one, fills `account_xp` from positive attempt XP. Expand only: `users.xp` stays |
 | 0015 | Rested XP and streak freezes: `streak_freezes` table; `users.rested_xp`, `rested_on`, `streak_freezes`, `freeze_earned_on` |
+| 0016 | The function `purge_audit_log(before)` for the nightly audit purge, executable by `app_rt` ([`audit_log`](#audit_log)) |
 
 ### Expand/contract
 

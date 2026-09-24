@@ -9,7 +9,7 @@ What an admin can do:
 - everything a reviewer can (see the [reviewers' guide](reviewers.md)), and host live quizzes (see the
   [live quiz hosts' guide](live-quiz-hosts.md));
 - create and revoke invite links;
-- change anyone else's role and status, and anyone's position;
+- change anyone else's role and status, and anyone's position and email;
 - create password reset links;
 - download someone's data, or delete their account;
 - mark leavers as alumni at the start of a season;
@@ -55,9 +55,10 @@ Each row shows:
 - the display name, with badges: "you", "off leaderboard" (they hid themselves), "locked until *time*" (after 5
   wrong passwords in a row);
 - their email, vertical and when they were last seen;
-- for alumni, "Alumni since *date*; deleted on *date* unless they come back.";
-- the **Role**, **Status** and **Position** drop-downs, and the buttons **Reset link**, **Download their data** and
-  **Delete account**.
+- for alumni, "Alumni since *date*; deleted on *date* unless they come back."; for disabled accounts, "Disabled
+  since *date*; deleted on *date* unless re-enabled.";
+- the **Role**, **Status** and **Position** drop-downs, and the buttons **Reset link**, **Change email**,
+  **Download their data** and **Delete account**.
 
 A change saves as soon as you pick it, after a confirmation for the serious ones, and the page confirms "*name* is
 now *role*, *status*, *position*." On your own row, **Role** and **Status** are greyed out and there is no download
@@ -86,10 +87,10 @@ or delete button.
 | `alumni` | Left the team. | no | no | 365 days after they stopped being active |
 | `disabled` | Blocked, for any other reason. | no | no | 365 days after they stopped being active |
 
-Setting `alumni` or `disabled` signs them out at once. Both ask for confirmation. Setting someone back to `active`
-lets them sign in again with their account as it was, and stops the deletion clock. Moving between `alumni` and
-`disabled` keeps the original date. The Members list shows the deletion date only for alumni, but disabled accounts
-are deleted on the same schedule.
+Setting `alumni` or `disabled` signs them out at once. Both ask for confirmation, and the confirmation names the
+date the account will be deleted. Setting someone back to `active` lets them sign in again with their account as it
+was, and stops the deletion clock. Moving between `alumni` and `disabled` keeps the original date. The Members list
+shows the deletion date under both.
 
 ### Position
 
@@ -112,8 +113,10 @@ rank, but it decides two things:
   below zero. Use lowering to fix a wrong claim, not as a punishment.
 - **Who can host live quizzes:** Technical Directors (and admins).
 
-Members choose their position when they join; only admins change it afterwards, including their own. Every change is
-in the activity log. The full rank rules are in [game rules](../game-rules.md).
+Members choose their position when they join; only admins change it afterwards, including their own. If the
+1 September rank reset hasn't reached someone yet (they haven't answered since, and the nightly job hasn't run), a
+position change applies it first, then places them. Every change is in the activity log. The full rank rules are in
+[game rules](../game-rules.md).
 
 ### Reset links
 
@@ -125,6 +128,18 @@ Members who forget their password ask an admin.
 
 The link lasts 24 hours. Using it sets a new password, signs them out on every device and lifts any lock. It works
 for any account, but only active members can sign in afterwards.
+
+### Changing someone's email
+
+Members can't change their own email; they ask an admin.
+
+1. Press **Change email** on their row.
+2. Type the address in **New email for *name*** and press **Save email** (**Keep** cancels).
+3. The page confirms "*name*'s email is now *address*. They sign in with it from now on."
+
+The new address is checked as at sign-up: "Enter a valid email address." or, if another account has it, "An account
+with this email already exists." Capitals are ignored. Their open sessions stay signed in. The activity log records
+that you changed their email, but not the old or new address. It works on your own row too.
 
 ### Downloading someone's data
 
@@ -186,7 +201,7 @@ refreshing the bank is a maintainer's job: see the [maintenance calendar](../mai
 
 The folded **Recent activity** panel lists the last 30 entries of the activity log in plain sentences: who created or
 revoked an invite, who joined, role, status and position changes, reset links, password changes and resets, accounts
-locked after 5 failed sign-ins, bank loads, reviewers' label, hiding and answer changes, handled reports, data
+locked after 5 failed sign-ins, email changes, bank loads, reviewers' label, hiding and answer changes, handled reports, data
 downloads and deletions. Entries by an account deleted since read "A deleted account". The log is kept for two years.
 
 Use it to check what another admin or a reviewer did, and to spot anything unexpected.
@@ -194,8 +209,8 @@ Use it to check what another admin or a reviewer did, and to spot anything unexp
 ## What admins can't do
 
 - See anyone's password, or set it for them: only reset links.
-- Change someone's email, display name, vertical or sub-departments. People change their own name, vertical and
-  sub-departments in their profile; nobody can change an email from the app.
+- Change someone's display name, vertical or sub-departments: people change those themselves in their profile.
+  (Email is the other way round: only an admin can change it.)
 - Change their own role or status, or delete their own account from the Admin page.
 - Leave the team without an active admin.
 - Edit XP, LP or answers, or undo a deletion.
@@ -214,21 +229,23 @@ A season runs from 1 September to 31 August. Do these in the first weeks of Sept
    or reviewer, set their **Role** back to `member` first, so they don't return with it.
 2. **Admins.** Make sure at least two active people have the `admin` role, and that next year's admins have it
    before this year's leave.
-3. **Positions.** Update this season's Department Heads and Technical Directors in **Members**. Promoting lifts
-   their rank to the new placement; new Technical Directors can host live quizzes straight away.
+3. **Positions.** Update this season's Department Heads and Technical Directors in **Members**, and set last
+   season's Mingos who stay to Returning member. Promoting lifts their rank to the new placement; new Technical
+   Directors can host live quizzes straight away.
 4. **Reviewers.** Give the `reviewer` role to whoever will keep the bank right this season.
 5. **New members.** Create an invite for each (note who it's for). Tell them to choose "Mingo, new this season" unless
    they are returning, and to set their vertical and sub-departments in their profile.
 6. **Returning members.** Ask everyone to check their vertical and sub-departments: live quizzes seat people by
-   their first sub-department.
+   the sub-department marked "(seats you)" in their profile, the first one they ticked. If the team's departments
+   themselves changed, tell the maintainer: the list is in the code.
 7. **Open invites.** Revoke any left over from last season.
 8. **The rank reset.** Nothing to do: on 1 September every active member's rank drops three divisions (never below
    their position's placement), automatically overnight or at their next answer. XP and levels stay. Check the
    leaderboard looks reset in the first days.
 9. **Question bank.** If FS-Quiz has published new quizzes, ask a maintainer to reload the bank, then have reviewers
    clear **Changed upstream** and **Unclassified**.
-10. **Technical side.** Server access, secrets, backups and the maintainer handover follow the
-    [maintenance calendar](../maintenance.md) and the handover checklist in the [runbook](../runbook.md).
+10. **Technical side.** Server access, secrets, backups and the maintainer handover are the maintainer's: see the
+    [maintenance calendar](../maintenance.md#every-september) and the [handover procedure](../handover.md#the-handover-procedure).
 
 ## FAQ
 
@@ -249,7 +266,7 @@ wrong position gave.
 **Someone who left wants to be deleted now.** **Delete account** on their row and type their name.
 
 **A former member came back.** If the account still exists, set **Status** to `active`: they sign in as before, and
-their rank resets for the season at their next answer. If it was deleted, invite them again.
+their rank resets for the season at their next answer (or the next night). If it was deleted, invite them again.
 
 **I get "There must always be at least one active admin."** Make someone else an admin first.
 
@@ -258,6 +275,7 @@ their rank resets for the season at their next answer. If it was deleted, invite
 **A display name is inappropriate.** Only its owner can change it. Ask them; if they won't, `disabled` takes them off
 the leaderboards and signs them out.
 
-**Someone needs a different email.** It can't be changed from the app, by them or by an admin.
+**Someone needs a different email.** **Change email** on their row ([above](#changing-someones-email)). Tell them
+to sign in with the new address.
 
 **A reviewer or another admin changed something I didn't expect.** Open **Recent activity**: it says who changed what.

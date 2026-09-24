@@ -13,7 +13,7 @@ Terms you'll meet in MingoQuiz and its docs, in alphabetical order. Each links t
 | **Audit log** | The record of account and reviewer actions (who changed what, when), kept two years. Shown in Admin |
 | **Bar to beat** | The last qualifier's result in a past quiz, shown after a mock run or a live replay |
 | **Board** | One of the verticals (the team's board). Also, loosely, the team's governing board, which decides hosting, the domain and legal questions |
-| **Captain** | The one member of a live quiz table who sends the table's answer; the others propose. By default the member with the most rank points. [ADR 0005](adr/0005-live-quiz.md) |
+| **Captain** | The one member of a live quiz table who sends the table's answer; the others propose. By default the member with the most rank points, and the same when a captain is moved or removed. [Hosts' guide](guides/live-quiz-hosts.md#seating) |
 | **Catch-all table** | In a live quiz with specialist routing, the table that answers questions whose topic no table owns |
 | **Combo** | XP bonus: +10 % per right answer in a row before this one, up to +50 %. [Game rules 3.2](game-rules.md#32-bonuses-on-right-answers) |
 | **Comeback** | After 3 wrong answers in a row, the next right one pays ×1.5 LP. [Game rules 2.3](game-rules.md#23-cushion-and-comeback) |

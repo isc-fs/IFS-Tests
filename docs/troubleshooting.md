@@ -65,13 +65,13 @@ Setting up and everyday commands: [development.md](development.md). Tests: [test
 
 - **Symptom:** abandoned daily questions stay open, freezes aren't earned, `maintenance` results never appear in the logs.
 - **Cause:** the local `compose.yaml` has only `db` and `api`; the `scheduler` service exists only in `deploy/compose.yaml`. (The daily question is still picked, by the first visitor of the day.)
-- **Fix:** run the nightly job by hand: `docker compose exec api ifs-tests maintenance`. It prints the result dict.
+- **Fix:** run the nightly job by hand: `docker compose exec api ifs-tests maintenance`. It prints the result dict ([maintenance calendar](maintenance.md#nightly-automatic) for what each count means).
 
 ## Tests and CI
 
 ### Database tests are skipped
 
-- **Symptom:** `uv run pytest` ends with `… passed, 277 skipped` and is green.
+- **Symptom:** `uv run pytest` ends with `… passed, … skipped` (about 290 skipped) and is green.
 - **Cause:** Docker isn't running (or `docker` isn't on your `PATH`). The `postgres_url` fixture in `tests/conftest.py` skips every database test locally; in CI it fails instead.
 - **Fix:** start Docker Desktop and run again. A run with no "skipped" is the only one that counts.
 
@@ -80,6 +80,12 @@ Setting up and everyday commands: [development.md](development.md). Tests: [test
 - **Symptom:** every database test errors at setup with `docker.errors.APIError: 500 Server Error … error while creating mount source path '/host_mnt/Users/<you>/.docker/run/docker.sock': … operation not supported`.
 - **Cause:** Docker Desktop's socket lives at `~/.docker/run/docker.sock`, which testcontainers' Ryuk container (it removes test containers afterwards) can't bind-mount. It works through the `/var/run/docker.sock` symlink.
 - **Fix:** `tests/conftest.py` already sets `TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock` on macOS, so `uv run pytest` works as long as `/var/run/docker.sock` exists (`ls -l /var/run/docker.sock`). If you use testcontainers from another script, export the variable yourself. If the symlink is missing, enable Docker Desktop's option to use the default Docker socket (in its advanced settings) and restart Docker.
+
+### Database tests fail at setup: "Port mapping for container … and port 8080 is not available"
+
+- **Symptom:** every database test errors at setup with `ConnectionError: Port mapping for container <id> and port 8080 is not available`, usually after a day of many test runs; unit tests still pass.
+- **Cause:** before starting Postgres, testcontainers starts its Ryuk reaper container (it removes test containers if the test process dies) and waits for Docker to report Ryuk's port 8080 mapped to the host. After heavy use Docker Desktop sometimes never reports the mapping, so the session fixture `postgres_url` fails before Postgres is even started.
+- **Fix:** run with the reaper off: `TESTCONTAINERS_RYUK_DISABLED=true uv run pytest`. Nothing is left behind on a normal run: `postgres_url` in `tests/conftest.py` uses the Postgres container as a context manager, which removes it (and its volume) when the session ends. Without Ryuk, a run you kill hard (a second Ctrl-C, a closed terminal) can leave one behind: check with `docker ps -a --filter label=org.testcontainers` and remove leftovers with `docker rm -f <id>`. If the error persists, restart Docker Desktop.
 
 ### CI fails because web/openapi.json or the generated client is stale
 
@@ -163,13 +169,13 @@ These look like bugs to users and reviewers. They aren't; point people here or t
 
 ### A reviewer can't see a question's answer
 
-- **Symptom:** in Review, a question shows "This is one of your live questions (today's daily question or part of a mock quiz you're running). Its answer stays hidden until you've answered it."
+- **Symptom:** in Review, a question shows "This question is still running for you: today's daily question, a mock quiz you're running, or a live quiz you're playing in. Its answer stays hidden until you've answered it (in a live quiz, until the results are shown)."
 - **Cause:** answer secrecy applies to reviewers too: nobody is shown the answer to a question still running for them (`running_for` in `src/ifs_tests/services/questions.py`, used by `services/review.detail`). See [architecture.md](architecture.md#answer-secrecy).
-- **Fix:** answer it where it's running (today's daily question, or carry on with the open mock run to that question), or ask another reviewer. Daily questions stop running when answered or at the end of the Madrid day.
+- **Fix:** answer it where it's running (today's daily question, the open mock run, or the live quiz), or ask another reviewer. Daily questions stop running when answered or at the end of the Madrid day; a live question when it closes (in a rehearsal, when the quiz ends).
 
 ### Practice refuses a question, or never offers it
 
-- **Symptom:** practice answers or hints return "This question is running in your daily question, mock or live quiz: answer it there first." (409), and the question doesn't come up in practice.
+- **Symptom:** opening a question in practice (`GET /api/practice/questions/{id}`), answering it or asking a hint returns "This question is running in your daily question, mock or live quiz: answer it there first." (409), and the question doesn't come up as the next practice question.
 - **Cause:** the same rule: practice would give the answer away (`not_running` in `services/questions.py`, used by `services/practice.py` and `services/hints.py`).
 - **Fix:** answer it in the mode where it's running first.
 
@@ -191,10 +197,4 @@ These look like bugs to users and reviewers. They aren't; point people here or t
 
 - **Symptom:** in a live quiz, screens take several seconds to follow the host.
 - **Cause:** screens learn about changes from the Server-Sent Events stream `GET /api/live/sessions/{code}/events`; a proxy that buffers responses holds the events back, and the screens fall back to polling every 5 seconds.
-- **Fix:** the app sends `X-Accel-Buffering: no` on that stream (`events` in `src/ifs_tests/api/routes/live.py`), which Nginx obeys, so `deploy/nginx/quiz.conf` needs no `proxy_buffering off`. If you put a different proxy or CDN in front, turn off response buffering for that path. The stream also sends a comment every 15 seconds and ends after 300 seconds (the browser reconnects), so proxy read timeouts of 60 seconds or more are fine.
-
-### The nightly maintenance job fails with "permission denied for table audit_log"
-
-- **Symptom:** in production, the scheduler logs `maintenance failed` with `psycopg.errors.InsufficientPrivilege: permission denied for table audit_log` on `DELETE FROM audit_log WHERE audit_log.at < …`. `alumni_deleted` and `audit_purged` never appear in the logs.
-- **Cause:** a known bug, open at the time of writing. The `scheduler` runs as the app role `app_rt`, and migration 0002 revokes `DELETE` on `audit_log` from that role (the app must not rewrite history). `services/privacy.purge` deletes audit entries older than two years with that connection; PostgreSQL checks the privilege even when no row matches, so the statement fails every night. The steps of `maintenance.run` before it (closing dailies and mock questions, season reset, freezes) commit on their own and still work; the alumni deletions and the audit purge, which commit together at the end, are rolled back. Tests don't catch it because they run as the database owner. Reproduced on a copy of the schema with the production role's privileges.
-- **Fix:** needs a code change and a decision on how the app may purge its own audit log (for example a narrow `DELETE` grant, or a purge run as a different role). Until then, alumni accounts past their year are not deleted automatically; delete them from Admin ([runbook](runbook.md#54-personal-data-requests)).
+- **Fix:** the app sends `X-Accel-Buffering: no` on that stream (`events` in `src/ifs_tests/api/routes/live.py`), and `deploy/nginx/quiz.conf` gives the stream its own location with `proxy_buffering off`. If you put a different proxy or CDN in front, turn off response buffering for that path. The stream also sends a comment every 15 seconds and ends after 300 seconds (the browser reconnects), so proxy read timeouts of 60 seconds or more are fine.

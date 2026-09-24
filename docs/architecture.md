@@ -13,7 +13,7 @@ flowchart LR
     subgraph P["Compose project quiz-prod (quiz-staging is identical)"]
         A["api<br/>uvicorn, 2 workers<br/>/api, /auth, /media, /healthz, SPA"]
         S["scheduler<br/>ifs-tests scheduler<br/>00:01 daily questions<br/>03:00 maintenance"]
-        K["backup<br/>pg_dump at 03:30<br/>kept 14 days"]
+        K["backup<br/>pg_dump at 03:30<br/>kept 14 days<br/>egress network for the heartbeat ping"]
         D[("db<br/>PostgreSQL 17<br/>internal network only")]
         A --> D
         S --> D
@@ -25,9 +25,9 @@ flowchart LR
 ```
 
 - **One origin.** FastAPI serves `/api/*` (JSON), `/auth/*` (sign-in, registration, resets), `/media/*` (question images), `/assets/*` (the built SPA's hashed files), `/healthz`, and `index.html` for every other GET so the SPA's client-side routes work. No CORS, simple cookies. See `create_app` in `src/ifs_tests/api/app.py`.
-- **The database is never exposed.** `db` and `backup` sit only on an internal Docker network; `api` also joins the `proxy` network that Nginx uses. Hardening of the containers is in [security.md](security.md).
+- **The database is never exposed.** `db` and `scheduler` sit only on an internal Docker network with no route out; `api` also joins the `proxy` network that Nginx uses, and `backup` an `egress` network used only for its heartbeat ping. Hardening of the containers is in [security.md](security.md).
 - **Backups:** the `backup` container dumps the database nightly and before every deploy (`deploy/db/backup.sh`); Hetzner also snapshots the whole server. Restores are in the [runbook](runbook.md).
-- **Local development** runs only `db` and `api` (`compose.yaml` at the repository root); there is no scheduler locally, so run `uv run ifs-tests maintenance` when you need the nightly job.
+- **Local development** runs only `db` and `api` (`compose.yaml` at the repository root); there is no scheduler locally, so run `docker compose exec api ifs-tests maintenance` when you need the nightly job.
 
 ## Code layers
 
@@ -57,7 +57,7 @@ Everything under `src/ifs_tests/` (empty `__init__.py` files left out).
 | Module | Owns |
 |---|---|
 | `__init__.py` | The package version (from the installed package metadata), shown by `/healthz` and the OpenAPI document |
-| `settings.py` | Configuration from `IFS_*` environment variables or `.env`: environment, database URL, public origin, paths; cookie name and CSRF origins derived from them; refuses to start staging or prod without `https://` |
+| `settings.py` | Configuration from `IFS_*` environment variables or `.env`: environment, database URL, public origin, paths, database pool size; cookie name and CSRF origins derived from them; refuses to start staging or prod without `https://` |
 | `cli.py` | The `ifs-tests` command: `mirror`, `stats`, `show`, `topics`, `push`, `openapi`, `create-admin`, `invite`, `reset-link`, `maintenance`, `scheduler` |
 | `scheduler.py` | A minimal daily job runner for the `scheduler` container (Madrid times, heartbeat file for the health check) |
 | **api/** | |
@@ -92,7 +92,7 @@ Everything under `src/ifs_tests/` (empty `__init__.py` files left out).
 | `content/learning.json` | Formulas and "learn more" reading per topic, served by `services/learning.py` |
 | **db/** | |
 | `db/models.py` | Every table (see [data-model.md](data-model.md)), constraint naming, enums for roles, statuses, verticals and positions |
-| `db/session.py` | Engine (pool of 10 + 10 overflow, 10 s timeout, pre-ping) and session factory |
+| `db/session.py` | Engine (pool of `IFS_DB_POOL_SIZE` + `IFS_DB_MAX_OVERFLOW` connections, 5 + 5 by default, 10 s timeout, pre-ping) and session factory |
 | **domain/** (pure) | |
 | `domain/accounts.py` | Session expiry, lockout, link validity, last-admin rule, email and display-name cleaning, name skeletons; retention periods |
 | `domain/keys.py` | Parsing FS-Quiz answers into gradable keys (choice, number, numbers, range, text, self) |
@@ -103,16 +103,16 @@ Everything under `src/ifs_tests/` (empty `__init__.py` files left out).
 | `domain/rank.py` | Rank points, divisions, LP per answer, placement, season reset, training wheels per division |
 | `domain/xp.py` | XP per answer and its bonuses, account level, rested XP, question difficulty |
 | `domain/leaderboard.py` | Periods, competition ranking with ties, the vertical board |
-| `domain/live.py` | Join codes, sub-departments and seating, which table owns a question, speed points |
+| `domain/live.py` | Join codes, sub-departments and seating, captains, which table owns a question, speed points, when an unfinished session counts as abandoned |
 | **services/** | |
 | `services/errors.py` | `UserError`: message, HTTP status and per-field messages |
 | `services/accounts.py` | Invites, registration, first admin, sign-in and lockout, password reset and change, profile, admin changes (under `ADMIN_LOCK`), audit helper |
 | `services/privacy.py` | Data export, account deletion, alumni, the nightly retention purge ([ADR 0006](adr/0006-personal-data.md)) |
 | `services/questions.py` | Questions as players see them (options, quiz labels, documents), `check` (grading an answer), and answer secrecy (`running`, `running_for`, `not_running`) |
-| `services/practice.py` | Practice areas, next question, answering |
+| `services/practice.py` | Practice areas, next question, one question by ID, answering |
 | `services/daily.py` | Choosing the day's questions (`ensure_daily`), start, answer, closing abandoned ones |
 | `services/mock.py` | Mock runs: start, advance, time-outs, answer, summary |
-| `services/live.py` | Live quiz sessions end to end, sharing XP after questions close, the results CSV |
+| `services/live.py` | Live quiz sessions end to end, sharing XP after questions close, finishing abandoned sessions, the results CSV |
 | `services/xp.py` | Scoring one answer in both currencies under the player's row lock (`lock`, `grant`), difficulty recalibration |
 | `services/streaks.py` | Streak days and the nightly streak-freeze job |
 | `services/season.py` | The 1 September rank reset |
@@ -127,7 +127,7 @@ The web app lives in `web/`: `web/src/routes` (pages), `web/src/components`, `we
 
 ## Request lifecycle
 
-1. **Nginx** terminates TLS, adds HSTS, rate-limits sign-in and password endpoints, caps connections per address, overwrites `X-Forwarded-For` and proxies to `api:8000` (`deploy/nginx/quiz.conf`). Uvicorn trusts forwarded headers only from `FORWARDED_ALLOW_IPS` (the Nginx container).
+1. **Nginx** terminates TLS, adds HSTS, rate-limits sign-in and password endpoints, caps open live event streams and requests in flight per address (sized for a whole team behind one campus IP, [security.md](security.md#server-and-containers)), overwrites `X-Forwarded-For` and proxies to `api:8000` (`deploy/nginx/quiz.conf`). Uvicorn trusts forwarded headers only from `FORWARDED_ALLOW_IPS` (the Nginx container).
 2. **Middleware** (`api/security.py`), outermost first: `SecurityHeaders` adds CSP and the other headers to every response, including rejections; `CSRFGuard` rejects any `POST`, `PUT`, `PATCH` or `DELETE` to `/api/` or `/auth/` that lacks `X-CSRF: 1` or carries a foreign `Origin` (403). Details in [api.md](api.md#authentication-and-csrf).
 3. **Dependencies** (`api/deps.py`) run per request:
    - `Db` opens a SQLAlchemy session for the request and closes it afterwards.
@@ -150,26 +150,12 @@ The `scheduler` container runs `ifs-tests scheduler` (`cli.py`), which loops eve
 - A failing job is logged (`docker compose logs scheduler`) and not retried until the next day.
 - The loop touches `/tmp/scheduler-heartbeat`; the container's health check fails if it is older than 120 seconds.
 - The `backup` container runs its own loop: a dump at 03:30, after maintenance and before the 04:00 reboot.
-- `ifs-tests maintenance` runs the same maintenance job by hand (its help text only mentions sessions and links, but it runs everything).
+- `ifs-tests maintenance` runs the same maintenance job by hand.
+- Both the `api` and `scheduler` containers run with `TZ=Europe/Madrid`, so their log timestamps are Madrid time; the database itself keeps UTC (`timezone=UTC`), and every Madrid-day rule computes the day in code (`domain/daily.madrid_day`).
 
-`maintenance.run` returns a dictionary of counts, which the scheduler logs. Each key:
+`maintenance.run` runs its steps in a fixed order and returns a dictionary of counts, one key per step, which the scheduler logs. The table of steps, keys and the code behind each is kept in one place, the [maintenance calendar](maintenance.md#nightly-automatic); add a new key there. Two steps need the database's help: `audit_purged` deletes through the function `purge_audit_log` (migration 0016), because the app role can't delete from `audit_log` itself ([data-model.md](data-model.md#audit_log)), and `live_sessions_finished` finishes sessions a day old (`ABANDONED_AFTER` in `domain/live.py`) one per transaction.
 
-| Key | Meaning | Done by |
-|---|---|---|
-| `sessions` | Expired or idle sessions deleted | `auth/sessions.purge_expired` |
-| `invites` | Invite links used or expired more than 30 days ago, deleted | `maintenance.run` |
-| `resets` | Reset links used or expired more than 30 days ago, deleted | `maintenance.run` |
-| `dailies_closed` | Daily questions whose clock ran out without an answer, closed as late and wrong (and scored) | `services/daily.close_expired` |
-| `mock_questions_closed` | Mock questions left to run out in abandoned runs, closed the same way; the run stays open | `services/mock.close_expired` |
-| `live_answers_shared` | Live table answers whose XP a crash left unshared, shared now | `services/live.share_pending` |
-| `difficulty_changed` | Questions whose difficulty (1–5) moved after recalibration from first, on-time answers (live answers excluded) | `services/xp.recalibrate` |
-| `ranks_reset` | Players whose rank was reset for the new season (only after 1 September) | `services/season.rollover` |
-| `freezes_used` | Streak freezes spent on a missed day in the last three days | `services/streaks.nightly` |
-| `freezes_earned` | Streak freezes earned for reaching a multiple of 7 days | `services/streaks.nightly` |
-| `alumni_deleted` | Alumni and disabled accounts deleted 365 days after `left_at` | `services/privacy.purge` |
-| `audit_purged` | Audit log entries older than two years deleted | `services/privacy.purge` |
-
-The scoring behind the closing, freeze and reset jobs is described in [game-rules.md](game-rules.md); what an operator should check and when is in [maintenance.md](maintenance.md).
+The scoring behind the closing, freeze and reset jobs is described in [game-rules.md](game-rules.md).
 
 ## Live quiz at the system level
 
@@ -182,9 +168,9 @@ stateDiagram-v2
     open --> closed: advance, every expected table answered, or deadline + 3 s passed
     closed --> open: advance to the next question
     closed --> finished: advance after the last question
-    lobby --> finished: end
-    open --> finished: end
-    closed --> finished: end
+    lobby --> finished: end, or the nightly job a day after creation
+    open --> finished: end, or the nightly job
+    closed --> finished: end, or the nightly job
     finished --> [*]
 ```
 
@@ -192,6 +178,8 @@ stateDiagram-v2
 - **Screens learn about changes from `GET /api/live/sessions/{code}/events`**, a Server-Sent Events stream that carries only the version number. Each second the stream calls `services/live.refresh`, which also closes a question whose time ran out (a single conditional `UPDATE`, so it can't close a question the host has just opened). When the version changes the browser refetches its own view with `GET /api/live/sessions/{code}`, spread over 600 ms to avoid a burst (`web/src/lib/live.ts`). A comment line every 15 seconds keeps proxies from closing it; the stream ends after 300 seconds and the browser reconnects; screens also poll every 5 seconds in case the stream drops. Nothing but the version travels on the stream, so it can't show anyone more than their own GET.
 - **Host actions carry the step the host's screen showed** (`AdvanceIn`: state and position). If the session has moved on, the request gets 409 instead of skipping a reveal.
 - **Answers:** the captain's `POST .../answer` inserts one `live_answers` row per table and question (`ON CONFLICT DO NOTHING`: a double tap sends one answer) and records who sits at the table in `member_ids`. When every expected table has answered, the question closes.
+- **Captains:** seating by sub-department and tables built by hand get their best-ranked member as captain unless the host picks one (`captain` in `domain/live.py`). When a captain is moved or removed, the table they left gets its best-ranked remaining member (`_recaptain` in `services/live.py`), so it can still answer.
+- **Abandoned sessions:** a session its host never ends is finished by the nightly job once it is a day old (`finish_abandoned`), so its players get their XP and its questions stop running for them.
 - **Sharing XP after close:** `share(session_id)` runs after every commit that can close a question. With feedback after each question it shares closed questions; in a rehearsal (feedback at the end) it waits until the session is finished, so XP moving can't give answers away. It takes one table answer per transaction (`FOR UPDATE SKIP LOCKED`, so concurrent sharers don't collide), locks each member's user row in id order, scores them with `services/xp.grant` in mode `live` (XP only, never LP), writes their `attempts` row and marks the answer `granted`. The nightly `share_pending` catches anything a crash left.
 
 ## Concurrency and locking
@@ -206,7 +194,7 @@ Two uvicorn workers, many threads and the scheduler all write to the same rows. 
 | **Account deletion:** hosted live sessions (`FOR UPDATE`, id order), then `ADMIN_LOCK`, then the user row (`FOR UPDATE`). | `services/privacy._lock` | The same order as answering and as admin changes. |
 | **Admin changes queue on a Postgres advisory lock**, `pg_advisory_xact_lock(ADMIN_LOCK)` with `ADMIN_LOCK = 7_000_001`, taken before reading who the active admins are. | `services/accounts._active_admin_ids`, used by `update_user`, `privacy._lock`, `mark_alumni` | Two admins demoting or deleting each other can't leave zero admins. An advisory lock rather than locking admin rows, because an admin playing a live quiz has their row locked by sharing. |
 | **The daily pick** takes `pg_advisory_xact_lock(0x1F5DA11)` and re-reads the choice before writing. | `services/daily.ensure_daily` | The scheduler and the first visitors of the day get the same question. |
-| **Nightly jobs do one player per transaction** (one attempt, one mock question, one live answer, one player's rank or freezes). | `daily.close_expired`, `mock.close_expired`, `live.share`, `season.rollover`, `streaks.nightly` | The job never holds many player rows at once, so it can't deadlock with a live quiz sharing XP to a room. `privacy.purge` is the exception: its deletions commit together at the end of `maintenance.run`. |
+| **Nightly jobs do one player per transaction** (one attempt, one mock question, one live session or live answer, one player's rank or freezes). | `daily.close_expired`, `mock.close_expired`, `live.finish_abandoned`, `live.share`, `season.rollover`, `streaks.nightly` | The job never holds many player rows at once, so it can't deadlock with a live quiz sharing XP to a room. `privacy.purge` is the exception: its deletions commit together at the end of `maintenance.run`. |
 | **Idempotent writes** use conditional updates and unique indexes: `UPDATE ... WHERE submitted_at IS NULL RETURNING`, `INSERT ... ON CONFLICT DO NOTHING` on the partial unique indexes for daily attempts and open mock runs. | daily and mock start and answer, live answers and joins | A double submit or a retry returns the stored result; only the request that recorded the answer grants XP. |
 | **Bank import locks every FS-Quiz question** (`FOR UPDATE`); reviewer edits lock the one question. | `services/bank.import_bank`, `services/review._question` | A reviewer's change during an import isn't overwritten by stale values. |
 | **Sign-in and password checks hash with no transaction open**, then lock the user row (`FOR UPDATE`) only to record the outcome. | `services/accounts.login`, `change_password`, `reset_password`, `privacy.delete_self` | Argon2 takes tens of milliseconds and 19 MiB; holding a connection or lock meanwhile would starve the pool. Parallel wrong guesses still each count. |
@@ -223,7 +211,7 @@ FS-Quiz answers are public on fs-quiz.eu, so the goal is narrower: the server ne
 
 | Place | What happens to a running question |
 |---|---|
-| Practice (`services/practice.py`, `services/hints.practice`) | Not offered as the next question; answering or asking a hint is refused (409) |
+| Practice (`services/practice.py`, `services/hints.practice`) | Not offered as the next question; opening it by ID (`GET /api/practice/questions/{id}`), answering it or asking a hint is refused (409) |
 | Review tools (`services/review.detail`) | The reviewer sees the question with `answer_hidden: true` and no official answer or marked options |
 | Daily start (`services/daily.start`) | Refused if the day's question is still to come in the player's mock run or live quiz |
 | Mock summary (`services/mock._summary`) | The official answer and solution are blanked for questions still running elsewhere |
@@ -245,7 +233,7 @@ flowchart LR
     RV["reviewers"] -->|"labels, exclusions, corrections"| DB
 ```
 
-- **Mirror** (`bank/mirror.py`, `bank/client.py`): one call lists every quiz, one call per quiz returns its questions; raw responses are cached so re-runs fetch only what is missing. `normalize.py` fixes the API's inconsistencies ([fsquiz-api.md](fsquiz-api.md)). Be polite: mirror only when new quizzes are published. On the server, `deploy/refresh-bank.sh <env>` runs mirror and push with the deployed image.
+- **Mirror** (`bank/mirror.py`, `bank/client.py`): one call lists every quiz, one call per quiz returns its questions; raw responses are cached so re-runs fetch only what is missing, unless `--refresh` re-fetches every quiz, the documents and the last qualifiers' results (images stay cached). `normalize.py` fixes the API's inconsistencies ([fsquiz-api.md](fsquiz-api.md)). Be polite: mirror only when new quizzes are published. On the server, `deploy/refresh-bank.sh <env>` runs `mirror --refresh --images` and `push` with the deployed image, once a season.
 - **Push** (`services/bank.import_bank`): upserts events, quizzes and documents, then each question. Answers are parsed into keys by `domain/keys.py`; area and topic come from `bank/topics.py` keyword tagging unless a reviewer has confirmed them (`labels_reviewed`). Images become WebP files of at most 150 KB (longest side at most 1600 px) named by content hash under `IFS_MEDIA_DIR`, served from `/media/` with a one-year immutable cache. The import writes a `bank.import` audit entry with its counts.
 - **Re-import rules.** A question is skipped when its content hash (type, text, time, answers, images, solutions) is unchanged and its images and solution images are all present. If only images were missing, they are filled in and options, keys and reviewer corrections stay. If the content changed: labels are re-tagged (unless reviewed), options and key are rewritten, any reviewer correction is dropped, difficulty goes back to its starting value, and `key_changed_at` is set when the official answer changed, a correction was dropped or the question was hidden, which puts it back in the reviewers' "changed" queue. A question missing an image is kept but not playable until the image arrives.
 - **Difficulty** starts from the kind of answer and the real quiz's time budget (`domain/xp.difficulty`) and, once 20 people have answered, is pulled towards their success rate by the nightly job (`services/xp.recalibrate`). Only each person's first on-time answer counts; live answers are excluded.
@@ -254,7 +242,7 @@ flowchart LR
 
 | | Where | Database | Scheduler | How it changes |
 |---|---|---|---|---|
-| local | `docker compose up --build` (repository root), or `uv run uvicorn ifs_tests.api.app:app --reload` plus `npm run dev` in `web/` (Vite proxies `/api`, `/auth`, `/media`, `/healthz` to port 8000) | `db` container, published on `127.0.0.1:55432` | none: run `uv run ifs-tests maintenance` by hand | your working tree |
+| local | `docker compose up --build` (repository root), or `uv run uvicorn ifs_tests.api.app:app --reload` plus `npm run dev` in `web/` (Vite proxies `/api`, `/auth`, `/media`, `/healthz` to port 8000) | `db` container, published on `127.0.0.1:55432` | none: run `docker compose exec api ifs-tests maintenance` by hand | your working tree |
 | test | `uv run pytest`: unit tests without a database; API and integration tests against a throwaway Postgres started by testcontainers (needs Docker) | throwaway | called directly by tests | — |
 | CI | GitHub Actions (`.github/workflows/ci.yml`): lint, types, tests with coverage gates, stale OpenAPI or client check, web checks, Playwright against the compose stack, image checks, shellcheck, gitleaks, dependency review; CodeQL separately | throwaway | — | every pull request and push to `dev`/`main` |
 | staging | team server, compose project `quiz-staging`, `quiz-staging.iscracingteam.com` | own container | yes | `deploy/deploy.sh staging sha-<commit>` (image published on every push to `dev`) |

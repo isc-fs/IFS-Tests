@@ -4,17 +4,17 @@ What the test suite covers, how to run each part, and what to add when you chang
 
 ## The pyramid
 
-Counts and times measured on 24 September 2026 on an Apple Silicon laptop; re-count with `uv run pytest --collect-only -q` and `npm test`.
+Rough sizes, to know what to expect (September 2026, Apple Silicon laptop); the exact counts change with every pull request, so re-count with `uv run pytest <folder> --collect-only -q` and `npx vitest run`.
 
 | Layer | Where | Tests | Time | Needs |
 |---|---|---|---|---|
-| Unit: pure rules, table-driven | `tests/unit/` | 475, plus the per-document checks of `tests/unit/test_docs.py` | under 1 s | nothing |
-| API: routes and services against Postgres | `tests/api/` | 237 | about 70 s | Docker |
-| Integration: migrations, bank import, database roles, jobs and CLI, races | `tests/integration/` | 51 | about 20 s | Docker |
-| Component tests of the web app | `web/src/**/*.test.tsx` | 138 in 14 files | about 5 s | Node |
-| End-to-end journeys | `web/e2e/` | 13 specs × 2 browser projects = 26 | 15–30 s, plus the stack | Docker, a running stack |
+| Unit: pure rules, table-driven | `tests/unit/` | about 480, plus the per-document checks of `tests/unit/test_docs.py` | under 1 s | nothing |
+| API: routes and services against Postgres | `tests/api/` | about 240 | about 70 s | Docker |
+| Integration: migrations, bank import, database roles, jobs and CLI, races | `tests/integration/` | about 50 | about 20 s | Docker |
+| Component tests of the web app | `web/src/**/*.test.tsx` | about 140 in 14 files | about 5 s | Node |
+| End-to-end journeys | `web/e2e/` | 13 tests in 9 spec files × 2 browser projects = 26 | 15–30 s, plus the stack | Docker, a running stack |
 
-The whole Python suite (`uv run pytest`) takes just under two minutes, including starting the Postgres container once. CI also enforces coverage: 78 % branch coverage overall and 92 % for `api`, `auth`, `services` and `domain` (at the time of writing: 94 % and 98 %), and the web gates below.
+The whole Python suite (`uv run pytest`) takes about two minutes, including starting the Postgres container once. CI also enforces coverage: 78 % branch coverage overall and 92 % for `api`, `auth`, `services` and `domain`, and the web gates below.
 
 ## Python tests
 
@@ -32,7 +32,7 @@ uv run pytest --lf                                          # only what failed l
 
 Tests that need the database are marked `integration` (a `pytestmark` at the top of every file in `tests/api/` and `tests/integration/`, except `tests/api/test_app.py`, which builds apps without a database).
 
-**Without Docker** the database tests are **skipped, not failed**, locally: the run ends with something like `486 passed, 277 skipped`. Check for "skipped" before trusting a green run. In CI (`CI` is set) the same situation fails the run instead (`postgres_url` in `tests/conftest.py`).
+**Without Docker** the database tests are **skipped, not failed**, locally: the run ends with something like `539 passed, 286 skipped`. Check for "skipped" before trusting a green run. In CI (`CI` is set) the same situation fails the run instead (`postgres_url` in `tests/conftest.py`).
 
 ### How the database tests are wired
 
@@ -88,7 +88,7 @@ One file per area (`test_auth.py`, `test_practice.py`, `test_daily.py`, `test_mo
 | File | Covers |
 |---|---|
 | `test_migrations.py` | Upgrade to head, downgrade to base, upgrade again, then `alembic check` (models and migrations agree); and that the models' metadata alone builds a valid schema |
-| `test_db_roles.py` | A database set up like production from `deploy/db/roles.sql`, migrated as `migrator`: the app role reads and writes but can't change the schema or rewrite the audit log; the backup role is read-only |
+| `test_db_roles.py` | A database set up like production from `deploy/db/roles.sql`, migrated as `migrator`: the app role reads and writes but can't change the schema or rewrite the audit log; the nightly purge runs as the app role and `purge_audit_log` never deletes an entry younger than two years; the backup role is read-only |
 | `test_bank_import.py` | `push`: idempotent, options and keys, quiz order, changed official answers flagged, missing and corrupt images, reviewer exclusions and corrections surviving a re-import |
 | `test_jobs_and_cli.py` | `maintenance.run` removes only stale rows and is idempotent; the CLI's `create-admin`, `invite`, `reset-link` and `push --sample` |
 | `test_concurrency.py` | One race per invariant: two admins demoting or deleting each other, simultaneous registrations, parallel wrong passwords vs. the lockout, the first visitors of the day, double starts and double submits in daily and mock, hiding during an import, two tabs scoring one answer, combo and bad-run counters, nightly closing vs. a late answer, live captains double-submitting, closing a question mid-answer, sharing live XP vs. the streak job |
@@ -125,7 +125,7 @@ npx vitest run -t "chips and the period"     # tests whose name matches
 
 Tests render the real router at a path with `renderApp(path, api)` from `web/src/test/render.tsx`. `api` maps `"METHOD /path"` to a reply (`{status, body}`) or a function of the request body; anything not listed answers 404. It returns the router (to check where you ended up) and `sent(key)` (to check what was posted, headers included). `MEMBER`, `ADMIN`, `signedOut`, `session()`, `ladder()` and `progress()` build `/api/me` answers. Query elements by role and label, as a screen reader would; the tests double as accessibility checks.
 
-Coverage gates (`thresholds` in `web/vite.config.ts`), measured over `web/src` except the generated `web/src/api/`, `web/src/main.tsx`, `web/src/test/` and test files: **80 % lines, 75 % functions, 70 % branches**. At the time of writing: 94 %, 87 %, 84 %.
+Coverage gates (`thresholds` in `web/vite.config.ts`), measured over `web/src` except the generated `web/src/api/`, `web/src/main.tsx`, `web/src/test/` and test files: **80 % lines, 75 % functions, 70 % branches**.
 
 ## End-to-end tests (Playwright)
 
@@ -185,7 +185,7 @@ Two things to know when writing specs: the app's strict CSP blocks `page.addStyl
 | A write that touches a player's scores, an admin, or a nightly job | A race in `test_concurrency.py` (or `test_admin_and_job_races.py` for the nightly job), asserting `unexpected(...) == []` and the final state |
 | The nightly job's result | The expected dict in `test_maintenance_removes_only_stale_rows_and_is_idempotent` |
 | The schema | Nothing new usually: `test_migrations.py` and `test_db_roles.py` run every migration; run them locally before pushing |
-| Personal data | `tests/api/test_privacy.py`: it's in the export and gone after deletion |
+| Personal data | `tests/api/test_privacy.py`: it's in the export and gone after deletion; a new column about a person must be added to `ACCOUNT`/`POINTING` (exported) or to the `…_NOT_EXPORTED` lists with the reason, or `test_every_personal_column_is_exported_or_deliberately_left_out` fails |
 | The bank import | `test_bank_import.py`, using or extending the sample bank |
 | A page or component | A component test with `renderApp`; keep the coverage gates |
 | A main user journey | The matching Playwright spec |

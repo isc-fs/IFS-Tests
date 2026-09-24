@@ -26,7 +26,7 @@ The host runs the session but doesn't play in it: the host has no table and earn
 ## Before the session
 
 - Ask everyone to tick their **Sub-departments** in their profile. **Seat by sub-department** uses the first one
-  each person ticked; people with none sit at an "Everyone else" table.
+  each person ticked, which their profile marks "(seats you)"; people with none sit at an "Everyone else" table.
 - Plan the projector: open the projector screen in a second tab of the browser you host from, and put that tab on
   the projector (extended or mirrored display). The screen only works for someone signed in who is in the session,
   so another computer would have to sign in as the host, or its account would appear as a player.
@@ -87,7 +87,8 @@ Press **Seat by sub-department**. MingoQuiz makes one table per sub-department p
 person's first sub-department, plus "Everyone else" for people with none. Tables are specialists, never balanced.
 Each table's captain is its best-ranked member. In specialist mode each table also gets the topics its
 sub-department owns by default, and "Everyone else" takes the questions no table owns. This replaces any tables
-you had.
+you had, unsaved changes included, and saves the new ones at once: the button reads **Tables saved** and you can
+start straight away.
 
 | Sub-departments | Topics they own by default |
 |---|---|
@@ -116,7 +117,7 @@ Under **Tables**:
 5. **Remove this table** deletes a table (its people become unseated).
 6. Press **Save the tables**. The button reads **Tables saved** when there is nothing left to save.
 
-Only a table's captain can send its answers. A table with nobody seated, or without a captain, doesn't answer.
+Only a table's captain can send its answers. A table with nobody seated doesn't answer.
 
 ## Running the quiz
 
@@ -153,9 +154,9 @@ Open **Seating** (under the tables) between or during questions:
 - **Remove** takes them out, after "Remove *name*? They can't rejoin." (**Remove them** or **Keep**). A removed
   person can't join this session again with the code.
 
-Moving a captain to another table leaves their old table without a captain: that table can't answer until you
-press **Make captain** on someone there. Someone moved during a question gets the result of whichever of their tables
-answered it first, never both. You can't add, rename or delete tables once the quiz has started; you can only move people.
+Moving or removing a captain hands their old table to its best-ranked remaining member, so it can still answer;
+press **Make captain** on someone else there if you prefer. Someone seated at an empty table becomes its captain.
+Someone moved during a question gets the result of whichever of their tables answered it first, never both. You can't add, rename or delete tables once the quiz has started; you can only move people.
 
 **Remove** also exists in the lobby, next to each player.
 
@@ -169,9 +170,19 @@ team" in specialist mode. When you replayed a full past quiz it adds the bar to 
 team to get a slot scored.
 
 Press **Download the results (CSV)** for a spreadsheet. Only the host gets this button. One row per table answer
-(or per question nobody answered), with the columns: question number, question text, which table the question was
-for, the table that answered, its captain, the answer sent ("not sure" for a pass), the official answer, right
-(yes/no) and speed points.
+(or per question nobody answered), with these columns:
+
+| Column | What it holds |
+|---|---|
+| `question` | The question's number in the session |
+| `text` | The question, cut to 120 characters |
+| `for table` | The table the question went to, or "every table" |
+| `answered by` | The table that sent this answer (empty if nobody answered) |
+| `captain` | Who sent it |
+| `answer` | The answer sent, or "not sure" for a pass |
+| `official answer` | The answer it was graded against |
+| `right` | yes or no (empty for an ungraded question or no answer) |
+| `points` | Speed points |
 
 ## What players earn
 
@@ -198,9 +209,10 @@ open `/live/` followed by the code again (signed in as yourself, on any device) 
 still close when their time runs out, but only the host can move to the next question, and nobody else can take
 over from the app.
 
-Always finish or **End now** a session. A session left open never ends by itself: in a rehearsal its players get no
-XP until it ends, and its questions stay "running" for them (they can't practise them, and reviewers among them
-can't see those answers).
+Always finish or **End now** a session. A session you leave open stays open until the nightly job finishes it, once
+it is a day old: until then, in a rehearsal, its players get no XP, and its questions stay "running" for them (they
+can't practise them, and reviewers among them can't see those answers). When the nightly job finishes it, everyone
+seated gets the XP of the answers their table sent.
 
 If the host's account is deleted, every session they were still hosting is finished at once. Players get their XP,
 the results stay, and the session shows "Hosted by a former member".
@@ -210,11 +222,10 @@ the results stay, and the session shows "Hosted by a former member".
 **Someone joined late.** Open **Seating**, pick their table, press **Move**. They share XP only for questions their
 table answers after that.
 
-**A table can't answer.** It has no captain (its captain was moved or removed) or nobody is seated. Press **Make
-captain** on someone at the table.
+**A table can't answer.** Nobody is seated at it. Seat someone there under **Seating**: they become its captain.
 
-**The start button won't work.** Save the tables first; make sure at least one table has a captain; check that the
-areas, topics or quiz you chose have questions that can be graded.
+**The start button won't work.** Save the tables first; make sure at least one table has someone seated; check that
+the areas, topics or quiz you chose have questions that can be graded.
 
 **Someone is at the wrong table.** In the lobby, change their drop-down and **Save the tables**. After the start,
 use **Seating** and **Move**.

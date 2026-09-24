@@ -121,6 +121,7 @@ Placement is a start, not a floor: a Technical Director who answers badly falls 
 - To a **higher** position: rank points become at least the new placement. Nobody loses what they earned above it.
 - To a **lower** position (a correction): the head start is taken back, `rank points − (old placement − new placement)`, floored at 0. What they earned stays.
 - Either way the promotion fanfare doesn't play for the new division: they were placed there, not promoted.
+- If the 1 September reset is still pending for them (placed in an earlier season, no answer or nightly job since), it is applied first, then the new position.
 
 | Constant | Value | File |
 |---|---|---|
@@ -135,7 +136,7 @@ A season runs from 1 September to 31 August, Madrid time, and is named by the ye
 
 - The nightly job applies it (`rollover` in `src/ifs_tests/services/season.py`) to every active member placed in an earlier season.
 - An answer before the job has run applies it too, and the player's own rank card and aids (`standing`) show the reset rank from midnight.
-- Alumni who come back are reset on their next answer.
+- Alumni who come back are reset on their next answer (or by the next night's job, once they are active again). An admin changing their position applies it too.
 - Newcomers are placed by position when they sign up.
 - `rank_best` (the best division reached this season) starts again at the reset division, so the promotion fanfare plays again for divisions regained.
 
@@ -308,9 +309,9 @@ Code: `src/ifs_tests/domain/leaderboard.py`, `src/ifs_tests/services/leaderboard
 Details in [ADR 0005](adr/0005-live-quiz.md) and the [hosts' guide](guides/live-quiz-hosts.md). What matters for scoring:
 
 - **XP only, never LP.** Mode `live` (×1.5). Every member seated at the table when its captain answers earns the table's result; members who joined but sat at no table earn nothing; a player moved mid-question is scored for their first table only. Repeats and same-day answers follow the usual XP rules for each member.
-- **When XP arrives:** after each question when right and wrong are shown after each one; only at the end in a rehearsal (so a teammate's XP can't give answers away). The nightly job shares anything a crash left unshared (`share_pending` in `src/ifs_tests/services/live.py`).
+- **When XP arrives:** after each question when right and wrong are shown after each one; only at the end in a rehearsal (so a teammate's XP can't give answers away). The nightly job finishes any session still open a day after it was created (`ABANDONED_AFTER` in `src/ifs_tests/domain/live.py`, `finish_abandoned` in `src/ifs_tests/services/live.py`), which shares its XP, and shares anything a crash left unshared (`share_pending`).
 - A live answer never feeds a question's difficulty.
-- **Captains:** automatic seating and hand-built tables make the member with the most rank points captain (ties: the lower user ID); the host can change it.
+- **Captains:** automatic seating and hand-built tables make the member with the most rank points captain (ties: the lower user ID; `captain` in `src/ifs_tests/domain/live.py`); the host can change it. When a captain is moved to another table or removed, the table they left gets the same rule applied to who remains.
 - **Speed points** (a host toggle, off by default): a right answer scores `1000 × (1 − ½ × elapsed/budget)`, from 1,000 at once down to 500 at the buzzer; wrong answers score 0; 1,000 when there is no time limit. They rank tables in the session only; they are not XP. Code: `speed_points` in `src/ifs_tests/domain/live.py`.
 
 ---

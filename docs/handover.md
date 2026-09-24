@@ -18,7 +18,7 @@ As of 24 September 2026 (update this section at each handover):
 | 2 Platform foundation: skeleton, server deploy, accounts, bank import | Done |
 | 3 Training MVP: practice, daily, mock, review tools, leaderboard, XP, learning aids, MingoQuiz name | Done |
 | 4 Team play: live quiz | Done |
-| 5 Launch | In progress: privacy (`feat/17`) and the ranked LP system (`feat/18`) are merged into `dev`; this documentation is `feat/19`; `feat/20-launch` (load test, restore drill, launch checklist, dropping `users.xp`) is next |
+| 5 Launch | In progress: privacy (`feat/17`), the ranked LP system (`feat/18`) and the fixes `fix/1` to `fix/4` (audit retention, live quizzes, accounts and privacy, operations and housekeeping) are merged into `dev`; this documentation is `feat/19`; `feat/20-launch` (load test, restore drill, launch checklist, dropping `users.xp`) is next |
 | 6 After launch | Deferred ideas, to prioritise with the team |
 
 No release has been tagged yet, so nothing has been deployed to prod: `deploy/deploy.sh` only takes release tags (`vX.Y.Z`) for prod, and the repository has none. The first release is `v1.0.0` at the end of phase 5.
@@ -59,6 +59,8 @@ A **role** (member, reviewer, admin) is what someone may do in the app; a **posi
 | App admins (at least two) | | |
 | Person who holds the domain registrar account | | |
 | Holders of the password manager entry | | |
+
+If this table is empty or out of date: ask the owners of the `isc-fs` GitHub organisation or the team's board. The account named in `.github/CODEOWNERS` is the last maintainer.
 
 ---
 
@@ -102,7 +104,12 @@ Nothing secret is ever committed: CI runs gitleaks and GitHub push protection is
    - [ ] Server: your own Linux account ([runbook 1.1](runbook.md#11-access-consultant)); check `ssh` works and `docker ps` shows the `quiz-` containers.
    - [ ] The password manager entry with the prod `.env`.
    - [ ] An admin account in the app, on staging and prod.
-2. **Read, in this order:** [README](../README.md), [docs index](README.md), [architecture](architecture.md), the [ADRs](adr/) from 0001 to 0007, [game rules](game-rules.md), [development](development.md) and [testing](testing.md), [runbook](runbook.md), [maintenance calendar](maintenance.md), [security](security.md), [AGENTS.md](../AGENTS.md) (the conventions every change follows).
+2. **Read the critical path first**, enough to keep the site running:
+   - [runbook](runbook.md) sections 2 to 5 (deploy, roll back, backups and restore, everyday operations);
+   - the [maintenance calendar](maintenance.md) (what is due when);
+   - this page.
+
+   Before you change code: [development](development.md), [architecture](architecture.md) and [AGENTS.md](../AGENTS.md) (the conventions every change follows). The rest ([testing](testing.md), [security](security.md), [game rules](game-rules.md), the [ADRs](adr/)) is reference: read it when a task touches it.
 3. **Run it locally** following [development](development.md): `uv sync`, `docker compose up --build`, the migrations, `ifs-tests push --sample`, `ifs-tests create-admin`; then the checks CI runs.
 4. **Practise on staging**, never on prod:
    - [ ] Deploy the latest `dev` image to staging ([runbook 2](runbook.md#2-deploy)).
@@ -136,10 +143,10 @@ Limitations, by design or not yet addressed:
 - **No second factor for admins** (deferred to phase 6).
 - **Answers can be looked up.** FS-Quiz is public; the server stops forged results and extra time, not someone searching fs-quiz.eu. And today's daily question is the same for everyone in an area, so answers can be passed around.
 - **Topic tags are a keyword guess** until reviewers fix them; the bank has no topic field of its own.
-- **Refreshing the bank** without `--refresh` misses changed questions, new documents and new last-qualifier results ([runbook 2.3](runbook.md#23-question-bank)).
+- **Refreshing the bank** re-fetches the whole FS-Quiz bank each time (about 130 requests per environment), so it is a once-a-season job, not a routine one ([runbook 2.3](runbook.md#23-question-bank)). There's no way to learn about FS-Quiz changes in between.
 - **The nightly jobs keep no record** in the database; the scheduler's log is the only evidence they ran ([runbook 5.2](runbook.md#52-did-the-nightly-jobs-run)).
 - **A failed deploy's logs are lost** when the script rolls back; reproduce on staging ([runbook 2.2](runbook.md#22-when-a-deploy-fails)).
-- **The Postgres image in `deploy/compose.yaml` isn't watched by Dependabot** ([maintenance calendar](maintenance.md#monthly-maintainer)).
+- **A Postgres major upgrade is manual** (dump and restore); Dependabot only proposes new digests of the same major ([maintenance calendar](maintenance.md#monthly-maintainer)).
 - **The load test** so far is only on the development stack ([ADR 0005](adr/0005-live-quiz.md)); a real one is part of `feat/20-launch`.
 
 Open questions for the team are collected in the [maintenance calendar's pending tasks](maintenance.md#one-off-tasks-still-pending) and at the end of [game rules](game-rules.md#open-design-questions).

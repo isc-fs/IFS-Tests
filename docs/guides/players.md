@@ -23,7 +23,7 @@ There is no public sign-up. An admin sends you an invite link; it works once and
 1. Open the link. The page is headed **Join MingoQuiz**. If it says the link is invalid, used or expired, ask the
    admin for a new one.
 2. Fill in the form:
-   - **Email**: what you sign in with. Only admins see it. It can't be changed later from the app.
+   - **Email**: what you sign in with. Only admins see it, and only an admin can change it later.
    - **Display name**: shown on the leaderboard. 2 to 24 characters: Latin letters, numbers, spaces, dots,
      dashes or apostrophes. A name that looks like someone else's (same letters ignoring accents, case and
      punctuation) counts as taken.
@@ -76,9 +76,9 @@ changes) and these forms.
 - **Vertical**: counts towards your vertical's average on the **Verticals** leaderboard. Home reminds you to set
   it until you do.
 - **Sub-departments**: the Team Directory's departments, grouped by vertical. Tick yours. They matter for live
-  quizzes: when the host presses **Seat by sub-department**, you sit at the table of your *first* sub-department,
-  which is the first one you ticked (not the first in the list). To change which comes first, untick them all,
-  tick your main one, then the rest, and save.
+  quizzes: when the host presses **Seat by sub-department**, you sit at the table of the first one you ticked (not
+  the first in the list), which the form marks "(seats you)". To be seated with another one, untick the one that
+  seats you and tick it again (it moves to the end), until the right one is marked; then save.
 - **Position on the team**: shown, not editable. Only an admin can change it.
 - **Hide me from the leaderboard (you still see your own rank)**: others no longer see your name on any board, and
   you are left out of your vertical's average. You still see where you would be.
@@ -129,7 +129,7 @@ rank.
 3. Answer and press **Check answer**, then **Next question**. **Skip this question** moves on without answering.
 
 Practice prefers questions you've practised least. It never serves a question you still have to answer in your
-daily questions, a mock run or a live quiz.
+daily questions, a mock run or a live quiz, and refuses to open one by its link until you have.
 
 ### Answer formats
 
@@ -339,12 +339,12 @@ once a day.
 there first.
 
 **Practice says a question is running elsewhere.** Same rule: a question you still have to answer in your daily
-questions, a mock run or a live quiz can't be practised or hinted at until you do.
+questions, a mock run or a live quiz can't be opened, practised or hinted at until you do.
 
 **The Hint button is gone.** Hints end at DT I. If you drop back to Jefe V they return.
 
-**I'm at the wrong table in a live quiz.** Ask the host to move you. For next time, check which sub-department you
-ticked first in your profile.
+**I'm at the wrong table in a live quiz.** Ask the host to move you. For next time, check which sub-department your
+profile marks "(seats you)".
 
 **I joined a live quiz late.** Wait for the host to seat you; until then you can't answer or propose. You share XP
 only for the questions your table answers after you sit down.
@@ -358,6 +358,7 @@ yourself, others don't see you but you still see your place.
 
 **I need a new password.** Ask an admin for a reset link.
 
-**I want to change my email.** You can't from the app, and admins have no screen for it either. Ask an admin.
+**I want to change my email.** Ask an admin: they can change it from the Admin page. You then sign in with the new
+address; devices already signed in stay signed in.
 
 **The official answer looks wrong.** Use **Report a problem with this question** after answering.

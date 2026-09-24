@@ -21,7 +21,7 @@ How the MingoQuiz API is organised, who may call what, and how the web app talks
 - **Sessions.** Signing in (`POST /auth/login`) or registering sets an opaque session cookie: `__Host-sid` when the public origin is `https://`, plain `sid` for local `http://` development (browsers drop `Secure` cookies on `http://localhost`). It is `HttpOnly`, `SameSite=Lax`, `Path=/`, `Secure` over https, and lasts at most 30 days. The server stores only a SHA-256 of it (`sessions` table). A session ends after 12 hours idle or 30 days in all, when the user signs out, changes or resets their password (other sessions only, for a change), is made alumni or disabled, or an admin revokes their sessions. Signing in ends the session the browser already had.
 - **Every API route except `/auth/*` needs a signed-in, active member.** The guards are FastAPI dependencies: `Member` (401 "Sign in first." when there is no valid session), `Reviewer` (role `reviewer` or `admin`, else 403) and `Admin` (role `admin`, else 403). The user always comes from the cookie; no endpoint takes a user ID for "who am I".
 - **CSRF.** `CSRFGuard` (`src/ifs_tests/api/security.py`) rejects every `POST`, `PUT`, `PATCH` and `DELETE` under `/api/` or `/auth/` with 403 `{"detail": "Cross-site request blocked."}` unless it carries the header `X-CSRF: 1` and, if the browser sent an `Origin`, that origin is the app's own (`IFS_PUBLIC_ORIGIN`; locally also the Vite dev server on port 5173). A cross-site page can't add a custom header without a CORS preflight, and the app never answers one. There is no token to fetch: the constant header is the whole mechanism, together with `SameSite=Lax`.
-- **Lockout.** Five wrong passwords in a row lock the account for 15 minutes. Sign-in answers the same 401 message, with the same timing, for an unknown email, a wrong password, a locked account and an inactive one. The current-password checks of `POST /api/me/password` and `POST /api/me/delete` count towards the same lock and answer 429 while it lasts. Nginx also limits `/auth/*`, `/api/me/password`, `/api/me/delete` and `/api/me/export` to 10 requests a minute per address (burst 5, then 429).
+- **Lockout.** Five wrong passwords in a row lock the account for 15 minutes. Sign-in answers the same 401 message, with the same timing, for an unknown email, a wrong password, a locked account and an inactive one. The current-password checks of `POST /api/me/password` and `POST /api/me/delete` count towards the same lock and answer 429 while it lasts. Nginx also limits `/auth/*`, `/api/me/password`, `/api/me/delete` and `/api/me/export` to 30 requests a minute per address (burst 80, then 429), sized for a whole room signing in from one campus IP.
 - **Invite and reset tokens** travel in the URL fragment of the link (never sent to a server) and then in POST bodies (`/auth/invites/lookup`, `/auth/register`, `/auth/resets/lookup`, `/auth/reset`), so they never appear in access logs.
 
 ## Errors
@@ -54,6 +54,8 @@ Every error body is JSON with a `detail`:
 
 Routers are registered in `create_app`. Each table lists every endpoint with the guard it uses. Service-level checks (for example "only the host") are noted where they matter.
 
+The tables give the purpose only. For the exact request and response bodies, open the interactive explorer at <http://localhost:8000/api/docs> on a local stack (it is off in staging and prod), or read `web/openapi.json` or the classes in `src/ifs_tests/api/schemas.py`: for example `POST /auth/login` takes `LoginIn` (`email`, `password`) and `POST /auth/register` takes `RegisterIn` (the invite `token`, `email`, `display_name`, `password`, and optionally `vertical` and `position`).
+
 ### `/auth` (`api/routes/auth.py`): public
 
 No session needed; the CSRF header still is.
@@ -82,7 +84,7 @@ No session needed; the CSRF header still is.
 | Method and path | Purpose |
 |---|---|
 | `GET /api/admin/users` | All accounts, alphabetically |
-| `PATCH /api/admin/users/{user_id}` | Change role, status or position (not your own role or status; never the last active admin) |
+| `PATCH /api/admin/users/{user_id}` | Change email, role, status or position; only the fields sent (not your own role or status; never the last active admin). A new email is validated as at sign-up (400 "Enter a valid email address.", 409 "An account with this email already exists.", both as field errors on `email`) and audited as `user.email` without the addresses. A position change first applies a season reset still pending |
 | `DELETE /api/admin/users/{user_id}` | Delete someone else's account |
 | `GET /api/admin/users/{user_id}/export` | Someone's data export, for a person who can't sign in; audited |
 | `POST /api/admin/alumni` | Mark a list of accounts as alumni (season rollover) |
@@ -100,7 +102,7 @@ No session needed; the CSRF header still is.
 |---|---|
 | `GET /api/practice/areas` | Playable questions per area and topic, and the caller's progress |
 | `GET /api/practice/next` | A random question the caller has practised least (`area`, `topic`, `skip`); never one running elsewhere |
-| `GET /api/practice/questions/{question_id}` | One playable question (no answer) |
+| `GET /api/practice/questions/{question_id}` | One playable question (no answer); 409 if it is running elsewhere for the caller |
 | `POST /api/practice/questions/{question_id}/answer` | Grade an answer (or "I'm not sure") and return the official answer, solutions, XP |
 | `POST /api/practice/questions/{question_id}/hint` | A hint for the next answer to this question (409 if it is running elsewhere, 403 from DT I) |
 
@@ -168,13 +170,13 @@ No session needed; the CSRF header still is.
 | `PUT /api/live/sessions/{code}/tables` | host, lobby only | Replace all tables (members, captain, topics, catch-all) |
 | `POST /api/live/sessions/{code}/tables/auto` | host, lobby only | Seat everyone by first sub-department |
 | `PATCH /api/live/sessions/{code}/tables/{table_id}` | host | Rename a table or change its captain |
-| `PUT /api/live/sessions/{code}/players/{user_id}` | host | Move a player to a table, or unseat them |
-| `DELETE /api/live/sessions/{code}/players/{user_id}` | host | Remove a player for good |
+| `PUT /api/live/sessions/{code}/players/{user_id}` | host | Move a player to a table, or unseat them; a table left without a captain gets its best-ranked member |
+| `DELETE /api/live/sessions/{code}/players/{user_id}` | host | Remove a player for good; the same captain rule applies |
 | `POST /api/live/sessions/{code}/advance` | host | The one button: start, close the question, open the next, finish. Send the `state` and `position` the screen showed |
 | `POST /api/live/sessions/{code}/end` | host | Finish now |
 | `PUT /api/live/sessions/{code}/proposal` | seated player | Suggest an answer to the captain of the table answering |
 | `POST /api/live/sessions/{code}/answer` | captain of the answering table | Send the table's one answer |
-| `GET /api/live/sessions/{code}/results.csv` | host | Results as CSV (cells that a spreadsheet would run as formulas are escaped) |
+| `GET /api/live/sessions/{code}/results.csv` | host | Results as CSV, one row per table answer (or per question nobody answered), with the columns `question`, `text`, `for table`, `answered by`, `captain`, `answer`, `official answer`, `right`, `points`; cells that a spreadsheet would run as formulas are escaped |
 | `GET /api/live/sessions/{code}/events` | its host or a player | Server-Sent Events stream of version numbers (below) |
 
 ### Outside the routers
@@ -188,7 +190,7 @@ No session needed; the CSRF header still is.
 
 ## The live event stream
 
-`GET /api/live/sessions/{code}/events` returns `text/event-stream` with `Cache-Control: no-store` and `X-Accel-Buffering: no` (so Nginx doesn't buffer it). It first runs the same access check as the state endpoint, then once a second calls `services/live.refresh` (which also closes a question whose time ran out) and sends `data: <version>` whenever the session's version changes, or the comment `: still here` after 15 quiet seconds. After 300 seconds it ends and the browser's `EventSource` reconnects. The browser refetches `GET /api/live/sessions/{code}` when a message arrives (`web/src/lib/live.ts`); the stream never carries state, so it can't show more than that GET would. Nginx allows 12 connections per address under `/api/`: a screen uses two (the stream and a fetch).
+`GET /api/live/sessions/{code}/events` returns `text/event-stream` with `Cache-Control: no-store` and `X-Accel-Buffering: no` (so Nginx doesn't buffer it). It first runs the same access check as the state endpoint, then once a second calls `services/live.refresh` (which also closes a question whose time ran out) and sends `data: <version>` whenever the session's version changes, or the comment `: still here` after 15 quiet seconds. After 300 seconds it ends and the browser's `EventSource` reconnects. The browser refetches `GET /api/live/sessions/{code}` when a message arrives (`web/src/lib/live.ts`); the stream never carries state, so it can't show more than that GET would. Nginx serves the stream from its own location with buffering off and at most 160 open streams per address (2 per person for 80 people behind one campus IP); other `/api/` requests have their own cap of 160 in flight per address.
 
 ## Conventions for new endpoints
 

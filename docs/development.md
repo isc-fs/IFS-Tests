@@ -18,7 +18,7 @@ On macOS with Homebrew: `brew install uv node@24 git`, plus Docker Desktop.
 
 ### With the sample bank (five minutes, no network calls to FS-Quiz)
 
-The sample bank is twelve made-up questions and two quizzes (`src/ifs_tests/bank/sample/`). It is enough to click through every mode and is what CI's end-to-end tests use.
+The sample bank is twelve made-up questions and three quizzes (`src/ifs_tests/bank/sample/`). It is enough to click through every mode and is what CI's end-to-end tests use.
 
 1. Clone and install the Python dependencies:
    ```bash
@@ -41,6 +41,14 @@ The sample bank is twelve made-up questions and two quizzes (`src/ifs_tests/bank
    docker compose exec api ifs-tests create-admin --email admin@example.com --name "Local Admin"
    ```
    `create-admin` only works while there is no admin (`services/accounts.create_first_admin`); afterwards it says "An admin already exists. Use an invite with role 'admin' instead." For scripts, `--password-stdin` reads the password from standard input instead (the CI e2e job does this).
+
+   **Going to run the end-to-end tests on this stack?** They sign in as `e2e-admin@alu.comillas.edu` with the password in `web/e2e/helpers.ts` (`ADMIN`, overridable with `E2E_ADMIN_PASSWORD`). Since there can only be one first admin, make that your first admin instead, as CI does, and sign in with it:
+   ```bash
+   export E2E_ADMIN_PASSWORD='<ADMIN.password from web/e2e/helpers.ts>'
+   printf '%s\n' "$E2E_ADMIN_PASSWORD" | docker compose exec -T api \
+     ifs-tests create-admin --email e2e-admin@alu.comillas.edu --name "E2E Admin" --password-stdin
+   ```
+   If you already made another admin, invite the e2e one instead ([testing.md](testing.md#running-them-locally)).
 5. Open <http://localhost:8000> (use `localhost`, not `127.0.0.1`: see [troubleshooting](troubleshooting.md#sign-in-says-cross-site-request-blocked)) and sign in.
 
 To add more people locally, create links from the command line (they need an active admin to exist) or from the Admin page:
@@ -63,7 +71,7 @@ The real bank is about 1,070 questions from 120 past quizzes (`uv run ifs-tests 
    ```bash
    uv run ifs-tests mirror --images
    ```
-   This writes `data/fsquiz/` (`raw/` API responses, `bank.json`, `img/`). The client waits 1 second between requests (`--delay`, keep it); the first run is roughly 130 requests plus one per image. It is cached: a second run fetches the event list, then only quizzes and images it doesn't have yet, so new quizzes arrive without any flag. `--refresh` re-fetches every quiz, the document list and the last qualifiers' results too; use it only when FS-Quiz has changed quizzes you already have (see [runbook](runbook.md#23-question-bank) and [fsquiz-api.md](fsquiz-api.md)).
+   This writes `data/fsquiz/` (`raw/` API responses, `bank.json`, `img/`). The client waits 1 second between requests (`--delay`, keep it); the first run is about 130 requests plus one per image. It is cached: a second run fetches the event list, then only quizzes and images it doesn't have yet, so new quizzes arrive without any flag. `--refresh` re-fetches every quiz, the document list and the last qualifiers' results too (images stay cached); the server's `deploy/refresh-bank.sh` always uses it, once a season. Locally, use it only when FS-Quiz has changed quizzes you already have (see [runbook](runbook.md#23-question-bank) and [fsquiz-api.md](fsquiz-api.md)).
 2. Load it into the local database. `compose.yaml` mounts `./data/fsquiz` read-only into the container:
    ```bash
    docker compose run --rm api ifs-tests push
@@ -99,6 +107,8 @@ Settings are environment variables with the `IFS_` prefix, or a `.env` file in t
 | `IFS_WEB_DIST` | `web/dist` | Built SPA to serve (skipped if missing) |
 | `IFS_MEDIA_DIR` | `data/media` | Where `push` writes question images and `/media/` serves them |
 | `IFS_BANK_DIR` | `data/fsquiz` | The mirror that `mirror` writes and `push` reads |
+| `IFS_DB_POOL_SIZE` | `5` | Database connections each process keeps open (per uvicorn worker) |
+| `IFS_DB_MAX_OVERFLOW` | `5` | Extra connections a process may open under load. On the server the scheduler runs with 2 + 0, and the sizes are budgeted against Postgres's `max_connections` ([runbook 5](runbook.md#5-everyday-operations)) |
 
 Locally, `/api/docs` shows the interactive OpenAPI page.
 
@@ -234,10 +244,10 @@ Policy (expand/contract, and the list of pending contract steps) is in [data-mod
 1. Change the model in `src/ifs_tests/db/models.py`. If you rename an attribute, keep the column name with `mapped_column("old_name", ...)`; Alembic compares column names, not attributes.
 2. Make sure your local database is at the current head (`uv run alembic upgrade head`; it uses `IFS_DATABASE_URL`, the compose database by default), then generate the next sequential revision:
    ```bash
-   uv run alembic revision --autogenerate --rev-id 0016 -m "short description"
+   uv run alembic revision --autogenerate --rev-id 0017 -m "short description"
    uv run ruff format migrations
    ```
-   Revisions are numbered `0001`, `0002`, …; without `--rev-id` Alembic invents a random one. The generated file isn't ruff-formatted, hence the second command.
+   Revisions are numbered `0001`, `0002`, …: use the next number after the newest file in `ls migrations/versions/` (`0017` while `0016` is the newest). Without `--rev-id` Alembic invents a random one. The generated file isn't ruff-formatted, hence the second command.
 3. Review it by hand. Autogenerate misses data moves, server-side defaults on existing rows, `CHECK` constraint changes and anything the app needs backfilled. Make it **expand only** if the release before yours uses what you are changing: add the new column or table, backfill with `op.execute`, and leave the old one until a later release drops it. Write a `downgrade()` that undoes it.
 4. Apply and check:
    ```bash
@@ -246,7 +256,7 @@ Policy (expand/contract, and the list of pending contract steps) is in [data-mod
    uv run pytest tests/integration/test_migrations.py tests/integration/test_db_roles.py
    ```
    `test_migrations.py` upgrades, downgrades to base, upgrades again and runs `alembic check`; `test_db_roles.py` migrates as the production `migrator` role and checks the app role can use the result.
-5. New data about a person? See the personal-data rule under [Conventions](#conventions).
+5. New data about a person? See the personal-data rule under [Conventions](#conventions). A new `users` column, or a new column pointing at a user, fails `test_every_personal_column_is_exported_or_deliberately_left_out` (`tests/api/test_privacy.py`) until it is in the export or listed there as deliberately left out.
 
 In production the migration runs as `migrator` before the new containers start (`deploy/deploy.sh`); default privileges in `deploy/db/roles.sql` give the app role `app_rt` read/write on new tables automatically.
 
@@ -260,9 +270,9 @@ Most nightly work is a step of `services/maintenance.run`, which the `scheduler`
    - add the key to the expected dict in `test_maintenance_removes_only_stale_rows_and_is_idempotent` (`tests/integration/test_jobs_and_cli.py`), which compares the whole dict;
    - an API or integration test of what the job does, including that a second run changes nothing;
    - if it locks players, extend `test_maintenance_run_against_players` in `tests/integration/test_admin_and_job_races.py` so it runs while players answer.
-4. Document the key in the table in [architecture.md](architecture.md#background-work) and, if an operator should watch it, in [maintenance.md](maintenance.md).
+4. Document the key in the nightly table of [maintenance.md](maintenance.md#nightly-automatic), the one list of keys the other docs link to.
 
-A job that needs its own time of day goes in the `Job` list in `_app_command` in `src/ifs_tests/cli.py` (times are Madrid local time; `tests/unit/test_scheduler.py` covers the scheduling rules). The local `compose.yaml` has no scheduler service: run the nightly job by hand with `docker compose exec api ifs-tests maintenance`.
+A job that needs its own time of day goes in the `Job` list in `_app_command` in `src/ifs_tests/cli.py` (times are Madrid local time; `tests/unit/test_scheduler.py` covers the scheduling rules). The local `compose.yaml` has no scheduler service: run the nightly job by hand with `docker compose exec api ifs-tests maintenance` (in the container, against the compose database). `uv run ifs-tests maintenance` on the host does the same against `IFS_DATABASE_URL`, which defaults to that same database on port 55432; set it if your stack uses another port.
 
 ### 4. Add a page or component to the web app
 
@@ -316,7 +326,7 @@ The rule and the list of places that apply it are in [architecture.md](architect
   - nightly jobs handle one player per transaction (`privacy.purge` is the one exception, committed at the end of `maintenance.run`).
 
   A new write path that races with any of these gets a test in `tests/integration/test_concurrency.py` ([testing.md](testing.md#integration-tests)).
-- **Personal data** ([ADR 0006](adr/0006-personal-data.md)): anything new stored about a person must appear in `services/privacy.export` and disappear when the account is deleted, either through a foreign key with `ON DELETE CASCADE` or a step in `privacy._delete`. Extend `tests/api/test_privacy.py` (`test_the_export_holds_my_data_and_nobody_elses`, `test_deleting_my_account_takes_my_password_and_removes_everything`) and the privacy notice in `web/src/routes/About.tsx`. The tables holding personal data are listed in [data-model.md](data-model.md#personal-data).
+- **Personal data** ([ADR 0006](adr/0006-personal-data.md)): anything new stored about a person must appear in `services/privacy.export` and disappear when the account is deleted, either through a foreign key with `ON DELETE CASCADE` or a step in `privacy._delete`. Extend `tests/api/test_privacy.py` (`test_the_export_holds_my_data_and_nobody_elses`, `test_deleting_my_account_takes_my_password_and_removes_everything`) and the privacy notice in `web/src/routes/About.tsx`. A new `users` column, or a new column pointing at a user, fails `test_every_personal_column_is_exported_or_deliberately_left_out` until you add it to the export or to its list of deliberate exclusions, with the reason. The tables holding personal data are listed in [data-model.md](data-model.md#personal-data).
 - **Errors** users should read are `UserError` (or `AccountError`) with a full sentence; one handler turns them into `{"detail", "fields"}`.
 - **Style.** Simple code and few comments, only where something is not obvious; English for code, docs and commits. Ruff (line length 110) and Prettier (120, no semicolons, single quotes) decide formatting.
 - **Security.** No secrets in the repository; pin new GitHub Actions to a commit SHA; keep the CSP strict. See [security.md](security.md).

@@ -44,7 +44,7 @@ Store a copy of the prod `.env` in the team's password manager, not in a shared 
 
 ### 1.3 Network and Nginx (consultant)
 1. The api containers join the Docker network the Nginx container uses (default name `proxy`, set `PROXY_NETWORK` in `.env` if it differs). If it doesn't exist yet: `docker network create proxy`. Set `FORWARDED_ALLOW_IPS` in `.env` to the Nginx container's address (`docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' <nginx container>`) so only Nginx can set the client IP; the stack refuses to start without it. If the Nginx container is recreated with a new address, update it and redeploy.
-2. Add [`deploy/nginx/quiz.conf`](../deploy/nginx/quiz.conf) to the Nginx configuration. It routes both hostnames to `quiz-prod-api` and `quiz-staging-api`, rate-limits `/auth/` and the password, delete and export endpoints, and caps connections per address on `/api/`.
+2. Add [`deploy/nginx/quiz.conf`](../deploy/nginx/quiz.conf) to the Nginx configuration. It routes both hostnames to `quiz-prod-api` and `quiz-staging-api`; rate-limits `/auth/` and the password, delete and export endpoints (30 a minute per address, burst 80); gives the live event streams their own location, unbuffered, with at most 160 open per address; and caps requests in flight under `/api/` at 160 per address. The limits are per client IP and sized for the whole team (up to 80 people) in one room behind one campus address; see [security](security.md#server-and-containers). Reload Nginx whenever this file changes.
 3. DNS (Squarespace Domains): `A` (and `AAAA`) records for `quiz` and `quiz-staging` pointing at the server.
 4. Certificate for both names: `certbot certonly --webroot -w /var/www/certbot -d quiz.iscracingteam.com -d quiz-staging.iscracingteam.com`, then reload Nginx.
 5. Commit the change in etckeeper, as for every server configuration change.
@@ -83,7 +83,7 @@ What `deploy/deploy.sh` does, in order:
 2. Pulls the image for the api (`QUIZ_PULL=0` skips it).
 3. Starts `db` and `backup` if they aren't running.
 4. Takes a dump named `quiz-<date>-<time>-pre-<tag>.dump` (skipped on the very first deploy).
-5. Runs `alembic upgrade head` as `migrator`, in one transaction.
+5. Runs `alembic upgrade head` as `migrator`, in one transaction (skipped when the database is already ahead of the image, as in a [roll back](#3-roll-back)).
 6. Starts `api` and `scheduler` on the new tag, waits up to 90 s for them to be healthy, and smoke-tests the api: `/healthz` answers 200 with a CSP header, an unknown `/api/` route is 404, and the OpenAPI schema is hidden.
 7. On success: writes the tag to `/srv/quiz/<env>/deployed-tag` and appends a line (UTC time, env, tag, who) to `/srv/quiz/<env>/deploy-history`. On failure: starts the previous tag again and exits with an error.
 
@@ -121,7 +121,7 @@ The bank lives in the database; images live in the `media` volume; the raw FS-Qu
 ```bash
 deploy/refresh-bank.sh staging     # then the same for prod
 ```
-It runs `ifs-tests mirror --refresh --images` then `ifs-tests push` with the deployed image. The mirror re-fetches every quiz, the document list (rulebooks and handbooks) and the last qualifiers' results, so corrected questions, new editions and new results arrive, not just new quizzes: about 125 requests, one per second. Images already in the volume are kept; only missing ones are fetched. The push is safe to repeat: unchanged questions are skipped, and a question whose official answer changed upstream is flagged under Admin → Question bank and in the Review "Changed upstream" queue. Images FS-Quiz can't serve are skipped; questions that need a missing image stay hidden until it arrives. The mirror needs outbound HTTPS from the api container (through the `proxy` network).
+It runs `ifs-tests mirror --refresh --images` then `ifs-tests push` with the deployed image. The mirror re-fetches every quiz, the document list (rulebooks and handbooks) and the last qualifiers' results, so corrected questions, new editions and new results arrive, not just new quizzes: about 130 requests, one per second ([fsquiz-api.md](fsquiz-api.md#extraction-strategy)). Images already in the volume are kept; only missing ones are fetched. The push is safe to repeat: unchanged questions are skipped, and a question whose official answer changed upstream is flagged under Admin → Question bank and in the Review "Changed upstream" queue. Images FS-Quiz can't serve are skipped; questions that need a missing image stay hidden until it arrives. The mirror needs outbound HTTPS from the api container (through the `proxy` network).
 
 Do this on staging first. Each environment has its own mirror, so each refresh costs FS-Quiz its own requests: don't repeat it without reason ([AGENTS.md](../AGENTS.md), server etiquette).
 
@@ -132,7 +132,9 @@ Do this on staging first. Each environment has its own mirror, so each refresh c
 ```bash
 deploy/deploy.sh prod v0.2.3      # any earlier release tag
 ```
-Migrations are written expand/contract, so the previous release works with the newer schema. If a release must also undo data changes, restore the dump taken just before it (`quiz-<date>-<time>-pre-<tag>.dump`, [section 4](#4-backups-and-restore)); everything since that dump is lost.
+Migrations are written expand/contract, so the previous release works with the newer schema. When the database is already ahead of the older image (the bad release added a migration the older image doesn't know), `deploy.sh` detects it and skips the migration step instead of failing; that is safe by the expand/contract rule. Everything else runs as in a deploy, including the pre-deploy dump.
+
+Roll back first. Only if data must also be undone, restore the dump taken just before the bad release (`quiz-<date>-<time>-pre-<tag>.dump`, [section 4](#4-backups-and-restore)) afterwards: `restore.sh` migrates the restored dump with the tag now deployed. Everything since that dump is lost; announce it.
 
 ---
 
@@ -140,7 +142,7 @@ Migrations are written expand/contract, so the previous release works with the n
 
 - **Nightly** at 03:30 Madrid time (a time that exists on daylight-saving nights) the `backup` service writes a `pg_dump` (custom format) to the `backups` volume as `quiz-<date>-<time>-nightly.dump` and deletes dumps older than 14 days, even when that night's dump failed. **Before every deploy** `deploy.sh` takes one more. Script: `deploy/db/backup.sh`.
 - **Hetzner** also snapshots the whole server daily (7 kept).
-- If `BACKUP_HEARTBEAT_URL` is set, each successful nightly dump pings it; the monitor alerts when a ping is missing.
+- If `BACKUP_HEARTBEAT_URL` is set, each successful dump (nightly and pre-deploy) pings it; the monitor alerts when a ping is missing. The `backup` container reaches the internet only for this, through its own `egress` network; `db` stays on the internal network. A ping that fails is logged as `backup: heartbeat ping failed`, and the dump is kept.
 
 ```bash
 deploy/restore.sh prod                                   # list dumps
@@ -179,6 +181,8 @@ The two link commands need an active admin account to exist (they act in its nam
 
 - The server reboots itself at 04:00 when security updates need it. Containers restart on their own; the nightly jobs run earlier (daily questions 00:01, maintenance 03:00, backup 03:30).
 - Logs rotate automatically (3 × 10 MB per container).
+- **Database connections** are budgeted against Postgres's `max_connections=40` (3 reserved for the superuser): each app process opens at most `IFS_DB_POOL_SIZE` + `IFS_DB_MAX_OVERFLOW` connections, 5 + 5 by default, and the scheduler is set to 2 + 0 in `deploy/compose.yaml`. The api's 2 workers (20), the scheduler (2), one `ifs-tests` command run alongside with `docker exec` or `compose run` (10), a migration (1) and the backup (1) make 34 of 37. So run one such command at a time; if you raise a pool size, recount in the comment above `max_connections` in `deploy/compose.yaml`.
+- The api and scheduler run with `TZ=Europe/Madrid`, the backup too; the database keeps UTC (`timezone=UTC`).
 - The app writes no access log; Nginx keeps one (consultant), rotated within 14 days.
 
 ### 5.1 Logs
@@ -193,8 +197,8 @@ docker logs -f quiz-prod-api-1          # follow live
 | Container | What it writes |
 |---|---|
 | api | Start-up, errors with tracebacks, warnings from a bank push (`image ...` for images that couldn't be converted). No line per request |
-| scheduler | `scheduler: daily@00:01, maintenance@03:00` at start; `daily: {...}` and `maintenance: {...}` with what each job did; `<job> failed` with a traceback. Times in UTC |
-| backup | `backup: daily at 03:30 <zone>` at start; `backup: /backups/<file>` per dump; `backup: FAILED, no heartbeat sent` on a failure. Times in Madrid time |
+| scheduler | `scheduler: daily@00:01, maintenance@03:00` at start; `daily: {...}` and `maintenance: {...}` with what each job did; `<job> failed` with a traceback. Times in Madrid time (`TZ=Europe/Madrid`, as for the api) |
+| backup | `backup: daily at 03:30 <zone>` at start; `backup: /backups/<file>` per dump; `backup: FAILED, no heartbeat sent` on a failed dump; `backup: heartbeat ping failed` when the dump worked but the monitor couldn't be reached. Times in Madrid time |
 | db | PostgreSQL's own log |
 
 ### 5.2 Did the nightly jobs run?
@@ -203,7 +207,7 @@ docker logs -f quiz-prod-api-1          # follow live
    ```bash
    docker logs --since 30h quiz-prod-scheduler-1 | grep -E "daily|maintenance"
    ```
-   A healthy night shows one `daily: {'mech': ..., 'elec': ..., 'rules': ...}` line and one `maintenance: {...}` line with counts: `sessions`, `invites`, `resets`, `dailies_closed`, `mock_questions_closed`, `live_answers_shared`, `difficulty_changed`, `ranks_reset`, `freezes_used`, `freezes_earned`, `alumni_deleted`, `audit_purged`. What each one means: [maintenance calendar](maintenance.md#nightly-automatic).
+   A healthy night shows one `daily: {'mech': ..., 'elec': ..., 'rules': ...}` line and one `maintenance: {...}` line with a count per step (the keys and what each means: [maintenance calendar](maintenance.md#nightly-automatic)). A `maintenance failed` line with a traceback means the job stopped at that step; most steps commit as they go, so what ran before it stays done, and the next run (it is idempotent) picks up the rest.
 2. The container's health (`docker ps`) only says the scheduler loop is alive (it touches a heartbeat file every 30 s); it doesn't say a job succeeded. A job that fails is logged and not retried until the next day or the next restart.
 3. The jobs keep no record in the database. Indirect checks: today's daily questions exist (`SELECT area, question_id FROM daily_questions WHERE day = (now() AT TIME ZONE 'Europe/Madrid')::date;`, though the first visitor of the day also picks them), and retention deletions appear in the audit log as `user.delete` with `"by": "retention"`.
 
@@ -212,7 +216,7 @@ docker logs -f quiz-prod-api-1          # follow live
 ```bash
 docker exec quiz-prod-scheduler-1 ifs-tests maintenance
 ```
-Runs the whole nightly job now and prints the counts. It is idempotent and safe at any time. (Its `--help` text says "expire old sessions and links", but it runs everything listed in 5.2.) To run both the daily pick and the maintenance, restart the scheduler instead: `docker restart quiz-prod-scheduler-1`.
+Runs the whole nightly job now and prints the counts. It is idempotent and safe at any time. To run both the daily pick and the maintenance, restart the scheduler instead: `docker restart quiz-prod-scheduler-1`.
 
 ### 5.4 Personal data requests
 
@@ -256,7 +260,7 @@ Then put it in `/srv/quiz/prod/.env`:
 | `backup_ro` | `BACKUP_PASSWORD` | backup service |
 | `postgres` | `POSTGRES_PASSWORD` | only when the volume is first created; rotate it with `\password postgres` all the same |
 
-Finally redeploy the same tag, which recreates every container whose settings changed: `deploy/deploy.sh prod $(cat /srv/quiz/prod/deployed-tag)`. Update the copy in the password manager. Same for staging.
+Finally redeploy the same tag, which recreates every container whose settings changed: `deploy/deploy.sh prod $(cat /srv/quiz/prod/deployed-tag)`. The `db` service receives all four passwords in its environment (for first-time set-up), so changing any of them recreates the database container too: a short outage of a few seconds while Postgres restarts on the same volume. The api reconnects by itself. Do it outside a live quiz. Update the copy in the password manager. Same for staging.
 
 There is one more secret, inside the database: the `hint_salt` row of the `settings` table, created automatically. It draws hints, the daily question and critical hits. It needs no rotation; changing it would change every hint and the next daily draws.
 
