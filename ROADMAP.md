@@ -27,7 +27,7 @@ after launch.
 | 2 | Platform foundation<br><sub>Staging live on the team server, accounts and the question bank in place</sub> | ✅ done `feat/4-platform-skeleton` · ✅ done `feat/5-server-deploy` · ✅ done `feat/6-accounts-auth` · ✅ done `feat/7-bank-push` | `v0.2.0` |
 | 3 | Training MVP<br><sub>One branch per way of answering questions, then the tools around them</sub> | ✅ done `feat/8-practice` · ✅ done `feat/9-daily-question` · ✅ done `feat/10-mock-quiz` · ✅ done `feat/11-admin-taxonomy` · ✅ done `feat/12-leaderboard` · ✅ done `feat/13-xp-levels` · ✅ done `feat/14-learning-aids` · ✅ done `feat/15-mingoquiz` | `v0.3.0` |
 | 4 | Team play<br><sub>Live quiz sessions for team meetings and vertical training (ADR 0005)</sub> | ✅ done `feat/16-live-quiz` | `v0.4.0` |
-| 5 | Launch | 🔄 active `feat/17-privacy-account` · 🔄 active `feat/18-ranked-lp` · 🔜 planned `feat/19-launch` | `v1.0.0` |
+| 5 | Launch | ✅ done `feat/17-privacy-account` · ✅ done `feat/18-ranked-lp` · 🔜 planned `feat/19-launch` | `v1.0.0` |
 | 6 | After launch _(deferred)_<br><sub>Ideas to prioritise with the team once the MVP is in use</sub> | ⏸ deferred `feat/20-admin-totp` · ⏸ deferred `feat/21-notion-sync` · ⏸ deferred `feat/22-solution-bounty` · ⏸ deferred `feat/23-team-questions` · ⏸ deferred `feat/24-rule-page-links` · ⏸ deferred `feat/25-daily-per-player` | `v1.1.0` |
 
 ## Branch diagram
@@ -126,11 +126,11 @@ gitGraph
 
     %% Phase 5 — Launch
     branch feat/17-privacy-account
-    commit id: "… Privacy notice, data export and deletion, season rollover, attribution"
+    commit id: "✔ Privacy notice, data export and deletion, season rollover, attribution"
     checkout dev
     merge feat/17-privacy-account
     branch feat/18-ranked-lp
-    commit id: "… A League-style rank with LP that goes up and down, and an account level from XP that only goes up (ADR 0007)"
+    commit id: "✔ A League-style rank with LP that goes up and down, and an account level from XP that only goes up (ADR 0007)"
     checkout dev
     merge feat/18-ranked-lp
     branch feat/19-launch
