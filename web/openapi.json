@@ -2723,7 +2723,7 @@
      "live"
     ],
     "summary": "Events",
-    "description": "A version number whenever the session changes (and when a question's time runs out), so screens know\nto fetch the state again. No state travels here, so nobody sees more than their own GET shows them.",
+    "description": "`<version>.<proposals>` whenever the session changes (and when a question's time runs out), or a proposal\nreaches the viewer's table, so screens know to fetch the state again. No state travels here, so nobody sees\nmore than their own GET shows them.",
     "operationId": "events",
     "parameters": [
      {

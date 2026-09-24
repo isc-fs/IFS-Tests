@@ -362,8 +362,41 @@ def test_the_events_stream_announces_the_version(
         assert r.headers["content-type"].startswith("text/event-stream")
         assert r.headers["x-accel-buffering"] == "no"
         first = next(r.iter_lines())
-    assert first == f"data: {state(room['Ana'], code)['version']}"
+    assert (
+        first == f"data: {state(room['Ana'], code)['version']}.0"
+    )  # the version, and proposals to Ana's table
     assert room["Marta"].get("/api/live/sessions/AAAAAA/events").status_code == 404
+
+
+def first_event(c: TestClient, code: str) -> str:
+    with c.stream("GET", f"/api/live/sessions/{code}/events") as r:
+        return str(next(r.iter_lines()))
+
+
+@pytest.mark.parametrize("routing", ["all", "owners"])
+def test_a_proposal_wakes_only_the_screens_at_the_table_it_goes_to(
+    room: dict[str, Any], db: Session, monkeypatch: pytest.MonkeyPatch, routing: str
+) -> None:
+    monkeypatch.setattr("ifs_tests.api.routes.live.STREAM_SECONDS", 1)
+    monkeypatch.setattr("ifs_tests.api.routes.live.POLL_SECONDS", 0)
+    code = lobby(room, topics=["hv"], areas=[], count=1, routing=routing)  # owners: the Batteries table's
+    advance(room, code)
+    screens = ("Tere", "Ana", "Leo", "Marta", "Pau")
+    before = {n: first_event(room[n], code) for n in screens}
+    version = state(room["Tere"], code)["version"]
+    qid = state(room["Ana"], code)["question"]["id"]
+    assert (
+        room["Ana"].put(f"/api/live/sessions/{code}/proposal", json=right_answer(db, qid)).status_code == 204
+    )
+    after = {n: first_event(room[n], code) for n in screens}
+    woken = {n for n in screens if after[n] != before[n]}
+    assert woken == ({"Ana", "Leo"} if routing == "all" else {"Marta", "Pau"})
+    assert state(room["Tere"], code)["version"] == version  # the rest of the room doesn't refetch
+    seen = {n: [p["name"] for p in state(room[n], code)["proposals"]] for n in screens}
+    if routing == "all":
+        assert seen == {"Tere": [], "Ana": ["Ana"], "Leo": ["Ana"], "Marta": [], "Pau": []}
+    else:  # Ana sees her own proposal; the owning table sees it; her own table doesn't
+        assert seen == {"Tere": [], "Ana": ["Ana"], "Leo": [], "Marta": ["Ana"], "Pau": ["Ana"]}
 
 
 def test_settings_are_fixed_once_started_and_questions_must_exist(room: dict[str, Any]) -> None:

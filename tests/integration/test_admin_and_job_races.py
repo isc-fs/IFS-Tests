@@ -180,7 +180,7 @@ def test_admin_action_on_player_while_rehearsal_ends(
     def host_ends(s: Session) -> Any:
         hold.wait(5)
         time.sleep(0.2)
-        return live.end(s, s.get_one(User, host.id), code, NOW)
+        return live.share(s, live.end(s, s.get_one(User, host.id), code, NOW), NOW)
 
     results = run_named(app_engine, {"admin": admin, "host": host_ends})
     assert not unexpected(results), results
@@ -254,7 +254,7 @@ def test_mark_alumni_physical_order_vs_rehearsal_end(
     def host_ends(s: Session) -> Any:
         blocker_has.wait(5)
         time.sleep(0.4)
-        return live.end(s, s.get_one(User, host.id), code, NOW)
+        return live.share(s, live.end(s, s.get_one(User, host.id), code, NOW), NOW)
 
     def releaser(s: Session) -> None:
         blocker_has.wait(5)
@@ -319,7 +319,7 @@ def test_maintenance_run_against_players(db: Session, app_engine: Engine, daily_
                 later,
             )
         )
-    jobs.append(lambda s: live.end(s, s.get_one(User, host.id), code, later))
+    jobs.append(lambda s: live.share(s, live.end(s, s.get_one(User, host.id), code, later), later))
     jobs.append(
         lambda s: accounts.update_user(
             s, s.get_one(User, actor.id), players[2].id, position="technical_director"
@@ -423,7 +423,8 @@ def test_live_many_tables_each_feedback_with_deletion_and_end(
     tables = [ps[i::4] for i in range(4)]  # interleaved ids across tables
     code = rehearsal(db, host, tables, feedback="each")
     jobs: list[Callable[[Session], Any]] = [
-        (lambda s, t=t: live.answer(s, signed_in(s, t[0].id), code, [], None, False, NOW)) for t in tables
+        (lambda s, t=t: live.share(s, live.answer(s, signed_in(s, t[0].id), code, [], None, False, NOW), NOW))
+        for t in tables
     ]
     jobs += [
         (lambda s, u=u: live.propose(s, signed_in(s, u.id), code, {"options": [], "value": None}, NOW))
@@ -440,7 +441,7 @@ def test_live_many_tables_each_feedback_with_deletion_and_end(
     targets = {tables[1][2].id, tables[2][0].id}
     left = set(db.scalars(select(User.id).where(User.id.in_([u.id for u in ps]))))
     assert left >= {u.id for u in ps} - targets  # signed_in's 401 only ever stands for a deleted target
-    live.end(db, db.get_one(User, host.id), code, NOW)
+    live.share(db, live.end(db, db.get_one(User, host.id), code, NOW), NOW)
     # nobody got XP twice for the question
     dup = db.execute(
         select(Attempt.user_id, Attempt.question_id, func.count())
@@ -460,7 +461,12 @@ def test_host_deleted_mid_quiz_while_captains_answer(
     tables = [ps[i::3] for i in range(3)]
     code = rehearsal(db, host, tables, feedback="end")
     jobs: list[Callable[[Session], Any]] = [
-        (lambda s, t=t: live.answer(s, s.get_one(User, t[0].id), code, [], None, False, NOW)) for t in tables
+        (
+            lambda s, t=t: live.share(
+                s, live.answer(s, s.get_one(User, t[0].id), code, [], None, False, NOW), NOW
+            )
+        )
+        for t in tables
     ]
     jobs.append(lambda s: privacy.delete_user(s, s.get_one(User, actor.id), host.id, NOW))
     jobs += [

@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import Depends, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from sqlalchemy.orm import Session as DB
 
 from ..auth.sessions import resolve_session
@@ -15,6 +16,17 @@ from ..settings import Settings
 
 def get_db() -> Iterator[DB]:
     yield from get_session()
+
+
+@contextmanager
+def background_db(app: FastAPI) -> Iterator[DB]:
+    """A database session for work outside any one request (after the response, or for every event stream at
+    once), from the same source as `Db`, so a test's override applies too."""
+    sessions = app.dependency_overrides.get(get_db, get_db)()
+    try:
+        yield next(sessions)
+    finally:
+        sessions.close()
 
 
 def get_now() -> datetime:

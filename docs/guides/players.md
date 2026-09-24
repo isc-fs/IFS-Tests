@@ -225,7 +225,7 @@ When a question opens, you see it with the clock. Pick or type an answer and pre
 decides." Only the captain's answer counts.
 
 In a session where each question goes to the table that owns its topic, the page says which table the question is
-for. If it's another table's, you can still propose to their captain.
+for (tables that own the same topic take turns). If it's another table's, you can still propose to their captain.
 
 ### As the captain
 

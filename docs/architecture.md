@@ -63,7 +63,7 @@ Everything under `src/ifs_tests/` (empty `__init__.py` files left out).
 | **api/** | |
 | `api/app.py` | Builds the FastAPI app: middleware, exception handlers, routers, `/healthz`, 404 for unknown `/api` and `/auth` paths, `/media` and SPA static files |
 | `api/security.py` | `SecurityHeaders` (CSP and other headers on every response) and `CSRFGuard` middleware |
-| `api/deps.py` | Request dependencies: database session `Db`, clock `Now`, `AppSettings`, and the role guards `Member`, `Reviewer`, `Admin` |
+| `api/deps.py` | Request dependencies: database session `Db`, clock `Now`, `AppSettings`, and the role guards `Member`, `Reviewer`, `Admin`; `background_db` for work after the response |
 | `api/schemas.py` | Every request and response body; field descriptions end up in the OpenAPI document |
 | `api/present.py` | Turns service results (`Shown`, `Checked`) into `PlayQuestion` and `Feedback` bodies, shared by practice, daily, mock and live |
 | `api/routes/auth.py` | `/auth`: sign in and out, invite and reset lookups, registration, password reset; sets the session cookie |
@@ -92,7 +92,7 @@ Everything under `src/ifs_tests/` (empty `__init__.py` files left out).
 | `content/learning.json` | Formulas and "learn more" reading per topic, served by `services/learning.py` |
 | **db/** | |
 | `db/models.py` | Every table (see [data-model.md](data-model.md)), constraint naming, enums for roles, statuses, verticals and positions |
-| `db/session.py` | Engine (pool of `IFS_DB_POOL_SIZE` + `IFS_DB_MAX_OVERFLOW` connections, 5 + 5 by default, 10 s timeout, pre-ping) and session factory |
+| `db/session.py` | Engine (one per process, made under a lock so the first burst of requests after a start can't build several pools; `IFS_DB_POOL_SIZE` + `IFS_DB_MAX_OVERFLOW` connections, 5 + 5 by default, 10 s timeout, pre-ping) and session factory |
 | **domain/** (pure) | |
 | `domain/accounts.py` | Session expiry, lockout, link validity, last-admin rule, email and display-name cleaning, name skeletons; retention periods |
 | `domain/keys.py` | Parsing FS-Quiz answers into gradable keys (choice, number, numbers, range, text, self) |
@@ -103,7 +103,7 @@ Everything under `src/ifs_tests/` (empty `__init__.py` files left out).
 | `domain/rank.py` | Rank points, divisions, LP per answer, placement, season reset, training wheels per division |
 | `domain/xp.py` | XP per answer and its bonuses, account level, rested XP, question difficulty |
 | `domain/leaderboard.py` | Periods, competition ranking with ties, the vertical board |
-| `domain/live.py` | Join codes, sub-departments and seating, captains, which table owns a question, speed points, when an unfinished session counts as abandoned |
+| `domain/live.py` | Join codes, sub-departments and seating, captains, which table answers each question (`route`), speed points, when an unfinished session counts as abandoned |
 | **services/** | |
 | `services/errors.py` | `UserError`: message, HTTP status and per-field messages |
 | `services/accounts.py` | Invites, registration, first admin, sign-in and lockout, password reset and change, profile, admin changes (under `ADMIN_LOCK`), audit helper |
@@ -112,7 +112,7 @@ Everything under `src/ifs_tests/` (empty `__init__.py` files left out).
 | `services/practice.py` | Practice areas, next question, one question by ID, answering |
 | `services/daily.py` | Choosing the day's questions (`ensure_daily`), start, answer, closing abandoned ones |
 | `services/mock.py` | Mock runs: start, advance, time-outs, answer, summary |
-| `services/live.py` | Live quiz sessions end to end, sharing XP after questions close, finishing abandoned sessions, the results CSV |
+| `services/live.py` | Live quiz sessions end to end: seating, routing, answers and proposals, the state view shared per version (`Room`), what the event streams watch (`watch`), sharing XP after questions close, finishing abandoned sessions, the results CSV |
 | `services/xp.py` | Scoring one answer in both currencies under the player's row lock (`lock`, `grant`), difficulty recalibration |
 | `services/streaks.py` | Streak days and the nightly streak-freeze job |
 | `services/season.py` | The 1 September rank reset |
@@ -174,13 +174,16 @@ stateDiagram-v2
     finished --> [*]
 ```
 
-- **`position`** is the current question (−1 in the lobby) and **`version`** goes up on every change (`_touch`). A question with no deadline (host-paced timing) closes only when the host advances or every table answers.
-- **Screens learn about changes from `GET /api/live/sessions/{code}/events`**, a Server-Sent Events stream that carries only the version number. Each second the stream calls `services/live.refresh`, which also closes a question whose time ran out (a single conditional `UPDATE`, so it can't close a question the host has just opened). When the version changes the browser refetches its own view with `GET /api/live/sessions/{code}`, spread over 600 ms to avoid a burst (`web/src/lib/live.ts`). A comment line every 15 seconds keeps proxies from closing it; the stream ends after 300 seconds and the browser reconnects; screens also poll every 5 seconds in case the stream drops. Nothing but the version travels on the stream, so it can't show anyone more than their own GET.
+- **`position`** is the current question (−1 in the lobby) and **`version`** goes up on every change but a proposal (`_touch`); a proposal bumps its target table's **`proposals`** counter instead, since only that table's screens show it. A question with no deadline (host-paced timing) closes only when the host advances or every table answers.
+- **Routing** (`route` in `domain/live.py`): in specialist mode each question goes to a table that owns its topic. When several tables own it (after seating by sub-department, powertrain has four), it goes to whichever of them has had the fewest questions so far, the earlier table on a tie, so every owner gets its share. Questions nobody owns, or without a topic, go to the catch-all table (the one the host chose, else the biggest).
+- **Screens learn about changes from `GET /api/live/sessions/{code}/events`**, a Server-Sent Events stream that carries `<version>.<proposals>`: the session's version and the proposals counter of the viewer's own table. A proposal therefore wakes only the screens at the table it goes to; every other change wakes every screen. Streams don't query the database one by one: each worker keeps one snapshot per session (`_latest` in `api/routes/live.py`), read by `services/live.watch` at most every 0.5 s however many streams are open, and each stream compares its token with it once a second, so a change reaches the screens within about 1.5 s. Each worker reads the database itself, so what the other worker commits reaches its streams too. `watch` also closes a question whose time ran out (a conditional `UPDATE`, so it can't close a question the host has just opened). When the token changes the browser refetches its own view with `GET /api/live/sessions/{code}`, spread over 600 ms to avoid a burst (`web/src/lib/live.ts`). A comment line every 15 seconds keeps proxies from closing the stream; it ends after 300 seconds and the browser reconnects. Screens also poll every 15 seconds while the stream is open (in case it silently stalls) and every 5 seconds while it is down; stream and poll both stop once the quiz is finished. Nothing but those two numbers travels on the stream, so it can't show anyone more than their own GET.
+- **The state view** (`services/live.view`): what every screen shares (players, tables, the current question, the tables' answers, reveals and scores) is built once per session version and worker and kept in memory (`Room`, `_room`), with one build at a time per session so a room of phones refetching together reads the database once. It is rebuilt at least every 30 seconds (`ROOM_TTL`), so a renamed player, a question edit or an answer correction still shows. Each request adds only what depends on the viewer: their table, the proposals to it, and blanking the reveals of questions still running for them elsewhere (`running`). A state fetch is four queries: the sign-in session, the user, the live session, and the proposals or the viewer's running questions.
 - **Host actions carry the step the host's screen showed** (`AdvanceIn`: state and position). If the session has moved on, the request gets 409 instead of skipping a reveal.
 - **Answers:** the captain's `POST .../answer` inserts one `live_answers` row per table and question (`ON CONFLICT DO NOTHING`: a double tap sends one answer) and records who sits at the table in `member_ids`. When every expected table has answered, the question closes.
 - **Captains:** seating by sub-department and tables built by hand get their best-ranked member as captain unless the host picks one (`captain` in `domain/live.py`). When a captain is moved or removed, the table they left gets its best-ranked remaining member (`_recaptain` in `services/live.py`), so it can still answer.
 - **Abandoned sessions:** a session its host never ends is finished by the nightly job once it is a day old (`finish_abandoned`), so its players get their XP and its questions stop running for them.
-- **Sharing XP after close:** `share(session_id)` runs after every commit that can close a question. With feedback after each question it shares closed questions; in a rehearsal (feedback at the end) it waits until the session is finished, so XP moving can't give answers away. It takes one table answer per transaction (`FOR UPDATE SKIP LOCKED`, so concurrent sharers don't collide), locks each member's user row in id order, scores them with `services/xp.grant` in mode `live` (XP only, never LP), writes their `attempts` row and marks the answer `granted`. The nightly `share_pending` catches anything a crash left.
+- **Sharing XP after close:** `share(session_id)` runs after the response to every request that can close a question (answer, advance, end, and a state fetch that closed an expired question: FastAPI background tasks in `api/routes/live.py`), and whenever a worker's stream snapshot shows a question newly closed (its time ran out, or a late answer closed it). So the captain whose answer closes a question doesn't wait while the room gets its XP (that took 4 to 13 seconds under load when it ran inside the request). With feedback after each question it shares closed questions; in a rehearsal (feedback at the end) it waits until the session is finished, so XP moving can't give answers away. It takes one table answer per transaction (`FOR UPDATE SKIP LOCKED`, so concurrent sharers don't collide), locks each member's user row in id order, scores them with `services/xp.grant` in mode `live` (XP only, never LP), writes their `attempts` row and marks the answer `granted`. Several sharers running at once (the request's background task, each worker's streams) split the answers between them; the XP still goes out exactly once. The nightly `share_pending` catches anything a crash or a restart in the middle of sharing left.
+- **Capacity:** a full meeting (80 players at 21 tables) at the production limits leaves the api at about a quarter of its CPU; the measurements and the 2-CPU option are in the [runbook](runbook.md#55-live-quiz-capacity).
 
 ## Concurrency and locking
 
@@ -252,7 +255,7 @@ flowchart LR
 
 ## Targets
 
-Targets set at design time. The latency and availability figures have not been measured yet: the load test is part of `feat/20-launch` on the roadmap.
+Targets set at design time. The latency and availability figures have not been measured yet, except for a live quiz at meeting scale ([runbook](runbook.md#55-live-quiz-capacity)): the load test is part of `feat/20-launch` on the roadmap.
 
 - p95 latency under 300 ms for start, submit and practice requests, under 400 ms for the leaderboard.
 - JavaScript under 180 KB gzipped, counting every script the build writes to `dist/assets` (`size-limit` in `web/package.json`; `npm run size` fails CI above it).

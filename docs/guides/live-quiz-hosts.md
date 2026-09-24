@@ -48,7 +48,7 @@ Go to **Live**. Under **Host a live quiz**, set the options and press **Create t
 | | **The same time for every question** | Set **Seconds per question** (10 to 900). |
 | | **No clock: I move on** | No countdown. The question stays open until you close it or every table has answered. |
 | **Who answers** | **Every table answers every question** | All tables answer; the room's score is the best table's. Good for one vertical training alone. |
-| | **Each question goes to the table that owns its topic** | Specialists: an aero question goes to the aero table, and its answer is the team's. Good for a full-team session. |
+| | **Each question goes to the table that owns its topic** | Specialists: an aero question goes to the aero table, and its answer is the team's. Tables that own the same topic take turns. Good for a full-team session. |
 | **Right and wrong** | **After each question** | Training: when a question closes, everyone sees the answer, each table's answer and the room's score. |
 | | **Only at the end, like registration day** | A rehearsal: nothing is revealed, and no XP is shared, until the quiz ends. |
 | **Speed points: faster right answers score more (Kahoot-style)** | on or off | A right answer scores 1,000 points if sent instantly, down to 500 at the buzzer (1,000 with no clock). Off, only right answers count, as in the real quizzes. |
@@ -86,7 +86,9 @@ People join by scanning the QR code or typing the code at **Live**. They appear 
 Press **Seat by sub-department**. MingoQuiz makes one table per sub-department present (named after it), from each
 person's first sub-department, plus "Everyone else" for people with none. Tables are specialists, never balanced.
 Each table's captain is its best-ranked member. In specialist mode each table also gets the topics its
-sub-department owns by default, and "Everyone else" takes the questions no table owns. This replaces any tables
+sub-department owns by default, and "Everyone else" takes the questions no table owns. Several tables often own the
+same topic (Motor Inverter, Powertrain, Transmission and Cooling System all own powertrain): they take turns, each
+question going to whichever of them has had the fewest questions so far, so every one of them gets its share. This replaces any tables
 you had, unsaved changes included, and saves the new ones at once: the button reads **Tables saved** and you can
 start straight away.
 
@@ -112,8 +114,14 @@ Under **Tables**:
 3. For each table, pick its **Captain** among the people seated there. A table saved without a captain gets its
    best-ranked member.
 4. In specialist mode, tick **Topics this table answers**, and choose one table that **Takes the questions no table
-   owns**. If some topics have no owner, the page warns "No table owns …: those questions go to *table*." Without a
-   chosen table, the biggest one takes them.
+   owns**. Without a chosen table, the biggest one takes them. Under the tables the page warns about gaps, for the
+   areas and topics this quiz uses:
+   - "No table owns …: those questions go to *table*."
+   - "*Tables* own no topic in this quiz, so they get no questions and earn no XP." Tick a topic for them, or seat
+     those people at another table. After **Seat by sub-department** this names Sponsorship and Marketing, and any
+     table whose topics the quiz doesn't ask about.
+   - "*n* questions for *m* tables: some tables won't get a question." Each question goes to one table, so ask at
+     least as many questions as there are tables if everyone should answer.
 5. **Remove this table** deletes a table (its people become unseated).
 6. Press **Save the tables**. The button reads **Tables saved** when there is nothing left to save.
 
@@ -192,7 +200,7 @@ Press **Download the results (CSV)** for a spreadsheet. Only the host gets this 
   bonuses in live quizzes; streak, critical and rested bonuses apply. A question someone already answered today, in
   any mode, earns them no XP.
 - People who joined but were never seated earn nothing. The host earns nothing.
-- In training mode the XP arrives when each question closes; in a rehearsal, when the quiz ends.
+- In training mode the XP arrives a moment after each question closes; in a rehearsal, a moment after the quiz ends.
 
 The numbers are in [game rules](../game-rules.md).
 
@@ -221,6 +229,9 @@ the results stay, and the session shows "Hosted by a former member".
 
 **Someone joined late.** Open **Seating**, pick their table, press **Move**. They share XP only for questions their
 table answers after that.
+
+**A table got no questions.** In specialist mode a table only gets questions on the topics it owns. Check the
+warnings under the tables before you start: give it a topic this quiz asks about, or ask more questions.
 
 **A table can't answer.** Nobody is seated at it. Seat someone there under **Seating**: they become its captain.
 

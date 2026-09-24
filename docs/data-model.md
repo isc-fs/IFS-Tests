@@ -266,12 +266,12 @@ All `ON DELETE CASCADE` from `live_sessions`; sessions themselves are never dele
 | `state` | `lobby`, `open`, `closed`, `finished`. The nightly job finishes a session still unfinished a day after `created_at` |
 | `position` | Current question, −1 in the lobby |
 | `opened_at`, `deadline_at` | When the current question opened and its deadline (null when host-paced) |
-| `version` | Goes up on every change; the event stream sends it |
+| `version` | Goes up on every change but a proposal; the event stream sends it |
 | `created_at`, `finished_at` | |
 
 ### `live_tables`
 
-`session_id` (indexed), `name` (40 characters), `captain_id` (→ `users`, `ON DELETE SET NULL`), `topics` (topics the table owns, for routing), `catch_all` (takes the questions nobody owns).
+`session_id` (indexed), `name` (40 characters), `captain_id` (→ `users`, `ON DELETE SET NULL`), `topics` (topics the table owns, for routing), `catch_all` (takes the questions nobody owns), `proposals` (goes up on every proposal to the table, so the event stream wakes only that table's screens; migration 0018).
 
 ### `live_players`
 
@@ -371,6 +371,7 @@ Retention: alumni and disabled accounts are deleted 365 days after `left_at`; th
 | 0014 | Ranked LP (ADR 0007): `attempts.lp`; `users.rank_points`, `rank_season`, `rank_best`, `combo`, `miss_streak`, `account_xp`. Places everyone by position, raises single-choice difficulty by one, fills `account_xp` from positive attempt XP. Expand only: `users.xp` stays |
 | 0015 | Rested XP and streak freezes: `streak_freezes` table; `users.rested_xp`, `rested_on`, `streak_freezes`, `freeze_earned_on` |
 | 0016 | The function `purge_audit_log(before)` for the nightly audit purge, executable by `app_rt` ([`audit_log`](#audit_log)) |
+| 0018 | `live_tables.proposals`, a counter per table so a proposal wakes only that table's screens. Expand only |
 
 ### Expand/contract
 

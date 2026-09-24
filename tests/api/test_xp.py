@@ -778,6 +778,7 @@ def test_live_answers_earn_xp_but_never_move_the_rank_or_the_combo(
     other = _open_question(db, s)
     miss = wrong(db, other)
     live.answer(db, player, s.code, miss.get("options"), miss.get("value"), False, clock.now)
+    live.share(db, s.id, clock.now)  # what the routes run after responding
     rows = db.execute(select(Attempt.correct, Attempt.xp, Attempt.lp).order_by(Attempt.id)).tuples().all()
     assert rows == [
         (True, earned(True, "live"), 0),

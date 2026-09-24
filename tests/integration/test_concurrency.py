@@ -25,6 +25,7 @@ from ifs_tests.services import accounts, daily, live, mock, practice, privacy, r
 from ifs_tests.services import bank as bank_service
 from ifs_tests.services import xp as xp_service
 from ifs_tests.services.bank import import_bank
+from ifs_tests.services.errors import UserError
 
 from ..api.helpers import right_answer
 from .conftest import NOW
@@ -386,27 +387,25 @@ def test_closing_abandoned_dailies_never_deadlocks_with_a_late_answer(
     assert all(a.submitted_at == later and a.late for a in rows)
 
 
+LIVE_CONFIG = {
+    "questions": "areas",
+    "areas": ["rules"],
+    "count": 1,
+    "timing": "fixed",
+    "seconds": 60,
+    "feedback": "each",
+    "routing": "all",
+    "speed_points": False,
+}
+
+
 def _live_room(db: Session, daily_player: User) -> tuple[str, User, list[User]]:
     """A TD host, and daily_player captaining a table of three."""
     host = User(email="td@x.com", password_hash="x", display_name="Host", position="technical_director")
     mates = [User(email=f"m{i}@x.com", password_hash="x", display_name=f"Mate {i}") for i in range(2)]
     db.add_all([host, *mates])
     db.commit()
-    s = live.create(
-        db,
-        host,
-        {
-            "questions": "areas",
-            "areas": ["rules"],
-            "count": 1,
-            "timing": "fixed",
-            "seconds": 60,
-            "feedback": "each",
-            "routing": "all",
-            "speed_points": False,
-        },
-        NOW,
-    )
+    s = live.create(db, host, LIVE_CONFIG, NOW)
     for u in (daily_player, *mates):
         live.join(db, u, s.code, NOW)
     live.seat(
@@ -425,15 +424,69 @@ def _live_room(db: Session, daily_player: User) -> tuple[str, User, list[User]]:
     return s.code, host, [daily_player, *mates]
 
 
+def _then_share(db: Session, session_id: int) -> int:
+    """What the routes do after responding to a live action that may close a question."""
+    live.share(db, session_id, NOW)
+    return session_id
+
+
+def test_a_closing_answer_the_host_advancing_and_the_streams_sharing_at_once_grant_xp_once(
+    db: Session, app_engine: Engine, daily_player: User
+) -> None:
+    """Sharing runs after the response, from the captain's request, the host's and each worker's event
+    streams, all at once: every member still gets the question's XP exactly once."""
+    host = User(email="td@x.com", password_hash="x", display_name="Host", position="technical_director")
+    people = [User(email=f"t{i}@x.com", password_hash="x", display_name=f"T{i}") for i in range(8)]
+    db.add_all([host, *people])
+    db.commit()
+    tables = [[daily_player, *people[:2]], people[2:5], people[5:]]
+    config = {**LIVE_CONFIG, "count": 2}
+    s = live.create(db, host, config, NOW)
+    for u in (daily_player, *people):
+        live.join(db, u, s.code, NOW)
+    live.seat(
+        db,
+        host,
+        s.code,
+        [
+            {"name": f"T{i}", "member_ids": [u.id for u in t], "captain_id": t[0].id}
+            for i, t in enumerate(tables)
+        ],
+    )
+    live.advance(db, host, s.code, NOW)
+    for t in tables[:2]:
+        live.answer(db, db.get_one(User, t[0].id), s.code, [], None, False, NOW)
+    last = tables[2][0]
+    results = race(
+        app_engine,
+        lambda x: _then_share(x, live.answer(x, x.get_one(User, last.id), s.code, [], None, False, NOW)),
+        lambda x: _then_share(x, live.advance(x, x.get_one(User, host.id), s.code, NOW)),
+        *[lambda x: live.share(x, s.id, NOW)] * 3,
+    )
+    assert not [r for r in results if isinstance(r, Exception) and not isinstance(r, UserError)], results
+    live.share(db, s.id, NOW)
+    rows = db.execute(select(Attempt.user_id, Attempt.xp).where(Attempt.mode == "live")).tuples().all()
+    answered = isinstance(results[0], int)
+    members = [u.id for t in (tables if answered else tables[:2]) for u in t]
+    assert sorted(uid for uid, _ in rows) == sorted(members), results
+    xp = dict(db.execute(select(User.id, User.xp).where(User.id.in_(members))).tuples().all())
+    assert all(xp[uid] == earned for uid, earned in rows)  # granted once: the balance is the one attempt's XP
+
+
 def test_a_captain_double_submitting_sends_one_answer_and_shares_xp_once(
     db: Session, app_engine: Engine, daily_player: User
 ) -> None:
     code, _, table = _live_room(db, daily_player)
     results = race(
         app_engine,
-        *[lambda s: live.answer(s, s.get_one(User, daily_player.id), code, [], None, False, NOW)] * 4,
+        *[
+            lambda s: _then_share(
+                s, live.answer(s, s.get_one(User, daily_player.id), code, [], None, False, NOW)
+            )
+        ]
+        * 4,
     )
-    assert sum(r is None for r in results) == 1, results  # the rest are "already answered"
+    assert sum(isinstance(r, int) for r in results) == 1, results  # the rest are "already answered"
     rows = db.scalars(select(Attempt).where(Attempt.mode == "live")).all()
     assert sorted(a.user_id for a in rows) == sorted(u.id for u in table)
     assert all(a.lp == 0 for a in rows)  # a table's answer never moves anyone's rank
@@ -445,10 +498,12 @@ def test_closing_a_question_while_the_captain_answers_never_loses_or_doubles_it(
     code, host, table = _live_room(db, daily_player)
     results = race(
         app_engine,
-        lambda s: live.advance(s, s.get_one(User, host.id), code, NOW),
-        lambda s: live.answer(s, s.get_one(User, daily_player.id), code, [], None, False, NOW),
+        lambda s: _then_share(s, live.advance(s, s.get_one(User, host.id), code, NOW)),
+        lambda s: _then_share(
+            s, live.answer(s, s.get_one(User, daily_player.id), code, [], None, False, NOW)
+        ),
     )
-    answered = results[1] is None
+    answered = isinstance(results[1], int)
     rows = db.scalars(select(Attempt).where(Attempt.mode == "live")).all()
     assert len(rows) == (len(table) if answered else 0), results
 
@@ -505,6 +560,8 @@ def test_a_rehearsal_sharing_xp_never_deadlocks_with_the_nightly_streak_job(
         return streaks.nightly(session, NOW)
 
     results = race(
-        app_engine, lambda session: live.end(session, session.get_one(User, host.id), s.code, NOW), nightly
+        app_engine,
+        lambda session: _then_share(session, live.end(session, session.get_one(User, host.id), s.code, NOW)),
+        nightly,
     )
     assert not any(isinstance(r, Exception) for r in results), results
