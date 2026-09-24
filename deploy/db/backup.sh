@@ -9,7 +9,7 @@ dump() {
   file="/backups/${PGDATABASE}-$(date +%Y%m%d-%H%M%S)-$1.dump"
   pg_dump --format=custom --file="$file.part" || { rm -f "$file.part"; return 1; }
   mv "$file.part" "$file" || return 1
-  if [ -n "${HEARTBEAT_URL:-}" ]; then wget -q -T 10 -O /dev/null "$HEARTBEAT_URL" || true; fi
+  if [ -n "${HEARTBEAT_URL:-}" ]; then wget -q -T 10 -O /dev/null "$HEARTBEAT_URL" || echo "backup: heartbeat ping failed" >&2; fi
   echo "backup: $file"
 }
 

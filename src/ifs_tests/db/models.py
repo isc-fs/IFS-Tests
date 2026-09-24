@@ -40,7 +40,7 @@ class Base(DeclarativeBase):
 
 
 class Setting(Base):
-    """Tunable numbers (points, time budgets, throttles) kept out of the code."""
+    """Server-side key/value store. Holds the hint salt (services/hints.salt)."""
 
     __tablename__ = "settings"
 

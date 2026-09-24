@@ -264,7 +264,10 @@ def grant(
 
 def stored(db: DB, user_id: int, a: Attempt) -> Grant:
     """An attempt scored earlier, as a reload shows it: its XP and LP, and where the player stands now."""
-    xp, points = db.execute(select(User.xp, User.rank_points).where(User.id == user_id)).one()
+    row = db.execute(select(User.xp, User.rank_points).where(User.id == user_id)).one_or_none()
+    if row is None:  # deleted since this request's answer was saved
+        raise UserError("This account no longer exists.", 401)
+    xp, points = row
     return Grant(xp=a.xp, lp=a.lp, points=points, level=rules.account_level(xp)[0])
 
 
