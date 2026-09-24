@@ -198,3 +198,15 @@ These look like bugs to users and reviewers. They aren't; point people here or t
 - **Symptom:** in a live quiz, screens take several seconds to follow the host.
 - **Cause:** screens learn about changes from the Server-Sent Events stream `GET /api/live/sessions/{code}/events`; a proxy that buffers responses holds the events back, and the screens fall back to polling every 5 seconds.
 - **Fix:** the app sends `X-Accel-Buffering: no` on that stream (`events` in `src/ifs_tests/api/routes/live.py`), and `deploy/nginx/quiz.conf` gives the stream its own location with `proxy_buffering off`. If you put a different proxy or CDN in front, turn off response buffering for that path. The stream also sends a comment every 15 seconds and ends after 300 seconds (the browser reconnects), so proxy read timeouts of 60 seconds or more are fine.
+
+### A deploy fails with `FAIL readyz` and rolls back
+
+- **Symptom:** `deploy.sh` prints `application not healthy after 1m30s`, then `FAIL readyz 200 (database reachable as app_rt)`, then `rolling back to <previous>`. `curl -s https://<host>/readyz` answers 503 `{"status":"unavailable"}`, and the api's log has `readyz: database unavailable: ...` (the scheduler's: `database unavailable: ...`).
+- **Cause:** the app can't open a connection as `app_rt`. Almost always `APP_PASSWORD` in `/srv/quiz/<env>/.env` doesn't match the role's password in Postgres (an edit to `.env`, or a [rotation](runbook.md#7-secrets-rotation) done in only one of the two places); otherwise the `db` container is down.
+- **Fix:** make the two agree (`\password app_rt` in the superuser shell, or correct the `.env`) and deploy the tag again. The rollback uses the same `.env`, so until then the previous tag fails the same way. Before `/readyz` existed this deploy passed its smoke test and every request returned 500.
+
+### `restore.sh` refuses a dump "which <tag> doesn't know"
+
+- **Symptom:** `deploy/restore.sh <env> <file>` stops with `<file> is at revision NNNN, which <tag> doesn't know: deploy a release that has it first. Nothing changed`.
+- **Cause:** the dump was taken on a newer release than the one deployed (typically after a roll back, or a prod dump restored on a staging that runs an older tag). The deployed image can't migrate a schema it doesn't know, and a newer schema isn't promised to work with an older release ([data-model.md](data-model.md#expandcontract)).
+- **Fix:** deploy the release the dump was taken on, or a later one, then restore; or pick an older dump. Nothing was stopped or changed.

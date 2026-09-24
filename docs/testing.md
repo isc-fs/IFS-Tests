@@ -30,7 +30,7 @@ uv run pytest -k "mock and not race" -x                     # by name, stop at t
 uv run pytest --lf                                          # only what failed last time
 ```
 
-Tests that need the database are marked `integration` (a `pytestmark` at the top of every file in `tests/api/` and `tests/integration/`, except `tests/api/test_app.py`, which builds apps without a database).
+Tests that need the database are marked `integration` (a `pytestmark` at the top of every file in `tests/api/` and `tests/integration/`, except `tests/api/test_app.py`, which builds apps without a database; its one test of `/readyz` against Postgres is marked on its own).
 
 **Without Docker** the database tests are **skipped, not failed**, locally: the run ends with something like `539 passed, 286 skipped`. Check for "skipped" before trusting a green run. In CI (`CI` is set) the same situation fails the run instead (`postgres_url` in `tests/conftest.py`).
 
@@ -70,7 +70,7 @@ Pure functions from `src/ifs_tests/domain/` (and a few pure helpers elsewhere), 
 | `test_rank_rules.py` | Divisions, LP per answer, the cushion, placement, the season reset, that blind guessing and "I'm not sure" never pay, and `test_pacing_matches_the_design` (below) |
 | `test_account_xp.py`, `test_daily_rules.py`, `test_mock_rules.py`, `test_live_rules.py`, `test_leaderboard_rules.py`, `test_hints.py` | The rules of each mode |
 | `test_account_rules.py`, `test_passwords.py`, `test_csrf.py` | Email and display-name rules, lockout, password policy, the CSRF guard |
-| `test_scheduler.py` | Jobs run once per Madrid day, including daylight-saving days |
+| `test_scheduler.py` | Jobs run once per Madrid day, including daylight-saving days; the heartbeat is only touched while the database answers |
 | `test_client.py`, `test_normalize.py`, `test_learning_content.py` | The FS-Quiz client (with a fake transport, never the network), bank normalisation, the learning content file |
 | `test_docs.py` | Every relative link in `README.md`, `AGENTS.md` and `docs/` resolves, and every repository path a doc names in backticks exists (ADRs exempt from the second check) |
 

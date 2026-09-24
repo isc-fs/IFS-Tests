@@ -381,6 +381,8 @@ Retention: alumni and disabled accounts are deleted 365 days after `left_at`; th
 
 Example: 0014 added `account_xp` and left `xp` in place, because the release before ADR 0007 still wrote lifetime XP there during the deploy; the model maps the old column as `legacy_xp` so SQLAlchemy keeps it in the schema. `tests/integration/test_migrations.py` checks upgrade → downgrade → upgrade and that the models and migrations produce the same schema.
 
+The other direction isn't promised: a newer release may not run on an older schema. So `deploy/restore.sh` migrates an older dump up to the deployed release before it starts the app, and refuses a dump from a newer release than the deployed one. Grants a migration makes beyond the defaults in `deploy/db/roles.sql` (0002 on `audit_log`, 0016 on `purge_audit_log`) are part of every dump, so a restore brings them back.
+
 ### Pending contract steps
 
 - Drop `users.xp` (attribute `legacy_xp`) and remove it from the model: planned in `feat/20-launch` (`.github/roadmap.yaml`).

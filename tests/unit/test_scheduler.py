@@ -1,9 +1,11 @@
 from datetime import UTC, date, datetime, timedelta
 from datetime import time as clock_time
+from pathlib import Path
 
 import pytest
 
-from ifs_tests.scheduler import Job, due, tick
+from ifs_tests import scheduler
+from ifs_tests.scheduler import Job, beat, due, tick
 
 JOB = Job("maintenance", clock_time(3, 0), lambda now: None)
 
@@ -47,3 +49,17 @@ def test_runs_exactly_once_on_daylight_saving_days(day: datetime) -> None:
     for minute in range(0, 24 * 60, 10):
         tick([job], last_run, day.replace(tzinfo=UTC) + timedelta(minutes=minute))
     assert len(calls) == 1
+
+
+def test_heartbeat_only_while_the_database_answers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    heartbeat = tmp_path / "heartbeat"
+    monkeypatch.setattr(scheduler, "HEARTBEAT", heartbeat)
+
+    def down() -> None:
+        raise ConnectionError("password authentication failed")
+
+    assert not beat(down) and not heartbeat.exists()
+    assert "password authentication failed" in caplog.text
+    assert beat(lambda: None) and heartbeat.exists()

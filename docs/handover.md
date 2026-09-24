@@ -115,7 +115,7 @@ Nothing secret is ever committed: CI runs gitleaks and GitHub push protection is
    - [ ] Deploy the latest `dev` image to staging ([runbook 2](runbook.md#2-deploy)).
    - [ ] Read the logs and check the nightly jobs ran ([runbook 5.1–5.2](runbook.md#51-logs)).
    - [ ] Run the maintenance by hand ([runbook 5.3](runbook.md#53-run-the-maintenance-by-hand)).
-   - [ ] Do a restore drill: a prod dump (or a staging dump if prod isn't live) into staging ([runbook 4](runbook.md#4-backups-and-restore)).
+   - [ ] Do a restore drill: a prod dump (or a staging dump if prod isn't live) into staging ([runbook 4.1](runbook.md#41-restore-drill)).
    - [ ] Roll staging back to its previous tag and forward again ([runbook 3](runbook.md#3-roll-back)).
 5. **Ship a small change** end to end: a `fix/` or `feat/` branch from `dev`, a pull request to `dev`, CI green, deploy to staging.
 

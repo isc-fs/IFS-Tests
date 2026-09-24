@@ -29,6 +29,13 @@ services:
     <<: *app
     mem_limit: 512m
     cpus: 1.0
+    # /readyz queries the database as app_rt, so a wrong APP_PASSWORD or a database outage shows as unhealthy
+    # (the image's own check, /healthz, only says the process is up).
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/readyz', timeout=2)"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
     volumes:
       - media:/data/media
       - fsquiz:/data/fsquiz
@@ -46,6 +53,7 @@ services:
       IFS_DB_MAX_OVERFLOW: "0"
     mem_limit: 256m
     cpus: 0.5
+    # The heartbeat is only touched while the database answers (scheduler.beat).
     healthcheck:
       test: ["CMD", "python", "-c", "import os, sys, time; sys.exit(time.time() - os.path.getmtime('/tmp/scheduler-heartbeat') > 120)"]
       interval: 30s

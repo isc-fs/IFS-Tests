@@ -1,18 +1,24 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 from starlette.staticfiles import StaticFiles
 
 from .. import __version__
 from ..auth.passwords import HashingBusy
 from ..services.errors import UserError
 from ..settings import Settings, get_settings
+from .deps import Db
 from .routes import admin, auth, daily, leaderboard, learning, live, me, mock, practice, review
 from .security import CSRFGuard, SecurityHeaders
+
+log = logging.getLogger(__name__)
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -64,6 +70,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def healthz() -> dict[str, str]:
         # Process-only on purpose: uptime probes must not wake or load the database.
         return {"status": "ok", "version": __version__}
+
+    @app.api_route("/readyz", methods=["GET", "HEAD"], include_in_schema=False)
+    def readyz(db: Db) -> JSONResponse:
+        # Through the app's own role and pool, so a wrong password or a dead database shows up here.
+        try:
+            db.execute(text("SELECT 1"))
+        except SQLAlchemyError as e:
+            log.warning("readyz: database unavailable: %s", getattr(e, "orig", None) or e)
+            return JSONResponse({"status": "unavailable"}, status_code=503)
+        return JSONResponse({"status": "ok"})
 
     methods = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"]
     for prefix in ("/api", "/auth"):
