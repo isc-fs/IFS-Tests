@@ -1,79 +1,272 @@
 # Architecture
 
-How the IFS-Tests platform (MingoQuiz, as users know it) is built and why. Decisions are recorded in [`adr/`](adr/); this page is the map.
+How MingoQuiz is built, for someone about to change it. Decisions and their reasons are in [`adr/`](adr/); the rules of the game (rank, LP, XP, streaks, leaderboards) are in [game-rules.md](game-rules.md); tables and migrations in [data-model.md](data-model.md); the HTTP API in [api.md](api.md); operating the server in the [runbook](runbook.md).
 
 ## Overview
 
-```
-Internet ──443──> Nginx (shared on the team server, TLS, rate limit on /auth/)
-                    │ quiz.iscracingteam.com            quiz-staging.iscracingteam.com
-                    ▼                                    ▼
-   compose project quiz-prod                        compose project quiz-staging
-   ├─ api        FastAPI + built SPA (one container, one origin)
-   ├─ scheduler  same image: daily questions at 00:01, nightly clean-up and XP upkeep at 03:00
-   ├─ backup     nightly pg_dump, 14 days (postgres image)
-   └─ db         PostgreSQL (internal network only)
-```
+One Python service (FastAPI) serves both the JSON API and the React single-page app from the same origin, backed by one PostgreSQL database. A second container runs the same image as a scheduler for the nightly jobs. Everything runs with Docker Compose on the team's Hetzner server, behind the server's shared Nginx ([ADR 0001](adr/0001-fastapi-modular-monolith.md), [ADR 0003](adr/0003-self-hosted-on-team-server.md)).
 
-- **One service, one origin.** FastAPI serves `/api/*` (JSON, OpenAPI), `/auth/*`, `/media/*` (mirrored FS-Quiz images), `/healthz` and the React SPA. No CORS, simple cookies. ([ADR 0001](adr/0001-fastapi-modular-monolith.md))
-- **Accounts:** invite link + password (Argon2id), opaque server-side sessions. ([ADR 0002](adr/0002-invite-and-password-auth.md))
-- **Personal data:** export, real deletion, alumni deleted a year after leaving, two-year audit log (`services/privacy.py`). ([ADR 0006](adr/0006-personal-data.md))
-- **Hosting:** Docker Compose on the team's Hetzner server, deployed by a maintainer with `deploy/deploy.sh`. ([ADR 0003](adr/0003-self-hosted-on-team-server.md))
-
-## Code layout
-
-```
-src/ifs_tests/
-  bank/          FS-Quiz client, mirror, normalisation, topic tagging, image conversion, a made-up sample bank
-  domain/        rules as pure functions: accounts, answer keys, grading, daily question, mock quiz, leaderboard
-  db/            SQLAlchemy models and sessions
-  services/      use cases: queries, transactions, locking, audit
-  auth/          password hashing and policy, tokens, server-side sessions
-  api/           FastAPI app, security headers and CSRF guard, routes, request/response schemas
-  scheduler.py   nightly jobs for the scheduler service
-  cli.py         ifs-tests <command>
-migrations/      Alembic
-web/             Vite + React + TypeScript SPA
-deploy/          production compose files, deploy/restore scripts, Nginx snippet
+```mermaid
+flowchart LR
+    B["Browser<br/>React SPA"] -->|"HTTPS :443"| N["Shared Nginx on the team server<br/>TLS, HSTS, rate limits<br/>deploy/nginx/quiz.conf"]
+    N -->|"proxy network :8000"| A
+    subgraph P["Compose project quiz-prod (quiz-staging is identical)"]
+        A["api<br/>uvicorn, 2 workers<br/>/api, /auth, /media, /healthz, SPA"]
+        S["scheduler<br/>ifs-tests scheduler<br/>00:01 daily questions<br/>03:00 maintenance"]
+        K["backup<br/>pg_dump at 03:30<br/>kept 14 days"]
+        D[("db<br/>PostgreSQL 17<br/>internal network only")]
+        A --> D
+        S --> D
+        K --> D
+    end
+    A --- V1[("media volume<br/>question images")]
+    A --- V2[("fsquiz volume<br/>FS-Quiz mirror")]
+    K --- V3[("backups volume")]
 ```
 
-Rules for contributors:
-- **Domain code has no I/O.** It receives data and the current time as arguments, so it's unit-testable without a database.
-- **Authorization happens at the API boundary** through FastAPI dependencies (`current_member`, `require_reviewer`, `require_admin`); services receive the acting user. The user ID always comes from the session, never from the request body.
-- **Errors users should see are `AccountError`s** raised by services; one exception handler turns them into JSON (`detail`, plus `fields` for form fields).
-- **Answer keys never leave the server** except in the response to the user's own submission. Response models are explicit Pydantic schemas; a test scans them.
-- **Migrations are forward-only and expand/contract**, so the previous release keeps working during a deploy.
+- **One origin.** FastAPI serves `/api/*` (JSON), `/auth/*` (sign-in, registration, resets), `/media/*` (question images), `/assets/*` (the built SPA's hashed files), `/healthz`, and `index.html` for every other GET so the SPA's client-side routes work. No CORS, simple cookies. See `create_app` in `src/ifs_tests/api/app.py`.
+- **The database is never exposed.** `db` and `backup` sit only on an internal Docker network; `api` also joins the `proxy` network that Nginx uses. Hardening of the containers is in [security.md](security.md).
+- **Backups:** the `backup` container dumps the database nightly and before every deploy (`deploy/db/backup.sh`); Hetzner also snapshots the whole server. Restores are in the [runbook](runbook.md).
+- **Local development** runs only `db` and `api` (`compose.yaml` at the repository root); there is no scheduler locally, so run `uv run ifs-tests maintenance` when you need the nightly job.
 
-## The rules of the game
+## Code layers
 
-- **Question bank:** `ifs-tests push` loads the mirror (`bank.json` + images) into the database: questions, choices, answer keys (in their own table, never serialised with a question), solutions, quizzes and events. Images become WebP files under 150 KB named by content hash and are served from `/media/`. Re-running skips unchanged questions and flags ones whose official answer changed upstream. A question that needs a missing image is kept but not served.
-- **Grading** (`domain/keys.py`, `domain/grading.py`): single choice = one of the marked options; multi choice = exact set; numbers within `max(half a unit in the key's last decimal, 0.1 %)`, decimal comma or point; lists of numbers separated by `;` or `, ` (in order, except ascending whole numbers, which are sets); ranges `lo-hi`; short text codes compared without case or spaces. Questions with no official answer, drag-sort and free-form answers are not graded automatically: practice shows the official answer instead.
-- **Documents** (`services/questions.py`): each FS-Quiz quiz lists the rulebook, handbook and other documents it was based on; the import keeps those links (not the PDFs, which stay on doc.fs-quiz.eu). Every question shows the documents of the quizzes it came from, newest first, at every level (it is the material of the real quiz, not a training wheel), and flags later editions of those rulebooks and handbooks, since the rules may have changed. Linking rule references to their page needs the PDFs indexed once; that is on the roadmap.
-- **Learning aids** (`domain/hints.py`, `services/hints.py`, `services/learning.py`): formulas and reading per topic beside the question (open on wide screens, folded on phones) and a hint on request, for the levels that still get them (ADR 0004). Practice hints wait in `practice_hints` for the next answer to the question; daily and mock hints are recorded on the attempt.
-- **Practice:** any playable question, as often as you like, for XP only (it never moves the rank); a question already graded this season (in any mode) earns a quarter, at most once a day. A player's answers are scored one at a time (their row is locked), so two tabs can't both claim a first right answer. The next question is random among the ones the player has practised least, optionally by area and topic. Answering returns the official answer and any worked solution; every answer is stored as an attempt.
-- **Daily question** (`domain/daily.py`, `services/daily.py`): one per area (mech, elec, rules) per Madrid day, chosen once under an advisory lock (by the scheduler at 00:01, or by the first visitor). Only graded, playable questions, drawn with a server secret from the 20 least recently used (then least practised) of the area, so tomorrow's can't be worked out from the public bank. A player can't start a daily question that is still to come in their open mock run or live quiz. The question is revealed only when the player starts its clock; one try; the answer is sent by attempt ID, so a retry returns the stored result. Streak = consecutive days with an on-time daily answer, right or wrong.
-- **Mock quiz** (`domain/mock.py`, `services/mock.py`): replay a past quiz in its order, one question at a time. A run tracks the questions it has shown, so hiding a question or its images arriving mid-run doesn't skip or lose anything. Each question's clock starts when it is shown (its real budget, or the default); one left to run out while the player was away is closed as late and wrong. No feedback until the end, then a scored review with the official answers and the last qualifier's result as the bar to beat. One open run per quiz per player; replays of a quiz already run this season earn XP only. The session row is locked while answering, so a double submit moves on once.
-- **Live quiz** (`domain/live.py`, `services/live.py`, `api/routes/live.py`, [ADR 0005](adr/0005-live-quiz.md)): a Technical Director (by position) or admin hosts a session everyone joins with a six-character code or QR code. The host seats players at sub-department tables (automatically or by hand), each with a captain who alone sends the table's answer while the others propose. Every table answers every question, or each question goes to the table owning its topic. Right and wrong show after each question or only at the end; the room's score is the headline. Answers become `live` attempts (×1.5 XP, shared by the table). Screens learn about changes from a Server-Sent Events stream of version numbers and fetch their own view.
-- **Review** (`services/review.py`, reviewers and admins): queues for reported questions, questions FS-Quiz changed, unclassified, not graded and hidden ones. Reviewers fix area and topic (the topic must belong to the area; kept on re-import), hide a question from every mode (today's daily question is replaced for anyone who hasn't started it), or correct its answer (a typed correction can make a reveal-only question gradable). If FS-Quiz changes a question's content, a correction is dropped and the question goes back to the queue, as does a hidden question that changed; if only its images arrive, options and corrections stay. The import locks the questions it rewrites, so a reviewer's change during an import isn't undone. Reviewers don't see the answer to their own live questions (today's daily they haven't answered, questions in their open mock run). Players can report a problem with a question they've answered. Every reviewer action is audited with what changed.
-- **Timing:** the server sets every deadline (the question's real budget, or a default by answer type, clamped to 1–10 minutes) and returns its own clock with it, so the browser's countdown is right even if the device clock is off. Three-second grace; when the countdown reaches zero the browser sends whatever is entered. Late answers are recorded and count as wrong. A daily question left to run out is closed the same way when the player next opens the daily page, or by the nightly job, so closing the tab never dodges a penalty.
-- **Rank and account level** (`domain/rank.py`, `domain/xp.py`, `services/xp.py`, `services/season.py`, [ADR 0007](adr/0007-ranked-lp-and-account-level.md)): two currencies. The rank is rank points in divisions of 100 LP (Mingo I–V, Jefe I–V, DT I–V, then a top title by vertical), moved Elo-style by each answer against the question's rating (daily and mock only; practice and live earn XP only), with stakes growing by division, a cushion and comeback after 3 wrong in a row, placement by position and a soft reset every 1 September; training wheels follow the division. XP only goes up and sets the account level, with first-win, combo, streak and critical bonuses. Both are scored in one locked `grant`. Previously ([ADR 0004](adr/0004-xp-and-levels.md)): one currency. Each answer earns base XP by the question's difficulty (1–5) × mode (practice ½, daily 2, mock 1½) × streak bonus (+5 % a day, up to +50 %). Lifetime XP climbs a ladder, Mingo I–V, Jefe I–V, DT I–V and a top title that depends on the vertical (`250 × n × (n + 1)` XP for level n); each level takes a training wheel away (formulas, reading, hints) and makes wrong answers cost a bigger share of what a right one earns (nothing up to Mingo III, 75 % at the top) — in full for rules questions, capped at the blind-guess break-even for other single-choice questions, halved for multiple choice and quartered for typed answers. "I'm not sure" shows the answer for nothing when used in time. The position on the team chosen at sign-up (Mingo, returning member, Department Head, Technical Director; a job, not an XP level) sets the starting level (Mingo I, Mingo IV, Jefe I, DT I); after sign-up only admins change it, and lifetime XP never drops below its start. Difficulty starts from the answer type and time budget and is recalibrated nightly from success rates once 20 people have answered. Seasons run September–August.
-- **Leaderboard** (`domain/leaderboard.py`, `services/leaderboard.py`): the season's everyone board ranks by current rank points (members who moved LP this season); the others by LP won in daily questions and mock quizzes (it can be negative), summed per active member over this season (from 1 September, Madrid time) or the last 7 Madrid days, today included (a rolling week, not Monday to Sunday). LP belongs to the day the play started: a daily's own day, a mock run's start, so a run begun before midnight on 31 August can't score in two seasons; the rank counts it in the same season. Boards: everyone, and one per area; every answer records the area it was played under, so relabelling a question later moves no LP. Competition ranking with ties (1, 2, 2, 4); the top 50 are shown, plus everyone tied at 50th place; you only appear once you have won or lost LP in the period. Alumni and disabled accounts never appear. People who opted out are left out of the rows, the ranking and the vertical board, but always see their own rank and LP as if they were included, as does anyone outside the top 50. The vertical board shows, for each vertical with at least 3 active members who haven't opted out, the average rank points of the members who played for their rank this season, and participation: the share with a submitted daily answer in the last 7 Madrid days. Opted-out members are left out of the averages because otherwise anyone could subtract the named members' ranks and recover theirs. Members without a vertical count for none.
+```mermaid
+flowchart TD
+    R["api/routes/*<br/>HTTP: paths, request and response schemas,<br/>who may call (dependencies)"] --> S["services/*<br/>use cases: queries, transactions, locks, audit"]
+    R --> PR["api/present.py, api/schemas.py<br/>turn service results into responses"]
+    S --> DM["domain/*<br/>pure rules: no I/O, the clock is an argument"]
+    S --> DB["db/models.py, db/session.py<br/>SQLAlchemy 2"]
+    S --> AU["auth/*<br/>hashing, tokens, sessions"]
+    S --> BK["bank/topics.py, bank/images.py"]
+    CLI["cli.py, scheduler.py"] --> S
+    CLI --> BM["bank/client.py, mirror.py, normalize.py<br/>FS-Quiz mirror (never at request time)"]
+```
 
-FS-Quiz answers are public on fs-quiz.eu. The server guarantees nobody can forge a result, get extra time, replay a daily or read a question before its clock starts; it can't stop someone looking an answer up. The leaderboard is for motivation.
+Rules that keep it maintainable:
+
+- **Domain code has no I/O.** Functions in `domain/` receive data and the current time as arguments, so they are unit-tested with tables of cases and no database.
+- **Services own transactions.** A service function receives the SQLAlchemy session, the acting `User` and `now`, commits what it changes, and raises `UserError` (`services/errors.py`) for anything the user should read. There is no separate repository layer (ADR 0001 mentions one; the code queries SQLAlchemy directly in services).
+- **Authorization happens in FastAPI dependencies** (`api/deps.py`), plus a few checks that need data (a live quiz's host, a table's captain) in the service. The user ID always comes from the session cookie, never from the request.
+- **Responses are explicit Pydantic schemas** (`api/schemas.py`, classes deriving from `Out`), never ORM objects, so nothing leaks by accident. Request bodies derive from `In`, which forbids unknown fields and NUL characters.
+
+## Module map
+
+Everything under `src/ifs_tests/` (empty `__init__.py` files left out).
+
+| Module | Owns |
+|---|---|
+| `__init__.py` | The package version (from the installed package metadata), shown by `/healthz` and the OpenAPI document |
+| `settings.py` | Configuration from `IFS_*` environment variables or `.env`: environment, database URL, public origin, paths; cookie name and CSRF origins derived from them; refuses to start staging or prod without `https://` |
+| `cli.py` | The `ifs-tests` command: `mirror`, `stats`, `show`, `topics`, `push`, `openapi`, `create-admin`, `invite`, `reset-link`, `maintenance`, `scheduler` |
+| `scheduler.py` | A minimal daily job runner for the `scheduler` container (Madrid times, heartbeat file for the health check) |
+| **api/** | |
+| `api/app.py` | Builds the FastAPI app: middleware, exception handlers, routers, `/healthz`, 404 for unknown `/api` and `/auth` paths, `/media` and SPA static files |
+| `api/security.py` | `SecurityHeaders` (CSP and other headers on every response) and `CSRFGuard` middleware |
+| `api/deps.py` | Request dependencies: database session `Db`, clock `Now`, `AppSettings`, and the role guards `Member`, `Reviewer`, `Admin` |
+| `api/schemas.py` | Every request and response body; field descriptions end up in the OpenAPI document |
+| `api/present.py` | Turns service results (`Shown`, `Checked`) into `PlayQuestion` and `Feedback` bodies, shared by practice, daily, mock and live |
+| `api/routes/auth.py` | `/auth`: sign in and out, invite and reset lookups, registration, password reset; sets the session cookie |
+| `api/routes/me.py` | `/api/me`: own profile and progress, profile changes, password change, data export, account deletion |
+| `api/routes/admin.py` | `/api/admin`: users, invites, reset links, sessions, alumni, exports and deletion on someone's behalf, audit log, bank summary |
+| `api/routes/practice.py` | `/api/practice`: areas, next question, answer, hint |
+| `api/routes/daily.py` | `/api/daily`: today's status, start, answer, review, hint |
+| `api/routes/mock.py` | `/api/mock`: quiz list, start a run, run state, answer, hint |
+| `api/routes/review.py` | `/api/review` (reviewer queues, question edits, answer corrections, reports) and `/api/questions/{id}/report` (any member) |
+| `api/routes/leaderboard.py` | `/api/leaderboard`: boards by area and period, vertical board |
+| `api/routes/learning.py` | `/api/learning/{topic}`: formulas and reading for a topic |
+| `api/routes/live.py` | `/api/live`: live quiz sessions, hosting, seating, answering, results CSV, the Server-Sent Events stream |
+| **auth/** | |
+| `auth/passwords.py` | Argon2id hashing on a two-thread pool, the password policy, the common-password list (`common_passwords.txt`) |
+| `auth/tokens.py` | 256-bit random tokens and their SHA-256 hashes (sessions, invites, resets) |
+| `auth/sessions.py` | Server-side sessions: create, resolve a cookie to a user (with idle and absolute expiry), end, purge |
+| **bank/** | |
+| `bank/client.py` | Thin, polite FS-Quiz API v2 client (delay between requests, retries, user agent); base URLs for images and documents |
+| `bank/mirror.py` | Mirrors the whole bank to `data/fsquiz/` with a raw-response cache, optionally with images |
+| `bank/normalize.py` | Turns raw FS-Quiz responses into one consistent `bank.json` (see [fsquiz-api.md](fsquiz-api.md) for the quirks) |
+| `bank/topics.py` | First-pass keyword tagging of area and topic; the list of topics per area |
+| `bank/images.py` | Converts images to WebP under 150 KB, named by content hash |
+| `bank/stats.py` | `ifs-tests stats` and `show` reports on the local mirror |
+| `bank/sample/` | A small made-up bank (`bank.json`, `img/`) for tests, CI and fresh dev stacks: `ifs-tests push --sample` |
+| **content/** | |
+| `content/learning.json` | Formulas and "learn more" reading per topic, served by `services/learning.py` |
+| **db/** | |
+| `db/models.py` | Every table (see [data-model.md](data-model.md)), constraint naming, enums for roles, statuses, verticals and positions |
+| `db/session.py` | Engine (pool of 10 + 10 overflow, 10 s timeout, pre-ping) and session factory |
+| **domain/** (pure) | |
+| `domain/accounts.py` | Session expiry, lockout, link validity, last-admin rule, email and display-name cleaning, name skeletons; retention periods |
+| `domain/keys.py` | Parsing FS-Quiz answers into gradable keys (choice, number, numbers, range, text, self) |
+| `domain/grading.py` | Grading an answer against a key, with numeric tolerance |
+| `domain/hints.py` | Generating a hint from the key without giving the answer away |
+| `domain/daily.py` | Madrid day, daily pick, time budgets, lateness and grace, streaks and streak freezes |
+| `domain/mock.py` | Seasons (September to August) and the "bar to beat" |
+| `domain/rank.py` | Rank points, divisions, LP per answer, placement, season reset, training wheels per division |
+| `domain/xp.py` | XP per answer and its bonuses, account level, rested XP, question difficulty |
+| `domain/leaderboard.py` | Periods, competition ranking with ties, the vertical board |
+| `domain/live.py` | Join codes, sub-departments and seating, which table owns a question, speed points |
+| **services/** | |
+| `services/errors.py` | `UserError`: message, HTTP status and per-field messages |
+| `services/accounts.py` | Invites, registration, first admin, sign-in and lockout, password reset and change, profile, admin changes (under `ADMIN_LOCK`), audit helper |
+| `services/privacy.py` | Data export, account deletion, alumni, the nightly retention purge ([ADR 0006](adr/0006-personal-data.md)) |
+| `services/questions.py` | Questions as players see them (options, quiz labels, documents), `check` (grading an answer), and answer secrecy (`running`, `running_for`, `not_running`) |
+| `services/practice.py` | Practice areas, next question, answering |
+| `services/daily.py` | Choosing the day's questions (`ensure_daily`), start, answer, closing abandoned ones |
+| `services/mock.py` | Mock runs: start, advance, time-outs, answer, summary |
+| `services/live.py` | Live quiz sessions end to end, sharing XP after questions close, the results CSV |
+| `services/xp.py` | Scoring one answer in both currencies under the player's row lock (`lock`, `grant`), difficulty recalibration |
+| `services/streaks.py` | Streak days and the nightly streak-freeze job |
+| `services/season.py` | The 1 September rank reset |
+| `services/hints.py` | Hints for practice, daily and mock questions; the `hint_salt` server secret |
+| `services/learning.py` | Learning panels filtered by the player's division |
+| `services/leaderboard.py` | The boards and the vertical board |
+| `services/review.py` | Reviewer queues, search, label and exclusion changes, answer corrections, reports |
+| `services/bank.py` | Loading `bank.json` and images into the database (`import_bank`), the admin bank summary |
+| `services/maintenance.py` | The nightly job: clean-up and every periodic task, in one place |
+
+The web app lives in `web/`: `web/src/routes` (pages), `web/src/components`, `web/src/lib` (API setup, live stream hook, rank and XP helpers) and `web/src/api` (generated client, see [api.md](api.md)).
+
+## Request lifecycle
+
+1. **Nginx** terminates TLS, adds HSTS, rate-limits sign-in and password endpoints, caps connections per address, overwrites `X-Forwarded-For` and proxies to `api:8000` (`deploy/nginx/quiz.conf`). Uvicorn trusts forwarded headers only from `FORWARDED_ALLOW_IPS` (the Nginx container).
+2. **Middleware** (`api/security.py`), outermost first: `SecurityHeaders` adds CSP and the other headers to every response, including rejections; `CSRFGuard` rejects any `POST`, `PUT`, `PATCH` or `DELETE` to `/api/` or `/auth/` that lacks `X-CSRF: 1` or carries a foreign `Origin` (403). Details in [api.md](api.md#authentication-and-csrf).
+3. **Dependencies** (`api/deps.py`) run per request:
+   - `Db` opens a SQLAlchemy session for the request and closes it afterwards.
+   - `Now` is `datetime.now(UTC)`. Every service takes `now` as an argument instead of reading the clock, so tests replace this one dependency (`tests/conftest.py`) to move time.
+   - `current_user` reads the session cookie, resolves it (`auth/sessions.resolve_session`: expired sessions are deleted, `last_seen` is touched at most every 5 minutes, inactive users count as signed out) and then **commits**, so the database connection goes back to the pool before the route waits for a worker thread. Holding it there starved the pool under load.
+   - `Member` answers 401 when nobody is signed in; `Reviewer` (role reviewer or admin) and `Admin` answer 403 for other roles.
+4. **The route** (a plain `def`, so FastAPI runs it in a thread pool) calls one or more service functions and builds the response schema.
+5. **Errors become responses** in `create_app`: `UserError` → its status with `{"detail": ..., "fields": {...}}`; `HashingBusy` → 503 with `Retry-After: 5`; validation errors → 422 without echoing submitted values (they could be passwords); `HTTPException` (from the guards) → FastAPI's `{"detail": ...}`. Anything else is a 500 and a traceback in the container log.
+
+## Background work
+
+The `scheduler` container runs `ifs-tests scheduler` (`cli.py`), which loops every 30 seconds over two jobs (`scheduler.py`):
+
+| Job | When (Europe/Madrid) | What it runs |
+|---|---|---|
+| `daily` | 00:01 | `services/daily.ensure_daily` for the new Madrid day: picks each area's question under an advisory lock. If the job is late, the first visitor of the day triggers the same pick. |
+| `maintenance` | 03:00 | `services/maintenance.run`, the whole nightly clean-up below |
+
+- A job runs at most once per Madrid date. If the process starts after a job's time (a deploy, the server's 04:00 reboot), the job runs once straight away; every job is idempotent, so that is safe.
+- A failing job is logged (`docker compose logs scheduler`) and not retried until the next day.
+- The loop touches `/tmp/scheduler-heartbeat`; the container's health check fails if it is older than 120 seconds.
+- The `backup` container runs its own loop: a dump at 03:30, after maintenance and before the 04:00 reboot.
+- `ifs-tests maintenance` runs the same maintenance job by hand (its help text only mentions sessions and links, but it runs everything).
+
+`maintenance.run` returns a dictionary of counts, which the scheduler logs. Each key:
+
+| Key | Meaning | Done by |
+|---|---|---|
+| `sessions` | Expired or idle sessions deleted | `auth/sessions.purge_expired` |
+| `invites` | Invite links used or expired more than 30 days ago, deleted | `maintenance.run` |
+| `resets` | Reset links used or expired more than 30 days ago, deleted | `maintenance.run` |
+| `dailies_closed` | Daily questions whose clock ran out without an answer, closed as late and wrong (and scored) | `services/daily.close_expired` |
+| `mock_questions_closed` | Mock questions left to run out in abandoned runs, closed the same way; the run stays open | `services/mock.close_expired` |
+| `live_answers_shared` | Live table answers whose XP a crash left unshared, shared now | `services/live.share_pending` |
+| `difficulty_changed` | Questions whose difficulty (1–5) moved after recalibration from first, on-time answers (live answers excluded) | `services/xp.recalibrate` |
+| `ranks_reset` | Players whose rank was reset for the new season (only after 1 September) | `services/season.rollover` |
+| `freezes_used` | Streak freezes spent on a missed day in the last three days | `services/streaks.nightly` |
+| `freezes_earned` | Streak freezes earned for reaching a multiple of 7 days | `services/streaks.nightly` |
+| `alumni_deleted` | Alumni and disabled accounts deleted 365 days after `left_at` | `services/privacy.purge` |
+| `audit_purged` | Audit log entries older than two years deleted | `services/privacy.purge` |
+
+The scoring behind the closing, freeze and reset jobs is described in [game-rules.md](game-rules.md); what an operator should check and when is in [maintenance.md](maintenance.md).
+
+## Live quiz at the system level
+
+A live quiz ([ADR 0005](adr/0005-live-quiz.md), `services/live.py`) is a row in `live_sessions` plus its tables, players, questions, proposals and answers. All state is in Postgres, so a restart or the second uvicorn worker loses nothing.
+
+```mermaid
+stateDiagram-v2
+    [*] --> lobby: host creates it (6-character code)
+    lobby --> open: advance. Questions picked and routed, question 0 opens
+    open --> closed: advance, every expected table answered, or deadline + 3 s passed
+    closed --> open: advance to the next question
+    closed --> finished: advance after the last question
+    lobby --> finished: end
+    open --> finished: end
+    closed --> finished: end
+    finished --> [*]
+```
+
+- **`position`** is the current question (−1 in the lobby) and **`version`** goes up on every change (`_touch`). A question with no deadline (host-paced timing) closes only when the host advances or every table answers.
+- **Screens learn about changes from `GET /api/live/sessions/{code}/events`**, a Server-Sent Events stream that carries only the version number. Each second the stream calls `services/live.refresh`, which also closes a question whose time ran out (a single conditional `UPDATE`, so it can't close a question the host has just opened). When the version changes the browser refetches its own view with `GET /api/live/sessions/{code}`, spread over 600 ms to avoid a burst (`web/src/lib/live.ts`). A comment line every 15 seconds keeps proxies from closing it; the stream ends after 300 seconds and the browser reconnects; screens also poll every 5 seconds in case the stream drops. Nothing but the version travels on the stream, so it can't show anyone more than their own GET.
+- **Host actions carry the step the host's screen showed** (`AdvanceIn`: state and position). If the session has moved on, the request gets 409 instead of skipping a reveal.
+- **Answers:** the captain's `POST .../answer` inserts one `live_answers` row per table and question (`ON CONFLICT DO NOTHING`: a double tap sends one answer) and records who sits at the table in `member_ids`. When every expected table has answered, the question closes.
+- **Sharing XP after close:** `share(session_id)` runs after every commit that can close a question. With feedback after each question it shares closed questions; in a rehearsal (feedback at the end) it waits until the session is finished, so XP moving can't give answers away. It takes one table answer per transaction (`FOR UPDATE SKIP LOCKED`, so concurrent sharers don't collide), locks each member's user row in id order, scores them with `services/xp.grant` in mode `live` (XP only, never LP), writes their `attempts` row and marks the answer `granted`. The nightly `share_pending` catches anything a crash left.
+
+## Concurrency and locking
+
+Two uvicorn workers, many threads and the scheduler all write to the same rows. These conventions keep answers from being scored twice and prevent deadlocks. `tests/integration/test_concurrency.py` and `tests/integration/test_admin_and_job_races.py` race each of them.
+
+| Convention | Where | Why |
+|---|---|---|
+| **One player at a time.** Scoring an answer first takes the player's row lock: `SELECT ... FOR NO KEY UPDATE` on `users`, held until commit. | `services/xp.lock`, called by `grant` and before it by practice, daily, mock and live sharing | Two tabs can't both score a first right answer; combo and bad-run counters move one answer at a time. `NO KEY UPDATE` still lets rows that reference the user (new attempts, sessions) be inserted meanwhile, since their foreign-key checks only need `KEY SHARE`. |
+| **Player, then the thing being answered.** Daily: player row, then the attempt's conditional `UPDATE`. Mock: player row, then the run's row (`FOR UPDATE`). | `services/daily.answer`, `services/mock._session` | The same order as account deletion, so deleting an account and answering can't deadlock. |
+| **Live session, then player rows.** A live action locks the session row (`FOR UPDATE`) first; sharing then locks players one by one in id order. The sender of an answer or proposal is held with `FOR KEY SHARE`. | `services/live._session`, `_still_here`, `_share` | `KEY SHARE` blocks deleting the account while the answer is written, without waiting on the player's scoring lock elsewhere. |
+| **Account deletion:** hosted live sessions (`FOR UPDATE`, id order), then `ADMIN_LOCK`, then the user row (`FOR UPDATE`). | `services/privacy._lock` | The same order as answering and as admin changes. |
+| **Admin changes queue on a Postgres advisory lock**, `pg_advisory_xact_lock(ADMIN_LOCK)` with `ADMIN_LOCK = 7_000_001`, taken before reading who the active admins are. | `services/accounts._active_admin_ids`, used by `update_user`, `privacy._lock`, `mark_alumni` | Two admins demoting or deleting each other can't leave zero admins. An advisory lock rather than locking admin rows, because an admin playing a live quiz has their row locked by sharing. |
+| **The daily pick** takes `pg_advisory_xact_lock(0x1F5DA11)` and re-reads the choice before writing. | `services/daily.ensure_daily` | The scheduler and the first visitors of the day get the same question. |
+| **Nightly jobs do one player per transaction** (one attempt, one mock question, one live answer, one player's rank or freezes). | `daily.close_expired`, `mock.close_expired`, `live.share`, `season.rollover`, `streaks.nightly` | The job never holds many player rows at once, so it can't deadlock with a live quiz sharing XP to a room. `privacy.purge` is the exception: its deletions commit together at the end of `maintenance.run`. |
+| **Idempotent writes** use conditional updates and unique indexes: `UPDATE ... WHERE submitted_at IS NULL RETURNING`, `INSERT ... ON CONFLICT DO NOTHING` on the partial unique indexes for daily attempts and open mock runs. | daily and mock start and answer, live answers and joins | A double submit or a retry returns the stored result; only the request that recorded the answer grants XP. |
+| **Bank import locks every FS-Quiz question** (`FOR UPDATE`); reviewer edits lock the one question. | `services/bank.import_bank`, `services/review._question` | A reviewer's change during an import isn't overwritten by stale values. |
+| **Sign-in and password checks hash with no transaction open**, then lock the user row (`FOR UPDATE`) only to record the outcome. | `services/accounts.login`, `change_password`, `reset_password`, `privacy.delete_self` | Argon2 takes tens of milliseconds and 19 MiB; holding a connection or lock meanwhile would starve the pool. Parallel wrong guesses still each count. |
+
+When you add a write path that touches a player's scores, call `services/xp.lock` before reading anything the score depends on, keep the orders above, and add a race to `tests/integration/test_concurrency.py`.
+
+## Answer secrecy
+
+FS-Quiz answers are public on fs-quiz.eu, so the goal is narrower: the server never hands someone the answer to a question they still have to answer for score, and nobody can forge a result, get extra time or replay a daily question.
+
+- **Keys live apart.** Correct answers are only in `answer_keys`; nothing that serialises a question touches that table. Responses are explicit schemas.
+- **Answers travel only in responses meant for them:** the player's own submission (practice, daily, mock), a finished mock run, a live question once revealed, and the reviewer tools. `tests/api/test_security.py` walks every response schema in the OpenAPI document and fails if an answer field (`official`, `correct_options`, `feedback`, …) appears anywhere else.
+- **"Running" questions** are defined in one place, `running` in `src/ifs_tests/services/questions.py`: today's daily questions the player hasn't answered, the unanswered questions of their open mock runs, and the open question of a live quiz they play in (every question of it, in a rehearsal that reveals at the end). `running_for` checks one question; `not_running` raises 409. They are used by:
+
+| Place | What happens to a running question |
+|---|---|
+| Practice (`services/practice.py`, `services/hints.practice`) | Not offered as the next question; answering or asking a hint is refused (409) |
+| Review tools (`services/review.detail`) | The reviewer sees the question with `answer_hidden: true` and no official answer or marked options |
+| Daily start (`services/daily.start`) | Refused if the day's question is still to come in the player's mock run or live quiz |
+| Mock summary (`services/mock._summary`) | The official answer and solution are blanked for questions still running elsewhere |
+| Live reveals (`services/live._score`, `api/routes/live.py`) | Blanked the same way, and the tables' answers are hidden |
+| Data export (`services/privacy.export`) | Right/wrong, XP and LP hidden for open mock runs and unfinished live quizzes |
+
+- **Unpredictable draws.** The daily pick, hints and the XP "critical" roll are seeded with a server secret (`hint_salt` in the `settings` table), so nobody can recompute tomorrow's question or run a hint backwards from the public bank.
+- **The clock is the server's.** Deadlines are stored when a question is shown; answers after the deadline plus 3 seconds of grace are recorded as late and wrong; abandoned questions are closed as late by the next visit or the nightly job.
+
+## Question bank pipeline
+
+```mermaid
+flowchart LR
+    F["FS-Quiz API v2"] -->|"ifs-tests mirror --images<br/>1 request/s, cached"| M["data/fsquiz/<br/>raw/ cache, bank.json, img/"]
+    M -->|"ifs-tests push"| I["services/bank.import_bank"]
+    I --> DB[("questions, options, keys,<br/>solutions, quizzes, events, documents")]
+    I --> MD["media dir<br/>WebP, content-hashed"]
+    DB -->|"nightly"| R["difficulty recalibration"]
+    RV["reviewers"] -->|"labels, exclusions, corrections"| DB
+```
+
+- **Mirror** (`bank/mirror.py`, `bank/client.py`): one call lists every quiz, one call per quiz returns its questions; raw responses are cached so re-runs fetch only what is missing. `normalize.py` fixes the API's inconsistencies ([fsquiz-api.md](fsquiz-api.md)). Be polite: mirror only when new quizzes are published. On the server, `deploy/refresh-bank.sh <env>` runs mirror and push with the deployed image.
+- **Push** (`services/bank.import_bank`): upserts events, quizzes and documents, then each question. Answers are parsed into keys by `domain/keys.py`; area and topic come from `bank/topics.py` keyword tagging unless a reviewer has confirmed them (`labels_reviewed`). Images become WebP files of at most 150 KB (longest side at most 1600 px) named by content hash under `IFS_MEDIA_DIR`, served from `/media/` with a one-year immutable cache. The import writes a `bank.import` audit entry with its counts.
+- **Re-import rules.** A question is skipped when its content hash (type, text, time, answers, images, solutions) is unchanged and its images and solution images are all present. If only images were missing, they are filled in and options, keys and reviewer corrections stay. If the content changed: labels are re-tagged (unless reviewed), options and key are rewritten, any reviewer correction is dropped, difficulty goes back to its starting value, and `key_changed_at` is set when the official answer changed, a correction was dropped or the question was hidden, which puts it back in the reviewers' "changed" queue. A question missing an image is kept but not playable until the image arrives.
+- **Difficulty** starts from the kind of answer and the real quiz's time budget (`domain/xp.difficulty`) and, once 20 people have answered, is pulled towards their success rate by the nightly job (`services/xp.recalibrate`). Only each person's first on-time answer counts; live answers are excluded.
 
 ## Environments
 
-| | Where | Database | How it's updated |
-|---|---|---|---|
-| local | `docker compose up --build` or `uv run uvicorn` + `npm run dev` | local container | — |
-| staging | team server, `quiz-staging` | own container | `deploy.sh staging <sha>` |
-| prod | team server, `quiz-prod` | own container | `deploy.sh prod vX.Y.Z` |
+| | Where | Database | Scheduler | How it changes |
+|---|---|---|---|---|
+| local | `docker compose up --build` (repository root), or `uv run uvicorn ifs_tests.api.app:app --reload` plus `npm run dev` in `web/` (Vite proxies `/api`, `/auth`, `/media`, `/healthz` to port 8000) | `db` container, published on `127.0.0.1:55432` | none: run `uv run ifs-tests maintenance` by hand | your working tree |
+| test | `uv run pytest`: unit tests without a database; API and integration tests against a throwaway Postgres started by testcontainers (needs Docker) | throwaway | called directly by tests | — |
+| CI | GitHub Actions (`.github/workflows/ci.yml`): lint, types, tests with coverage gates, stale OpenAPI or client check, web checks, Playwright against the compose stack, image checks, shellcheck, gitleaks, dependency review; CodeQL separately | throwaway | — | every pull request and push to `dev`/`main` |
+| staging | team server, compose project `quiz-staging`, `quiz-staging.iscracingteam.com` | own container | yes | `deploy/deploy.sh staging sha-<commit>` (image published on every push to `dev`) |
+| prod | team server, compose project `quiz-prod`, `quiz.iscracingteam.com` | own container | yes | `deploy/deploy.sh prod vX.Y.Z` (image published on a `v*` tag) |
 
-Setup, deploys, rollbacks, backups and restores are step by step in the [runbook](runbook.md).
+`IFS_ENV` is one of `local`, `test`, `staging`, `prod`. In staging and prod the OpenAPI document and `/api/docs` are switched off and the public origin must be `https://`. CI never deploys: a maintainer runs `deploy.sh` on the server (see the [runbook](runbook.md)).
 
 ## Targets
 
-- p95 < 300 ms for start/submit/practice, < 400 ms for the leaderboard.
-- Initial JavaScript ≤ 180 KB gzipped (CI fails above 200 KB).
+Targets set at design time. The latency and availability figures have not been measured yet: the load test is part of `feat/20-launch` on the roadmap.
+
+- p95 latency under 300 ms for start, submit and practice requests, under 400 ms for the leaderboard.
+- JavaScript under 180 KB gzipped, counting every script the build writes to `dist/assets` (`size-limit` in `web/package.json`; `npm run size` fails CI above it).
 - Availability 99.5 % per month from September to June.
-- Backups: nightly dumps kept 14 days + Hetzner daily snapshots. Restore target: 2 hours.
+- Backups: nightly dumps kept 14 days, plus Hetzner's daily snapshots. Restore target: 2 hours.
