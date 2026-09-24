@@ -628,6 +628,9 @@ class ReviewQuestion(BaseModel):
     answer_hidden: bool = Field(
         description="The reviewer's own live question: answers withheld until answered"
     )
+    quiz_notes: list[str] = Field(
+        description="FS-Quiz's notes on the quizzes it appeared in, e.g. that a question was later removed"
+    )
 
 
 class ReviewPatch(In):

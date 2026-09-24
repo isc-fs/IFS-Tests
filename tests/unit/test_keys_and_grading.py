@@ -22,6 +22,11 @@ def ans(*texts: str, correct: bool = True) -> list[dict[str, Any]]:
         ("input", "-0.5", "number"),
         ("input", "63.4, 110.8", "numbers"),
         ("input", "0,98; 156,9", "numbers"),
+        ("input", "118, 122", "numbers"),
+        ("input", "580000, 129", "numbers"),
+        ("input", "29,87, 133,86, 35,352", "numbers"),
+        ("input", "388,8", "number"),
+        ("input", "118 or 122", "number"),
         ("input", "5.800; 14.768; 30.750", "numbers"),
         ("input", "1-2-3", "numbers"),
         ("input", "70-80", "range"),
@@ -40,6 +45,59 @@ def ans(*texts: str, correct: bool = True) -> list[dict[str, Any]]:
 def test_real_key_formats(qtype: str, text: str, kind: str) -> None:
     key = build_key(qtype, ans(text))
     assert key is not None and key["kind"] == kind
+
+
+# A comma and a space separate values; a bare comma between digits is a decimal comma.
+@pytest.mark.parametrize(
+    ("text", "values"),
+    [
+        ("1, 7", [1, 7]),
+        ("560, 30", [560, 30]),
+        ("118, 122", [118, 122]),
+        ("580000, 129", [580000, 129]),
+        ("70,79, 4,52", [70.79, 4.52]),
+        ("1125000, 3657,5, 119", [1125000, 3657.5, 119]),
+    ],
+)
+def test_a_comma_and_a_space_separate_values(text: str, values: list[float]) -> None:
+    key = build_key("input", ans(text))
+    assert key is not None and key["kind"] == "numbers"
+    assert [v["v"] for v in key["accept"][0]["values"]] == values
+    assert number(text) is None
+
+
+@pytest.mark.parametrize(("text", "value"), [("388,8", 388.8), ("64,107", 64.107), ("1 000", 1000.0)])
+def test_a_bare_comma_is_a_decimal_comma(text: str, value: float) -> None:
+    n = number(text)
+    assert n is not None and n["v"] == value
+
+
+@pytest.mark.parametrize(
+    ("key_text", "given", "ok"),
+    [
+        ("560, 30", "560; 30", True),
+        ("560, 30", "560, 30", True),
+        ("560, 30", "560.3", False),
+        ("580000, 129", "580000; 129", True),
+        ("580000, 129", "580000.129", False),
+        ("118 or 122", "118", True),
+        ("118 or 122", "122", True),
+        ("118 or 122", "120", False),
+        ("3.8-3.9 or 4.1-4.2", "4.15", True),
+        ("Qxc8 or Qxd8", "qxd8", True),
+    ],
+)
+def test_pairs_and_alternatives(key_text: str, given: str, ok: bool) -> None:
+    assert grade(build_key("input", ans(key_text)), value=given) is ok
+
+
+def test_a_choice_question_with_a_single_option_is_not_graded() -> None:
+    assert build_key("single-choice", ans("Upload is not supported (This answer is correct)")) == {
+        "kind": "self"
+    }
+    assert build_key("multi-choice", ans("19.5-19.7")) == {"kind": "self"}
+    assert answer_kind("single-choice", {"kind": "self"}) == "choice-one"
+    assert display("single-choice", ans("19.5-19.7")) == "19.5-19.7"
 
 
 def test_no_correct_answer_means_no_key() -> None:

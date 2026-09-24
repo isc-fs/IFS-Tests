@@ -2217,6 +2217,12 @@ export type ReviewQuestion = {
      * The reviewer's own live question: answers withheld until answered
      */
     answer_hidden: boolean;
+    /**
+     * Quiz Notes
+     *
+     * FS-Quiz's notes on the quizzes it appeared in, e.g. that a question was later removed
+     */
+    quiz_notes: Array<string>;
 };
 
 /**

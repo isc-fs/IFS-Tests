@@ -17,12 +17,15 @@ from ..db.models import (
     AnswerOption,
     Attempt,
     Question,
+    Quiz,
+    QuizQuestion,
     Report,
     User,
 )
 from ..domain import keys
 from .accounts import audit
 from .errors import UserError
+from .mock import labels
 from .questions import running_for
 
 Queue = Literal["all", "reports", "changed", "unclassified", "ungraded", "excluded"]
@@ -95,6 +98,8 @@ class Detail:
     right: int
     # The reviewer is playing this question right now (today's daily or an open mock run): answers withheld.
     answer_hidden: bool
+    # FS-Quiz's notes on the quizzes it appeared in ("Question 3 was later removed"), each with its quiz.
+    quiz_notes: list[str]
 
 
 def _question(db: DB, question_id: int) -> Question:
@@ -109,7 +114,9 @@ def detail(db: DB, reviewer: User, question_id: int, now: datetime) -> Detail:
     if q is None:
         raise UserError("That question doesn't exist.", 404)
     options = db.scalars(
-        select(AnswerOption).where(AnswerOption.question_id == q.id).order_by(AnswerOption.position)
+        select(AnswerOption)
+        .where(AnswerOption.question_id == q.id, AnswerOption.retired.is_(False))
+        .order_by(AnswerOption.position)
     ).all()
     reports = db.execute(
         select(Report, User.display_name)
@@ -123,9 +130,16 @@ def detail(db: DB, reviewer: User, question_id: int, now: datetime) -> Detail:
         )
     ).one()
     hidden = running_for(db, reviewer.id, q.id, now)
-    return Detail(
-        q, db.get(AnswerKey, q.id), list(options), [(r, n) for r, n in reports], answered, right, hidden
-    )
+    noted = db.scalars(
+        select(Quiz)
+        .join(QuizQuestion, QuizQuestion.quiz_id == Quiz.id)
+        .where(QuizQuestion.question_id == q.id, Quiz.information.is_not(None))
+        .order_by(Quiz.year.desc(), Quiz.id)
+    ).all()
+    names = labels(db, list(noted))
+    notes = [] if hidden else list(dict.fromkeys(f"{names[z.id]}: {z.information}" for z in noted))
+    key = db.get(AnswerKey, q.id)
+    return Detail(q, key, list(options), [(r, n) for r, n in reports], answered, right, hidden, notes)
 
 
 def _serve(q: Question) -> None:
@@ -180,9 +194,13 @@ def set_answer(
     if key is None:
         raise UserError("That question has no answer record.", 409)
     choices = db.scalars(
-        select(AnswerOption).where(AnswerOption.question_id == q.id).order_by(AnswerOption.position)
+        select(AnswerOption)
+        .where(AnswerOption.question_id == q.id, AnswerOption.retired.is_(False))
+        .order_by(AnswerOption.position)
     ).all()
-    if choices:
+    if q.type in ("single-choice", "multi-choice"):
+        if len(choices) < 2:
+            raise UserError("A question with a single option can't be graded.", 409)
         picked = [o for o in choices if o.id in set(options or [])]
         if not picked or len(picked) != len(set(options or [])):
             raise UserError(

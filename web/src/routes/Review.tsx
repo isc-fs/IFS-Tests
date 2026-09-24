@@ -275,6 +275,16 @@ function Detail() {
           </Notice>
         )}
         {q.images_missing && <Notice tone="error">An image is missing, so players never see this question.</Notice>}
+        {q.quiz_notes.length > 0 && (
+          <div className="quiz-notes">
+            <strong>FS-Quiz's notes on its quizzes</strong>
+            <ul>
+              {q.quiz_notes.map((n) => (
+                <li key={n}>{n}</li>
+              ))}
+            </ul>
+          </div>
+        )}
       </article>
 
       {q.key_changed_at && (
