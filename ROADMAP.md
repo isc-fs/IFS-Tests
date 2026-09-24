@@ -26,9 +26,9 @@ after launch.
 | 1 | Foundations | ✅ done `feat/1-project-scope` · ✅ done `feat/2-fsquiz-client` · ✅ done `feat/3-team-proposal` | `v0.1.0` |
 | 2 | Platform foundation<br><sub>Staging live on the team server, accounts and the question bank in place</sub> | ✅ done `feat/4-platform-skeleton` · ✅ done `feat/5-server-deploy` · ✅ done `feat/6-accounts-auth` · ✅ done `feat/7-bank-push` | `v0.2.0` |
 | 3 | Training MVP<br><sub>One branch per way of answering questions, then the tools around them</sub> | ✅ done `feat/8-practice` · ✅ done `feat/9-daily-question` · ✅ done `feat/10-mock-quiz` · ✅ done `feat/11-admin-taxonomy` · ✅ done `feat/12-leaderboard` · ✅ done `feat/13-xp-levels` · ✅ done `feat/14-learning-aids` · ✅ done `feat/15-mingoquiz` | `v0.3.0` |
-| 4 | Launch | 🔜 planned `feat/16-privacy-account` · 🔜 planned `feat/17-launch` | `v1.0.0` |
-| 5 | Team play<br><sub>Live quiz sessions for team meetings and vertical training (ADR 0005)</sub> | 🔜 planned `feat/18-live-quiz` · 🔜 planned `feat/19-live-tables` · 🔜 planned `feat/20-live-rehearsal` | `v1.1.0` |
-| 6 | After launch _(deferred)_<br><sub>Ideas to prioritise with the team once the MVP is in use</sub> | ⏸ deferred `feat/21-admin-totp` · ⏸ deferred `feat/22-notion-sync` · ⏸ deferred `feat/23-solution-bounty` · ⏸ deferred `feat/24-team-questions` · ⏸ deferred `feat/25-rule-page-links` | `v1.2.0` |
+| 4 | Team play<br><sub>Live quiz sessions for team meetings and vertical training (ADR 0005)</sub> | ✅ done `feat/16-live-quiz` | `v0.4.0` |
+| 5 | Launch | 🔜 planned `feat/17-privacy-account` · 🔜 planned `feat/18-launch` | `v1.0.0` |
+| 6 | After launch _(deferred)_<br><sub>Ideas to prioritise with the team once the MVP is in use</sub> | ⏸ deferred `feat/19-admin-totp` · ⏸ deferred `feat/20-notion-sync` · ⏸ deferred `feat/21-solution-bounty` · ⏸ deferred `feat/22-team-questions` · ⏸ deferred `feat/23-rule-page-links` | `v1.1.0` |
 
 ## Branch diagram
 
@@ -115,34 +115,26 @@ gitGraph
     merge dev tag: "v0.3.0"
     checkout dev
 
-    %% Phase 4 — Launch
-    branch feat/16-privacy-account
-    commit id: "○ Privacy notice, data export and deletion, season rollover, attribution"
+    %% Phase 4 — Team play
+    branch feat/16-live-quiz
+    commit id: "✔ Any TD hosts a session everyone joins with a code; sub-department tables with captains; specialists routing; rehearsal of a full past quiz; speed points; CSV export"
     checkout dev
-    merge feat/16-privacy-account
-    branch feat/17-launch
-    commit id: "○ Load test, restore drill, handover documentation, launch checklist"
-    checkout dev
-    merge feat/17-launch
+    merge feat/16-live-quiz
     checkout main
-    merge dev tag: "v1.0.0"
+    merge dev tag: "v0.4.0"
     checkout dev
 
-    %% Phase 5 — Team play
-    branch feat/18-live-quiz
-    commit id: "○ Any TD hosts a session everyone joins with a code; hand-built tables, one answer per table from its captain, live marking, speed-points toggle, CSV export"
+    %% Phase 5 — Launch
+    branch feat/17-privacy-account
+    commit id: "○ Privacy notice, data export and deletion, season rollover, attribution"
     checkout dev
-    merge feat/18-live-quiz
-    branch feat/19-live-tables
-    commit id: "○ Sub-department tables, proposals to the captain, each question routed to the table that owns its topic, per-topic results"
+    merge feat/17-privacy-account
+    branch feat/18-launch
+    commit id: "○ Load test, restore drill, handover documentation, launch checklist"
     checkout dev
-    merge feat/19-live-tables
-    branch feat/20-live-rehearsal
-    commit id: "○ A full past quiz on real timing, results only at the end against the bar to beat, a per-topic weakness report"
-    checkout dev
-    merge feat/20-live-rehearsal
+    merge feat/18-launch
     checkout main
-    merge dev tag: "v1.1.0"
+    merge dev tag: "v1.0.0"
     checkout dev
 
 ```
