@@ -14,7 +14,7 @@ from ..auth.sessions import create_session, end_all_sessions, end_session
 from ..auth.tokens import new_token, token_hash
 from ..db.models import POSITIONS, ROLES, STATUSES, VERTICALS, AuditLog, Invite, PasswordReset, User
 from ..domain import accounts as rules
-from ..domain import xp as xp_rules
+from ..domain import rank as rank_rules
 from ..domain.live import SUBDEPARTMENTS
 from .errors import UserError
 
@@ -154,7 +154,9 @@ def register(
             vertical=invite.vertical or vertical,
             role=invite.role,
             position=position,
-            xp=xp_rules.floor_for(position),
+            rank_points=rank_rules.placement(position),
+            rank_season=rank_rules.season_of(now),
+            rank_best=rank_rules.division_of(rank_rules.placement(position)),
             created_at=now,
         )
         db.add(user)
@@ -174,7 +176,15 @@ def create_first_admin(db: DB, email: str, display_name: str, password: str, now
     db.rollback()
     hashed = hash_password(password)
     with _unique(db):
-        user = User(email=email, password_hash=hashed, display_name=name, role="admin", created_at=now)
+        user = User(
+            email=email,
+            password_hash=hashed,
+            display_name=name,
+            role="admin",
+            rank_points=rank_rules.placement("mingo"),
+            rank_season=rank_rules.season_of(now),
+            created_at=now,
+        )
         db.add(user)
         db.flush()
         audit(db, user, "user.bootstrap_admin", f"user:{user.id}")
@@ -325,25 +335,45 @@ def update_profile(db: DB, user: User, changes: dict[str, Any]) -> User:
 # Administration
 
 
+ADMIN_LOCK = 7_000_001  # the advisory lock every change to who is an active admin takes first
+
+
 def _active_admin_ids(db: DB, lock: bool = True) -> list[int]:
+    """The active admins. With `lock`, admin changes queue on an advisory lock rather than on the admins' rows:
+    an admin playing in a live quiz has their row locked by it, and that mustn't deadlock an admin action."""
+    if lock:
+        db.execute(select(func.pg_advisory_xact_lock(ADMIN_LOCK)))
     stmt = select(User.id).where(User.role == "admin", User.status == "active").order_by(User.id)
-    return list(db.scalars(stmt.with_for_update() if lock else stmt))
+    return list(db.scalars(stmt))
 
 
 UNKNOWN_POSITION = "Unknown position on the team."
 
 
 def _set_position(db: DB, user: User, position: str) -> None:
-    """A new position moves the starting level; XP only ever goes up to meet it. Done in SQL so XP granted
-    by an answer at the same moment isn't overwritten."""
+    """A new position places them again: a higher one lifts the rank to meet it; a lower one (a correction)
+    takes back the head start the old one gave, keeping what they earned (ADR 0007). Done in SQL so LP from an
+    answer at the same moment isn't overwritten."""
     if position not in POSITIONS:
         raise AccountError(UNKNOWN_POSITION, fields={"position": "Pick where they are on the team."})
+    head_start = rank_rules.placement(user.position) - rank_rules.placement(position)
     user.position = position
-    user.xp = db.execute(
+    placed = rank_rules.placement(position)
+    points = (
+        func.greatest(User.rank_points - head_start, 0)
+        if head_start > 0
+        else func.greatest(User.rank_points, placed)
+    )
+    user.rank_points = db.execute(
         update(User)
         .where(User.id == user.id)
-        .values(position=position, xp=func.greatest(User.xp, xp_rules.floor_for(position)))
-        .returning(User.xp)
+        .values(
+            position=position,
+            rank_points=points,
+            # Placed there, not promoted: their next answer mustn't play the fanfare.
+            rank_best=func.greatest(User.rank_best, rank_rules.division_of(placed)),
+        )
+        .returning(User.rank_points)
     ).scalar_one()
 
 

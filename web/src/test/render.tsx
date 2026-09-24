@@ -45,31 +45,60 @@ export function renderApp(path: string, api: Api) {
   return { router, calls, sent: (key: string) => calls.filter((c) => c.key === key) }
 }
 
-const AIDS: [boolean, boolean, boolean, number][] = [
-  [true, true, true, 0],
-  [true, true, true, 0],
-  [true, true, true, 0],
-  [true, true, true, 5],
-  [true, false, true, 10],
-  [false, false, true, 15],
-  [false, false, true, 20],
-  [false, false, true, 25],
-  [false, false, true, 30],
-  [false, false, true, 35],
-  [false, false, false, 45],
-  [false, false, false, 50],
-  [false, false, false, 55],
-  [false, false, false, 60],
-  [false, false, false, 70],
-  [false, false, false, 75],
+const AIDS: [boolean, boolean, boolean][] = [
+  ...Array(4).fill([true, true, true]),
+  [true, false, true],
+  ...Array(5).fill([false, false, true]),
+  ...Array(6).fill([false, false, false]),
 ]
 /** The ladder as /api/me sends it; the top's title stays hidden until DT V unless `top` is given. */
 export function ladder(top: string | null = null) {
-  return AIDS.map(([formulas, learn_more, hint, penalty], level) => {
-    const tier = (['Mingo', 'Jefe', 'DT', 'Top'] as const)[Math.min(3, Math.floor(level / 5))]
-    const title = tier === 'Top' ? top : `${tier} ${['I', 'II', 'III', 'IV', 'V'][level % 5]}`
-    return { level, tier, title, xp: 250 * level * (level + 1), aids: { formulas, learn_more, hint }, penalty }
+  return AIDS.map(([formulas, learn_more, hint], division) => {
+    const tier = (['Mingo', 'Jefe', 'DT', 'Top'] as const)[Math.min(3, Math.floor(division / 5))]
+    const title = tier === 'Top' ? top : `${tier} ${['I', 'II', 'III', 'IV', 'V'][division % 5]}`
+    return {
+      division,
+      tier,
+      title,
+      points: division * 100,
+      aids: { formulas, learn_more, hint },
+      stakes: 80 + 3 * division,
+    }
   })
+}
+
+/** /api/me's progress for someone at `points` rank points (Mingo II, 37 LP, by default). */
+export function progress(points = 137, account: object = {}, top: string | null = null) {
+  const division = Math.min(Math.floor(points / 100), 15)
+  const step = ladder(top)[division]
+  return {
+    rank: {
+      points,
+      division,
+      title: step.title ?? 'Leyenda',
+      tier: step.tier,
+      lp: points - division * 100,
+      stakes: step.stakes,
+      swing: [16.2, -11.4],
+      miss_streak: 0,
+      aids: step.aids,
+      ladder: ladder(top),
+    },
+    account: {
+      level: 4,
+      xp: 1200,
+      into: 150,
+      needed: 400,
+      next_milestone: 10,
+      combo: 0,
+      first_wins_left: 3,
+      streak: 2,
+      streak_bonus: 5,
+      streak_freezes: 0,
+      rested_xp: 0,
+      ...account,
+    },
+  }
 }
 
 export const MEMBER = {
@@ -81,18 +110,8 @@ export const MEMBER = {
   leaderboard_opt_out: false,
   position: 'mingo',
   xp: 1200,
-  progress: {
-    level: 1,
-    title: 'Mingo II',
-    tier: 'Mingo',
-    level_xp: 500,
-    next_level_xp: 1500,
-    penalty: 0,
-    streak: 2,
-    streak_bonus: 5,
-    aids: { formulas: true, learn_more: true, hint: true },
-    ladder: ladder(),
-  },
+  rank_points: 137,
+  progress: progress(),
 }
 export const ADMIN = { ...MEMBER, id: 1, display_name: 'Chief', role: 'admin' }
 export const signedOut = { 'GET /api/me': { status: 401, body: { detail: 'Sign in first.' } } }

@@ -15,16 +15,25 @@ import { Page } from '../components/Page'
 import { QuestionCard } from '../components/QuestionCard'
 import { queryClient } from '../lib/api'
 import { AREAS } from '../lib/areas'
+import { lp, tenths } from '../lib/rank'
 import { xp } from '../lib/xp'
 
 type Area = 'mech' | 'elec' | 'rules'
 
 const duration = (s: number) => (s % 60 ? `${Math.floor(s / 60)} min ${s % 60} s` : `${s / 60} min`)
 
-function outcome(a: { correct: boolean | null; late: boolean | null; xp: number }): string {
-  if (a.late) return a.xp < 0 ? `Out of time, counted as wrong: ${xp(a.xp)}.` : 'Out of time: no XP.'
-  if (a.correct) return `Correct: ${xp(a.xp)}.`
-  return a.xp < 0 ? `Not this time: ${xp(a.xp)}.` : 'Not this time: no XP.'
+function outcome(a: {
+  correct: boolean | null
+  late: boolean | null
+  passed?: boolean
+  xp: number
+  lp: number
+}): string {
+  const moved = `${lp(a.lp, true)}, ${xp(a.xp)}`
+  if (a.late) return a.correct === null ? 'Out of time: no XP.' : `Out of time, counted as wrong: ${moved}.`
+  if (a.passed) return `You weren't sure: ${moved}.`
+  if (a.correct) return `Correct: ${moved}.`
+  return a.correct === false ? `Not this time: ${moved}.` : `Compare with the official answer: ${moved}.`
 }
 
 function AreaCard({
@@ -105,7 +114,7 @@ function Summary({ result, onDone }: { result?: DailyResult; onDone: () => void 
   return (
     <>
       <p className="lede">
-        {outcome({ ...result, correct: result.feedback.correct })}
+        {outcome({ ...result, correct: result.feedback.correct, passed: result.feedback.passed })}
         {result.streak > 0 && ` Streak: ${result.streak} day${result.streak > 1 ? 's' : ''}.`}
       </p>
       <button type="button" onClick={onDone}>
@@ -129,17 +138,18 @@ export default function Daily() {
 
   if (play) {
     return (
-      <Page title="Daily question" heading={AREAS[play.question.area]} eyebrow="Daily question">
+      <Page title="Daily question" view="play" heading={AREAS[play.question.area]} eyebrow="Daily question">
         <Play play={play} onDone={back} />
       </Page>
     )
   }
   if (review) {
     return (
-      <Page title="Daily question" heading={AREAS[review.question.area]} eyebrow="Today's answer">
+      <Page title="Daily question" view="review" heading={AREAS[review.question.area]} eyebrow="Today's answer">
         <QuestionCard
           question={review.question}
           feedback={review.feedback}
+          preset={review.answer ?? undefined}
           onAnswer={() => {}}
           next={<Summary result={review} onDone={back} />}
         />
@@ -148,17 +158,20 @@ export default function Daily() {
   }
 
   const s = status.data
+  const lpToday = s?.areas.reduce((sum, a) => sum + tenths(a.lp), 0) ?? 0
   return (
-    <Page title="Daily question" eyebrow="One question per area, one try a day">
+    <Page title="Daily question" view="areas" eyebrow="One question per area, one try a day">
       {s && (
         <p className="lede">
           Streak: <strong>{s.streak === 1 ? '1 day' : `${s.streak} days`}</strong> · Today:{' '}
-          <strong>{xp(s.xp_today)}</strong>
+          <strong>
+            {lp(lpToday, true)}, {xp(s.xp_today)}
+          </strong>
         </p>
       )}
       <p className="muted">
-        A right answer in time earns twice the XP of practice, and every day of your streak adds 5 % (up to +50 %). New
-        questions at midnight, Madrid time.
+        The daily questions and mock quizzes move your rank; practice and live quizzes earn XP only. Each day of your
+        streak after the first adds 5 % XP (up to +50 %). New questions at midnight, Madrid time.
       </p>
       <ErrorNotice error={start.error ?? status.error} />
       {s && s.areas.length === 0 && <Notice tone="error">No daily questions yet: the question bank is empty.</Notice>}

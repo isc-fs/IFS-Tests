@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { type ReactNode, useSyncExternalStore } from 'react'
+import { type ReactNode, useState, useSyncExternalStore } from 'react'
 import { topicAidsOptions } from '../api/@tanstack/react-query.gen'
 import type { PlayQuestion } from '../api/types.gen'
 import { useMe } from '../lib/api'
@@ -15,7 +15,11 @@ const useWide = () => useSyncExternalStore(subscribe, () => media()?.matches ?? 
 /** Useful formulas on one side of the question and reading on the other, for the levels that still get them.
  * Open beside the question on wide screens, folded above and below it on narrow ones. */
 export function LearningAids({ question, children }: { question: PlayQuestion; children: ReactNode }) {
-  const aids = useMe().data?.progress?.aids
+  // The aids of the rank when the question opened: a promotion or a drop mid-question mustn't rebuild the card.
+  const current = useMe().data?.progress?.rank.aids
+  const [fixed, setFixed] = useState({ id: question.id, aids: current })
+  if (fixed.id !== question.id || (!fixed.aids && current)) setFixed({ id: question.id, aids: current })
+  const aids = fixed.aids
   const shown = !!aids && (aids.formulas || aids.learn_more)
   const topic = question.topic ?? 'general'
   const { data } = useQuery({ ...topicAidsOptions({ path: { topic } }), enabled: shown, staleTime: Infinity })

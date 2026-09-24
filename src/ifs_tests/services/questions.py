@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlsplit
 
 from sqlalchemy import and_, exists, or_, select, union
@@ -32,6 +32,9 @@ from ..db.models import (
 from ..domain.daily import madrid_day
 from ..domain.grading import grade
 from .errors import UserError
+
+if TYPE_CHECKING:
+    from .xp import Grant
 
 MAX_QUIZ_LABELS = 4
 
@@ -68,9 +71,7 @@ class Checked:
     official: str | None
     correct_options: list[int]
     solutions: list[tuple[str | None, list[str]]]
-    xp: int = 0  # set by the mode that scored the answer
-    level: int | None = None
-    level_up: bool = False
+    score: Grant | None = None  # set by the mode that scored the answer
     passed: bool = False
 
 
@@ -190,7 +191,7 @@ def check(db: DB, q: Question, options: list[int] | None, value: str | None, uns
     )
 
 
-def running(db: DB, user_id: int, now: datetime) -> set[int]:
+def running(db: DB, user_id: int, now: datetime, *, daily: bool = True) -> set[int]:
     """The questions `user_id` still has to answer in a scored mode: today's daily questions, the questions
     of their open mock runs, and the open question (every question, in a rehearsal) of a live quiz they play
     in. Their answers must not reach them another way first."""
@@ -204,7 +205,7 @@ def running(db: DB, user_id: int, now: datetime) -> set[int]:
             *where,
         )
 
-    daily = select(DailyQuestion.question_id).where(
+    today = select(DailyQuestion.question_id).where(
         DailyQuestion.day == day,
         ~answered(DailyQuestion.question_id, Attempt.mode == "daily", Attempt.day == day),
     )
@@ -231,7 +232,7 @@ def running(db: DB, user_id: int, now: datetime) -> set[int]:
             ),
         )
     )
-    return set(db.scalars(union(daily, in_run, in_live)))
+    return set(db.scalars(union(today, in_run, in_live) if daily else union(in_run, in_live)))
 
 
 def running_for(db: DB, user_id: int, question_id: int, now: datetime) -> bool:

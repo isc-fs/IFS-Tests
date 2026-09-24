@@ -11,7 +11,8 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from ifs_tests.db.models import Attempt, User
-from ifs_tests.domain.xp import award, xp_for_level
+from ifs_tests.domain.rank import placement
+from ifs_tests.domain.xp import xp_award
 
 from ..conftest import Clock
 from .helpers import invite, login, register, right_answer
@@ -81,12 +82,10 @@ def wrong(db: Session, qid: int) -> dict[str, Any]:
     return {"options": []} if "options" in body else {"value": "-99999"}
 
 
-def test_hosting_follows_the_position_on_the_team_never_the_xp_level(
+def test_hosting_follows_the_position_on_the_team_never_the_rank(
     room: dict[str, Any], db: Session, app_client: TestClient
 ) -> None:
-    db.execute(
-        update(User).where(User.id == room["Ana_id"]).values(xp=xp_for_level(14))
-    )  # DT V on the ladder
+    db.execute(update(User).where(User.id == room["Ana_id"]).values(rank_points=1450, xp=100_000))  # DT V
     db.commit()
     assert room["Ana"].get("/api/me").json()["can_host"] is False
     assert room["Ana"].post("/api/live/sessions", json={}).status_code == 403
@@ -114,8 +113,26 @@ def test_seating_by_subdepartment_makes_specialist_tables_with_the_senior_member
     t = tables(room, code)
     assert set(t) == {"Aerodynamics", "Batteries"}
     assert sorted(t["Aerodynamics"]["member_ids"]) == sorted([room["Ana_id"], room["Leo_id"]])
-    assert t["Aerodynamics"]["captain_id"] == room["Leo_id"]  # Department Head outranks a Mingo
+    assert t["Aerodynamics"]["captain_id"] == room["Leo_id"]  # placed at Jefe I, above a Mingo
+    assert t["Batteries"]["captain_id"] == room["Pau_id"]  # a returning member, placed at Mingo IV
     assert (t["Aerodynamics"]["topics"], t["Batteries"]["topics"]) == (["aero"], ["hv"])
+
+
+def test_the_captain_is_the_best_ranked_member_whatever_their_position_or_level(
+    room: dict[str, Any], db: Session
+) -> None:
+    db.execute(update(User).where(User.id == room["Ana_id"]).values(rank_points=551))  # a Mingo past Leo
+    db.execute(
+        update(User).where(User.id == room["Leo_id"]).values(xp=100_000)
+    )  # account level counts for nothing
+    db.execute(update(User).where(User.id == room["Marta_id"]).values(rank_points=349.5))  # just below Pau
+    db.commit()
+    code = lobby(room)
+    t = tables(room, code)
+    assert (t["Aerodynamics"]["captain_id"], t["Batteries"]["captain_id"]) == (room["Ana_id"], room["Pau_id"])
+    by_hand = [{"name": "All", "member_ids": [room[n] for n in ("Ana_id", "Leo_id", "Marta_id", "Pau_id")]}]
+    assert room["Tere"].put(f"/api/live/sessions/{code}/tables", json={"tables": by_hand}).status_code == 204
+    assert tables(room, code)["All"]["captain_id"] == room["Ana_id"]
 
 
 def test_seating_by_hand_is_checked(room: dict[str, Any], new_client: NewClient) -> None:
@@ -145,6 +162,9 @@ def test_seating_by_hand_is_checked(room: dict[str, Any], new_client: NewClient)
 def test_only_captains_answer_every_table_shares_its_result_and_answers_stay_hidden_until_the_close(
     room: dict[str, Any], db: Session
 ) -> None:
+    db.execute(update(User).where(User.id == room["Ana_id"]).values(combo=4))
+    db.execute(update(User).where(User.id == room["Marta_id"]).values(miss_streak=2))
+    db.commit()
     code = lobby(room, areas=["rules"])
     advance(room, code)
     s = state(room["Ana"], code)
@@ -166,13 +186,22 @@ def test_only_captains_answer_every_table_shares_its_result_and_answers_stay_hid
         tables(room, code)["Batteries"]["id"]: False,
     }
     assert (closed["room_right"], closed["room_asked"]) == (1, 1)  # the best table, when every table answers
-    gained = award(True, 3, "live", 0)
-    xp = dict(db.execute(select(Attempt.user_id, Attempt.xp).where(Attempt.mode == "live")).tuples().all())
-    assert xp[room["Ana_id"]] == xp[room["Leo_id"]] > 0 and xp[room["Ana_id"]] == gained
-    assert xp[room["Marta_id"]] == 0  # a Mingo loses nothing
-    assert xp[room["Pau_id"]] < 0  # a returning member starts at Mingo IV, where wrong answers cost
+    # A table's answer is shared as XP only: nobody's rank, combo or bad run moves.
+    right, wrong_xp = xp_award(True, 3, "live").amount, xp_award(False, 3, "live").amount
+    live = db.execute(select(Attempt.user_id, Attempt.xp, Attempt.lp).where(Attempt.mode == "live")).all()
+    assert {uid: (xp, lp) for uid, xp, lp in live} == {
+        room["Ana_id"]: (right, 0),
+        room["Leo_id"]: (right, 0),
+        room["Marta_id"]: (wrong_xp, 0),
+        room["Pau_id"]: (wrong_xp, 0),
+    }
+    db.expire_all()
+    after = {u.id: (u.rank_points, u.combo, u.miss_streak) for u in db.scalars(select(User))}
+    assert after[room["Ana_id"]] == (placement("mingo"), 4, 0)
+    assert after[room["Marta_id"]] == (placement("mingo"), 0, 2)
+    assert after[room["Pau_id"]][0] == placement("member")
     board = room["Ana"].get("/api/leaderboard").json()
-    assert {r["display_name"]: r["xp"] for r in board["rows"]}["Ana"] == gained
+    assert (board["rows"], board["me"]) == ([], None)  # no LP moved: nobody has played for their rank
 
 
 def test_proposals_reach_the_captain_of_the_table_that_answers(room: dict[str, Any], db: Session) -> None:
@@ -250,16 +279,24 @@ def test_speed_points_reward_fast_right_answers_when_switched_on(
     assert points == {"Aerodynamics": 750, "Batteries": 0}
 
 
-def test_im_not_sure_from_a_captain_costs_nothing(room: dict[str, Any], db: Session) -> None:
-    db.execute(update(User).where(User.id == room["Leo_id"]).values(xp=xp_for_level(12)))
+def test_im_not_sure_from_a_captain_earns_a_little_xp_and_moves_no_lp(
+    room: dict[str, Any], db: Session
+) -> None:
+    db.execute(
+        update(User).where(User.id == room["Leo_id"]).values(rank_points=1250)
+    )  # DT III: stakes are high
     db.commit()
     code = lobby(room, areas=["rules"])
     advance(room, code)
     assert send(room["Leo"], code, {"unsure": True}) == 204
+    assert db.scalars(select(Attempt).where(Attempt.mode == "live")).all() == []  # nothing until it closes
+    advance(room, code)  # close: the result can be known, the XP goes out
     passed = db.scalars(
         select(Attempt).where(Attempt.mode == "live", Attempt.user_id == room["Leo_id"])
     ).one()
-    assert (passed.passed, passed.xp) == (True, 0)
+    assert (passed.passed, passed.xp, passed.lp) == (True, xp_award(False, 3, "live", passed=True).amount, 0)
+    db.expire_all()
+    assert db.get_one(User, room["Leo_id"]).rank_points == 1250
 
 
 def test_the_host_moves_people_between_questions_and_removes_them(room: dict[str, Any], db: Session) -> None:
@@ -565,7 +602,7 @@ def test_a_rehearsal_holds_back_xp_until_the_end(room: dict[str, Any], db: Sessi
     advance(room, code)  # finish: now everyone at the table shares it
     rows = db.scalars(select(Attempt).where(Attempt.mode == "live")).all()
     assert sorted(a.user_id for a in rows) == sorted([room["Ana_id"], room["Leo_id"]]) and all(
-        a.xp > 0 for a in rows
+        a.xp > 0 and a.lp == 0 for a in rows
     )
 
 

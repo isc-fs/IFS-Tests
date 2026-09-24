@@ -15,6 +15,8 @@ from sqlalchemy import (
     Index,
     Integer,
     MetaData,
+    Numeric,
+    SmallInteger,
     String,
     Table,
     Text,
@@ -122,9 +124,25 @@ class User(Base):
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    # Where the person started (Mingo, member, Department Head, Technical Director) and their lifetime XP.
+    # Their job on the team (it places them on the ladder), and their account XP, which only goes up.
     position: Mapped[str] = mapped_column(String(24), server_default="mingo")
-    xp: Mapped[int] = mapped_column(server_default="0")
+    xp: Mapped[int] = mapped_column("account_xp", server_default="0")
+    # The lifetime XP of the release before ADR 0007, kept while it may still run during a deploy. Unused.
+    legacy_xp: Mapped[int] = mapped_column("xp", server_default="0")
+    # The rank (domain/rank.py): 100 points per division, placed at `rank_season`'s start; 0 = not placed yet.
+    rank_points: Mapped[float] = mapped_column(Numeric(8, 2, asdecimal=False), server_default="0")
+    rank_season: Mapped[int] = mapped_column(SmallInteger, server_default="0")
+    # The highest division reached this season: only reaching a new one plays the promotion.
+    rank_best: Mapped[int] = mapped_column(SmallInteger, server_default="0")
+    # Right answers in a row (the XP combo) and wrong ones in a row (the LP cushion), across modes but live.
+    combo: Mapped[int] = mapped_column(SmallInteger, server_default="0")
+    miss_streak: Mapped[int] = mapped_column(SmallInteger, server_default="0")
+    # Rested XP: banked while away, it doubles XP until spent; `rested_on` is the last day it was topped up.
+    rested_xp: Mapped[int] = mapped_column(server_default="0")
+    rested_on: Mapped[date | None] = mapped_column(Date)
+    # Streak freezes held (earned every 7 days of streak, at most 2) and the streak day that last earned one.
+    streak_freezes: Mapped[int] = mapped_column(SmallInteger, server_default="0")
+    freeze_earned_on: Mapped[date | None] = mapped_column(Date)
     # Team Directory department codes (domain/live.py); the first one seats them in live quizzes.
     subdepartments: Mapped[list[str]] = mapped_column(ARRAY(String(8)), server_default="{}")
     # When they stopped being active (alumni or disabled): the account is deleted a year later (ADR 0006).
@@ -132,6 +150,15 @@ class User(Base):
 
 
 Index("uq_users_display_name_lower", func.lower(User.display_name), unique=True)
+
+
+class StreakFreeze(Base):
+    """A day a streak freeze kept someone's daily streak alive."""
+
+    __tablename__ = "streak_freezes"
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    day: Mapped[date] = mapped_column(Date, primary_key=True)
 
 
 class Invite(Base):
@@ -350,6 +377,7 @@ class Attempt(Base):
         ForeignKey("mock_sessions.id", ondelete="CASCADE"), index=True
     )
     xp: Mapped[int] = mapped_column(server_default="0")
+    lp: Mapped[float] = mapped_column(Numeric(7, 2, asdecimal=False), server_default="0")
     hint_used: Mapped[bool] = mapped_column(server_default="false")
     # "I'm not sure": no answer given, the official one shown. Stored as not right.
     passed: Mapped[bool] = mapped_column(server_default="false")

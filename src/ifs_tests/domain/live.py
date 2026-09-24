@@ -46,7 +46,7 @@ def new_code(rng: random.Random) -> str:
 class Player:
     user_id: int
     subdepartments: tuple[str, ...]
-    level: int
+    rank: float  # rank points: the best player at a table captains it
 
 
 @dataclass
@@ -59,7 +59,7 @@ class Table:
 
 def seat_by_subdepartment(players: list[Player]) -> list[Table]:
     """One table per sub-department present, from each player's first one; the rest at one table. The captain
-    is the member with the highest level. Never balanced: tables are specialists (ADR 0005)."""
+    is the member with the highest rank. Never balanced: tables are specialists (ADR 0005)."""
     groups: dict[str, list[Player]] = {}
     for p in players:
         code = next((c for c in p.subdepartments if c in SUBDEPARTMENTS), "")
@@ -67,7 +67,7 @@ def seat_by_subdepartment(players: list[Player]) -> list[Table]:
     tables = []
     for code in sorted(groups, key=lambda c: (c == "", c)):
         members = groups[code]
-        captain = max(members, key=lambda p: (p.level, -p.user_id))
+        captain = max(members, key=lambda p: (p.rank, -p.user_id))
         name, _, topics = SUBDEPARTMENTS[code] if code else (EVERYONE_ELSE, "", ())
         tables.append(Table(name, [p.user_id for p in members], captain.user_id, list(topics)))
     return tables

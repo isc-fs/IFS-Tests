@@ -27,9 +27,10 @@ export function Privacy() {
             (its role, vertical and the admin&apos;s note on who it was for).
           </li>
           <li>
-            <strong>Your training:</strong> every answer (typed ones included) and whether it was right, XP, hints you
-            took, mock quiz runs, live quizzes you joined or hosted, your table and whether you captained it, answers
-            you sent for your table, proposals you sent to your captain, and problems you reported on questions.
+            <strong>Your training:</strong> every answer (typed ones included) and whether it was right, the LP and XP
+            it earned, hints you took, mock quiz runs, live quizzes you joined or hosted, your table and whether you
+            captained it, answers you sent for your table, proposals you sent to your captain, and problems you reported
+            on questions.
           </li>
           <li>
             <strong>Signing in:</strong> when each of your sign-ins started and was last used.
@@ -53,17 +54,18 @@ export function Privacy() {
 
         <h2>Why</h2>
         <p>
-          To grade your answers, keep your XP, run the daily question, mock and live quizzes, and show the leaderboards,
-          and to keep the site secure (sign-in records, locks, the admin log and server logs). The legal basis is the
-          team&apos;s legitimate interest in preparing its members for the quizzes that decide whether it competes.
-          Nothing about you is decided automatically: XP and levels mean nothing outside the site.
+          To grade your answers, keep your rank and XP, run the daily question, mock and live quizzes, and show the
+          leaderboards, and to keep the site secure (sign-in records, locks, the admin log and server logs). The legal
+          basis is the team&apos;s legitimate interest in preparing its members for the quizzes that decide whether it
+          competes. Nothing about you is decided automatically: ranks and levels mean nothing outside the site.
         </p>
 
         <h2>Who sees what</h2>
         <ul>
           <li>
-            <strong>Every member:</strong> your display name, vertical, level and XP on the leaderboards (overall and by
-            area, this week and this season), unless you hide yourself. Hiding only affects the leaderboards.
+            <strong>Every member:</strong> your display name, vertical, rank, LP and account level on the leaderboards
+            (overall and by area, this week and this season), unless you hide yourself. Hiding only affects the
+            leaderboards.
           </li>
           <li>
             <strong>In a live quiz:</strong> everyone in it sees your name, your table and its captain; your captain
@@ -75,8 +77,8 @@ export function Privacy() {
             <strong>Reviewers:</strong> the problems you report, with your name.
           </li>
           <li>
-            <strong>Admins:</strong> your email, role, position, status, XP (even if you hide from the leaderboard),
-            when you joined and were last seen, any sign-in lock, and the admin log.
+            <strong>Admins:</strong> your email, role, position, status, rank and XP (even if you hide from the
+            leaderboard), when you joined and were last seen, any sign-in lock, and the admin log.
           </li>
         </ul>
         <p>

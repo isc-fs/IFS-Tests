@@ -80,7 +80,7 @@ export function HostControls({ s }: { s: LiveState }) {
       )}
       {s.state === 'finished' ? (
         <>
-          <Results s={s} />
+          <Results s={s} room />
           <a className="button" href={`/api/live/sessions/${s.code}/results.csv`}>
             Download the results (CSV)
           </a>

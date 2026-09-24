@@ -5,47 +5,80 @@ from datetime import datetime
 from fastapi import APIRouter, Request, Response
 
 from ...db.models import User
-from ...domain import xp as rules
+from ...domain import rank as rank_rules
+from ...domain import xp as xp_rules
 from ...services import accounts, live, privacy, xp
 from ..deps import AppSettings, Db, Member, Now
-from ..schemas import Aids, DeleteAccountIn, Export, Me, PasswordChangeIn, ProfileIn, Progress, Step
+from ..schemas import (
+    AccountOut,
+    Aids,
+    DeleteAccountIn,
+    Export,
+    Me,
+    PasswordChangeIn,
+    ProfileIn,
+    Progress,
+    RankOut,
+    Step,
+)
 from .auth import clear_cookie
 
 router = APIRouter(prefix="/api/me", tags=["me"])
 
 
-def _step(lv: rules.Level, title: str | None) -> Step:
+def _step(d: rank_rules.Division, title: str | None) -> Step:
     return Step(
-        level=lv.number,
-        tier=lv.tier,
+        division=d.number,
+        tier=d.tier,
         title=title,
-        xp=rules.xp_for_level(lv.number),
-        aids=Aids.model_validate(lv),
-        penalty=round(lv.penalty * 100),
+        points=d.number * rank_rules.DIVISION,
+        aids=Aids.model_validate(d),
+        stakes=round(d.stakes * 100),
     )
 
 
 def _me(db: Db, user: User, now: datetime) -> Me:
-    level = rules.level_for(user.xp)
-    lv = rules.at(level)
+    r = rank_rules.standing(user.rank_points, user.rank_season, user.position, user.vertical, now)
+    d = r.division
+    seen_top = d.number >= rank_rules.TOP - 1
+    level, into, needed = xp_rules.account_level(user.xp)
     streak = xp.streak_days(db, user.id, now)
-    seen_top = level >= rules.TOP - 1
     out = Me.model_validate(user)
     out.can_host = live.can_host(user)
     out.progress = Progress(
-        level=level,
-        title=rules.title(level, user.vertical),
-        tier=lv.tier,
-        level_xp=rules.xp_for_level(level),
-        next_level_xp=rules.xp_for_level(level + 1) if level < rules.TOP else None,
-        penalty=round(lv.penalty * 100),
-        streak=streak,
-        streak_bonus=round((rules.streak_multiplier(streak) - 1) * 100),
-        aids=Aids.model_validate(lv),
-        ladder=[
-            _step(s, rules.title(s.number, user.vertical) if s.number < rules.TOP or seen_top else None)
-            for s in rules.LEVELS
-        ],
+        rank=RankOut(
+            points=r.points,
+            division=d.number,
+            title=r.title,
+            tier=d.tier,
+            lp=r.lp,
+            stakes=round(d.stakes * 100),
+            swing=rank_rules.swing(r.points),
+            miss_streak=user.miss_streak,
+            aids=Aids.model_validate(d),
+            ladder=[
+                _step(
+                    s,
+                    rank_rules.title(s.number, user.vertical)
+                    if s.number < rank_rules.TOP or seen_top
+                    else None,
+                )
+                for s in rank_rules.DIVISION_TABLE
+            ],
+        ),
+        account=AccountOut(
+            level=level,
+            xp=user.xp,
+            into=into,
+            needed=needed,
+            next_milestone=next((m for m in xp_rules.MILESTONES if m > level), None),
+            combo=user.combo,
+            first_wins_left=max(0, xp_rules.FIRST_WINS - xp.first_wins(db, user.id, now)),
+            streak=streak,
+            streak_bonus=round(xp_rules.streak_bonus(streak) * 100),
+            streak_freezes=user.streak_freezes,
+            rested_xp=xp.rested(db, user.rested_xp, user.rested_on, user.id, now),
+        ),
     )
     return out
 

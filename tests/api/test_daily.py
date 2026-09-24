@@ -12,18 +12,29 @@ from sqlalchemy.orm import Session
 
 from ifs_tests.bank.mirror import load_bank
 from ifs_tests.bank.sample import SAMPLE_DIR
-from ifs_tests.db.models import DailyQuestion, Question, User
-from ifs_tests.domain.xp import award
+from ifs_tests.db.models import Attempt, DailyQuestion, Question, User
+from ifs_tests.domain.rank import lp_award, placement
+from ifs_tests.domain.xp import xp_award
 from ifs_tests.services import daily
 from ifs_tests.services.bank import import_bank
 
 from ..conftest import Clock
-from .helpers import PASSWORD, login, member, right_answer
+from .helpers import PASSWORD, login, member, options, right_answer
 
 pytestmark = pytest.mark.integration
 NewClient = Callable[[], TestClient]
-DAILY = award(True, 3, "daily", 0)  # a right answer on the first day of a streak
-DAY_TWO = award(True, 3, "daily", 0, streak_days=2)
+DAILY = xp_award(True, 3, "daily", first_win=True).amount  # the day's first right answer, no streak yet
+WRONG = xp_award(False, 3, "daily").amount
+MINGO = placement("mingo")
+
+
+def lp(db: Session, qid: int, points: float, correct: bool | None, **kw: Any) -> float:
+    """The LP a daily answer to `qid` moves from `points`."""
+    q = db.get_one(Question, qid)
+    n = len(options(db, qid)) if q.answer_kind == "choice-one" else 0
+    return lp_award(
+        correct, points, q.difficulty, "daily", area=q.area, answer_kind=q.answer_kind, options=n, **kw
+    ).amount
 
 
 @pytest.fixture
@@ -39,6 +50,11 @@ def player(app_client: TestClient, admin: User, new_client: NewClient, bank: Non
     c = new_client()
     member(app_client, c, "marta@alu.comillas.edu", "Marta")
     return c
+
+
+def points(db: Session) -> float:
+    db.expire_all()
+    return db.scalars(select(User.rank_points).where(User.display_name == "Marta")).one()
 
 
 def next_day(c: TestClient, clock: Clock, days: int = 1) -> None:
@@ -62,10 +78,11 @@ def test_status_offers_one_graded_question_per_area_without_showing_it(
 ) -> None:
     status = player.get("/api/daily").json()
     assert status["day"] == "2026-10-01" and status["streak"] == 0
-    assert [(a["area"], a["state"]) for a in status["areas"]] == [
-        ("mech", "new"),
-        ("elec", "new"),
-        ("rules", "new"),
+    assert (status["xp_today"], status["lp_today"]) == (0, 0)
+    assert [(a["area"], a["state"], a["xp"], a["lp"]) for a in status["areas"]] == [
+        ("mech", "new", 0, 0),
+        ("elec", "new", 0, 0),
+        ("rules", "new", 0, 0),
     ]
     assert all(60 <= a["budget_s"] <= 600 for a in status["areas"])
     rules = db.scalars(select(DailyQuestion.question_id).where(DailyQuestion.area == "rules")).one()
@@ -89,26 +106,43 @@ def test_starting_reveals_the_question_and_resuming_keeps_the_clock(player: Test
 
 def test_one_try_scored_once(player: TestClient, db: Session) -> None:
     result = play(player, db, "elec")
-    assert (result["feedback"]["correct"], result["late"], result["xp"], result["streak"]) == (
+    won = lp(db, result["question"]["id"], MINGO, True)
+    assert won > 0
+    assert (result["feedback"]["correct"], result["late"], result["xp"], result["lp"], result["streak"]) == (
         True,
         False,
         DAILY,
+        won,
         1,
     )
-    assert result["feedback"]["xp"] == DAILY
+    fb = result["feedback"]
+    assert (fb["xp"], fb["lp"], fb["rank_points"], fb["bonuses"]) == (
+        DAILY,
+        won,
+        MINGO + won,
+        {"first_win": DAILY - xp_award(True, 3, "daily").amount},
+    )
+    assert points(db) == MINGO + won
     attempt = player.post("/api/daily/elec/start")
     assert attempt.status_code == 409
     status = player.get("/api/daily").json()
     elec = next(a for a in status["areas"] if a["area"] == "elec")
-    assert (elec["state"], elec["correct"], elec["xp"], status["xp_today"], status["streak"]) == (
-        "done",
-        True,
-        DAILY,
-        DAILY,
-        1,
-    )
+    assert (elec["state"], elec["correct"], elec["xp"], elec["lp"]) == ("done", True, DAILY, won)
+    assert (status["xp_today"], status["lp_today"], status["streak"]) == (DAILY, won, 1)
     review = player.get("/api/daily/elec/review").json()
-    assert review["xp"] == DAILY and review["feedback"]["official"]
+    assert (review["xp"], review["lp"], review["feedback"]["lp"]) == (DAILY, won, won)
+    assert review["feedback"]["official"]
+
+
+def test_the_status_adds_up_the_days_xp_and_lp(player: TestClient, db: Session) -> None:
+    right = play(player, db, "mech")
+    wrong = play(player, db, "rules", correct=False)
+    assert (wrong["feedback"]["correct"], wrong["xp"]) == (False, WRONG)
+    assert wrong["lp"] < 0 < right["lp"]
+    status = player.get("/api/daily").json()
+    assert status["xp_today"] == right["xp"] + wrong["xp"]
+    assert status["lp_today"] == round(right["lp"] + wrong["lp"], 2)
+    assert points(db) == round(MINGO + right["lp"] + wrong["lp"], 2)
 
 
 def test_a_repeated_submit_returns_the_stored_result(player: TestClient, db: Session) -> None:
@@ -116,12 +150,14 @@ def test_a_repeated_submit_returns_the_stored_result(player: TestClient, db: Ses
     url = f"/api/daily/attempts/{started['attempt_id']}/answer"
     wrong = [o["id"] for o in started["question"]["options"]][-1:]
     first = player.post(url, json={"options": wrong}).json()
-    assert first["feedback"]["correct"] is False
+    assert (first["feedback"]["correct"], first["xp"]) == (False, WRONG) and first["lp"] < 0
+    after = points(db)
     second = player.post(url, json=right_answer(db, started["question"]["id"])).json()
-    assert second["feedback"]["correct"] is False and second["xp"] == 0
+    assert (second["feedback"]["correct"], second["xp"], second["lp"]) == (False, WRONG, first["lp"])
+    assert points(db) == after
 
 
-def test_late_answers_are_recorded_but_earn_nothing(player: TestClient, db: Session, clock: Clock) -> None:
+def test_late_answers_are_recorded_and_count_as_wrong(player: TestClient, db: Session, clock: Clock) -> None:
     started = player.post("/api/daily/rules/start").json()
     clock.now = datetime.fromisoformat(started["deadline_at"])
     clock.advance(seconds=4)
@@ -129,7 +165,48 @@ def test_late_answers_are_recorded_but_earn_nothing(player: TestClient, db: Sess
         f"/api/daily/attempts/{started['attempt_id']}/answer",
         json=right_answer(db, started["question"]["id"]),
     ).json()
-    assert (r["feedback"]["correct"], r["late"], r["xp"], r["streak"]) == (True, True, 0, 0)
+    assert (r["feedback"]["correct"], r["late"], r["xp"], r["streak"]) == (
+        True,
+        True,
+        xp_award(True, 3, "daily", late=True).amount,
+        0,
+    )
+    assert r["lp"] == lp(db, started["question"]["id"], MINGO, True, late=True) < 0
+
+
+def test_a_daily_left_to_run_out_loses_lp_and_earns_no_xp(
+    player: TestClient, db: Session, clock: Clock
+) -> None:
+    started = player.post("/api/daily/mech/start").json()
+    clock.now = datetime.fromisoformat(started["deadline_at"])
+    clock.advance(seconds=4)
+    status = player.get("/api/daily").json()  # closes it
+    mech = next(a for a in status["areas"] if a["area"] == "mech")
+    lost = lp(db, started["question"]["id"], MINGO, False, late=True)
+    assert lost < 0
+    assert (mech["state"], mech["correct"], mech["late"], mech["xp"], mech["lp"]) == (
+        "done",
+        False,
+        True,
+        0,
+        lost,
+    )
+    assert (status["xp_today"], status["lp_today"], status["streak"]) == (0, lost, 0)
+    assert points(db) == MINGO + lost
+    player.get("/api/daily")  # closing again charges nothing
+    assert points(db) == MINGO + lost
+    stored = db.scalars(select(Attempt).where(Attempt.id == started["attempt_id"])).one()
+    assert (stored.xp, stored.lp) == (0, lost)
+
+
+def test_im_not_sure_costs_at_most_half_a_wrong_answer(player: TestClient, db: Session) -> None:
+    started = player.post("/api/daily/rules/start").json()
+    qid = started["question"]["id"]
+    r = player.post(f"/api/daily/attempts/{started['attempt_id']}/answer", json={"unsure": True}).json()
+    assert (r["feedback"]["passed"], r["feedback"]["correct"], r["late"]) == (True, False, False)
+    assert r["xp"] == xp_award(False, 3, "daily", passed=True).amount > 0
+    assert r["lp"] == lp(db, qid, MINGO, False, passed=True)
+    assert lp(db, qid, MINGO, False) / 2 - 0.01 <= r["lp"] < 0  # and never more than a blind guess loses
 
 
 def test_within_the_grace_period_is_on_time(player: TestClient, db: Session, clock: Clock) -> None:
@@ -140,17 +217,22 @@ def test_within_the_grace_period_is_on_time(player: TestClient, db: Session, clo
         f"/api/daily/attempts/{started['attempt_id']}/answer",
         json=right_answer(db, started["question"]["id"]),
     ).json()
-    assert (r["late"], r["xp"]) == (False, DAILY)
+    assert (r["late"], r["xp"]) == (False, DAILY) and r["lp"] > 0
 
 
 def test_streaks_grow_by_the_day_and_reset_after_a_gap(player: TestClient, db: Session, clock: Clock) -> None:
     assert play(player, db, "mech")["xp"] == DAILY
     next_day(player, clock)
     day2 = play(player, db, "mech")
-    assert (day2["xp"], day2["streak"]) == (DAY_TWO, 2)
-    assert play(player, db, "rules")["xp"] == DAY_TWO  # same day: same streak
+    assert (day2["xp"], day2["streak"]) == (
+        xp_award(True, 3, "daily", first_win=True, combo=1, streak_days=2).amount,
+        2,
+    )
+    assert day2["feedback"]["bonuses"]["streak"] > 0
+    same_day = play(player, db, "rules")  # same day: same streak, one more in the combo
+    assert same_day["xp"] == xp_award(True, 3, "daily", first_win=True, combo=2, streak_days=2).amount
     next_day(player, clock)
-    assert play(player, db, "elec", correct=False)["xp"] == 0  # wrong but on time keeps the streak
+    assert play(player, db, "elec", correct=False)["xp"] == WRONG  # wrong but on time keeps the streak
     assert player.get("/api/daily").json()["streak"] == 3
     next_day(player, clock, 2)
     assert player.get("/api/daily").json()["streak"] == 0
@@ -168,7 +250,7 @@ def test_a_question_started_before_midnight_can_be_answered_after(
         f"/api/daily/attempts/{started['attempt_id']}/answer",
         json=right_answer(db, started["question"]["id"]),
     ).json()
-    assert (r["late"], r["xp"]) == (False, DAILY)
+    assert (r["late"], r["xp"]) == (False, DAILY) and r["lp"] > 0
     assert player.post("/api/daily/rules/start").status_code == 200  # a new day, a new question
 
 

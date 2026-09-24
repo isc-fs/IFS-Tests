@@ -2757,6 +2757,85 @@
  },
  "components": {
   "schemas": {
+   "AccountOut": {
+    "properties": {
+     "level": {
+      "type": "integer",
+      "title": "Level"
+     },
+     "xp": {
+      "type": "integer",
+      "title": "Xp"
+     },
+     "into": {
+      "type": "integer",
+      "title": "Into",
+      "description": "XP into the current level"
+     },
+     "needed": {
+      "type": "integer",
+      "title": "Needed",
+      "description": "XP the current level needs"
+     },
+     "next_milestone": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Next Milestone",
+      "description": "The next level with an emblem frame"
+     },
+     "combo": {
+      "type": "integer",
+      "title": "Combo",
+      "description": "Right answers in a row"
+     },
+     "first_wins_left": {
+      "type": "integer",
+      "title": "First Wins Left",
+      "description": "Right answers left today with the first-win bonus"
+     },
+     "streak": {
+      "type": "integer",
+      "title": "Streak"
+     },
+     "streak_bonus": {
+      "type": "integer",
+      "title": "Streak Bonus",
+      "description": "Extra XP on right answers from the daily streak, in percent"
+     },
+     "streak_freezes": {
+      "type": "integer",
+      "title": "Streak Freezes",
+      "description": "Freezes held: each saves the streak on a missed day"
+     },
+     "rested_xp": {
+      "type": "integer",
+      "title": "Rested Xp",
+      "description": "Rested XP banked while away: it doubles XP until spent"
+     }
+    },
+    "type": "object",
+    "required": [
+     "level",
+     "xp",
+     "into",
+     "needed",
+     "next_milestone",
+     "combo",
+     "first_wins_left",
+     "streak",
+     "streak_bonus",
+     "streak_freezes",
+     "rested_xp"
+    ],
+    "title": "AccountOut",
+    "description": "The account level: XP from every answer, it only goes up."
+   },
    "AdminUser": {
     "properties": {
      "id": {
@@ -2793,6 +2872,10 @@
      "xp": {
       "type": "integer",
       "title": "Xp"
+     },
+     "rank_points": {
+      "type": "number",
+      "title": "Rank Points"
      },
      "leaderboard_opt_out": {
       "type": "boolean",
@@ -2851,6 +2934,7 @@
      "status",
      "position",
      "xp",
+     "rank_points",
      "leaderboard_opt_out",
      "last_seen",
      "created_at",
@@ -2976,7 +3060,7 @@
      "unsure": {
       "type": "boolean",
       "title": "Unsure",
-      "description": "\"I'm not sure\": no answer, no XP, no penalty in time",
+      "description": "\"I'm not sure\": no answer; the official one shown for half a wrong answer's LP",
       "default": false
      }
     },
@@ -3191,9 +3275,19 @@
       ],
       "title": "Late"
      },
+     "passed": {
+      "type": "boolean",
+      "title": "Passed",
+      "description": "Answered \"I'm not sure\"",
+      "default": false
+     },
      "xp": {
       "type": "integer",
       "title": "Xp"
+     },
+     "lp": {
+      "type": "number",
+      "title": "Lp"
      }
     },
     "type": "object",
@@ -3204,7 +3298,8 @@
      "deadline_at",
      "correct",
      "late",
-     "xp"
+     "xp",
+     "lp"
     ],
     "title": "DailyArea"
    },
@@ -3216,6 +3311,17 @@
      "feedback": {
       "$ref": "#/components/schemas/Feedback"
      },
+     "answer": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/KeyIn"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "What you sent"
+     },
      "late": {
       "type": "boolean",
       "title": "Late"
@@ -3223,6 +3329,10 @@
      "xp": {
       "type": "integer",
       "title": "Xp"
+     },
+     "lp": {
+      "type": "number",
+      "title": "Lp"
      },
      "streak": {
       "type": "integer",
@@ -3235,6 +3345,7 @@
      "feedback",
      "late",
      "xp",
+     "lp",
      "streak"
     ],
     "title": "DailyResult"
@@ -3254,6 +3365,10 @@
       "type": "integer",
       "title": "Xp Today"
      },
+     "lp_today": {
+      "type": "number",
+      "title": "Lp Today"
+     },
      "areas": {
       "items": {
        "$ref": "#/components/schemas/DailyArea"
@@ -3267,6 +3382,7 @@
      "day",
      "streak",
      "xp_today",
+     "lp_today",
      "areas"
     ],
     "title": "DailyStatus"
@@ -3450,6 +3566,10 @@
       "type": "integer",
       "title": "Xp"
      },
+     "rank_points": {
+      "type": "number",
+      "title": "Rank Points"
+     },
      "hidden_from_leaderboard": {
       "type": "boolean",
       "title": "Hidden From Leaderboard"
@@ -3524,6 +3644,7 @@
      "role",
      "status",
      "xp",
+     "rank_points",
      "hidden_from_leaderboard",
      "joined_at",
      "last_seen",
@@ -3612,6 +3733,10 @@
       "type": "integer",
       "title": "Xp"
      },
+     "lp": {
+      "type": "number",
+      "title": "Lp"
+     },
      "late": {
       "anyOf": [
        {
@@ -3664,6 +3789,7 @@
      "passed",
      "hint_used",
      "xp",
+     "lp",
      "late",
      "day",
      "started_at",
@@ -4083,8 +4209,69 @@
      "xp": {
       "type": "integer",
       "title": "Xp",
-      "description": "XP this answer earned (negative when it cost XP)",
+      "description": "XP this answer earned",
       "default": 0
+     },
+     "lp": {
+      "type": "number",
+      "title": "Lp",
+      "description": "LP it won or lost",
+      "default": 0
+     },
+     "bonuses": {
+      "additionalProperties": {
+       "type": "integer"
+      },
+      "type": "object",
+      "title": "Bonuses",
+      "description": "XP bonuses: first_win, combo, streak, crit"
+     },
+     "combo": {
+      "type": "integer",
+      "title": "Combo",
+      "description": "Right answers in a row, this one included",
+      "default": 0
+     },
+     "comeback": {
+      "type": "boolean",
+      "title": "Comeback",
+      "description": "A right answer after a bad run: 1.5x LP",
+      "default": false
+     },
+     "cushioned": {
+      "type": "boolean",
+      "title": "Cushioned",
+      "description": "A loss halved by the bad run",
+      "default": false
+     },
+     "promoted": {
+      "type": "boolean",
+      "title": "Promoted",
+      "description": "Into a division not reached before this season",
+      "default": false
+     },
+     "rose": {
+      "type": "boolean",
+      "title": "Rose",
+      "description": "Back up into a division reached before",
+      "default": false
+     },
+     "demoted": {
+      "type": "boolean",
+      "title": "Demoted",
+      "default": false
+     },
+     "rank_points": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Rank Points",
+      "description": "Rank points after this answer"
      },
      "level": {
       "anyOf": [
@@ -4096,12 +4283,12 @@
        }
       ],
       "title": "Level",
-      "description": "Your level after this answer"
+      "description": "Account level after this answer"
      },
      "level_up": {
       "type": "boolean",
       "title": "Level Up",
-      "description": "This answer took you to a new level",
+      "description": "This answer took the account to a new level",
       "default": false
      },
      "passed": {
@@ -4316,22 +4503,28 @@
        }
       ]
      },
-     "xp": {
-      "type": "integer",
-      "title": "Xp"
+     "score": {
+      "type": "number",
+      "title": "Score",
+      "description": "Rank points on the ranked board (season, everyone); LP won on the others"
      },
      "me": {
       "type": "boolean",
       "title": "Me"
      },
-     "level": {
+     "division": {
       "type": "integer",
-      "title": "Level",
-      "description": "Lifetime level, for the level emblem"
+      "title": "Division",
+      "description": "Current division (0 = Mingo I \u2026 15 = the top), for the emblem"
      },
      "title": {
       "type": "string",
       "title": "Title"
+     },
+     "level": {
+      "type": "integer",
+      "title": "Level",
+      "description": "Account level"
      }
     },
     "type": "object",
@@ -4339,10 +4532,11 @@
      "rank",
      "display_name",
      "vertical",
-     "xp",
+     "score",
      "me",
-     "level",
-     "title"
+     "division",
+     "title",
+     "level"
     ],
     "title": "LeaderRow"
    },
@@ -5031,7 +5225,7 @@
      "unsure": {
       "type": "boolean",
       "title": "Unsure",
-      "description": "\"I'm not sure\": no answer, no XP, no penalty in time",
+      "description": "\"I'm not sure\": no answer; the official one shown for half a wrong answer's LP",
       "default": false
      },
      "attempt_id": {
@@ -5055,6 +5249,17 @@
      },
      "feedback": {
       "$ref": "#/components/schemas/Feedback"
+     },
+     "answer": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/KeyIn"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "What you sent; none if the time ran out"
      },
      "late": {
       "type": "boolean",
@@ -5239,6 +5444,10 @@
       "type": "integer",
       "title": "Xp"
      },
+     "lp": {
+      "type": "number",
+      "title": "Lp"
+     },
      "counted": {
       "type": "boolean",
       "title": "Counted"
@@ -5267,6 +5476,7 @@
      "correct",
      "graded",
      "xp",
+     "lp",
      "counted",
      "bar_to_beat",
      "items"
@@ -5302,9 +5512,9 @@
       "type": "integer",
       "title": "Rank"
      },
-     "xp": {
-      "type": "integer",
-      "title": "Xp"
+     "score": {
+      "type": "number",
+      "title": "Score"
      },
      "hidden": {
       "type": "boolean",
@@ -5315,7 +5525,7 @@
     "type": "object",
     "required": [
      "rank",
-     "xp",
+     "score",
      "hidden"
     ],
     "title": "MyRank",
@@ -5580,81 +5790,19 @@
    },
    "Progress": {
     "properties": {
-     "level": {
-      "type": "integer",
-      "title": "Level"
+     "rank": {
+      "$ref": "#/components/schemas/RankOut"
      },
-     "title": {
-      "type": "string",
-      "title": "Title"
-     },
-     "tier": {
-      "type": "string",
-      "enum": [
-       "Mingo",
-       "Jefe",
-       "DT",
-       "Top"
-      ],
-      "title": "Tier"
-     },
-     "level_xp": {
-      "type": "integer",
-      "title": "Level Xp",
-      "description": "Lifetime XP at which the current level started"
-     },
-     "next_level_xp": {
-      "anyOf": [
-       {
-        "type": "integer"
-       },
-       {
-        "type": "null"
-       }
-      ],
-      "title": "Next Level Xp",
-      "description": "Null at the top"
-     },
-     "penalty": {
-      "type": "integer",
-      "title": "Penalty",
-      "description": "Percentage of a right answer's XP a wrong answer costs"
-     },
-     "streak": {
-      "type": "integer",
-      "title": "Streak"
-     },
-     "streak_bonus": {
-      "type": "integer",
-      "title": "Streak Bonus",
-      "description": "Extra XP on gains, in percent"
-     },
-     "aids": {
-      "$ref": "#/components/schemas/Aids"
-     },
-     "ladder": {
-      "items": {
-       "$ref": "#/components/schemas/Step"
-      },
-      "type": "array",
-      "title": "Ladder"
+     "account": {
+      "$ref": "#/components/schemas/AccountOut"
      }
     },
     "type": "object",
     "required": [
-     "level",
-     "title",
-     "tier",
-     "level_xp",
-     "next_level_xp",
-     "penalty",
-     "streak",
-     "streak_bonus",
-     "aids",
-     "ladder"
+     "rank",
+     "account"
     ],
-    "title": "Progress",
-    "description": "Level, title and what help the player still gets. XP always refers to lifetime XP."
+    "title": "Progress"
    },
    "Proposal": {
     "properties": {
@@ -5737,6 +5885,86 @@
     ],
     "title": "QuestionDocs",
     "description": "The rulebook, handbook and other documents the question's quizzes were based on."
+   },
+   "RankOut": {
+    "properties": {
+     "points": {
+      "type": "number",
+      "title": "Points"
+     },
+     "division": {
+      "type": "integer",
+      "title": "Division"
+     },
+     "title": {
+      "type": "string",
+      "title": "Title"
+     },
+     "tier": {
+      "type": "string",
+      "enum": [
+       "Mingo",
+       "Jefe",
+       "DT",
+       "Top"
+      ],
+      "title": "Tier"
+     },
+     "lp": {
+      "type": "number",
+      "title": "Lp",
+      "description": "LP into the division; uncapped at the top"
+     },
+     "stakes": {
+      "type": "integer",
+      "title": "Stakes"
+     },
+     "swing": {
+      "prefixItems": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "number"
+       }
+      ],
+      "type": "array",
+      "maxItems": 2,
+      "minItems": 2,
+      "title": "Swing",
+      "description": "A middling daily question right and wrong, at this rank"
+     },
+     "miss_streak": {
+      "type": "integer",
+      "title": "Miss Streak",
+      "description": "Wrong answers in a row; from 3 losses halve and a right one pays 1.5x"
+     },
+     "aids": {
+      "$ref": "#/components/schemas/Aids"
+     },
+     "ladder": {
+      "items": {
+       "$ref": "#/components/schemas/Step"
+      },
+      "type": "array",
+      "title": "Ladder"
+     }
+    },
+    "type": "object",
+    "required": [
+     "points",
+     "division",
+     "title",
+     "tier",
+     "lp",
+     "stakes",
+     "swing",
+     "miss_streak",
+     "aids",
+     "ladder"
+    ],
+    "title": "RankOut",
+    "description": "The rank (ADR 0007): divisions of 100 LP that go up and down with how well you answer."
    },
    "Reading": {
     "properties": {
@@ -6357,9 +6585,9 @@
    },
    "Step": {
     "properties": {
-     "level": {
+     "division": {
       "type": "integer",
-      "title": "Level"
+      "title": "Division"
      },
      "tier": {
       "type": "string",
@@ -6383,31 +6611,31 @@
       "title": "Title",
       "description": "Null for the top until the player reaches DT V: a surprise"
      },
-     "xp": {
+     "points": {
       "type": "integer",
-      "title": "Xp",
-      "description": "Lifetime XP that reaches it"
+      "title": "Points",
+      "description": "Rank points where it starts"
      },
      "aids": {
       "$ref": "#/components/schemas/Aids"
      },
-     "penalty": {
+     "stakes": {
       "type": "integer",
-      "title": "Penalty",
-      "description": "Percentage of a right answer's XP a wrong answer costs"
+      "title": "Stakes",
+      "description": "How hard a wrong answer bites here, in percent (80 at Mingo I)"
      }
     },
     "type": "object",
     "required": [
-     "level",
+     "division",
      "tier",
      "title",
-     "xp",
+     "points",
      "aids",
-     "penalty"
+     "stakes"
     ],
     "title": "Step",
-    "description": "One level of the ladder and what it changes."
+    "description": "One division of the ladder and what it changes."
    },
    "Subdepartment": {
     "properties": {
@@ -6757,9 +6985,10 @@
       "type": "integer",
       "title": "Members"
      },
-     "xp_per_member": {
+     "rank_points": {
       "type": "number",
-      "title": "Xp Per Member"
+      "title": "Rank Points",
+      "description": "The members' average rank points"
      },
      "participation": {
       "type": "number",
@@ -6771,7 +7000,7 @@
     "required": [
      "vertical",
      "members",
-     "xp_per_member",
+     "rank_points",
      "participation"
     ],
     "title": "VerticalRow"

@@ -1,26 +1,34 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react'
-import { Link, NavLink } from 'react-router'
+import { Link, NavLink, useLocation } from 'react-router'
 
 export const APP_NAME = 'MingoQuiz'
 
-/** Sets the tab title and moves focus to the heading, so screen readers announce the new page. */
+/** Sets the tab title and moves focus to the heading, so screen readers announce the new page.
+ *  `view` names a step within one page (a list, then one of its items): changing it moves focus too. */
 export function Page({
   title,
+  view,
   heading,
   eyebrow,
   children,
 }: {
   title: string
+  view?: string
   heading?: string
   eyebrow?: string
   children: ReactNode
 }) {
   const h1 = useRef<HTMLHeadingElement>(null)
+  const { hash } = useLocation()
   useEffect(() => {
     document.title = `${title} · ${APP_NAME}`
-    // A link to a section (/profile#your-data) lands there; the section takes focus itself.
-    if (!document.getElementById(window.location.hash.slice(1))) h1.current?.focus()
-  }, [title])
+    // A link to a section (/profile#road) lands on it, also when the router, not the browser, followed it.
+    const target = document.getElementById(decodeURIComponent(window.location.hash.slice(1)))
+    if (target) {
+      target.scrollIntoView?.({ block: 'start' })
+      target.focus({ preventScroll: true })
+    } else h1.current?.focus()
+  }, [title, view, hash])
   return (
     <>
       {eyebrow && <p className="eyebrow">{eyebrow}</p>}

@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from functools import cache
 from importlib.resources import files
 from typing import Any
 
 from ..db.models import User
-from ..domain import xp as xp_rules
+from ..domain import rank as rank_rules
 
 
 @cache
@@ -17,10 +18,10 @@ def _content() -> dict[str, Any]:
     return data
 
 
-def for_topic(user: User, topic: str) -> dict[str, Any]:
-    """The topic's panels, or the general ones for a topic with none; empty where the level took them away."""
+def for_topic(user: User, topic: str, now: datetime) -> dict[str, Any]:
+    """The topic's panels, or the general ones for a topic with none; empty where the rank took them away."""
     entry = _content().get(topic) or _content()["general"]
-    aids = xp_rules.at(xp_rules.level_for(user.xp))
+    aids = rank_rules.standing(user.rank_points, user.rank_season, user.position, None, now).division
     return {
         "title": entry["title"],
         "formulas": entry["formulas"] if aids.formulas else [],

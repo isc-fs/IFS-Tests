@@ -68,6 +68,7 @@ export default function Practice() {
   const [tally, setTally] = useState<Tally>({ answered: 0, correct: 0 })
   return (
     <Page title="Practice" eyebrow="Every past quiz, graded on the spot">
+      <p className="muted">Practice earns XP only. The daily questions and mock quizzes move your rank.</p>
       <AreaPicker area={area} topic={topic} />
       {tally.answered > 0 && (
         <p className="muted" aria-live="polite">
@@ -126,6 +127,7 @@ function Session({ area, topic, onGraded }: Filter & { onGraded: (correct: boole
             question={question}
             feedback={feedback}
             pending={answer.isPending}
+            mode="practice"
             onAnswer={(body) => answer.mutate({ path: { question_id: question.id }, body })}
             onHint={async () => (await practiceHint({ path: { question_id: question.id } })).data}
             next={

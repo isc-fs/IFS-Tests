@@ -59,6 +59,7 @@ def export(db: DB, user: User, now: datetime) -> dict[str, Any]:
             "passed": a.passed,
             "hint_used": a.hint_used,
             "xp": 0 if hidden(a) else a.xp,
+            "lp": 0.0 if hidden(a) else a.lp,
             "late": a.late,
             "day": a.day,
             "started_at": a.created_at,
@@ -133,6 +134,7 @@ def export(db: DB, user: User, now: datetime) -> dict[str, Any]:
             "role": user.role,
             "status": user.status,
             "xp": user.xp,
+            "rank_points": user.rank_points,
             "hidden_from_leaderboard": user.leaderboard_opt_out,
             "joined_at": user.created_at,
             "last_seen": user.last_seen,
@@ -272,6 +274,8 @@ def delete_self(db: DB, user: User, password: str, now: datetime) -> None:
     audit(db, None, "user.delete", f"user:{user.id}", by="self")
     _delete(db, locked.user, locked.sessions, now)
     db.commit()
+    for s in locked.sessions:  # the sessions they hosted are over: their players' XP goes out
+        live.share(db, s.id, now)
 
 
 def delete_user(db: DB, actor: User, user_id: int, now: datetime) -> None:
@@ -284,6 +288,8 @@ def delete_user(db: DB, actor: User, user_id: int, now: datetime) -> None:
     audit(db, actor, "user.delete", f"user:{user_id}", by="admin")
     _delete(db, locked.user, locked.sessions, now)
     db.commit()
+    for s in locked.sessions:
+        live.share(db, s.id, now)
 
 
 def mark_alumni(db: DB, actor: User, user_ids: list[int], now: datetime) -> int:
@@ -292,7 +298,9 @@ def mark_alumni(db: DB, actor: User, user_ids: list[int], now: datetime) -> int:
     if actor.id not in _active_admin_ids(db):
         raise AccountError("Only an active admin can do this.", 403)
     ids = set(user_ids) - {actor.id}
-    users = db.scalars(select(User).where(User.id.in_(ids), User.status != "alumni").with_for_update()).all()
+    users = db.scalars(
+        select(User).where(User.id.in_(ids), User.status != "alumni").order_by(User.id).with_for_update()
+    ).all()
     for u in users:
         audit(db, actor, "user.update", f"user:{u.id}", status=[u.status, "alumni"])
         u.status, u.left_at = "alumni", u.left_at or now

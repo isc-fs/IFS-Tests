@@ -8,7 +8,8 @@ from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from ifs_tests.db.models import Attempt, Question, User
-from ifs_tests.domain.xp import award, level_for
+from ifs_tests.domain.rank import placement
+from ifs_tests.domain.xp import xp_award
 
 from ..conftest import Clock
 from .helpers import login, member, options
@@ -16,8 +17,12 @@ from .helpers import login, member, options
 pytestmark = pytest.mark.integration
 NewClient = Callable[[], TestClient]
 REVEALING = ("is_correct", "key", "official", "correct", "display", "solution")
-PRACTICE = award(True, 3, "practice", 0)  # a right answer to a question not yet got right
-REPEAT = award(True, 3, "practice", 0, repeat=True)  # one already got right before
+MINGO = placement("mingo")
+
+
+def points(db: Session) -> float:
+    db.expire_all()
+    return db.scalars(select(User.rank_points).where(User.display_name == "Marta")).one()
 
 
 @pytest.fixture
@@ -52,31 +57,53 @@ def test_choice_answers(player: TestClient, db: Session, bank: dict[int, int], c
     qid = bank[90001]
     right, wrong = options(db, qid)[:2]
     ok = player.post(f"/api/practice/questions/{qid}/answer", json={"options": [right]}).json()
+    first = xp_award(True, 3, "practice", first_win=True)
     assert ok == {
         "correct": True,
         "official": "0.713 m",
         "correct_options": [right],
         "solutions": [],
-        "xp": PRACTICE,
-        "level": level_for(PRACTICE),
-        "level_up": level_for(PRACTICE) > 0,
+        "xp": first.amount,
+        "lp": 0,  # practice is for learning: XP only
+        "bonuses": first.bonuses,
+        "combo": 1,
+        "comeback": False,
+        "cushioned": False,
+        "promoted": False,
+        "rose": False,
+        "demoted": False,
+        "rank_points": MINGO,
+        "level": 1,
+        "level_up": False,
         "passed": False,
     }
+    assert set(first.bonuses) == {"first_win"}
     no = player.post(f"/api/practice/questions/{qid}/answer", json={"options": [wrong]}).json()
-    assert (no["correct"], no["xp"]) == (False, 0)  # a newcomer's wrong answer costs nothing
+    # Graded earlier today: no XP again.
+    assert (no["correct"], no["xp"], no["combo"], no["lp"]) == (False, 0, 0, 0)
     same_day = player.post(f"/api/practice/questions/{qid}/answer", json={"options": [right]}).json()
-    assert (same_day["correct"], same_day["xp"]) == (True, 0)  # no farming a question you just got right
+    assert (same_day["correct"], same_day["xp"], same_day["lp"]) == (True, 0, 0)  # no farming it
     clock.advance(hours=11)
     player.get("/api/me")
     clock.advance(hours=2)  # past Madrid midnight
+    before = points(db)
     again = player.post(f"/api/practice/questions/{qid}/answer", json={"options": [right]}).json()
-    assert (again["correct"], again["xp"], again["level"]) == (True, REPEAT, level_for(PRACTICE + REPEAT))
+    assert (again["correct"], again["xp"], again["lp"], again["level"]) == (
+        True,
+        xp_award(True, 3, "practice", repeat=True, first_win=True).amount,
+        0,
+        1,
+    )
+    assert points(db) == before
 
     multi = bank[90003]
     a, b, *_ = options(db, multi)
     r = player.post(f"/api/practice/questions/{multi}/answer", json={"options": [b, a]}).json()
     assert r["correct"] is True and sorted(r["correct_options"]) == sorted([a, b])
-    assert r["xp"] == PRACTICE
+    # The repeat above was right on a new day: it carried the combo on.
+    assert (r["xp"], r["combo"]) == (xp_award(True, 3, "practice", first_win=True, combo=2).amount, 3)
+    stored = db.scalars(select(Attempt.lp).where(Attempt.question_id == multi)).one()
+    assert (r["lp"], stored, points(db)) == (0, 0, MINGO)
 
 
 def test_typed_answers_and_solutions(player: TestClient, bank: dict[int, int]) -> None:
@@ -94,12 +121,15 @@ def test_typed_answers_and_solutions(player: TestClient, bank: dict[int, int]) -
 
 
 def test_ungraded_questions_show_the_official_answer_or_say_there_is_none(
-    player: TestClient, bank: dict[int, int]
+    player: TestClient, db: Session, bank: dict[int, int]
 ) -> None:
     drag = player.post(f"/api/practice/questions/{bank[90009]}/answer", json={}).json()
-    assert drag["correct"] is None and drag["official"].startswith("12 V, 24 V") and drag["xp"] == 0
+    assert drag["correct"] is None and drag["official"].startswith("12 V, 24 V")
+    # Nothing to be right or wrong about: a little XP for reading it, the rank doesn't move.
+    assert (drag["xp"], drag["lp"], drag["combo"]) == (xp_award(None, 3, "practice").amount, 0, 0)
     missing = player.post(f"/api/practice/questions/{bank[90010]}/answer", json={"options": []}).json()
-    assert (missing["correct"], missing["official"]) == (None, None)
+    assert (missing["correct"], missing["official"], missing["lp"]) == (None, None, 0)
+    assert points(db) == MINGO
 
 
 def test_bad_answers(player: TestClient, db: Session, bank: dict[int, int]) -> None:

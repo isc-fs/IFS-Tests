@@ -80,8 +80,8 @@ def _state(v: View, now: datetime) -> LiveState:
                         correct=a.correct,
                         passed=a.passed,
                         points=a.points,
-                        options=a.answer.get("options"),
-                        value=a.answer.get("value"),
+                        options=None if r.hidden else a.answer.get("options"),
+                        value=None if r.hidden else a.answer.get("value"),
                     )
                     for a in r.answers.values()
                 ],

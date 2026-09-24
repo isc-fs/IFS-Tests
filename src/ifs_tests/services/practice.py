@@ -9,7 +9,6 @@ from sqlalchemy import case, distinct, func, select
 from sqlalchemy.orm import Session as DB
 
 from ..db.models import AREAS, Attempt, Question, User
-from ..domain.daily import madrid_day
 from . import hints, xp
 from .errors import UserError
 from .questions import Checked, check, not_running, playable, running
@@ -94,7 +93,7 @@ def answer(
     result = check(db, q, options, value, unsure)
     xp.lock(db, user.id)  # so two tabs can't both score the first answer
     last = xp.last_seen(db, user.id, q.id, now)
-    again_today = last is not None and madrid_day(last) == madrid_day(now)
+    again_today = xp.answered_today(db, user.id, q.id, now)
     hinted = hints.spend_practice(db, user.id, q.id)
     granted = xp.grant(
         db,
@@ -118,10 +117,11 @@ def answer(
             created_at=now,
             area=q.area,
             xp=granted.xp,
+            lp=granted.lp,
             passed=result.passed,
             hint_used=hinted,
         )
     )
     db.commit()
-    result.xp, result.level, result.level_up = granted.xp, granted.level, granted.level_up
+    result.score = granted
     return result

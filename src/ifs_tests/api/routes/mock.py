@@ -7,7 +7,7 @@ from fastapi import APIRouter, Path
 from ...domain.mock import bar_to_beat
 from ...services import hints, mock, questions
 from ..deps import Db, Member, Now
-from ..present import feedback, play_question
+from ..present import feedback, play_question, sent
 from ..schemas import HintOut, MockAnswerIn, MockItem, MockQuiz, MockState, MockSummary, TimedQuestion
 
 router = APIRouter(prefix="/api/mock", tags=["mock"])
@@ -32,10 +32,16 @@ def _state(db: Db, s: mock.State, now: Now) -> MockState:
             correct=s.summary.correct,
             graded=s.summary.graded,
             xp=s.summary.xp,
+            lp=s.summary.lp,
             counted=s.summary.counted,
             bar_to_beat=s.summary.bar_to_beat,
             items=[
-                MockItem(question=play_question(sh), feedback=feedback(i.checked), late=i.late)
+                MockItem(
+                    question=play_question(sh),
+                    feedback=feedback(i.checked),
+                    answer=sent(i.answer),
+                    late=i.late,
+                )
                 for sh, i in zip(shown, s.summary.items, strict=True)
             ],
         )

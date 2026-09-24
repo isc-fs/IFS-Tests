@@ -26,23 +26,23 @@ def madrid_midnight(day: date) -> datetime:
     return datetime.combine(day, time(), MADRID)
 
 
-def ranks(xp: Sequence[int]) -> list[int]:
-    """Competition ranking of XP sorted high to low: 30, 20, 20, 10 -> 1, 2, 2, 4."""
+def ranks(scores: Sequence[float]) -> list[int]:
+    """Competition ranking of scores sorted high to low: 30, 20, 20, 10 -> 1, 2, 2, 4."""
     out: list[int] = []
-    for i, x in enumerate(xp):
-        out.append(out[-1] if i and x == xp[i - 1] else i + 1)
+    for i, x in enumerate(scores):
+        out.append(out[-1] if i and x == scores[i - 1] else i + 1)
     return out
 
 
-def rank_among(xp: int, others: Iterable[int]) -> int:
-    """Where someone with `xp` would stand among `others`, sharing the rank of anyone level."""
-    return 1 + sum(1 for x in others if x > xp)
+def rank_among(score: float, others: Iterable[float]) -> int:
+    """Where someone with `score` would stand among `others`, sharing the rank of anyone level."""
+    return 1 + sum(1 for x in others if x > score)
 
 
 @dataclass(frozen=True)
 class Member:
     vertical: str | None
-    xp: int
+    points: float  # rank points
     played_this_week: bool
 
 
@@ -50,12 +50,12 @@ class Member:
 class VerticalScore:
     vertical: str
     members: int
-    xp_per_member: float
+    rank_points: float  # the members' average
     participation: float
 
 
 def vertical_board(members: Iterable[Member]) -> list[VerticalScore]:
-    """Average XP per member and the share who played this week, best average first.
+    """Average rank per member and the share who played this week, best average first.
     Verticals with too few members to average fairly are left out."""
     by_vertical: dict[str, list[Member]] = {}
     for m in members:
@@ -65,10 +65,10 @@ def vertical_board(members: Iterable[Member]) -> list[VerticalScore]:
         VerticalScore(
             vertical=v,
             members=len(ms),
-            xp_per_member=round(sum(m.xp for m in ms) / len(ms), 1),
+            rank_points=round(sum(m.points for m in ms) / len(ms), 1),
             participation=round(sum(m.played_this_week for m in ms) / len(ms), 3),
         )
         for v, ms in by_vertical.items()
         if len(ms) >= MIN_VERTICAL
     ]
-    return sorted(rows, key=lambda r: (-r.xp_per_member, -r.participation, r.vertical))
+    return sorted(rows, key=lambda r: (-r.rank_points, -r.participation, r.vertical))

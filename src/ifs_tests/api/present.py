@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from ..bank.client import DOC_URL
 from ..services.questions import Checked, Doc, Shown
-from .schemas import DocLink, Feedback, Option, PlayQuestion, QuestionDocs, SolutionOut, media_url
+from .schemas import DocLink, Feedback, KeyIn, Option, PlayQuestion, QuestionDocs, SolutionOut, media_url
 
 
 def play_question(shown: Shown) -> PlayQuestion:
@@ -34,11 +36,28 @@ def _link(d: Doc) -> DocLink:
     return DocLink(title=d.title, type=d.type, year=d.year, url=url)
 
 
+def sent(answer: dict[str, Any] | None) -> KeyIn | None:
+    """The player's own answer as they sent it; none for a question left to run out or passed."""
+    if not answer or (answer.get("options") is None and answer.get("value") is None):
+        return None
+    return KeyIn(options=answer.get("options"), value=answer.get("value"))
+
+
 def feedback(checked: Checked) -> Feedback:
+    s = checked.score
     return Feedback(
-        xp=checked.xp,
-        level=checked.level,
-        level_up=checked.level_up,
+        xp=s.xp if s else 0,
+        lp=s.lp if s else 0,
+        bonuses=s.bonuses if s else {},
+        combo=s.combo if s else 0,
+        comeback=bool(s and s.comeback),
+        cushioned=bool(s and s.cushioned),
+        promoted=bool(s and s.promoted),
+        rose=bool(s and s.rose),
+        demoted=bool(s and s.demoted),
+        rank_points=s.points if s and s.level else None,
+        level=s.level if s and s.level else None,
+        level_up=bool(s and s.level_up),
         passed=checked.passed,
         correct=checked.correct,
         official=checked.official,

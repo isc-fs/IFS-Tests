@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
+from typing import Any
 
 from sqlalchemy import Select, func, select, text, update
 from sqlalchemy.dialects.postgresql import insert
@@ -12,9 +13,9 @@ from sqlalchemy.orm import Session as DB
 
 from ..db.models import Attempt, DailyQuestion, Question, User
 from ..domain import daily as rules
-from . import xp
+from . import hints, streaks, xp
 from .errors import UserError
-from .questions import Checked, check
+from .questions import Checked, check, running
 
 LOCK = 0x1F5DA11  # pg advisory lock key for choosing the day's questions
 
@@ -43,7 +44,7 @@ def ensure_daily(db: DB, day: date) -> dict[str, int]:
             .outerjoin(tried, tried.c.question_id == Question.id)
             .where(Question.area == area, Question.playable, Question.graded)
         )
-        qid = rules.pick([rules.Candidate(i, used, n) for i, used, n in rows], day, area)
+        qid = rules.pick([rules.Candidate(i, used, n) for i, used, n in rows], day, area, hints.salt(db))
         if qid is not None:
             db.execute(
                 insert(DailyQuestion)
@@ -76,15 +77,7 @@ def _attempt(db: DB, user: User, day: date, area: str) -> Attempt | None:
 
 
 def _on_time_days(db: DB, user: User) -> set[date]:
-    rows = db.scalars(
-        select(Attempt.day).where(
-            Attempt.user_id == user.id,
-            Attempt.mode == "daily",
-            Attempt.submitted_at.is_not(None),
-            Attempt.late.is_(False),
-        )
-    )
-    return {d for d in rows if d}
+    return streaks.kept(db, user.id)
 
 
 @dataclass
@@ -95,7 +88,9 @@ class AreaState:
     deadline_at: datetime | None
     correct: bool | None
     late: bool | None
+    passed: bool
     xp: int
+    lp: float
 
 
 @dataclass
@@ -103,6 +98,7 @@ class Status:
     day: date
     streak: int
     xp_today: int
+    lp_today: float
     areas: list[AreaState]
 
 
@@ -129,12 +125,15 @@ def status(db: DB, user: User, now: datetime) -> Status:
                 deadline_at=a.deadline_at if a else None,
                 correct=a.correct if a else None,
                 late=a.late if a else None,
+                passed=bool(a and a.passed),
                 xp=a.xp if a else 0,
+                lp=a.lp if a else 0.0,
             )
         )
     order = {a: i for i, a in enumerate(rules.AREAS)}
     areas.sort(key=lambda s: order[s.area])
-    return Status(day, rules.streak(_on_time_days(db, user), day), sum(a.xp for a in areas), areas)
+    run = rules.streak(_on_time_days(db, user), day)
+    return Status(day, run, sum(a.xp for a in areas), round(sum(a.lp for a in areas), 2), areas)
 
 
 def start(db: DB, user: User, area: str, now: datetime) -> tuple[Question, Attempt]:
@@ -149,6 +148,8 @@ def start(db: DB, user: User, area: str, now: datetime) -> tuple[Question, Attem
     if qid is None:
         raise UserError("There's no daily question for this area today.", 404)
     q = db.get_one(Question, qid)
+    if q.id in running(db, user.id, now, daily=False):
+        raise UserError("This question is running in your mock or live quiz: answer it there first.", 409)
     db.execute(
         insert(Attempt)
         .values(
@@ -176,7 +177,9 @@ class Result:
     checked: Checked
     late: bool
     xp: int
+    lp: float
     streak: int
+    answer: dict[str, Any]
 
 
 def answer(
@@ -194,8 +197,9 @@ def answer(
     )
     if a is None or a.day is None or a.deadline_at is None:
         raise UserError("Start the question first.", 404)
-    level_up = False
+    granted = None
     if a.submitted_at is None:
+        xp.lock(db, user.id)  # the player, then the attempt: the order deleting an account takes
         q = db.get_one(Question, a.question_id)
         checked = check(db, q, options, value, unsure)
         late = rules.is_late(now, a.deadline_at)
@@ -224,13 +228,17 @@ def answer(
                 repeat=repeat,
                 passed=checked.passed,
                 hint=a.hint_used,
+                again_today=xp.answered_today(db, user.id, q.id, now, other_than=a.id),
+                season_at=a.created_at,
             )
-            db.execute(update(Attempt).where(Attempt.id == a.id).values(xp=granted.xp))
-            level_up = granted.level_up
+            db.execute(update(Attempt).where(Attempt.id == a.id).values(xp=granted.xp, lp=granted.lp))
         db.commit()
         db.refresh(a)
     result = review_attempt(db, user, a)
-    result.checked.level_up = level_up
+    if (
+        granted
+    ):  # the request that scored it tells of promotions and bonuses; reloads show the stored XP and LP
+        result.checked.score = granted
     return result
 
 
@@ -238,7 +246,7 @@ def close_expired(db: DB, now: datetime, user_id: int | None = None) -> int:
     """Close daily questions left to run out: late and wrong, like an answer sent after the time.
     Otherwise closing the tab on a hard question would dodge the XP a wrong answer costs."""
     stmt = (
-        select(Attempt.id, Attempt.question_id, Attempt.user_id)
+        select(Attempt.id, Attempt.question_id, Attempt.user_id, Attempt.created_at)
         .where(
             Attempt.mode == "daily", Attempt.submitted_at.is_(None), Attempt.deadline_at < now - rules.GRACE
         )
@@ -247,7 +255,8 @@ def close_expired(db: DB, now: datetime, user_id: int | None = None) -> int:
     if user_id is not None:
         stmt = stmt.where(Attempt.user_id == user_id)
     closed = 0
-    for attempt_id, question_id, owner in db.execute(stmt).all():
+    for attempt_id, question_id, owner, started in db.execute(stmt).all():
+        xp.lock(db, owner)
         q = db.get_one(Question, question_id)
         correct = False if q.graded else None
         recorded = db.execute(
@@ -258,8 +267,19 @@ def close_expired(db: DB, now: datetime, user_id: int | None = None) -> int:
         ).first()
         if recorded:
             repeat = xp.last_seen(db, owner, q.id, now, other_than=attempt_id) is not None
-            granted = xp.grant(db, owner, q, "daily", correct, now, late=True, repeat=repeat)
-            db.execute(update(Attempt).where(Attempt.id == attempt_id).values(xp=granted.xp))
+            granted = xp.grant(
+                db,
+                owner,
+                q,
+                "daily",
+                correct,
+                now,
+                answered=False,
+                late=True,
+                repeat=repeat,
+                season_at=started,
+            )
+            db.execute(update(Attempt).where(Attempt.id == attempt_id).values(xp=granted.xp, lp=granted.lp))
             closed += 1
         db.commit()  # one attempt per transaction: attempt then player, the same lock order as answering
     return closed
@@ -271,8 +291,8 @@ def review_attempt(db: DB, user: User, a: Attempt) -> Result:
     checked = check(db, q, a.answer.get("options"), a.answer.get("value"), a.passed)
     checked.correct = a.correct
     run = rules.streak(_on_time_days(db, user), a.day) if a.day else 0
-    checked.xp, checked.level = a.xp, xp.level(db, user.id)
-    return Result(q, checked, bool(a.late), a.xp, run)
+    checked.score = xp.stored(db, user.id, a)
+    return Result(q, checked, bool(a.late), a.xp, a.lp, run, a.answer)
 
 
 def review(db: DB, user: User, area: str, now: datetime) -> Result:

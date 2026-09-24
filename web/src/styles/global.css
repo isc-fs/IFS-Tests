@@ -446,10 +446,6 @@ button.danger:hover {
   min-height: auto;
   margin: 2px 0 0;
 }
-.choice:has(input:checked) {
-  border-color: var(--isc-green);
-  background: var(--isc-cream);
-}
 .choice.right {
   border-color: var(--isc-green);
   background: #e7f3ec;
@@ -750,8 +746,9 @@ details[open] > summary::before {
 .board-table tr.me {
   background: var(--isc-cream);
 }
-.board .item-title {
-  overflow-wrap: anywhere;
+.board .item-title,
+.board .item .muted {
+  overflow-wrap: break-word;
 }
 .board .place {
   font-family: var(--isc-font-mono);
@@ -762,6 +759,22 @@ details[open] > summary::before {
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+/* Phones: the rank and LP go under the name, which keeps the row's width. */
+@media (max-width: 560px) {
+  .board .item {
+    grid-template-columns: 2.5ch 32px minmax(0, 1fr);
+    row-gap: 2px;
+  }
+  .board .place,
+  .board .item > .emblem {
+    grid-row: span 2;
+  }
+  .board .points {
+    grid-column: 3;
+    font-size: var(--isc-fs-body-s);
+    white-space: normal;
+  }
 }
 .my-rank {
   padding: 12px;
@@ -1404,4 +1417,117 @@ details[open] > summary::before {
   bottom: 0;
   padding-block: 8px;
   background: var(--isc-c-surface);
+}
+.cards-2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  gap: 16px;
+  align-items: start;
+}
+.account-card h2,
+.account-card .eyebrow {
+  margin: 0;
+}
+.account-head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.account-head p {
+  margin: 2px 0 0;
+}
+.account-level {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  border: 3px solid var(--isc-c-border);
+  background: var(--isc-c-surface);
+  font-family: var(--isc-font-display);
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--isc-green);
+}
+.account-level.frame-10 {
+  border-color: var(--isc-green);
+}
+.account-level.frame-25 {
+  border-color: var(--isc-gold);
+}
+.account-level.frame-50 {
+  border: 5px double var(--isc-gold);
+}
+.account-level.frame-100 {
+  border: 5px double var(--isc-gold);
+  box-shadow: 0 0 0 3px var(--isc-green);
+}
+.bonus-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+  font-size: var(--isc-fs-body-s);
+  color: var(--isc-c-text-mut);
+}
+.bonus-list li.on {
+  color: var(--isc-c-text);
+}
+.chips-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+}
+.bonus {
+  font-size: var(--isc-fs-body-s);
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--isc-gold) 22%, transparent);
+  color: var(--isc-c-text);
+}
+.bonus.quiet {
+  background: none;
+  color: var(--isc-c-text-mut);
+  font-weight: 400;
+}
+.bonus-crit {
+  background: var(--isc-gold);
+  color: var(--isc-green-900, #06281a);
+}
+.bonus.level {
+  background: var(--isc-green);
+  color: var(--isc-white);
+}
+.account-card .small {
+  margin: 0;
+  font-size: var(--isc-fs-caption);
+}
+.lp.gain {
+  color: var(--isc-gold-ink);
+  font-weight: 700;
+}
+.lp.loss {
+  color: var(--isc-c-error);
+  font-weight: 700;
+}
+.earned {
+  display: grid;
+  gap: 8px;
+}
+.level-up {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--isc-green) 12%, transparent);
+}
+.level-up.frame {
+  background: var(--isc-green);
+  color: var(--isc-white);
+}
+.choice:has(input:checked):not(.right, .wrong) {
+  border-color: var(--isc-green);
+  background: var(--isc-cream);
 }

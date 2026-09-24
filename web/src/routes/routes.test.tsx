@@ -9,6 +9,12 @@ test('protected pages send signed-out visitors to the login page and back', asyn
   expect(router.state.location.search).toBe('?next=%2Fprofile')
 })
 
+test('the way back after signing in keeps the query string', async () => {
+  const { router } = renderApp('/leaderboard?board=mech&period=week', signedOut)
+  await waitFor(() => expect(router.state.location.pathname).toBe('/login'))
+  expect(new URLSearchParams(router.state.location.search).get('next')).toBe('/leaderboard?board=mech&period=week')
+})
+
 test('a server error keeps the member signed in and offers a retry', async () => {
   const { router } = renderApp('/profile', { 'GET /api/me': { status: 502, body: {} } })
   expect(await screen.findByRole('alert', {}, { timeout: 3000 })).toHaveTextContent('not answering')

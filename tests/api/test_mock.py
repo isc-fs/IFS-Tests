@@ -12,18 +12,33 @@ from sqlalchemy.orm import Session
 
 from ifs_tests.bank.mirror import load_bank
 from ifs_tests.bank.sample import SAMPLE_DIR
-from ifs_tests.db.models import Question, QuizQuestion, User
-from ifs_tests.domain.xp import award
+from ifs_tests.db.models import Attempt, Question, QuizQuestion, User
+from ifs_tests.domain.xp import xp_award
 from ifs_tests.services.bank import import_bank
 
 from ..conftest import Clock
-from .helpers import login, member, right_answer
+from .helpers import PASSWORD, login, member, right_answer
 
 pytestmark = pytest.mark.integration
 NewClient = Callable[[], TestClient]
 CV = 9002  # sample quiz: five graded questions
-MOCK = award(True, 3, "mock", 0)  # a right answer in a counted run
-REPLAY = award(True, 3, "mock", 0, repeat=True)  # a right answer in a replay
+SCORES = ("xp", "lp", "rank_points", "bonuses", "level")
+
+
+def run_xp(n: int, combo: int = 0, first_wins: int = 3, **kw: bool) -> int:
+    """XP for `n` right answers in a row in a mock run of difficulty-3 questions."""
+    return sum(
+        xp_award(True, 3, "mock", first_win=i < first_wins, combo=combo + i, **kw).amount for i in range(n)
+    )
+
+
+def keys(value: Any) -> set[str]:
+    """Every key anywhere in a JSON body."""
+    if isinstance(value, dict):
+        return set(value) | {k for v in value.values() for k in keys(v)}
+    if isinstance(value, list):
+        return {k for v in value for k in keys(v)}
+    return set()
 
 
 @pytest.fixture
@@ -68,7 +83,7 @@ def test_the_quiz_list(player: TestClient) -> None:
     assert ev["best"] is None and ev["open_session"] is None
 
 
-def test_a_full_run_earns_mock_xp_per_correct_answer(player: TestClient, db: Session) -> None:
+def test_a_full_run_scores_each_answer_and_shows_it_only_at_the_end(player: TestClient, db: Session) -> None:
     state = player.post(f"/api/mock/quizzes/{CV}/start").json()
     assert (state["label"], state["position"], state["total"], state["summary"]) == (
         "FS Demo 2025 CV",
@@ -81,18 +96,42 @@ def test_a_full_run_earns_mock_xp_per_correct_answer(player: TestClient, db: Ses
     state = answer(player, state, right_answer(db, first))
     assert state["position"] == 1 and state["current"]["question"]["id"] != first
     while state["current"]:
+        assert state["summary"] is None and not keys(state) & set(SCORES)  # nothing to read mid-run
         state = answer(player, state, right_answer(db, state["current"]["question"]["id"]))
     s = state["summary"]
-    assert (s["correct"], s["graded"], s["xp"], s["counted"]) == (5, 5, 5 * MOCK, True)
+    assert (s["correct"], s["graded"], s["xp"], s["counted"]) == (5, 5, run_xp(5), True)
     assert all(i["feedback"]["correct"] and i["feedback"]["official"] for i in s["items"])
+    fb = [i["feedback"] for i in s["items"]]
+    assert all(f["lp"] > 0 for f in fb)
+    assert all(f["rank_points"] is None and f["level"] is None for f in fb)  # where you stand is on /api/me
+    assert [f["xp"] for f in fb] == [
+        xp_award(True, 3, "mock", first_win=i < 3, combo=i).amount for i in range(5)
+    ]
+    assert s["lp"] == round(sum(f["lp"] for f in fb), 2)
+    stored = db.scalars(select(Attempt).where(Attempt.mode == "mock").order_by(Attempt.id)).all()
+    assert [(a.xp, a.lp) for a in stored] == [(f["xp"], f["lp"]) for f in fb]
+    rank = db.scalars(select(User.rank_points).where(User.display_name == "Marta")).one()
+    assert rank == round(50 + s["lp"], 2)
     quiz = next(q for q in player.get("/api/mock/quizzes").json() if q["id"] == CV)
     assert (quiz["best"], quiz["open_session"]) == (5, None)
 
 
-def test_replays_in_the_same_season_earn_a_tenth(player: TestClient, db: Session) -> None:
-    run_through(player, db)
+def test_replays_pay_nothing_the_same_day_and_xp_only_after(
+    player: TestClient, db: Session, clock: Clock
+) -> None:
+    first = run_through(player, db)["summary"]
+    assert first["lp"] > 0
     again = run_through(player, db)["summary"]
-    assert (again["correct"], again["xp"], again["counted"]) == (5, 5 * REPLAY, False)
+    assert (again["correct"], again["xp"], again["lp"], again["counted"]) == (5, 0, 0, False)
+    clock.advance(days=1)
+    player.post("/auth/login", json={"email": "marta@alu.comillas.edu", "password": PASSWORD})
+    later = run_through(player, db)["summary"]
+    # A quarter of the XP, with a new day's first wins and the combo carried on; no LP for a replay.
+    assert (later["xp"], later["lp"], later["counted"]) == (
+        run_xp(5, combo=5, first_wins=3, repeat=True),
+        0,
+        False,
+    )
 
 
 def test_starting_again_resumes_the_same_question_and_clock(player: TestClient, clock: Clock) -> None:
@@ -106,7 +145,7 @@ def test_starting_again_resumes_the_same_question_and_clock(player: TestClient, 
     assert listed["open_session"] == first["session_id"]
 
 
-def test_a_question_left_to_run_out_is_closed_as_wrong(player: TestClient, clock: Clock) -> None:
+def test_a_question_left_to_run_out_is_closed_as_wrong(player: TestClient, db: Session, clock: Clock) -> None:
     state = player.post(f"/api/mock/quizzes/{CV}/start").json()
     clock.now = datetime.fromisoformat(state["current"]["deadline_at"])
     clock.advance(seconds=4)
@@ -115,9 +154,13 @@ def test_a_question_left_to_run_out_is_closed_as_wrong(player: TestClient, clock
     assert later["current"]["question"]["id"] != state["current"]["question"]["id"]
     late_answer = answer(player, state, {"options": []})
     assert late_answer["position"] == 1  # answering the closed question again changes nothing
+    while later["current"]:
+        later = answer(player, later, right_answer(db, later["current"]["question"]["id"]))
+    timed_out = later["summary"]["items"][0]["feedback"]
+    assert (timed_out["correct"], timed_out["xp"]) == (False, 0) and timed_out["lp"] < 0
 
 
-def test_a_late_answer_moves_on_and_earns_nothing(player: TestClient, db: Session, clock: Clock) -> None:
+def test_a_late_answer_moves_on_and_counts_as_wrong(player: TestClient, db: Session, clock: Clock) -> None:
     state = player.post(f"/api/mock/quizzes/{CV}/start").json()
     clock.now = datetime.fromisoformat(state["current"]["deadline_at"])
     clock.advance(seconds=10)
@@ -126,18 +169,29 @@ def test_a_late_answer_moves_on_and_earns_nothing(player: TestClient, db: Sessio
     while state["current"]:
         state = answer(player, state, right_answer(db, state["current"]["question"]["id"]))
     s = state["summary"]
-    assert (s["correct"], s["xp"]) == (5, 4 * MOCK)
+    late = xp_award(True, 3, "mock", late=True).amount
+    assert (s["correct"], s["xp"]) == (5, late + run_xp(4))
     assert [i["late"] for i in s["items"]] == [True, False, False, False, False]
+    lps = [i["feedback"]["lp"] for i in s["items"]]
+    assert lps[0] < 0 < min(lps[1:])
 
 
-def test_ungraded_questions_are_shown_but_earn_nothing(player: TestClient, db: Session) -> None:
+def test_ungraded_questions_are_shown_and_never_move_the_rank(player: TestClient, db: Session) -> None:
     state = player.post("/api/mock/quizzes/9001/start").json()
     while state["current"]:
         q = state["current"]["question"]
         body = right_answer(db, q["id"]) if q["graded"] else {"options": []}
         state = answer(player, state, body)
     s = state["summary"]
-    assert (s["correct"], s["graded"], s["xp"], len(s["items"])) == (6, 6, 6 * MOCK, 8)
+    expected, rights = 0, 0
+    for i in s["items"]:
+        if i["feedback"]["correct"] is None:
+            assert (i["feedback"]["xp"], i["feedback"]["lp"]) == (xp_award(None, 3, "mock").amount, 0)
+            expected += i["feedback"]["xp"]
+        else:
+            expected += xp_award(True, 3, "mock", first_win=rights < 3, combo=rights).amount
+            rights += 1
+    assert (s["correct"], s["graded"], s["xp"], len(s["items"])) == (6, 6, expected, 8)
     assert [i["feedback"]["correct"] for i in s["items"]].count(None) == 2
 
 
@@ -176,7 +230,7 @@ def test_a_question_disappearing_mid_run_does_not_derail_it(player: TestClient, 
     while state["current"]:
         state = answer(player, state, right_answer(db, state["current"]["question"]["id"]))
     s = state["summary"]
-    assert (s["correct"], s["graded"], s["xp"], len(s["items"])) == (5, 5, 5 * MOCK, 5)
+    assert (s["correct"], s["graded"], s["xp"], len(s["items"])) == (5, 5, run_xp(5), 5)
 
 
 def test_a_question_that_becomes_playable_mid_run_joins_it(player: TestClient, db: Session) -> None:

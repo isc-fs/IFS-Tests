@@ -1,5 +1,5 @@
 import { Link } from 'react-router'
-import { LevelCard } from '../components/LevelCard'
+import { AccountCard, RankCard } from '../components/RankCard'
 import { Page } from '../components/Page'
 import { useMe } from '../lib/api'
 
@@ -16,7 +16,12 @@ export default function Home() {
           First step: <Link to="/profile">set your vertical</Link> so your answers count for your team on the board.
         </p>
       )}
-      {user && <LevelCard me={user} />}
+      {user && (
+        <div className="cards-2">
+          <RankCard me={user} />
+          <AccountCard me={user} />
+        </div>
+      )}
       <section className="panel stack" aria-labelledby="daily-title">
         <h2 id="daily-title">Daily question</h2>
         <p>One mechanical, one electrical and one rules question every day, against the clock. Keep your streak.</p>
@@ -56,7 +61,9 @@ export default function Home() {
         </p>
       </section>
       <p className="home-board">
-        Every answer earns XP, and harder questions earn more. <Link to="/leaderboard">See the leaderboard</Link>
+        Your rank shows how well you answer: right answers win LP (league points), wrong ones lose them. Your level
+        shows how much you play: every answer adds XP, and XP never goes down.{' '}
+        <Link to="/leaderboard">See the leaderboard</Link>
       </p>
     </Page>
   )

@@ -30,17 +30,18 @@ def test_every_subdepartment_has_a_vertical_and_known_topics() -> None:
 
 def test_tables_follow_each_players_first_subdepartment_never_balanced() -> None:
     players = [
-        Player(1, ("AE",), 3),
-        Player(2, ("AE", "CH"), 9),  # the first sub-department seats them
-        Player(3, ("BT",), 1),
-        Player(4, (), 12),
-        Player(5, ("??",), 0),  # unknown codes are ignored
-        Player(6, ("AE",), 9),  # ties go to the earlier member
+        Player(1, ("AE",), 350.0),  # rank points: the best-ranked member captains
+        Player(2, ("AE", "CH"), 550.0),  # the first sub-department seats them
+        Player(3, ("BT",), 50.0),
+        Player(4, (), 1050.0),
+        Player(5, ("??",), 0.0),  # unknown codes are ignored
+        Player(6, ("AE",), 550.0),  # ties go to the earlier member
+        Player(7, ("BT",), 50.25),  # a fraction of an LP is enough
     ]
     tables = seat_by_subdepartment(players)
     assert [(t.name, sorted(t.member_ids), t.captain_id, t.topics) for t in tables] == [
         ("Aerodynamics", [1, 2, 6], 2, ["aero"]),
-        ("Batteries", [3], 3, ["hv"]),
+        ("Batteries", [3, 7], 7, ["hv"]),
         ("Everyone else", [4, 5], 4, []),
     ]
 

@@ -158,7 +158,17 @@ export function Reveal({ s, r }: { s: LiveState; r: LiveReveal }) {
 
 const short = (text: string) => (text.length > 110 ? `${text.slice(0, 100).trimEnd()}…` : text)
 
-export function Results({ s }: { s: LiveState }) {
+/** ✓ or ✗ for one question: the room's (any table right) on the projector and the host's screen; for a player,
+ *  their own table's, or the answering table's when the question went to another one. */
+function mark(s: LiveState, r: LiveReveal, room: boolean): string {
+  if (room || s.my_table_id == null) return r.answers.some((a) => a.correct) ? '✓' : '✗'
+  const other = r.table_id != null && r.table_id !== s.my_table_id
+  const table = other ? r.table_id : s.my_table_id
+  const right = r.answers.some((a) => a.table_id === table && a.correct) ? '✓' : '✗'
+  return other ? `${right} (${tableName(s, table)})` : right
+}
+
+export function Results({ s, room = false }: { s: LiveState; room?: boolean }) {
   return (
     <section className="stack" aria-labelledby="results-title">
       <h2 id="results-title">Results</h2>
@@ -168,7 +178,7 @@ export function Results({ s }: { s: LiveState }) {
       {(s.reveals ?? []).map((r) => (
         <details key={r.position}>
           <summary>
-            {r.position + 1}. {r.answers.some((a) => a.correct) ? '✓' : '✗'} {short(r.question.text)}
+            {r.position + 1}. {mark(s, r, room)} {short(r.question.text)}
           </summary>
           <Reveal s={s} r={r} />
         </details>

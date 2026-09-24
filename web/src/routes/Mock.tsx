@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import {
   answerMockMutation,
@@ -9,16 +9,28 @@ import {
   startMockMutation,
 } from '../api/@tanstack/react-query.gen'
 import { mockHint } from '../api/sdk.gen'
-import type { MockQuiz, MockState, MockSummary } from '../api/types.gen'
+import type { MockItem, MockQuiz, MockState, MockSummary } from '../api/types.gen'
 import { Countdown } from '../components/Countdown'
 import { ErrorNotice, Notice } from '../components/Form'
 import { LearningAids } from '../components/LearningAids'
 import { Page } from '../components/Page'
 import { QuestionCard } from '../components/QuestionCard'
-import { queryClient } from '../lib/api'
+import { ME_KEY, queryClient, useMe } from '../lib/api'
+import { lp } from '../lib/rank'
 import { xp } from '../lib/xp'
 
 const CLASSES = ['ev', 'cv', 'dv']
+
+/** Nothing sent, or the empty answer the clock sends when time runs out. */
+const blank = (a: MockItem['answer']) => !a || (!a.options?.length && !a.value?.trim())
+
+function verdict(item: MockItem): string {
+  const f = item.feedback
+  if (f.passed) return 'not sure'
+  if (item.late || (f.correct === false && blank(item.answer))) return 'out of time'
+  if (f.correct === null) return 'not graded'
+  return f.correct ? 'right' : 'wrong'
+}
 const minutes = (s: number) => `${Math.round(s / 60)} min`
 
 function QuizRow({ quiz, onStart, busy }: { quiz: MockQuiz; onStart: () => void; busy: boolean }) {
@@ -67,7 +79,8 @@ export default function Mock() {
     <Page title="Mock quizzes" eyebrow="Past registration quizzes, on their real clock">
       <p className="lede">
         One question at a time, each with the time it had in the real quiz. You see your results at the end. Your first
-        run of a quiz each season earns full XP; replays earn a tenth.
+        run of a quiz each season moves your rank; replays earn XP only. A question already answered today earns no XP
+        again.
       </p>
       <div className="row">
         <div className="field">
@@ -104,6 +117,11 @@ export default function Mock() {
 }
 
 function Summary({ summary }: { summary: MockSummary }) {
+  const { data: me } = useMe()
+  useEffect(() => {
+    queryClient.invalidateQueries({ queryKey: ME_KEY }) // the run's LP and XP are in now
+  }, [])
+  const rank = me?.progress?.rank
   return (
     <section className="panel stack" aria-labelledby="summary-title">
       <h2 id="summary-title">
@@ -111,9 +129,14 @@ function Summary({ summary }: { summary: MockSummary }) {
       </h2>
       <p>
         {summary.counted
-          ? `${xp(summary.xp)} for the season.`
-          : `A replay: ${xp(summary.xp)}. Only your first run of a quiz each season earns full XP.`}
+          ? `${lp(summary.lp)} and ${xp(summary.xp)}.`
+          : `A replay: ${lp(summary.lp)} and ${xp(summary.xp)}. Only your first run of a quiz each season moves your rank.`}
       </p>
+      {rank && me?.progress && (
+        <p className="muted">
+          Now {rank.title} · {Math.floor(rank.lp)} LP · Level {me.progress.account.level}
+        </p>
+      )}
       {summary.bar_to_beat && <p className="muted">{summary.bar_to_beat}</p>}
       <p>
         <Link to="/mock">Back to the quizzes</Link>
@@ -184,18 +207,14 @@ export function MockRun() {
               <li key={item.question.id}>
                 <details>
                   <summary>
-                    Question {i + 1}:{' '}
-                    {item.late
-                      ? 'out of time'
-                      : item.feedback.passed
-                        ? 'not sure'
-                        : item.feedback.correct === null
-                          ? 'not graded'
-                          : item.feedback.correct
-                            ? 'right'
-                            : 'wrong'}
+                    Question {i + 1}: {verdict(item)}
                   </summary>
-                  <QuestionCard question={item.question} feedback={item.feedback} onAnswer={() => {}} />
+                  <QuestionCard
+                    question={item.question}
+                    feedback={item.feedback}
+                    preset={item.answer ?? undefined}
+                    onAnswer={() => {}}
+                  />
                 </details>
               </li>
             ))}

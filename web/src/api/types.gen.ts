@@ -5,6 +5,74 @@ export type ClientOptions = {
 };
 
 /**
+ * AccountOut
+ *
+ * The account level: XP from every answer, it only goes up.
+ */
+export type AccountOut = {
+    /**
+     * Level
+     */
+    level: number;
+    /**
+     * Xp
+     */
+    xp: number;
+    /**
+     * Into
+     *
+     * XP into the current level
+     */
+    into: number;
+    /**
+     * Needed
+     *
+     * XP the current level needs
+     */
+    needed: number;
+    /**
+     * Next Milestone
+     *
+     * The next level with an emblem frame
+     */
+    next_milestone: number | null;
+    /**
+     * Combo
+     *
+     * Right answers in a row
+     */
+    combo: number;
+    /**
+     * First Wins Left
+     *
+     * Right answers left today with the first-win bonus
+     */
+    first_wins_left: number;
+    /**
+     * Streak
+     */
+    streak: number;
+    /**
+     * Streak Bonus
+     *
+     * Extra XP on right answers from the daily streak, in percent
+     */
+    streak_bonus: number;
+    /**
+     * Streak Freezes
+     *
+     * Freezes held: each saves the streak on a missed day
+     */
+    streak_freezes: number;
+    /**
+     * Rested Xp
+     *
+     * Rested XP banked while away: it doubles XP until spent
+     */
+    rested_xp: number;
+};
+
+/**
  * AdminUser
  */
 export type AdminUser = {
@@ -28,6 +96,10 @@ export type AdminUser = {
      * Xp
      */
     xp: number;
+    /**
+     * Rank Points
+     */
+    rank_points: number;
     /**
      * Leaderboard Opt Out
      */
@@ -121,7 +193,7 @@ export type AnswerIn = {
     /**
      * Unsure
      *
-     * "I'm not sure": no answer, no XP, no penalty in time
+     * "I'm not sure": no answer; the official one shown for half a wrong answer's LP
      */
     unsure?: boolean;
 };
@@ -259,9 +331,19 @@ export type DailyArea = {
      */
     late: boolean | null;
     /**
+     * Passed
+     *
+     * Answered "I'm not sure"
+     */
+    passed?: boolean;
+    /**
      * Xp
      */
     xp: number;
+    /**
+     * Lp
+     */
+    lp: number;
 };
 
 /**
@@ -271,6 +353,10 @@ export type DailyResult = {
     question: PlayQuestion;
     feedback: Feedback;
     /**
+     * What you sent
+     */
+    answer?: KeyIn | null;
+    /**
      * Late
      */
     late: boolean;
@@ -278,6 +364,10 @@ export type DailyResult = {
      * Xp
      */
     xp: number;
+    /**
+     * Lp
+     */
+    lp: number;
     /**
      * Streak
      */
@@ -300,6 +390,10 @@ export type DailyStatus = {
      * Xp Today
      */
     xp_today: number;
+    /**
+     * Lp Today
+     */
+    lp_today: number;
     /**
      * Areas
      */
@@ -422,6 +516,10 @@ export type ExportAccount = {
      */
     xp: number;
     /**
+     * Rank Points
+     */
+    rank_points: number;
+    /**
      * Hidden From Leaderboard
      */
     hidden_from_leaderboard: boolean;
@@ -517,6 +615,10 @@ export type ExportAnswer = {
      * Xp
      */
     xp: number;
+    /**
+     * Lp
+     */
+    lp: number;
     /**
      * Late
      */
@@ -790,19 +892,73 @@ export type Feedback = {
     /**
      * Xp
      *
-     * XP this answer earned (negative when it cost XP)
+     * XP this answer earned
      */
     xp?: number;
     /**
+     * Lp
+     *
+     * LP it won or lost
+     */
+    lp?: number;
+    /**
+     * Bonuses
+     *
+     * XP bonuses: first_win, combo, streak, crit
+     */
+    bonuses?: {
+        [key: string]: number;
+    };
+    /**
+     * Combo
+     *
+     * Right answers in a row, this one included
+     */
+    combo?: number;
+    /**
+     * Comeback
+     *
+     * A right answer after a bad run: 1.5x LP
+     */
+    comeback?: boolean;
+    /**
+     * Cushioned
+     *
+     * A loss halved by the bad run
+     */
+    cushioned?: boolean;
+    /**
+     * Promoted
+     *
+     * Into a division not reached before this season
+     */
+    promoted?: boolean;
+    /**
+     * Rose
+     *
+     * Back up into a division reached before
+     */
+    rose?: boolean;
+    /**
+     * Demoted
+     */
+    demoted?: boolean;
+    /**
+     * Rank Points
+     *
+     * Rank points after this answer
+     */
+    rank_points?: number | null;
+    /**
      * Level
      *
-     * Your level after this answer
+     * Account level after this answer
      */
     level?: number | null;
     /**
      * Level Up
      *
-     * This answer took you to a new level
+     * This answer took the account to a new level
      */
     level_up?: boolean;
     /**
@@ -917,23 +1073,31 @@ export type LeaderRow = {
     display_name: string;
     vertical: Vertical | null;
     /**
-     * Xp
+     * Score
+     *
+     * Rank points on the ranked board (season, everyone); LP won on the others
      */
-    xp: number;
+    score: number;
     /**
      * Me
      */
     me: boolean;
     /**
-     * Level
+     * Division
      *
-     * Lifetime level, for the level emblem
+     * Current division (0 = Mingo I … 15 = the top), for the emblem
      */
-    level: number;
+    division: number;
     /**
      * Title
      */
     title: string;
+    /**
+     * Level
+     *
+     * Account level
+     */
+    level: number;
 };
 
 /**
@@ -1308,7 +1472,7 @@ export type MockAnswerIn = {
     /**
      * Unsure
      *
-     * "I'm not sure": no answer, no XP, no penalty in time
+     * "I'm not sure": no answer; the official one shown for half a wrong answer's LP
      */
     unsure?: boolean;
     /**
@@ -1323,6 +1487,10 @@ export type MockAnswerIn = {
 export type MockItem = {
     question: PlayQuestion;
     feedback: Feedback;
+    /**
+     * What you sent; none if the time ran out
+     */
+    answer?: KeyIn | null;
     /**
      * Late
      */
@@ -1428,6 +1596,10 @@ export type MockSummary = {
      */
     xp: number;
     /**
+     * Lp
+     */
+    lp: number;
+    /**
      * Counted
      */
     counted: boolean;
@@ -1462,9 +1634,9 @@ export type MyRank = {
      */
     rank: number;
     /**
-     * Xp
+     * Score
      */
-    xp: number;
+    score: number;
     /**
      * Hidden
      *
@@ -1620,55 +1792,10 @@ export type ProfileIn = {
 
 /**
  * Progress
- *
- * Level, title and what help the player still gets. XP always refers to lifetime XP.
  */
 export type Progress = {
-    /**
-     * Level
-     */
-    level: number;
-    /**
-     * Title
-     */
-    title: string;
-    /**
-     * Tier
-     */
-    tier: 'Mingo' | 'Jefe' | 'DT' | 'Top';
-    /**
-     * Level Xp
-     *
-     * Lifetime XP at which the current level started
-     */
-    level_xp: number;
-    /**
-     * Next Level Xp
-     *
-     * Null at the top
-     */
-    next_level_xp: number | null;
-    /**
-     * Penalty
-     *
-     * Percentage of a right answer's XP a wrong answer costs
-     */
-    penalty: number;
-    /**
-     * Streak
-     */
-    streak: number;
-    /**
-     * Streak Bonus
-     *
-     * Extra XP on gains, in percent
-     */
-    streak_bonus: number;
-    aids: Aids;
-    /**
-     * Ladder
-     */
-    ladder: Array<Step>;
+    rank: RankOut;
+    account: AccountOut;
 };
 
 /**
@@ -1715,6 +1842,60 @@ export type QuestionDocs = {
      * Later editions of those rulebooks and handbooks: rules may have changed
      */
     newer: Array<DocLink>;
+};
+
+/**
+ * RankOut
+ *
+ * The rank (ADR 0007): divisions of 100 LP that go up and down with how well you answer.
+ */
+export type RankOut = {
+    /**
+     * Points
+     */
+    points: number;
+    /**
+     * Division
+     */
+    division: number;
+    /**
+     * Title
+     */
+    title: string;
+    /**
+     * Tier
+     */
+    tier: 'Mingo' | 'Jefe' | 'DT' | 'Top';
+    /**
+     * Lp
+     *
+     * LP into the division; uncapped at the top
+     */
+    lp: number;
+    /**
+     * Stakes
+     */
+    stakes: number;
+    /**
+     * Swing
+     *
+     * A middling daily question right and wrong, at this rank
+     */
+    swing: [
+        number,
+        number
+    ];
+    /**
+     * Miss Streak
+     *
+     * Wrong answers in a row; from 3 losses halve and a right one pays 1.5x
+     */
+    miss_streak: number;
+    aids: Aids;
+    /**
+     * Ladder
+     */
+    ladder: Array<Step>;
 };
 
 /**
@@ -2097,13 +2278,13 @@ export type Status = typeof Status[keyof typeof Status];
 /**
  * Step
  *
- * One level of the ladder and what it changes.
+ * One division of the ladder and what it changes.
  */
 export type Step = {
     /**
-     * Level
+     * Division
      */
-    level: number;
+    division: number;
     /**
      * Tier
      */
@@ -2115,18 +2296,18 @@ export type Step = {
      */
     title: string | null;
     /**
-     * Xp
+     * Points
      *
-     * Lifetime XP that reaches it
+     * Rank points where it starts
      */
-    xp: number;
+    points: number;
     aids: Aids;
     /**
-     * Penalty
+     * Stakes
      *
-     * Percentage of a right answer's XP a wrong answer costs
+     * How hard a wrong answer bites here, in percent (80 at Mingo I)
      */
-    penalty: number;
+    stakes: number;
 };
 
 /**
@@ -2331,9 +2512,11 @@ export type VerticalRow = {
      */
     members: number;
     /**
-     * Xp Per Member
+     * Rank Points
+     *
+     * The members' average rank points
      */
-    xp_per_member: number;
+    rank_points: number;
     /**
      * Participation
      *

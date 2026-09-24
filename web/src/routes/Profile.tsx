@@ -11,7 +11,7 @@ import {
 import { exportMyData } from '../api/sdk.gen'
 import { type Me, Vertical } from '../api/types.gen'
 import { ErrorNotice, Field, Form, Notice, PASSWORD_HINT, SelectField, useFieldErrors } from '../components/Form'
-import { LevelCard } from '../components/LevelCard'
+import { AccountCard, RankCard } from '../components/RankCard'
 import { RankRoad } from '../components/RankRoad'
 import { APP_NAME, Page } from '../components/Page'
 import { ME_KEY, queryClient, saveJson, useMe } from '../lib/api'
@@ -32,7 +32,8 @@ export default function Profile() {
   return (
     <Page title="Profile" eyebrow="Your account">
       <p className="muted">Signed in as {user.email}</p>
-      <LevelCard me={user} road={false} />
+      <RankCard me={user} road={false} />
+      <AccountCard me={user} />
       <RankRoad me={user} />
       <ProfileForm user={user} />
       <PasswordForm />
