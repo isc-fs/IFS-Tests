@@ -102,9 +102,7 @@ test('an empty board says how to get on it', async () => {
 
 test('members who have not scored are told so under the board', async () => {
   renderApp('/leaderboard', api({ ...BOARD, rows: [row(1, 'Leo', 40)], me: null, players: 1 }))
-  expect(
-    await screen.findByText('Answer a daily, practice or mock question to join the ranked board.'),
-  ).toBeInTheDocument()
+  expect(await screen.findByText('Answer a daily or mock question to join the ranked board.')).toBeInTheDocument()
   expect(screen.getByText('1 person on this board.')).toBeInTheDocument()
 })
 
@@ -133,6 +131,24 @@ test('the verticals board is a table with your vertical marked', async () => {
   expect(dv).toHaveClass('me')
   expect(screen.getByRole('link', { name: 'Verticals' })).toHaveAttribute('aria-current', 'true')
   expect(calls.some((c) => c.key === 'GET /api/leaderboard')).toBe(false)
+})
+
+test('the verticals board has no period: its average is always the season', async () => {
+  const { calls } = renderApp('/leaderboard?period=week', {
+    ...api(BOARD),
+    'GET /api/leaderboard/verticals': { body: { period: 'season', rows: [] } },
+  })
+  const boards = await screen.findByRole('navigation', { name: 'Board' })
+  expect(within(boards).getByRole('link', { name: 'Verticals' })).toHaveAttribute(
+    'href',
+    '/leaderboard?board=verticals',
+  )
+  await userEvent.click(within(boards).getByRole('link', { name: 'Verticals' }))
+  expect(await screen.findByRole('heading', { level: 2 })).toHaveTextContent('Verticals, this season')
+  expect(screen.queryByRole('navigation', { name: 'Period' })).toBeNull()
+  expect(within(boards).getByRole('link', { name: 'Mechanical' })).toHaveAttribute('href', '/leaderboard?board=mech')
+  await waitFor(() => expect(calls.some((c) => c.key === 'GET /api/leaderboard/verticals')).toBe(true))
+  expect(calls.find((c) => c.key === 'GET /api/leaderboard/verticals')?.url.searchParams.has('period')).toBe(false)
 })
 
 test('no vertical big enough yet', async () => {

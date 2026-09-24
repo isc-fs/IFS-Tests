@@ -5,12 +5,12 @@ from __future__ import annotations
 import threading
 import time
 from collections.abc import Callable
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
 import pytest
-from sqlalchemy import Engine, func, select, update
+from sqlalchemy import Engine, func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from ifs_tests.auth.passwords import hash_password
@@ -27,9 +27,9 @@ from ifs_tests.services import xp as xp_service
 from ifs_tests.services.bank import import_bank
 
 from ..api.helpers import right_answer
+from .conftest import NOW
 
 pytestmark = pytest.mark.integration
-NOW = datetime(2026, 10, 1, tzinfo=UTC)
 
 
 def race(engine: Engine, *jobs: Callable[[Session], Any]) -> list[Any]:
@@ -127,16 +127,6 @@ def test_parallel_wrong_current_passwords_cannot_beat_the_lockout(db: Session, a
     assert len(statuses) == 20 and statuses.count(403) <= 5 and 429 in statuses
     db.expire_all()
     assert db.get_one(User, admin.id).locked_until is not None
-
-
-@pytest.fixture
-def daily_player(db: Session, tmp_path: Path) -> User:
-    import_bank(db, load_bank(SAMPLE_DIR), SAMPLE_DIR / "img", tmp_path, NOW)
-    db.execute(update(Question).values(difficulty=3))
-    user = User(email="p@x.com", password_hash="x", display_name="Player")
-    db.add(user)
-    db.commit()
-    return user
 
 
 def test_many_first_visitors_of_the_day_get_the_same_questions(
@@ -274,14 +264,10 @@ def test_two_tabs_cannot_both_score_the_first_right_answer(
     )
     first = xp_rules.xp_award(True, 3, "practice", first_win=True).amount
     assert sorted(r.score.xp for r in results) == [0, 0, 0, first], results
-    assert sorted(r.score.lp > 0 for r in results) == [False, False, False, True], results
-    gained = max(r.score.lp for r in results)
     db.refresh(daily_player)
-    placed = rank_rules.placement(
-        "mingo"
-    )  # a player created before placement is placed on their first answer
+    placed = rank_rules.placement("mingo")  # created before placement: placed on the first answer
     assert (daily_player.xp, daily_player.rank_points, daily_player.combo) == pytest.approx(
-        (first, placed + gained, 1)
+        (first, placed, 1)
     )
 
 
@@ -313,11 +299,10 @@ def test_parallel_right_answers_by_one_player_build_the_combo_one_at_a_time(
     # Scored one after another: each saw the previous one's combo, points and first wins.
     assert sorted(g.combo for g in results) == [3, 4, 5, 6], results
     assert sum("first_win" in g.bonuses for g in results) == xp_rules.FIRST_WINS
-    assert len({g.points for g in results}) == 4
+    assert len({g.xp for g in results}) > 1
     db.refresh(daily_player)
-    assert daily_player.combo == 6
-    assert daily_player.rank_points == pytest.approx(500 + sum(g.lp for g in results))
-    assert daily_player.rank_points == pytest.approx(max(g.points for g in results))
+    assert (daily_player.combo, daily_player.xp) == (6, sum(g.xp for g in results))
+    assert daily_player.rank_points == 500  # practice earns XP only
     stored = db.scalars(select(Attempt.lp).where(Attempt.user_id == daily_player.id)).all()
     assert sorted(stored) == pytest.approx(sorted(g.lp for g in results))
 

@@ -178,6 +178,26 @@ test('a wrong answer loses LP but still earns some XP; a drop and a rough patch 
   expect(screen.queryByText(/Promoted/)).toBeNull()
 })
 
+test('a drop that brings back one aid agrees with it', async () => {
+  renderApp('/practice', practice({ correct: false, xp: 5, lp: -4, demoted: true, rank_points: 397, level: 4 }))
+  await userEvent.click(await screen.findByRole('radio', { name: '0.837 m' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Check answer' }))
+  expect(await screen.findByText('Down to Mingo IV · reading is back')).toBeInTheDocument()
+})
+
+test('practice shows no LP chip, and an answer already graded today says why it earns no XP', async () => {
+  renderApp('/practice', practice({ xp: 0, lp: 0, rank_points: 137, level: 4 }))
+  expect(
+    await screen.findByText('Practice earns XP only. The daily questions and mock quizzes move your rank.'),
+  ).toBeInTheDocument()
+  await userEvent.click(await screen.findByRole('radio', { name: '0.713 m' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Check answer' }))
+  const earned = (await screen.findByText('0 XP')).closest('.earned') as HTMLElement
+  expect(earned).toHaveTextContent(/^0 XPAlready answered today: no XP again$/)
+  expect(screen.getByText('Right answer: no XP: already answered today.')).toHaveClass('sr-only')
+  expect(within(earned).queryByText(/LP/)).toBeNull()
+})
+
 test('newcomers choose where they are on the team when they join', async () => {
   const { sent } = renderApp('/invite#tok', {
     'POST /auth/invites/lookup': {
@@ -188,6 +208,16 @@ test('newcomers choose where they are on the team when they join', async () => {
   const position = await screen.findByLabelText('Where are you on the team?')
   expect(position).toHaveValue('mingo')
   expect(position).toHaveAccessibleDescription(/places you on the ladder/)
+  expect(
+    within(position)
+      .getAllByRole('option')
+      .map((o) => o.textContent),
+  ).toEqual([
+    'Mingo, new this season: placed at Mingo I',
+    'Returning member: placed at Mingo IV',
+    'Department Head: placed at Jefe I',
+    'Technical Director: placed at DT I',
+  ])
   await userEvent.selectOptions(position, 'department_head')
   await userEvent.type(screen.getByLabelText('Email'), 'jefe@alu.comillas.edu')
   await userEvent.type(screen.getByLabelText('Display name'), 'Jefe')
@@ -215,7 +245,7 @@ test("admins can change someone's position", async () => {
   expect(await screen.findByRole('status')).toHaveTextContent('Marta is now member, active, Returning member.')
 })
 
-test('"I\'m not sure" shows the answer for half a wrong answer\'s LP', async () => {
+test('"I\'m not sure" in practice shows the answer and costs no LP', async () => {
   const { sent } = renderApp('/practice', {
     ...practice({}),
     'POST /api/practice/questions/7/answer': {
@@ -226,18 +256,19 @@ test('"I\'m not sure" shows the answer for half a wrong answer\'s LP', async () 
         correct_options: [70],
         solutions: [],
         xp: 1,
-        lp: -2.5,
+        lp: 0,
         level: 4,
       },
     },
   })
   const button = await screen.findByRole('button', { name: "I'm not sure" })
-  expect(button).toHaveAccessibleDescription(/for half the LP a wrong answer costs/)
+  expect(button).toHaveAccessibleDescription(
+    'Not sure? See the answer. Practice moves no LP, and you still earn a little XP.',
+  )
   await userEvent.click(button)
   await waitFor(() => expect(sent('POST /api/practice/questions/7/answer')[0].body).toEqual({ unsure: true }))
-  expect(
-    await screen.findByText("You weren't sure, so here is the answer. It costs half the LP a wrong answer would."),
-  ).toBeInTheDocument()
+  expect(await screen.findByText("You weren't sure, so here is the answer.")).toBeInTheDocument()
+  expect(screen.queryByText(/LP/)).toBeNull()
   expect(screen.getByText('0.713 m').closest('label')).toHaveTextContent('Correct answer')
   expect(screen.queryByText('Not quite.')).toBeNull()
 })

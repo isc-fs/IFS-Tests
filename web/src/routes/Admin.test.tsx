@@ -157,6 +157,9 @@ test('review actions in the audit trail say what changed', async () => {
         entry(5, 'question.answer_cleared', { removed: '0.5' }),
         entry(6, 'report.resolve', { message: 'The figure is missing' }),
         { ...entry(7, 'user.update', { role: ['member', 'reviewer'] }), target: 'Marta' },
+        { ...entry(8, 'user.update', { position: ['member', 'department_head'] }), target: 'Marta' },
+        { ...entry(9, 'report.resolve', {}), actor: null },
+        { ...entry(10, 'bank.import', {}), actor: null, target: 'fsquiz' },
       ],
     },
   })
@@ -171,6 +174,9 @@ test('review actions in the audit trail say what changed', async () => {
     'Chief removed the correction of question 12 (was 0.5)',
     'Chief handled a report on question 12',
     'Chief changed Marta (role → reviewer)',
+    'Chief changed Marta (position → Department Head)',
+    'A deleted account handled a report on',
+    'The system loaded the question bank',
   ])
   expect(screen.queryByText(/The figure is missing/)).toBeNull()
 })

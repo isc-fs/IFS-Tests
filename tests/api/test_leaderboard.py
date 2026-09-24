@@ -12,7 +12,8 @@ from sqlalchemy.orm import Session
 
 from ifs_tests.bank.mirror import load_bank
 from ifs_tests.bank.sample import SAMPLE_DIR
-from ifs_tests.db.models import Attempt, Question, User
+from ifs_tests.db.models import Attempt, DailyQuestion, Question, User
+from ifs_tests.domain.daily import madrid_day
 from ifs_tests.domain.xp import account_level
 from ifs_tests.services import daily, mock, practice
 from ifs_tests.services.bank import import_bank
@@ -104,9 +105,12 @@ def play_mock(db: Session, u: User, now: datetime, quiz: int = CV) -> mock.Summa
 
 
 def practise(db: Session, u: User, now: datetime) -> float:
-    """Answer right a graded question `u` hasn't got right yet."""
+    """Answer right a graded question `u` hasn't got right yet and that isn't one of today's dailies."""
     done = select(Attempt.question_id).where(Attempt.user_id == u.id, Attempt.correct.is_(True))
-    graded = select(Question.id).where(Question.graded, Question.playable, Question.id.not_in(done))
+    dailies = select(DailyQuestion.question_id).where(DailyQuestion.day == madrid_day(now))
+    graded = select(Question.id).where(
+        Question.graded, Question.playable, Question.id.not_in(done), Question.id.not_in(dailies)
+    )
     qid = db.scalars(graded.order_by(Question.id)).first()
     assert qid is not None
     b = right_answer(db, qid)
@@ -146,9 +150,8 @@ def test_the_ranked_board_shows_everyone_who_played_this_season_at_their_rank(
     assert play_daily(db, user(db, "Marta"), "mech", clock.now) > 0
     assert play_mock(db, leo, clock.now).lp > 0
     assert play_daily(db, sol, "mech", clock.now, correct=False) < 0  # losing LP is still playing
-    graded = 1  # a graded mechanical question in the sample bank
-    practised = pau.post(f"/api/practice/questions/{graded}/answer", json=right_answer(db, graded)).json()
-    assert practised["correct"] is True and practised["xp"] > 0 and practised["lp"] > 0
+    assert practise(db, user(db, "Idle"), clock.now) == 0  # practice alone isn't playing for the rank
+    lost = play_daily(db, user(db, "Pau"), "elec", clock.now, correct=False)
 
     seen_by_pau = board(pau)
     assert (seen_by_pau["period"], seen_by_pau["board"], seen_by_pau["players"]) == ("season", "everyone", 4)
@@ -158,7 +161,7 @@ def test_the_ranked_board_shows_everyone_who_played_this_season_at_their_rank(
         (3, "Marta", points(db, "Marta"), False),
         (4, "Pau", points(db, "Pau"), True),
     ]
-    assert points(db, "Sol") < 300 and points(db, "Pau") == 50 + practised["lp"]
+    assert points(db, "Sol") < 300 and points(db, "Pau") == 50 + lost < 50
     first = seen_by_pau["rows"][0]
     assert (first["vertical"], first["division"], first["title"], first["level"]) == (
         "Driverless",
@@ -271,14 +274,16 @@ def test_climbers_is_the_last_seven_madrid_days_and_seasons_start_on_1_september
     ]
 
     clock.now = datetime(2027, 8, 31, 21, 30, tzinfo=UTC)  # 23:30 in Madrid
-    late_night = play_daily(db, leo, "mech", clock.now)
-    practised = practise(db, marta, clock.now)  # practice belongs to the Madrid day it was done
-    assert 0 < practised < late_night
+    late_night = {
+        "Leo": play_daily(db, leo, "mech", clock.now),
+        "Marta": play_daily(db, marta, "elec", clock.now),
+    }
+    assert all(gain > 0 for gain in late_night.values())
     assert look() == [(1, "Leo", points(db, "Leo"), False), (2, "Marta", points(db, "Marta"), True)]
-    assert look(period="week") == [(1, "Leo", late_night, False), (2, "Marta", practised, True)]
+    assert look(period="week") == ranked(late_night, me="Marta")
     clock.now = datetime(2027, 8, 31, 22, 30, tzinfo=UTC)  # 00:30 on 1 September in Madrid
     assert look() == []  # nobody has played for their rank this season yet
-    assert look(period="week") == [(1, "Leo", late_night, False), (2, "Marta", practised, True)]
+    assert look(period="week") == ranked(late_night, me="Marta")  # a daily belongs to its own Madrid day
 
 
 def test_the_board_shows_the_top_fifty_and_your_own_rank_below(

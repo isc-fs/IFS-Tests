@@ -15,7 +15,7 @@ import { Page } from '../components/Page'
 import { QuestionCard } from '../components/QuestionCard'
 import { queryClient } from '../lib/api'
 import { AREAS } from '../lib/areas'
-import { lp } from '../lib/rank'
+import { lp, tenths } from '../lib/rank'
 import { xp } from '../lib/xp'
 
 type Area = 'mech' | 'elec' | 'rules'
@@ -29,7 +29,7 @@ function outcome(a: {
   xp: number
   lp: number
 }): string {
-  const moved = `${lp(a.lp)}, ${xp(a.xp)}`
+  const moved = `${lp(a.lp, true)}, ${xp(a.xp)}`
   if (a.late) return a.correct === null ? 'Out of time: no XP.' : `Out of time, counted as wrong: ${moved}.`
   if (a.passed) return `You weren't sure: ${moved}.`
   if (a.correct) return `Correct: ${moved}.`
@@ -138,17 +138,18 @@ export default function Daily() {
 
   if (play) {
     return (
-      <Page title="Daily question" heading={AREAS[play.question.area]} eyebrow="Daily question">
+      <Page title="Daily question" view="play" heading={AREAS[play.question.area]} eyebrow="Daily question">
         <Play play={play} onDone={back} />
       </Page>
     )
   }
   if (review) {
     return (
-      <Page title="Daily question" heading={AREAS[review.question.area]} eyebrow="Today's answer">
+      <Page title="Daily question" view="review" heading={AREAS[review.question.area]} eyebrow="Today's answer">
         <QuestionCard
           question={review.question}
           feedback={review.feedback}
+          preset={review.answer ?? undefined}
           onAnswer={() => {}}
           next={<Summary result={review} onDone={back} />}
         />
@@ -157,19 +158,20 @@ export default function Daily() {
   }
 
   const s = status.data
+  const lpToday = s?.areas.reduce((sum, a) => sum + tenths(a.lp), 0) ?? 0
   return (
-    <Page title="Daily question" eyebrow="One question per area, one try a day">
+    <Page title="Daily question" view="areas" eyebrow="One question per area, one try a day">
       {s && (
         <p className="lede">
           Streak: <strong>{s.streak === 1 ? '1 day' : `${s.streak} days`}</strong> · Today:{' '}
           <strong>
-            {lp(s.lp_today)}, {xp(s.xp_today)}
+            {lp(lpToday, true)}, {xp(s.xp_today)}
           </strong>
         </p>
       )}
       <p className="muted">
-        The daily questions move your rank the most: six times the LP of practice. Every day of your streak adds 5 % XP
-        (up to +50 %). New questions at midnight, Madrid time.
+        The daily questions and mock quizzes move your rank; practice and live quizzes earn XP only. Each day of your
+        streak after the first adds 5 % XP (up to +50 %). New questions at midnight, Madrid time.
       </p>
       <ErrorNotice error={start.error ?? status.error} />
       {s && s.areas.length === 0 && <Notice tone="error">No daily questions yet: the question bank is empty.</Notice>}

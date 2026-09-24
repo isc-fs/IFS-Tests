@@ -8,7 +8,6 @@ import pytest
 
 from ifs_tests.domain.rank import (
     DIVISION_TABLE,
-    PRACTICE_CAP,
     TOP,
     expected,
     lp_award,
@@ -91,12 +90,19 @@ def test_slips_cost_less_than_not_knowing_and_passing_costs_half() -> None:
 def test_modes_repeats_hints_and_what_moves_nothing() -> None:
     daily = lp_award(True, 300, 3, "daily").amount
     assert lp_award(True, 300, 3, "mock").amount == pytest.approx(daily * 2 / 3, abs=0.01)
-    assert lp_award(True, 300, 3, "practice").amount == pytest.approx(daily / 6, abs=0.01)
+    assert lp_award(True, 300, 3, "practice").amount == lp_award(False, 300, 3, "practice").amount == 0
     assert lp_award(True, 300, 3, "daily", repeat=True).amount == pytest.approx(daily / 4, abs=0.01)
-    assert lp_award(True, 300, 3, "daily", hint=True).amount == pytest.approx(daily / 2, abs=0.01)
+    # A hint leaves a single choice a two-way guess, and halves what's left to win.
+    two_way = lp_award(True, 300, 3, "daily", options=2).amount
+    assert lp_award(True, 300, 3, "daily", hint=True).amount == pytest.approx(two_way / 2, abs=0.01)
+    assert lp_award(
+        True, 300, 3, "daily", answer_kind="numbers", area="mech", hint=True
+    ).amount == pytest.approx(
+        lp_award(True, 300, 3, "daily", answer_kind="numbers", area="mech").amount / 2, abs=0.01
+    )
     assert lp_award(True, 300, 3, "live").amount == lp_award(False, 300, 3, "live").amount == 0
     assert lp_award(None, 300, 3, "daily").amount == 0  # ungraded
-    assert lp_award(True, 300, 3, "practice", again_today=True).amount == 0
+    assert lp_award(True, 300, 3, "daily", again_today=True).amount == 0
     assert lp_award(True, 300, 3, "daily", late=True).amount < 0  # late counts as wrong
 
 
@@ -125,7 +131,8 @@ def test_placement_and_the_season_reset() -> None:
     ]
     assert season_reset(2400, "mingo") == 1200  # the top counts as 1500, then three divisions back
     assert season_reset(800, "mingo") == 500
-    assert season_reset(700, "technical_director") == 1050  # never below your position's placement
+    assert season_reset(1200, "technical_director") == 1050  # never below your position's placement
+    assert season_reset(700, "technical_director") == 700  # nor above where you finished
     assert season_reset(100, "mingo") == 50
 
 
@@ -145,15 +152,14 @@ def _season(
     seed: int, start: str, active: float, practice: int, mock_every: int, skill: float, improve: float
 ) -> Run:
     """A seeded season (September to August): dailies, some practice, a mock now and then, from a bank of 1,000
-    questions (seen ones are easier). As services/xp.grant scores them: practice moves LP only on fresh questions
-    and up to its daily cap; only first-time daily and mock answers count towards a bad run."""
+    questions (seen ones are easier). As services/xp.grant scores them: practice moves no LP (it only makes
+    questions seen); only first-time daily and mock answers count towards a bad run."""
     rng = random.Random(seed)
     points, miss, seen = placement(start), 0, set()
     reached: dict[int, int] = {}
     trace: dict[int, float] = {}
     for day in range(1, 366):
         if rng.random() < active:
-            room = PRACTICE_CAP
             plays = [("daily", 3), ("practice", practice)] + ([("mock", 10)] if day % mock_every == 0 else [])
             for mode, n in plays:
                 for _ in range(n):
@@ -164,9 +170,9 @@ def _season(
                     seen.add(q)
                     p = min(0.88, skill + day * improve) - 0.06 * (d - 3)
                     right = rng.random() < (p + 0.3 * (1 - p) if repeat else p)
-                    if mode == "practice" and repeat:
+                    if mode == "practice":
                         continue
-                    run = mode != "practice" and not repeat
+                    run = not repeat
                     lp = lp_award(
                         right,
                         points,
@@ -177,9 +183,6 @@ def _season(
                         repeat=repeat,
                         miss_streak=miss if run else 0,
                     ).amount
-                    if mode == "practice" and lp > 0:
-                        lp = min(lp, room)
-                        room -= lp
                     points = max(0.0, points + lp)
                     if run:
                         miss = next_miss_streak(miss, right, False, False)
@@ -210,3 +213,19 @@ def test_pacing_matches_the_design() -> None:
     assert _median_day(casual, 1500) == float("inf")
     # A Technical Director who answers half right drops out of DT within a month: the rank is earned.
     assert statistics.median(t[30] for _, t in weak_td) < 1000
+
+
+@pytest.mark.parametrize("options", [2, 3, 4, 5])
+@pytest.mark.parametrize("points", [0, 300, 550, 1050, 1450, 2000])
+@pytest.mark.parametrize("difficulty", [1, 3, 5])
+@pytest.mark.parametrize("hint", [False, True])
+def test_not_sure_never_costs_more_than_a_blind_guess_and_a_hinted_guess_never_pays(
+    options: int, points: float, difficulty: int, hint: bool
+) -> None:
+    def lp(correct: bool, **kw: Any) -> float:
+        return lp_award(correct, points, difficulty, "daily", options=options, hint=hint, **kw).amount
+
+    n = min(options, 2) if hint else options
+    guess = lp(True) / n + lp(False) * (1 - 1 / n)
+    assert guess <= 0.01
+    assert guess - 0.01 <= lp(False, passed=True) <= 0

@@ -44,11 +44,14 @@ def earned(mode: str = "practice", **kwargs: Any) -> int:
     return xp_rules.xp_award(True, 3, mode, **kwargs).amount
 
 
-def slip(c: TestClient, db: Session, qid: int) -> dict[str, Any]:
-    wrong = [o for o in options(db, qid) if o not in right_answer(db, qid)["options"]][:1]
-    r = c.post(f"/api/practice/questions/{qid}/answer", json={"options": wrong})
-    assert r.status_code == 200 and r.json()["correct"] is False, r.text
-    return dict(r.json())
+def slip(c: TestClient) -> dict[str, Any]:
+    """Get today's rules question wrong: only the daily and mock runs move the rank."""
+    started = c.post("/api/daily/rules/start").json()
+    opts = [o["id"] for o in started["question"]["options"]]
+    body = {"options": opts} if opts else {"value": "-1"}
+    r = c.post(f"/api/daily/attempts/{started['attempt_id']}/answer", json=body)
+    assert r.status_code == 200 and r.json()["feedback"]["correct"] is False, r.text
+    return dict(r.json()["feedback"])
 
 
 def test_a_practice_hint_rules_out_two_options_and_halves_lp_and_xp(
@@ -150,7 +153,7 @@ def test_formulas_come_back_when_you_drop_out_of_jefe(
     c = new_client()
     join(signed_in, c, "Ana", points=500.5, db=db)
     assert not c.get("/api/learning/dynamics").json()["formulas"]
-    r = slip(c, db, bank[90001])
+    r = slip(c)
     assert (r["demoted"], r["rank_points"] < 500) == (True, True)
     body = c.get("/api/learning/dynamics").json()
     assert (bool(body["formulas"]), bool(body["learn_more"])) == (True, False)  # Mingo V: formulas only
@@ -162,7 +165,7 @@ def test_hints_come_back_when_you_drop_out_of_dt(
     c = new_client()
     join(signed_in, c, "Toni", points=1000.5, db=db)
     assert c.post(f"/api/practice/questions/{bank[90008]}/hint").status_code == 403
-    r = slip(c, db, bank[90001])
+    r = slip(c)
     assert (r["demoted"], r["rank_points"] < 1000) == (True, True)
     assert c.post(f"/api/practice/questions/{bank[90008]}/hint").status_code == 200
 

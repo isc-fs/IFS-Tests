@@ -67,6 +67,13 @@ def practise(c: TestClient, qid: int, body: dict[str, Any]) -> dict[str, Any]:
     return dict(r.json())
 
 
+def scored(db: Session, user_id: int, qid: int, correct: bool, now: datetime, **kw: Any) -> xp.Grant:
+    """That question answered as a daily one, scored the way the daily route scores it."""
+    granted = xp.grant(db, user_id, db.get_one(Question, qid), "daily", correct, now, **kw)
+    db.commit()
+    return granted
+
+
 def progress(c: TestClient) -> dict[str, Any]:
     return dict(c.get("/api/me").json()["progress"])
 
@@ -174,7 +181,7 @@ def test_members_cannot_change_their_own_position(signed_in: TestClient, new_cli
     assert c.get("/api/me").json()["position"] == "mingo"
 
 
-def test_a_new_position_lifts_the_rank_to_its_placement_and_never_lowers_it(
+def test_a_new_position_moves_the_rank_by_the_difference_in_placements(
     signed_in: TestClient, new_client: NewClient, db: Session
 ) -> None:
     c = new_client()
@@ -186,7 +193,7 @@ def test_a_new_position_lifts_the_rank_to_its_placement_and_never_lowers_it(
     details = db.scalars(select(AuditLog.details).order_by(AuditLog.id.desc())).first()
     assert details == {"position": ["mingo", "department_head"]}
     lowered = signed_in.patch(f"/api/admin/users/{ana['id']}", json={"position": "mingo"}).json()
-    assert (lowered["position"], lowered["rank_points"]) == ("mingo", 550)
+    assert (lowered["position"], lowered["rank_points"]) == ("mingo", 50)  # the head start goes with it
     set_rank(db, ana["id"], 1234.5)
     raised = signed_in.patch(f"/api/admin/users/{ana['id']}", json={"position": "technical_director"}).json()
     assert (raised["position"], raised["rank_points"]) == ("technical_director", 1234.5)  # already above
@@ -198,10 +205,10 @@ def test_a_promotion_by_position_is_no_fanfare_later(
     c = new_client()
     ana = join(signed_in, c, "Ana")
     signed_in.patch(f"/api/admin/users/{ana['id']}", json={"position": "department_head"})
-    slip = practise(c, bank[90001], wrong(db, bank[90001]))
+    slip = daily(c, db, "mech", "wrong")
     assert (slip["promoted"], slip["demoted"], slip["rank_points"] >= 500) == (False, False, True)
     set_rank(db, ana["id"], 499.5)  # dropped to Mingo V, then back into Jefe I: reached already this season
-    back = practise(c, bank[90003], right_answer(db, bank[90003]))
+    back = daily(c, db, "rules", "right")
     assert (back["promoted"], back["rank_points"] >= 500) == (False, True)
 
 
@@ -243,15 +250,14 @@ def test_a_wrong_answer_loses_lp_but_still_earns_xp(
 ) -> None:
     c = new_client()
     join(signed_in, c, "Toni", "technical_director")
-    first, second = bank[90001], bank[90008]
-    r = practise(c, first, wrong(db, first))
-    loss = lp(db, first, False, 1050)
-    assert (r["correct"], r["lp"], r["xp"], r["bonuses"]) == (False, approx(loss), earned(False), {})
-    assert loss < 0 and earned(False) == 6
-    r2 = practise(c, second, wrong(db, second))
-    loss2 = lp(db, second, False, 1050 + loss, miss_streak=1)
-    assert (r2["lp"], r2["xp"], r2["rank_points"]) == (approx(loss2), 6, approx(1050 + loss + loss2))
-    assert c.get("/api/me").json()["xp"] == 12  # XP only goes up
+    r = daily(c, db, "mech", "wrong")
+    loss = lp(db, r["qid"], False, 1050, "daily")
+    assert (r["correct"], r["lp"], r["xp"], r["bonuses"]) == (False, approx(loss), earned(False, "daily"), {})
+    assert loss < 0 and earned(False, "daily") == 15
+    r2 = daily(c, db, "rules", "wrong")
+    loss2 = lp(db, r2["qid"], False, 1050 + loss, "daily", miss_streak=1)
+    assert (r2["lp"], r2["xp"], r2["rank_points"]) == (approx(loss2), 15, approx(1050 + loss + loss2))
+    assert c.get("/api/me").json()["xp"] == 30  # XP only goes up
     assert db.scalars(select(Attempt.lp).order_by(Attempt.id)).all() == approx([loss, loss2])
 
 
@@ -261,8 +267,8 @@ def test_the_rank_stops_at_zero(
     c = new_client()
     ana = join(signed_in, c, "Ana")
     set_rank(db, ana["id"], 1)
-    r = practise(c, bank[90001], wrong(db, bank[90001]))
-    assert (r["lp"], r["rank_points"], r["xp"]) == (-1, 0, 6)
+    r = daily(c, db, "mech", "wrong")
+    assert (r["lp"], r["rank_points"], r["xp"]) == (-1, 0, earned(False, "daily"))
 
 
 def test_the_combo_grows_with_right_answers_and_a_wrong_one_resets_it(
@@ -347,22 +353,22 @@ def test_the_bad_run_counter_is_capped(
     assert (rank["rank"]["miss_streak"], rank["account"]["combo"]) == (1, 0)
 
 
-def test_im_not_sure_costs_half_a_wrong_answer_and_shows_the_answer(
+def test_im_not_sure_costs_at_most_half_a_wrong_answer_and_shows_the_answer(
     signed_in: TestClient, new_client: NewClient, db: Session, clock: Clock, bank: dict[int, int]
 ) -> None:
     c = new_client()
     join(signed_in, c, "Toni", "technical_director")
-    qid = bank[90008]
-    r = practise(c, qid, {"unsure": True, "options": [options(db, qid)[0]]})
-    cost = lp(db, qid, False, 1050, passed=True)
-    assert cost == approx(lp(db, qid, False, 1050) / 2, abs=0.02) and cost < 0
-    assert (r["correct"], r["passed"], r["lp"], r["xp"]) == (False, True, approx(cost), earned(None))
-    assert earned(None) == 2
+    r = daily(c, db, "rules", "unsure")
+    qid = r["qid"]
+    cost = lp(db, qid, False, 1050, "daily", passed=True)
+    assert lp(db, qid, False, 1050, "daily") / 2 - 0.01 <= cost < 0
+    assert (r["correct"], r["passed"], r["lp"], r["xp"]) == (False, True, approx(cost), earned(None, "daily"))
+    assert earned(None, "daily") == 5
     assert r["official"] and r["correct_options"]
     a = db.scalars(select(Attempt)).one()
     assert (a.passed, a.correct, a.answer["unsure"]) == (True, False, True) and a.lp == approx(cost)
     next_madrid_day(c, clock)
-    again = practise(c, qid, right_answer(db, qid))  # seen already: practice moves no LP on repeats
+    again = practise(c, qid, right_answer(db, qid))  # seen already: a quarter of the XP
     assert (again["lp"], again["xp"]) == (0, earned(True, repeat=True, first_win=True))
 
 
@@ -417,17 +423,17 @@ def test_crossing_into_a_division_is_a_promotion_once_and_a_drop_brings_the_aids
     ana = join(signed_in, c, "Ana")
     set_rank(db, ana["id"], 399.5)
     assert c.get("/api/learning/dynamics").json()["learn_more"]
-    up = practise(c, bank[90001], right_answer(db, bank[90001]))
+    up = daily(c, db, "mech", "right")
     assert (up["promoted"], up["demoted"], up["rank_points"] >= 400) == (True, False, True)
     assert progress(c)["rank"]["title"] == "Mingo V"
     assert not c.get("/api/learning/dynamics").json()["learn_more"]  # reading is for Mingo I-IV
     set_rank(db, ana["id"], 400.5)
-    down = practise(c, bank[90008], wrong(db, bank[90008]))
+    down = daily(c, db, "rules", "wrong")
     assert (down["promoted"], down["demoted"], down["rank_points"] < 400) == (False, True, True)
     assert progress(c)["rank"]["title"] == "Mingo IV"
     assert c.get("/api/learning/dynamics").json()["learn_more"]  # back after the drop
     set_rank(db, ana["id"], 399.5)
-    back = practise(c, bank[90003], right_answer(db, bank[90003]))
+    back = daily(c, db, "elec", "right")
     assert (back["promoted"], back["rank_points"] >= 400) == (False, True)  # reached before this season
 
 
@@ -689,7 +695,7 @@ def test_im_not_sure_in_a_mock_quiz_moves_on_at_half_a_wrong_answer(
 
 
 def test_at_the_top_typed_answers_cost_the_least(
-    signed_in: TestClient, new_client: NewClient, db: Session, bank: dict[int, int]
+    signed_in: TestClient, new_client: NewClient, db: Session, bank: dict[int, int], clock: Clock
 ) -> None:
     c = new_client()
     toni = join(signed_in, c, "Toni", "technical_director")
@@ -700,9 +706,9 @@ def test_at_the_top_typed_answers_cost_the_least(
         set_rank(db, toni["id"], 2000, miss_streak=0)
         q = db.get_one(Question, bank[fsquiz_id])
         assert (q.area, q.answer_kind) == (area, kind)
-        r = practise(c, q.id, wrong(db, q.id))
-        assert (r["correct"], r["lp"]) == (False, approx(lp(db, q.id, False, 2000))), fsquiz_id
-        losses[fsquiz_id] = -r["lp"]
+        r = scored(db, toni["id"], q.id, False, clock.now)
+        assert r.lp == approx(lp(db, q.id, False, 2000, "daily")), fsquiz_id
+        losses[fsquiz_id] = -r.lp
     assert min(losses, key=losses.__getitem__) == 90002
     assert losses[90003] < losses[90001]  # a multiple-choice slip is softer
 
@@ -965,35 +971,32 @@ def test_rested_xp_survives_a_daily_started_and_abandoned(
     c = new_client()
     join(signed_in, c, "Ana")
     practise(c, bank[90001], right_answer(db, bank[90001]))
-    clock.advance(days=3)
+    clock.advance(days=1)
     login(c, "ana@alu.comillas.edu", PASSWORD)
     c.post("/api/daily/mech/start")  # opened, never answered: not playing
     clock.advance(days=1)
-    maintenance.run(db, clock.now)
+    assert maintenance.run(db, clock.now)["dailies_closed"] == 1  # nor is the night closing it
+    clock.advance(days=1)
     login(c, "ana@alu.comillas.edu", PASSWORD)
-    assert progress(c)["account"]["rested_xp"] == 450  # three full days away, capped
+    assert progress(c)["account"]["rested_xp"] == 300  # two full days away
+    clock.advance(days=3)
+    login(c, "ana@alu.comillas.edu", PASSWORD)
+    assert progress(c)["account"]["rested_xp"] == 450  # capped
 
 
-def test_practice_wins_at_most_its_daily_cap_of_lp(
+def test_practice_earns_xp_and_never_moves_the_rank(
     signed_in: TestClient, new_client: NewClient, db: Session, bank: dict[int, int]
 ) -> None:
     c = new_client()
-    ana = join(signed_in, c, "Ana")
-    db.execute(update(Attempt).values(lp=0))
-    db.add(
-        Attempt(
-            user_id=ana["id"],
-            question_id=bank[90011],
-            mode="practice",
-            answer={},
-            correct=True,
-            lp=rank_rules.PRACTICE_CAP - 0.5,
-            created_at=datetime.now(UTC).replace(year=2026, month=10, day=1, hour=9),
-        )
-    )
-    db.commit()
-    r = practise(c, bank[90001], right_answer(db, bank[90001]))
-    assert r["lp"] == approx(0.5)  # only what the cap had left
+    join(signed_in, c, "Ana")
+    right = practise(c, bank[90001], right_answer(db, bank[90001]))
+    slip = practise(c, bank[90003], wrong(db, bank[90003]))
+    unsure = c.post(
+        f"/api/practice/questions/{bank[90008]}/answer", json={"options": [], "unsure": True}
+    ).json()
+    assert right["xp"] > 0 and slip["xp"] > 0
+    assert (right["lp"], slip["lp"], unsure["lp"]) == (0, 0, 0)
+    assert progress(c)["rank"]["points"] == 50
 
 
 def test_a_night_the_job_missed_is_caught_up(

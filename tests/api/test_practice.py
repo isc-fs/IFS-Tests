@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -9,7 +8,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from ifs_tests.db.models import Attempt, Question, User
-from ifs_tests.domain.rank import lp_award, placement
+from ifs_tests.domain.rank import placement
 from ifs_tests.domain.xp import xp_award
 
 from ..conftest import Clock
@@ -19,15 +18,6 @@ pytestmark = pytest.mark.integration
 NewClient = Callable[[], TestClient]
 REVEALING = ("is_correct", "key", "official", "correct", "display", "solution")
 MINGO = placement("mingo")
-
-
-def lp(db: Session, qid: int, points: float, correct: bool | None, **kw: Any) -> float:
-    """The LP a practice answer to `qid` moves from `points`."""
-    q = db.get_one(Question, qid)
-    n = len(options(db, qid)) if q.answer_kind == "choice-one" else 0
-    return lp_award(
-        correct, points, q.difficulty, "practice", area=q.area, answer_kind=q.answer_kind, options=n, **kw
-    ).amount
 
 
 def points(db: Session) -> float:
@@ -68,14 +58,13 @@ def test_choice_answers(player: TestClient, db: Session, bank: dict[int, int], c
     right, wrong = options(db, qid)[:2]
     ok = player.post(f"/api/practice/questions/{qid}/answer", json={"options": [right]}).json()
     first = xp_award(True, 3, "practice", first_win=True)
-    won = lp(db, qid, MINGO, True)
     assert ok == {
         "correct": True,
         "official": "0.713 m",
         "correct_options": [right],
         "solutions": [],
         "xp": first.amount,
-        "lp": won,
+        "lp": 0,  # practice is for learning: XP only
         "bonuses": first.bonuses,
         "combo": 1,
         "comeback": False,
@@ -83,14 +72,14 @@ def test_choice_answers(player: TestClient, db: Session, bank: dict[int, int], c
         "promoted": False,
         "rose": False,
         "demoted": False,
-        "rank_points": MINGO + won,
+        "rank_points": MINGO,
         "level": 1,
         "level_up": False,
         "passed": False,
     }
-    assert won > 0 and set(first.bonuses) == {"first_win"}
+    assert set(first.bonuses) == {"first_win"}
     no = player.post(f"/api/practice/questions/{qid}/answer", json={"options": [wrong]}).json()
-    # Graded earlier today: no XP again, and practice moves no LP on a question seen before.
+    # Graded earlier today: no XP again.
     assert (no["correct"], no["xp"], no["combo"], no["lp"]) == (False, 0, 0, 0)
     same_day = player.post(f"/api/practice/questions/{qid}/answer", json={"options": [right]}).json()
     assert (same_day["correct"], same_day["xp"], same_day["lp"]) == (True, 0, 0)  # no farming it
@@ -102,7 +91,7 @@ def test_choice_answers(player: TestClient, db: Session, bank: dict[int, int], c
     assert (again["correct"], again["xp"], again["lp"], again["level"]) == (
         True,
         xp_award(True, 3, "practice", repeat=True, first_win=True).amount,
-        0,  # a question seen before: XP only, practice doesn't climb on repeats
+        0,
         1,
     )
     assert points(db) == before
@@ -113,9 +102,8 @@ def test_choice_answers(player: TestClient, db: Session, bank: dict[int, int], c
     assert r["correct"] is True and sorted(r["correct_options"]) == sorted([a, b])
     # The repeat above was right on a new day: it carried the combo on.
     assert (r["xp"], r["combo"]) == (xp_award(True, 3, "practice", first_win=True, combo=2).amount, 3)
-    assert r["lp"] > 0
     stored = db.scalars(select(Attempt.lp).where(Attempt.question_id == multi)).one()
-    assert (stored, points(db)) == (r["lp"], r["rank_points"])
+    assert (r["lp"], stored, points(db)) == (0, 0, MINGO)
 
 
 def test_typed_answers_and_solutions(player: TestClient, bank: dict[int, int]) -> None:

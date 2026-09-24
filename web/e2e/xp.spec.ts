@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { newMember } from './helpers'
 
-test('a Department Head is placed at Jefe I, practises, and both the rank and the account level move', async ({
+test('a Department Head is placed at Jefe I; practice raises the account level and leaves the rank alone', async ({
   browser,
 }, info) => {
   const page = await newMember(
@@ -29,11 +29,12 @@ test('a Department Head is placed at Jefe I, practises, and both the rank and th
     await question.getByRole('button', { name: 'Next question' }).click()
   }
   await page.goto('/')
-  await expect(page.getByRole('region', { name: /^Your rank: (Mingo|Jefe) / })).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Your rank: Jefe I' })).toContainText('50 LP · 50 LP to Jefe II')
   await expect(page.getByRole('region', { name: /^Your account: Level \d+$/ })).not.toContainText('0 / 300 XP')
 
   await page.getByRole('link', { name: 'Your road to the top' }).click()
   const road = page.getByRole('region', { name: 'Your road to the top' })
-  await expect(road.locator('[aria-current="step"]')).toContainText(/Jefe|Mingo/)
+  await expect(road).toBeInViewport()
+  await expect(road.locator('[aria-current="step"]')).toContainText('Jefe I')
   await expect(road.getByRole('region', { name: 'The top' })).toContainText('???')
 })

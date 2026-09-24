@@ -61,18 +61,26 @@ const api = (play: unknown) => ({
     body: { question: QUESTION, feedback: FEEDBACK, late: false, xp: 60, lp: 15, streak: 3 },
   },
   'GET /api/daily/elec/review': {
-    body: { question: { ...QUESTION, area: 'elec' }, feedback: FEEDBACK, late: false, xp: 55, lp: 16.2, streak: 2 },
+    body: {
+      question: { ...QUESTION, area: 'elec' },
+      feedback: FEEDBACK,
+      answer: { options: [50], value: null },
+      late: false,
+      xp: 55,
+      lp: 16.2,
+      streak: 2,
+    },
   },
 })
 
 test('the overview shows the streak and what is left today', async () => {
   renderApp('/daily', api(timed(120)))
   expect(await screen.findByText('2 days')).toBeInTheDocument()
-  expect(screen.getByText('+5 LP, +55 XP')).toBeInTheDocument()
+  expect(screen.getByText('+4.5 LP, +55 XP')).toBeInTheDocument() // the shown amounts add up: 16.2 − 11.7
   expect(screen.getByRole('button', { name: 'Start the Mechanical question' })).toBeInTheDocument()
   expect(screen.getByText(/2 min to answer/)).toBeInTheDocument()
-  expect(screen.getByText('Correct: +16 LP, +55 XP.')).toBeInTheDocument()
-  expect(screen.getByText('Out of time, counted as wrong: −12 LP, 0 XP.')).toBeInTheDocument()
+  expect(screen.getByText('Correct: +16.2 LP, +55 XP.')).toBeInTheDocument()
+  expect(screen.getByText('Out of time, counted as wrong: −11.7 LP, 0 XP.')).toBeInTheDocument()
 })
 
 test('start, answer against the clock, see the LP and XP', async () => {
@@ -107,7 +115,11 @@ test('a finished question can be reviewed', async () => {
   renderApp('/daily', api(timed(120)))
   await userEvent.click(await screen.findByRole('button', { name: 'See the Electrical question' }))
   const card = await screen.findByRole('article')
-  expect(within(card).getByText('AS Emergency').closest('label')).toHaveTextContent('Correct answer')
+  expect(within(card).getByText('AS Emergency').closest('label')).toHaveTextContent('Correct answer · your pick')
+  const [picked, other] = within(card).getAllByRole('radio')
+  expect(picked).toBeChecked()
+  expect(picked).toBeDisabled()
+  expect(other).not.toBeChecked()
   expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Electrical')
   expect(screen.queryByRole('button', { name: 'Check answer' })).toBeNull()
 })

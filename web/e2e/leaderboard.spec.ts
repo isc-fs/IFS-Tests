@@ -27,8 +27,9 @@ test('score in a mock quiz, find yourself on the leaderboard, then hide', async 
   await page.getByRole('link', { name: 'Last 7 days' }).click()
   await expect(page).toHaveURL(/\/leaderboard\?period=week$/)
   await page.getByRole('link', { name: 'Verticals' }).click()
-  await expect(page).toHaveURL(/board=verticals&period=week/)
-  await expect(page.getByRole('heading', { name: 'Verticals, last 7 days' })).toBeVisible()
+  await expect(page).toHaveURL(/\/leaderboard\?board=verticals$/) // the vertical average is always the season's
+  await expect(page.getByRole('heading', { name: 'Verticals, this season' })).toBeVisible()
+  await expect(page.getByRole('navigation', { name: 'Period' })).toHaveCount(0)
   await expect(page.getByRole('table').or(page.getByText('No vertical has 3 active members yet.'))).toBeVisible()
 
   await page.getByRole('link', { name: 'Profile', exact: true }).click()

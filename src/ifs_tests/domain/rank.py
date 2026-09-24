@@ -30,11 +30,12 @@ TOP_TITLE = "Leyenda"
 
 # A question's rating from its difficulty (1-5), on the same scale as rank points.
 Q_MID, Q_STEP, SCALE = 650, 170, 600
-K = {"daily": 30.0, "mock": 20.0, "practice": 5.0, "live": 0.0}  # live: a table's answer isn't one person's
+# Practice is for learning and live answers are a table's: only the daily question and mock runs move the rank.
+K = {"daily": 30.0, "mock": 20.0, "practice": 0.0, "live": 0.0}
 REPEAT = 0.25  # a question already graded this season
-PRACTICE_CAP = 15.0  # LP practice can win in a day: it's for learning, the daily question is for climbing
 HINT = 0.5  # of the gain
-PASS = 0.5  # "I'm not sure" costs half a wrong answer: free passes would let anyone climb forever
+PASS = 0.5  # "I'm not sure" costs half a wrong answer (never more than a blind guess): free passes would let
+# anyone climb forever
 SOFTEN = {"choice-one": 1.0, "choice-many": 0.75}  # typed answers 0.5: a slip in a sum isn't not knowing
 TYPED = 0.5
 # Back on your feet: after this many wrong in a row, losses halve and the next right answer pays 1.5x.
@@ -105,8 +106,9 @@ def placement(position: str) -> float:
 
 
 def season_reset(points: float, position: str) -> float:
-    """1 September: three divisions back (the top counts as 1500), never below your position's placement."""
-    return max(placement(position), min(points, TOP_POINTS) - SEASON_DROP)
+    """1 September: three divisions back (the top counts as 1500), never below your position's placement, and
+    never above where you finished."""
+    return max(min(placement(position), points), min(points, TOP_POINTS) - SEASON_DROP)
 
 
 def season_of(now: datetime) -> int:
@@ -161,22 +163,27 @@ def lp_award(
 ) -> Lp:
     """LP for one answer (the defaults describe a rules question). Right: K x (1 - expected); wrong or late:
     K x expected x stakes, softer for typed and multiple-choice slips. "I'm not sure" in time costs half a
-    wrong answer. A question already graded today moves nothing if right; ungraded ones never move LP."""
+    wrong answer, never more than a blind guess would lose on average. A hint on a single choice leaves it a
+    two-way guess. A question already graded today moves nothing if right; ungraded ones never move LP."""
     if correct is None:
         return Lp(0.0)
+    if hint and answer_kind == "choice-one":
+        options = min(options, 2)
     k = K[mode] * (REPEAT if repeat else 1)
     e = expected(points, difficulty, answer_kind, options)
     down = miss_streak >= CUSHION_AFTER
     # Slips in a sum aren't not knowing a rule, and typed answers play harder than their rating: both ways.
     k *= 1.0 if area == "rules" else SOFTEN.get(answer_kind, TYPED)
+    gain = k * (1 - e) * (HINT if hint else 1) * (COMEBACK if down else 1)
     if correct and not late and not passed:
         if again_today:
             return Lp(0.0)
-        gain = k * (1 - e) * (HINT if hint else 1) * (COMEBACK if down else 1)
         return Lp(round(gain, 2), comeback=down and gain > 0)
     loss = k * e * DIVISION_TABLE[division_of(points)].stakes * (CUSHION if down else 1)
     if passed and not late:
         loss *= PASS
+        if answer_kind == "choice-one" and options > 1:
+            loss = min(loss, max(0.0, (1 - 1 / options) * loss / PASS - gain / options))
     return Lp(-round(loss, 2), cushioned=down and loss > 0)
 
 

@@ -40,6 +40,14 @@ def test_pick_is_stable_for_a_day_and_varies_between_days() -> None:
     assert len(picks) > 1
 
 
+def test_pick_is_drawn_with_a_secret_from_the_least_recently_used() -> None:
+    bank = [Candidate(i, D - timedelta(days=400 - i), 0) for i in range(1, 201)]  # 1 is the oldest
+    drawn = {pick(bank, D + timedelta(days=n), "rules", b"server secret") for n in range(60)}
+    assert drawn <= set(range(1, 21)) and len(drawn) > 5  # among the 20 oldest, not always the oldest
+    secrets = {pick(bank, D, "rules", bytes([n])) for n in range(20)}
+    assert len(secrets) > 1  # without the secret, nobody can work tomorrow's out from the public bank
+
+
 @pytest.mark.parametrize(
     ("time_s", "kind", "seconds"),
     [

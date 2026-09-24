@@ -122,5 +122,7 @@ phases:
         scope: Team-written questions, starting with Driverless
       - name: feat/24-rule-page-links
         scope: Download each rulebook once (polite, cached), index rule numbers to pages, link references like EV 4.7.6 to their page
+      - name: feat/25-daily-per-player
+        scope: "Decide with the team (ADR 0007, open questions): a daily question per player so answers can't be passed around, demotions shown at the end of the day, double LP for a newcomer's first answers, whether repeats move LP"
 
 sidequests: []

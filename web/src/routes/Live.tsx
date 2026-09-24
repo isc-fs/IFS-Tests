@@ -389,6 +389,7 @@ function Answering({ s }: { s: LiveState }) {
         optionNotes={notes}
         submitLabel={answering ? 'Send the table’s answer' : `Propose to ${tableName(s, target)}'s captain`}
         allowUnsure={answering}
+        mode="live"
         onAnswer={(body) =>
           answering
             ? send.mutate({ path: { code: s.code }, body })
@@ -469,7 +470,7 @@ export function LiveScreen() {
         </>
       )}
       {s.state === 'lobby' && <Tables s={s} />}
-      {s.state === 'finished' && <Results s={s} />}
+      {s.state === 'finished' && <Results s={s} room />}
       <p className="muted">
         <Link to={`/live/${s.code}`}>Back to the session</Link>
       </p>

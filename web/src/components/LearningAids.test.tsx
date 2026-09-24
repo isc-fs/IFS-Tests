@@ -71,7 +71,7 @@ test('a hint rules out options, says what it costs and is asked for once', async
   )
   await userEvent.click(await screen.findByRole('button', { name: 'Hint (a right answer earns half)' }))
   expect(
-    await screen.findByText(/Two options left: one of them is right\. A right answer now wins half the LP and XP\./),
+    await screen.findByText(/Two options left: one of them is right\. A right answer now wins half the XP\./),
   ).toBeInTheDocument()
   expect(screen.getByRole('radio', { name: '0.512 m' })).toBeDisabled()
   expect(screen.getByRole('radio', { name: '1.020 m' })).toBeDisabled()

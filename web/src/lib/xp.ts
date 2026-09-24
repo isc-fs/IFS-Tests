@@ -10,7 +10,7 @@ export const POSITION_NAMES: Record<Position, string> = {
 
 /** The same, with where each is placed on the ladder, for people choosing theirs when they join. */
 export const POSITIONS: Record<Position, string> = {
-  mingo: 'Mingo: new this season',
+  mingo: 'Mingo, new this season: placed at Mingo I',
   member: 'Returning member: placed at Mingo IV',
   department_head: 'Department Head: placed at Jefe I',
   technical_director: 'Technical Director: placed at DT I',

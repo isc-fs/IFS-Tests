@@ -21,12 +21,20 @@ export function lpIn(points: number): number {
   return Math.floor(points >= TOP * 100 ? points - TOP * 100 : points % 100)
 }
 
-const fmt = (n: number) =>
-  Math.abs(n) < 1 && n !== 0 ? Math.abs(n).toFixed(1) : Math.round(Math.abs(n)).toLocaleString('en-GB')
+const fmt = (n: number, tenths: boolean) =>
+  tenths
+    ? Math.abs(n).toLocaleString('en-GB', { maximumFractionDigits: 1 })
+    : Math.abs(n) < 1 && n !== 0
+      ? Math.abs(n).toFixed(1)
+      : Math.round(Math.abs(n)).toLocaleString('en-GB')
 
-/** "+13 LP", "−8 LP" (a real minus sign), "+0.4 LP" and "+<0.1 LP" for the small moves at high ranks. */
-export function lp(amount: number): string {
-  const size = Math.abs(amount) < 0.05 ? '<0.1' : fmt(amount)
+/** An amount rounded the way `lp(amount, true)` shows it, so a total of shown amounts adds up. */
+export const tenths = (amount: number) => Math.round(amount * 10) / 10
+
+/** "+13 LP", "−8 LP" (a real minus sign), "+0.4 LP" and "+<0.1 LP" for the small moves at high ranks.
+ *  With `precise`, one decimal ("+16.2 LP"): for amounts shown next to their total. */
+export function lp(amount: number, precise = false): string {
+  const size = Math.abs(amount) < 0.05 ? '<0.1' : fmt(amount, precise)
   if (amount > 0) return `+${size} LP`
   if (amount < 0) return `−${size} LP`
   return '0 LP'

@@ -488,6 +488,7 @@ class TimedQuestion(BaseModel):
 class DailyResult(BaseModel):
     question: PlayQuestion
     feedback: Feedback
+    answer: KeyIn | None = Field(default=None, description="What you sent")
     late: bool
     xp: int
     lp: float
@@ -515,6 +516,7 @@ class MockAnswerIn(AnswerIn):
 class MockItem(BaseModel):
     question: PlayQuestion
     feedback: Feedback
+    answer: KeyIn | None = Field(default=None, description="What you sent; none if the time ran out")
     late: bool
 
 

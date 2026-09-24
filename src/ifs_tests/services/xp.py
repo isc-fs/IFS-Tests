@@ -18,6 +18,7 @@ from ..domain import leaderboard as board_rules
 from ..domain import rank as rank_rules
 from ..domain import xp as rules
 from . import hints, streaks
+from .errors import UserError
 
 COUNTER_CAP = 99  # combo and bad-run counters are SMALLINT; nothing past a handful changes the score
 
@@ -46,7 +47,7 @@ def rested(db: DB, bank: int, topped_up: date | None, user_id: int, now: datetim
 def lock(db: DB, user_id: int) -> Row[Any]:
     """Take the player's row lock until commit, so their answers are scored one at a time. NO KEY UPDATE
     still lets rows that reference the user (attempts, sessions) be inserted meanwhile."""
-    return db.execute(
+    row = db.execute(
         select(
             User.xp,
             User.position,
@@ -60,7 +61,10 @@ def lock(db: DB, user_id: int) -> Row[Any]:
         )
         .where(User.id == user_id)
         .with_for_update(key_share=True)
-    ).one()
+    ).one_or_none()
+    if row is None:  # deleted while this request waited for it
+        raise UserError("This account no longer exists.", 401)
+    return row
 
 
 def last_seen(
@@ -100,25 +104,12 @@ def answered_today(
         Attempt.user_id == user_id,
         Attempt.question_id == question_id,
         Attempt.submitted_at.is_not(None) | (Attempt.mode == "practice"),
-        func.coalesce(Attempt.submitted_at, Attempt.created_at) >= start,
+        Attempt.created_at
+        >= start,  # when it was shown: a night job closing yesterday's isn't answering today
     )
     if other_than is not None:
         stmt = stmt.where(Attempt.id != other_than)
     return bool(db.scalar(stmt))
-
-
-def practice_room(db: DB, user_id: int, now: datetime) -> float:
-    """LP practice may still win today: it's for learning, the daily question is for climbing."""
-    start = board_rules.madrid_midnight(daily_rules.madrid_day(now))
-    won = db.scalar(
-        select(func.coalesce(func.sum(Attempt.lp), 0)).where(
-            Attempt.user_id == user_id,
-            Attempt.mode == "practice",
-            Attempt.lp > 0,
-            Attempt.created_at >= start,
-        )
-    )
-    return max(0.0, rank_rules.PRACTICE_CAP - float(won or 0))
 
 
 def first_wins(db: DB, user_id: int, now: datetime) -> int:
@@ -178,20 +169,23 @@ def grant(
     again_today: bool = False,
     passed: bool = False,
     ranked: bool = True,
+    season_at: datetime | None = None,
 ) -> Grant:
     """Score one answer in both currencies: LP for the rank, XP for the account level. The caller stores
     `xp` and `lp` on the attempt and commits. Live answers are a table's: XP only, and they leave the
     player's combo and bad run alone. `ranked=False` (a mock replay) moves no LP either. Only first-time
-    daily and mock answers count towards a bad run, so it can't be staged with cheap practice misses; practice
-    moves LP only on fresh questions, up to a daily cap."""
+    daily and mock answers count towards a bad run, so it can't be staged with cheap practice misses. Practice
+    earns XP only (rank.K). `season_at` is when the play started (a daily's start, a mock run's): an answer
+    belongs to that season's rank, as on the leaderboard, unless the player has already moved on to the next."""
     state = lock(db, user_id)
-    points = rank_rules.current_points(state.rank_points, state.rank_season, state.position, now)
-    best = (
-        state.rank_best if state.rank_season == rank_rules.season_of(now) else rank_rules.division_of(points)
-    )
+    season = rank_rules.season_of(season_at or now)
+    if season < state.rank_season:
+        season = rank_rules.season_of(now)
+    at = now if season == rank_rules.season_of(now) else season_at or now
+    points = rank_rules.current_points(state.rank_points, state.rank_season, state.position, at)
+    best = state.rank_best if state.rank_season == season else rank_rules.division_of(points)
     live = mode == "live"
     right = bool(correct) and not late and not passed
-    ranked = ranked and not (mode == "practice" and repeat)
     run = mode in ("daily", "mock") and ranked and not repeat and not again_today
     options = _options(db, question)
     lp = rank_rules.lp_award(
@@ -211,8 +205,6 @@ def grant(
     )
     if not ranked:
         lp = rank_rules.Lp(0.0)
-    elif mode == "practice" and lp.amount > 0:
-        lp = rank_rules.Lp(round(min(lp.amount, practice_room(db, user_id, now)), 2))
     bank = rested(db, state.rested_xp, state.rested_on, user_id, now)
     earned = rules.xp_award(
         correct,
@@ -237,20 +229,21 @@ def grant(
         miss = min(rank_rules.next_miss_streak(miss, correct, passed, late), COUNTER_CAP)
     after = max(0.0, round(points + lp.amount, 2))
     division = rank_rules.division_of(after)
+    values: dict[str, Any] = {
+        "xp": User.xp + earned.amount,
+        "rank_points": after,
+        "rank_season": season,
+        "rank_best": max(best, division),
+        "combo": combo,
+        "miss_streak": miss,
+    }
+    if answered:  # a question left to run out (closed by the nightly job) isn't playing: the rested days stay
+        values |= {
+            "rested_xp": bank - earned.bonuses.get("rested", 0),
+            "rested_on": daily_rules.madrid_day(now),
+        }
     xp_after = db.execute(
-        update(User)
-        .where(User.id == user_id)
-        .values(
-            xp=User.xp + earned.amount,
-            rank_points=after,
-            rank_season=rank_rules.season_of(now),
-            rank_best=max(best, division),
-            combo=combo,
-            miss_streak=miss,
-            rested_xp=bank - earned.bonuses.get("rested", 0),
-            rested_on=daily_rules.madrid_day(now),
-        )
-        .returning(User.xp)
+        update(User).where(User.id == user_id).values(values).returning(User.xp)
     ).scalar_one()
     level = rules.account_level(xp_after)[0]
     return Grant(

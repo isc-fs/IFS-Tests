@@ -63,7 +63,7 @@ def test_the_export_holds_my_data_and_nobody_elses(
         (mine, "practice", True)
     ]
     stored = db.scalars(select(Attempt).join(User).where(User.display_name == "Marta")).one()
-    assert [(a["xp"], a["lp"]) for a in data["answers"]] == [(stored.xp, stored.lp)] and stored.lp > 0
+    assert [(a["xp"], a["lp"]) for a in data["answers"]] == [(stored.xp, stored.lp)] and stored.xp > 0
     assert (data["account"]["xp"], data["account"]["rank_points"]) == (stored.xp, 50 + stored.lp)
     assert data["reports"][0]["message"] == "Option B looks wrong"
     assert data["sign_ins"] and [h["action"] for h in data["account_history"]] == ["user.register"]
@@ -91,8 +91,8 @@ def test_the_export_keeps_live_results_secret_until_the_session_ends(
     advance(room, code)
     qid = state(room["Leo"], code)["question"]["id"]
     assert send(room["Leo"], code, right_answer(db, qid)) == 204
-    live = [a for a in export(room["Ana"])["answers"] if a["mode"] == "live"]
-    assert [(a["correct"], a["xp"], a["lp"]) for a in live] == [(None, 0, 0)]
+    # Still open for the other table: nothing shared yet, and the captain's answer hides its result.
+    assert [a for a in export(room["Ana"])["answers"] if a["mode"] == "live"] == []
     assert export(room["Leo"])["live"]["answers_sent_as_captain"][0]["correct"] is None
     assert room["Tere"].post(f"/api/live/sessions/{code}/end").status_code == 204
     after = export(room["Ana"])["answers"]

@@ -289,6 +289,8 @@ def test_im_not_sure_from_a_captain_earns_a_little_xp_and_moves_no_lp(
     code = lobby(room, areas=["rules"])
     advance(room, code)
     assert send(room["Leo"], code, {"unsure": True}) == 204
+    assert db.scalars(select(Attempt).where(Attempt.mode == "live")).all() == []  # nothing until it closes
+    advance(room, code)  # close: the result can be known, the XP goes out
     passed = db.scalars(
         select(Attempt).where(Attempt.mode == "live", Attempt.user_id == room["Leo_id"])
     ).one()

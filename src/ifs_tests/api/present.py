@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from ..bank.client import DOC_URL
 from ..services.questions import Checked, Doc, Shown
-from .schemas import DocLink, Feedback, Option, PlayQuestion, QuestionDocs, SolutionOut, media_url
+from .schemas import DocLink, Feedback, KeyIn, Option, PlayQuestion, QuestionDocs, SolutionOut, media_url
 
 
 def play_question(shown: Shown) -> PlayQuestion:
@@ -32,6 +34,13 @@ def play_question(shown: Shown) -> PlayQuestion:
 def _link(d: Doc) -> DocLink:
     url = d.path if "://" in d.path else f"{DOC_URL}/{d.path}"
     return DocLink(title=d.title, type=d.type, year=d.year, url=url)
+
+
+def sent(answer: dict[str, Any] | None) -> KeyIn | None:
+    """The player's own answer as they sent it; none for a question left to run out or passed."""
+    if not answer or (answer.get("options") is None and answer.get("value") is None):
+        return None
+    return KeyIn(options=answer.get("options"), value=answer.get("value"))
 
 
 def feedback(checked: Checked) -> Feedback:

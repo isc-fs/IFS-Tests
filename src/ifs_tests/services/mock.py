@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from typing import Any
 
 from sqlalchemy import case, func, select, update
 from sqlalchemy.dialects.postgresql import insert
@@ -15,17 +16,24 @@ from ..domain import daily as timing
 from ..domain import mock as rules
 from . import xp
 from .errors import UserError
-from .questions import Checked, check
+from .questions import Checked, check, running
+
+
+def labels(db: DB, quizzes: list[Quiz]) -> dict[int, str]:
+    """ "FSG/FSA 2025 CV" for each quiz, in one query."""
+    events: dict[int, list[str]] = {q.id: [] for q in quizzes}
+    for quiz_id, name in db.execute(
+        select(quiz_events.c.quiz_id, Event.short_name)
+        .join(Event, Event.id == quiz_events.c.event_id)
+        .where(quiz_events.c.quiz_id.in_(list(events)))
+        .order_by(Event.short_name)
+    ):
+        events[quiz_id].append(name)
+    return {q.id: f"{'/'.join(events[q.id]) or 'Quiz'} {q.year} {q.vehicle_class.upper()}" for q in quizzes}
 
 
 def label(db: DB, quiz: Quiz) -> str:
-    events = db.scalars(
-        select(Event.short_name)
-        .join(quiz_events, quiz_events.c.event_id == Event.id)
-        .where(quiz_events.c.quiz_id == quiz.id)
-        .order_by(Event.short_name)
-    ).all()
-    return f"{'/'.join(events) or 'Quiz'} {quiz.year} {quiz.vehicle_class.upper()}"
+    return labels(db, [quiz])[quiz.id]
 
 
 def _questions(db: DB, quiz_id: int) -> list[Question]:
@@ -83,7 +91,10 @@ def quizzes(db: DB, user: User) -> list[QuizInfo]:
         )
     )
     open_: dict[int, int] = {qid: sid for qid, sid in running}
-    rows = db.scalars(select(Quiz).order_by(Quiz.held_on.desc().nulls_last(), Quiz.year.desc(), Quiz.id))
+    rows = db.scalars(
+        select(Quiz).order_by(Quiz.held_on.desc().nulls_last(), Quiz.year.desc(), Quiz.id)
+    ).all()
+    names = labels(db, [q for q in rows if q.id in stats])
     out = []
     for quiz in rows:
         if quiz.id not in stats:
@@ -92,7 +103,7 @@ def quizzes(db: DB, user: User) -> list[QuizInfo]:
         out.append(
             QuizInfo(
                 quiz=quiz,
-                label=label(db, quiz),
+                label=names[quiz.id],
                 questions=n,
                 graded=graded,
                 total_time_s=total if timed == n else None,
@@ -130,6 +141,7 @@ def start(db: DB, user: User, quiz_id: int, now: datetime) -> MockSession:
 
 
 def _session(db: DB, user: User, session_id: int) -> MockSession:
+    xp.lock(db, user.id)  # the player, then the run: the order deleting an account takes
     s = db.scalar(
         select(MockSession)
         .where(MockSession.id == session_id, MockSession.user_id == user.id)
@@ -146,6 +158,7 @@ class Item:
     question: Question
     checked: Checked
     late: bool
+    answer: dict[str, Any]
 
 
 @dataclass
@@ -236,6 +249,7 @@ def _time_out(db: DB, s: MockSession, q: Question, a: Attempt, now: datetime) ->
         late=True,
         again_today=xp.answered_today(db, s.user_id, q.id, now, other_than=a.id),
         ranked=s.counted,
+        season_at=s.started_at,
     )
     a.xp, a.lp = timed_out.xp, timed_out.lp
 
@@ -244,7 +258,7 @@ def close_expired(db: DB, now: datetime) -> int:
     """Nightly: charge questions left to run out in runs nobody came back to. The run itself stays open; the
     next question starts its clock when its player returns."""
     rows = db.execute(
-        select(Attempt.id, Attempt.session_id)
+        select(Attempt.id, Attempt.session_id, Attempt.user_id)
         .where(
             Attempt.mode == "mock",
             Attempt.submitted_at.is_(None),
@@ -253,7 +267,8 @@ def close_expired(db: DB, now: datetime) -> int:
         .order_by(Attempt.user_id, Attempt.id)
     ).all()
     closed = 0
-    for attempt_id, session_id in rows:
+    for attempt_id, session_id, owner in rows:
+        xp.lock(db, owner)
         s = db.get_one(MockSession, session_id, with_for_update=True)
         a = db.get_one(Attempt, attempt_id, populate_existing=True)
         if a.submitted_at is None:
@@ -264,18 +279,21 @@ def close_expired(db: DB, now: datetime) -> int:
     return closed
 
 
-def _summary(db: DB, s: MockSession) -> Summary:
+def _summary(db: DB, s: MockSession, now: datetime) -> Summary:
     attempts = _attempts(db, s)
     questions = _run(db, s, attempts)
+    busy = running(db, s.user_id, now)  # e.g. today's daily question, not answered yet: its answer waits
     items = []
     for q in questions:
         a = attempts.get(q.id)
         answer = a.answer if a else {}
         checked = check(db, q, answer.get("options"), answer.get("value"), bool(a and a.passed))
+        if q.id in busy:
+            checked.official, checked.correct_options, checked.solutions = None, [], []
         checked.correct = a.correct if a else (False if q.graded else None)
         # level 0: a summary item carries its own XP and LP, not where the player stands now
         checked.score = xp.Grant(xp=a.xp if a else 0, lp=a.lp if a else 0.0, level=0)
-        items.append(Item(q, checked, bool(a and a.late)))
+        items.append(Item(q, checked, bool(a and a.late), answer))
     correct = sum(1 for i in items if i.checked.correct)
     quiz = db.get_one(Quiz, s.quiz_id)
     return Summary(
@@ -298,7 +316,7 @@ def state(db: DB, user: User, session_id: int, now: datetime) -> State:
         label=label(db, db.get_one(Quiz, s.quiz_id)),
         total=len(_run(db, s, _attempts(db, s))),
         current=current,
-        summary=_summary(db, s) if s.finished_at else None,
+        summary=_summary(db, s, now) if s.finished_at else None,
     )
 
 
@@ -350,6 +368,7 @@ def answer(
                 hint=a.hint_used,
                 again_today=xp.answered_today(db, user.id, q.id, now, other_than=a.id),
                 ranked=s.counted,
+                season_at=s.started_at,
             )
             db.execute(update(Attempt).where(Attempt.id == a.id).values(xp=granted.xp, lp=granted.lp))
         db.commit()

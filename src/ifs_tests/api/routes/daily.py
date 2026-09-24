@@ -7,7 +7,7 @@ from fastapi import APIRouter, Path
 
 from ...services import daily, hints, questions
 from ..deps import Db, Member, Now
-from ..present import feedback, play_question
+from ..present import feedback, play_question, sent
 from ..schemas import AnswerIn, DailyArea, DailyResult, DailyStatus, HintOut, TimedQuestion
 
 router = APIRouter(prefix="/api/daily", tags=["daily"])
@@ -19,6 +19,7 @@ def _result(db: Db, r: daily.Result) -> DailyResult:
     return DailyResult(
         question=play_question(questions.show(db, [r.question])[0]),
         feedback=feedback(r.checked),
+        answer=sent(r.answer),
         late=r.late,
         xp=r.xp,
         lp=r.lp,

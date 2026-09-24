@@ -3311,6 +3311,17 @@
      "feedback": {
       "$ref": "#/components/schemas/Feedback"
      },
+     "answer": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/KeyIn"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "What you sent"
+     },
      "late": {
       "type": "boolean",
       "title": "Late"
@@ -5238,6 +5249,17 @@
      },
      "feedback": {
       "$ref": "#/components/schemas/Feedback"
+     },
+     "answer": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/KeyIn"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "What you sent; none if the time ran out"
      },
      "late": {
       "type": "boolean",

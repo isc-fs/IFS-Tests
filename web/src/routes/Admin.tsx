@@ -574,7 +574,11 @@ const CHANGES: Record<string, (after: unknown) => string> = {
   excluded: (v) => (v ? 'hidden' : 'shown again'),
   exclusion_note: (v) => `note → ${shown(v)}`,
   upstream_change: (v) => `upstream change ${shown(v)}`,
+  position: (v) => `position → ${POSITION_NAMES[v as Position] ?? shown(v)}`,
 }
+
+/** Only these are the system's own entries; any other without an actor was made by an account since deleted. */
+const SYSTEM = new Set(['bank.import'])
 
 function detail(action: string, details: Record<string, unknown>) {
   let parts: string[] = []
@@ -615,7 +619,8 @@ function AuditTrail() {
           }
           return (
             <li key={a.id}>
-              <time dateTime={a.at}>{when(a.at)}</time> {a.actor ?? 'System'} {ACTIONS[a.action] ?? a.action}
+              <time dateTime={a.at}>{when(a.at)}</time>{' '}
+              {a.actor ?? (SYSTEM.has(a.action) ? 'The system' : 'A deleted account')} {ACTIONS[a.action] ?? a.action}
               {!self &&
                 a.target &&
                 a.actor !== null &&

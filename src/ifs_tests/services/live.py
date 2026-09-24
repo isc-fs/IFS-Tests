@@ -34,7 +34,7 @@ from ..domain import live as rules
 from ..domain import mock as mock_rules
 from . import xp
 from .errors import UserError
-from .questions import Checked, Shown, check, show
+from .questions import Checked, Shown, check, running, show
 
 
 def can_host(user: User) -> bool:
@@ -96,13 +96,47 @@ def _touch(s: LiveSession) -> None:
 def _finish(db: DB, s: LiveSession, now: datetime) -> None:
     s.state, s.finished_at = "finished", now
     _touch(s)
-    held = db.scalars(select(LiveAnswer).where(LiveAnswer.session_id == s.id, ~LiveAnswer.granted)).all()
-    # Lock everyone who shares in them at once, in id order, before any table: two tables' players in
-    # different orders would otherwise deadlock with other answers or the nightly jobs.
-    everyone = sorted({uid for a in held for uid in a.member_ids})
-    db.execute(select(User.id).where(User.id.in_(everyone)).order_by(User.id).with_for_update(key_share=True))
-    for a in held:
-        _share(db, s, a, now)  # a rehearsal's XP, held back so it couldn't give answers away
+
+
+def share(db: DB, session_id: int, now: datetime) -> int:
+    """Share the XP of the answers whose results may now be known: closed questions of a quiz that shows right
+    and wrong after each one, or everything once the quiz is over (a rehearsal holds it back so XP can't give
+    answers away). One table's answer per transaction, locking only its players in id order: a long rehearsal
+    holds nobody's row for long, and nothing else waits on a whole room. Called after each commit that can
+    close a question; the nightly job sweeps up anything a crash left."""
+    s = db.get_one(LiveSession, session_id)
+    pending = select(LiveAnswer.position, LiveAnswer.table_id).where(
+        LiveAnswer.session_id == session_id, ~LiveAnswer.granted
+    )
+    if s.state != "finished":
+        if s.config["feedback"] != "each":
+            return 0
+        pending = pending.where(LiveAnswer.position < s.position + (s.state == "closed"))
+    keys = db.execute(pending.order_by(LiveAnswer.position, LiveAnswer.table_id)).all()
+    db.commit()
+    shared = 0
+    for position, table_id in keys:
+        a = db.scalar(
+            select(LiveAnswer)
+            .where(
+                LiveAnswer.session_id == session_id,
+                LiveAnswer.position == position,
+                LiveAnswer.table_id == table_id,
+                ~LiveAnswer.granted,
+            )
+            .with_for_update(skip_locked=True)
+        )
+        if a is not None:
+            _share(db, s, a, now)
+            shared += 1
+        db.commit()
+    return shared
+
+
+def share_pending(db: DB, now: datetime) -> int:
+    """Nightly: any answer left unshared by a crash between a question closing and its sharing."""
+    ids = db.scalars(select(LiveAnswer.session_id).where(~LiveAnswer.granted).distinct()).all()
+    return sum(share(db, sid, now) for sid in ids)
 
 
 def lock_hosted(db: DB, host_id: int) -> list[LiveSession]:
@@ -140,8 +174,11 @@ def refresh(db: DB, code: str, now: datetime) -> int:
         .values(state="closed", version=LiveSession.version + 1)
         .returning(LiveSession.version)
     ).scalar()
-    version = closed if closed is not None else _session(db, code).version
+    s = _session(db, code)
+    version = closed if closed is not None else s.version
     db.commit()
+    if closed is not None:
+        share(db, s.id, now)
     return version
 
 
@@ -325,6 +362,7 @@ def advance(db: DB, host: User, code: str, now: datetime, seen: tuple[str, int] 
         s.state = "closed"
         _touch(s)
         db.commit()
+        share(db, s.id, now)
         return
     if s.state == "lobby":
         _start(db, s, now)
@@ -338,6 +376,7 @@ def advance(db: DB, host: User, code: str, now: datetime, seen: tuple[str, int] 
         else:
             _open(s, nxt.position, nxt.budget_s, now)
     db.commit()
+    share(db, s.id, now)
 
 
 def _start(db: DB, s: LiveSession, now: datetime) -> None:
@@ -367,8 +406,10 @@ def _start(db: DB, s: LiveSession, now: datetime) -> None:
 
 
 def end(db: DB, host: User, code: str, now: datetime) -> None:
-    _finish(db, _hosted(db, host, code), now)
+    s = _hosted(db, host, code)
+    _finish(db, s, now)
     db.commit()
+    share(db, s.id, now)
 
 
 def _running(db: DB, code: str, now: datetime) -> tuple[LiveSession, LiveQuestion]:
@@ -441,8 +482,6 @@ def answer(
             .order_by(LivePlayer.user_id)
         )
     )
-    if s.config["feedback"] == "each":
-        _share(db, s, a, now)
     expected = {lq.table_id} if lq.table_id else {t.id for t in _tables(db, s) if t.captain_id is not None}
     answered = set(
         db.scalars(
@@ -455,6 +494,7 @@ def answer(
         s.state = "closed"
     _touch(s)
     db.commit()
+    share(db, s.id, now)  # every table answered: the question closed, its XP can go out
 
 
 def _share(db: DB, s: LiveSession, a: LiveAnswer, now: datetime) -> None:
@@ -473,7 +513,10 @@ def _share(db: DB, s: LiveSession, a: LiveAnswer, now: datetime) -> None:
             continue  # deleted their account after sitting down
         xp.lock(db, uid)  # before checking what they've seen, so a first answer can't count twice
         repeat = xp.last_seen(db, uid, q.id, now) is not None
-        granted = xp.grant(db, uid, q, "live", a.correct, now, repeat=repeat, passed=a.passed)
+        again_today = xp.answered_today(db, uid, q.id, now)
+        granted = xp.grant(
+            db, uid, q, "live", a.correct, now, repeat=repeat, passed=a.passed, again_today=again_today
+        )
         db.add(
             Attempt(
                 user_id=uid,
@@ -516,6 +559,7 @@ class Reveal:
     table_id: int | None
     checked: Checked
     answers: dict[int, LiveAnswer]
+    hidden: bool = False  # still running for the viewer elsewhere (their daily, a mock run): no answers shown
 
 
 @dataclass
@@ -608,7 +652,7 @@ def view(db: DB, user: User, code: str, now: datetime) -> View:
             ]
     closed = [p for p in sorted(questions) if p < s.position or (p == s.position and s.state != "open")]
     if _revealed(s):
-        _score(db, s, questions, answers, closed, out)
+        _score(db, s, questions, answers, closed, out, running(db, user.id, now))
     db.commit()  # read-only by now: give the connection back before the route serialises
     return out
 
@@ -620,6 +664,7 @@ def _score(
     answers: dict[int, dict[int, LiveAnswer]],
     closed: list[int],
     out: View,
+    busy: set[int],
 ) -> None:
     """Right answers per table and for the room: the owning table's answer, or the best table's tally."""
     by_id = {t.id: t for t in out.tables}
@@ -640,9 +685,10 @@ def _score(
     found = {q.id: q for q in db.scalars(select(Question).where(Question.id.in_(ids)))}
     qs = [found[i] for i in ids]
     for p, q, shown in zip(positions, qs, show(db, qs), strict=True):
-        out.reveals.append(
-            Reveal(p, shown, questions[p].table_id, check(db, q, None, None), answers.get(p, {}))
-        )
+        checked = check(db, q, None, None)
+        if q.id in busy:
+            checked.official, checked.correct_options, checked.solutions = None, [], []
+        out.reveals.append(Reveal(p, shown, questions[p].table_id, checked, answers.get(p, {}), q.id in busy))
 
 
 def _cell(value: object) -> str:

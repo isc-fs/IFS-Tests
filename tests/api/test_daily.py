@@ -199,14 +199,14 @@ def test_a_daily_left_to_run_out_loses_lp_and_earns_no_xp(
     assert (stored.xp, stored.lp) == (0, lost)
 
 
-def test_im_not_sure_costs_half_a_wrong_answer(player: TestClient, db: Session) -> None:
+def test_im_not_sure_costs_at_most_half_a_wrong_answer(player: TestClient, db: Session) -> None:
     started = player.post("/api/daily/rules/start").json()
     qid = started["question"]["id"]
     r = player.post(f"/api/daily/attempts/{started['attempt_id']}/answer", json={"unsure": True}).json()
     assert (r["feedback"]["passed"], r["feedback"]["correct"], r["late"]) == (True, False, False)
     assert r["xp"] == xp_award(False, 3, "daily", passed=True).amount > 0
     assert r["lp"] == lp(db, qid, MINGO, False, passed=True)
-    assert r["lp"] == pytest.approx(lp(db, qid, MINGO, False) / 2, abs=0.01)
+    assert lp(db, qid, MINGO, False) / 2 - 0.01 <= r["lp"] < 0  # and never more than a blind guess loses
 
 
 def test_within_the_grace_period_is_on_time(player: TestClient, db: Session, clock: Clock) -> None:

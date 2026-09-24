@@ -353,6 +353,10 @@ export type DailyResult = {
     question: PlayQuestion;
     feedback: Feedback;
     /**
+     * What you sent
+     */
+    answer?: KeyIn | null;
+    /**
      * Late
      */
     late: boolean;
@@ -1483,6 +1487,10 @@ export type MockAnswerIn = {
 export type MockItem = {
     question: PlayQuestion;
     feedback: Feedback;
+    /**
+     * What you sent; none if the time ran out
+     */
+    answer?: KeyIn | null;
     /**
      * Late
      */

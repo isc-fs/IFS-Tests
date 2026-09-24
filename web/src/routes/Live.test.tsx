@@ -145,7 +145,9 @@ test('the captain sends the table answer, and can take a teammate proposal', asy
     'POST /api/live/sessions/ABC234/answer': { status: 204 },
   })
   expect(await screen.findByText('Marta:')).toBeInTheDocument()
-  expect(screen.getByRole('button', { name: "I'm not sure" })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: "I'm not sure" })).toHaveAccessibleDescription(
+    'Not sure? Pass for your table: no LP. The answer shows at the reveal.',
+  )
   expect(screen.getByRole('radio', { name: /Red and yellow.*Proposed by Marta/ })).toBeInTheDocument()
   await userEvent.click(screen.getByRole('button', { name: 'Use this' }))
   expect(screen.getByRole('radio', { name: /^Red and yellow/ })).toBeChecked()
@@ -187,6 +189,47 @@ test('after the close everyone sees the answer and how each table did', async ()
   expect(await screen.findByText('1 of 1')).toBeInTheDocument()
   const answers = screen.getByText('Aerodynamics:').closest('li') as HTMLElement
   expect(answers).toHaveTextContent('Aerodynamics: Red and yellow ✓')
+})
+
+const chassis = { ...table, id: 6, name: 'Chassis', captain_id: null, member_ids: [], right: 2 }
+const finished = {
+  ...open,
+  state: 'finished',
+  question: null,
+  tables: [table, chassis],
+  room_right: 2,
+  room_asked: 2,
+  reveals: [
+    {
+      position: 0,
+      question: QUESTION,
+      table_id: null,
+      feedback: { correct: null, official: 'Red and yellow', correct_options: [71], solutions: [] },
+      answers: [
+        { table_id: 5, correct: false, passed: false, points: 0, options: [70], value: null },
+        { table_id: 6, correct: true, passed: false, points: 0, options: [71], value: null },
+      ],
+    },
+    {
+      position: 1,
+      question: { ...QUESTION, id: 8, text: 'Which flag ends the run?' },
+      table_id: 6,
+      feedback: { correct: null, official: 'Black', correct_options: [70], solutions: [] },
+      answers: [{ table_id: 6, correct: true, passed: false, points: 0, options: [70], value: null }],
+    },
+  ],
+}
+
+test("a player's results tick their own table's answers", async () => {
+  at('/live/ABC234', { ...MEMBER, id: 2 }, finished)
+  expect(await screen.findByText(/^1\. ✗ Which flag means rain\?$/)).toBeInTheDocument()
+  expect(screen.getByText(/^2\. ✓ \(Chassis\) Which flag ends the run\?$/)).toBeInTheDocument()
+})
+
+test("the projector's results tick the room's best answer", async () => {
+  at('/live/ABC234/screen', HOST, { ...finished, role: 'host' }) // even if the host sits at a table
+  expect(await screen.findByText(/^1\. ✓ Which flag means rain\?$/)).toBeInTheDocument()
+  expect(screen.getByText(/^2\. ✓ Which flag ends the run\?$/)).toBeInTheDocument()
 })
 
 test('a rehearsal keeps right and wrong for the end', async () => {

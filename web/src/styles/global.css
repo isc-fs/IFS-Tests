@@ -746,8 +746,9 @@ details[open] > summary::before {
 .board-table tr.me {
   background: var(--isc-cream);
 }
-.board .item-title {
-  overflow-wrap: anywhere;
+.board .item-title,
+.board .item .muted {
+  overflow-wrap: break-word;
 }
 .board .place {
   font-family: var(--isc-font-mono);
@@ -758,6 +759,22 @@ details[open] > summary::before {
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+/* Phones: the rank and LP go under the name, which keeps the row's width. */
+@media (max-width: 560px) {
+  .board .item {
+    grid-template-columns: 2.5ch 32px minmax(0, 1fr);
+    row-gap: 2px;
+  }
+  .board .place,
+  .board .item > .emblem {
+    grid-row: span 2;
+  }
+  .board .points {
+    grid-column: 3;
+    font-size: var(--isc-fs-body-s);
+    white-space: normal;
+  }
 }
 .my-rank {
   padding: 12px;
