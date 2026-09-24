@@ -91,7 +91,7 @@ export default function Invite() {
               label="Where are you on the team?"
               value={form.position}
               onChange={edit('position')}
-              hint="It sets your starting level: higher positions start with less help and lose XP for wrong answers. Only an admin can change it later."
+              hint="It places you on the ladder: higher positions start higher, with less help and more at stake. Only an admin can change it later."
               error={errors.position}
             >
               {Object.entries(POSITIONS).map(([r, label]) => (

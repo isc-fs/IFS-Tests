@@ -62,6 +62,9 @@ def test_the_export_holds_my_data_and_nobody_elses(
     assert [(a["question_id"], a["mode"], a["correct"]) for a in data["answers"]] == [
         (mine, "practice", True)
     ]
+    stored = db.scalars(select(Attempt).join(User).where(User.display_name == "Marta")).one()
+    assert [(a["xp"], a["lp"]) for a in data["answers"]] == [(stored.xp, stored.lp)] and stored.lp > 0
+    assert (data["account"]["xp"], data["account"]["rank_points"]) == (stored.xp, 50 + stored.lp)
     assert data["reports"][0]["message"] == "Option B looks wrong"
     assert data["sign_ins"] and [h["action"] for h in data["account_history"]] == ["user.register"]
     text = str(data)
@@ -72,10 +75,12 @@ def test_the_export_keeps_a_mock_run_secret_until_it_ends(player: TestClient, db
     run = player.post(f"/api/mock/quizzes/{CV}/start").json()
     run = answer(player, run, right_answer(db, run["current"]["question"]["id"]))
     first = export(player)["answers"]
-    assert [(a["mode"], a["correct"], a["xp"]) for a in first if a["submitted_at"]] == [("mock", None, 0)]
+    assert [(a["mode"], a["correct"], a["xp"], a["lp"]) for a in first if a["submitted_at"]] == [
+        ("mock", None, 0, 0)
+    ]
     while run["current"]:
         run = answer(player, run, right_answer(db, run["current"]["question"]["id"]))
-    assert all(a["correct"] and a["xp"] > 0 for a in export(player)["answers"])
+    assert all(a["correct"] and a["xp"] > 0 and a["lp"] > 0 for a in export(player)["answers"])
 
 
 def test_the_export_keeps_live_results_secret_until_the_session_ends(
@@ -87,10 +92,11 @@ def test_the_export_keeps_live_results_secret_until_the_session_ends(
     qid = state(room["Leo"], code)["question"]["id"]
     assert send(room["Leo"], code, right_answer(db, qid)) == 204
     live = [a for a in export(room["Ana"])["answers"] if a["mode"] == "live"]
-    assert [(a["correct"], a["xp"]) for a in live] == [(None, 0)]
+    assert [(a["correct"], a["xp"], a["lp"]) for a in live] == [(None, 0, 0)]
     assert export(room["Leo"])["live"]["answers_sent_as_captain"][0]["correct"] is None
     assert room["Tere"].post(f"/api/live/sessions/{code}/end").status_code == 204
-    assert [a["correct"] for a in export(room["Ana"])["answers"]] == [True]
+    after = export(room["Ana"])["answers"]
+    assert [(a["correct"], a["xp"] > 0, a["lp"]) for a in after] == [(True, True, 0)]  # live moves no LP
     assert [h["code"] for h in export(room["Tere"])["live"]["hosted"]] == [code]
 
 

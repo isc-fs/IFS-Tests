@@ -3,21 +3,22 @@ import userEvent from '@testing-library/user-event'
 import { expect, test } from 'vitest'
 import { MEMBER, renderApp } from '../test/render'
 
-const row = (rank: number, display_name: string, xp: number, extra = {}) => ({
+const row = (rank: number, display_name: string, score: number, extra = {}) => ({
   rank,
   display_name,
   vertical: 'Mechanical',
-  xp,
+  score,
   me: false,
-  level: 2,
+  division: 2,
   title: 'Mingo III',
+  level: 7,
   ...extra,
 })
 const BOARD = {
   period: 'season',
   board: 'everyone',
-  rows: [row(1, 'Leo', 40), row(2, 'Marta', 30, { me: true, vertical: 'Driverless' }), row(2, 'Pau', 30)],
-  me: { rank: 2, xp: 30, hidden: false },
+  rows: [row(1, 'Leo', 240), row(2, 'Marta', 230.5, { me: true, vertical: 'Driverless' }), row(2, 'Pau', 230.5)],
+  me: { rank: 2, score: 230.5, hidden: false },
   players: 3,
 }
 const api = (board: object) => ({ 'GET /api/me': { body: MEMBER }, 'GET /api/leaderboard': { body: board } })
@@ -27,9 +28,9 @@ test('the board lists everyone by rank and highlights you', async () => {
   const list = await screen.findByRole('list', { name: 'Everyone, this season' })
   const items = within(list).getAllByRole('listitem')
   expect(items.map((i) => i.textContent)).toEqual([
-    '1IIILeoMingo III · Mechanical40 XP', // "III" is the emblem's numeral
-    '2IIIMartaYouMingo III · Driverless30 XP',
-    '2IIIPauMingo III · Mechanical30 XP',
+    '1IIILeoMingo III · level 7 · Mechanical40 LP', // "III" is the emblem's numeral
+    '2IIIMartaYouMingo III · level 7 · Driverless30 LP',
+    '2IIIPauMingo III · level 7 · Mechanical30 LP',
   ])
   expect(within(items[0]).getByRole('img', { name: 'Mingo III' })).toBeInTheDocument()
   expect(items[1]).toHaveClass('me')
@@ -75,7 +76,7 @@ test('unknown query values fall back to the default board', async () => {
 })
 
 test('opted-out members see where they would be', async () => {
-  const board = { ...BOARD, rows: [row(1, 'Leo', 40)], me: { rank: 2, xp: 30, hidden: true }, players: 1 }
+  const board = { ...BOARD, rows: [row(1, 'Leo', 40)], me: { rank: 2, score: 230, hidden: true }, players: 1 }
   renderApp('/leaderboard', api(board))
   expect(
     await screen.findByText("You're hidden from others; this is where you'd be.", { exact: false }),
@@ -87,7 +88,7 @@ test('opted-out members see where they would be', async () => {
 
 test('members outside the top rows get their rank below the list', async () => {
   const rows = Array.from({ length: 50 }, (_, i) => row(1, `P${i}`, 20))
-  renderApp('/leaderboard', api({ ...BOARD, rows, me: { rank: 51, xp: 10, hidden: false }, players: 51 }))
+  renderApp('/leaderboard', api({ ...BOARD, rows, me: { rank: 51, score: 110, hidden: false }, players: 51 }))
   expect(await screen.findByText('You: #51')).toBeInTheDocument()
   expect(screen.getByText('Just outside the top 50: keep going.')).toBeInTheDocument()
   expect(screen.getByText('51 people on this board, top 50 shown.')).toBeInTheDocument()
@@ -112,8 +113,8 @@ test('the verticals board is a table with your vertical marked', async () => {
       body: {
         period: 'season',
         rows: [
-          { vertical: 'Mechanical', members: 8, xp_per_member: 12.25, participation: 0.5 },
-          { vertical: 'Driverless', members: 3, xp_per_member: 6.7, participation: 0.333 },
+          { vertical: 'Mechanical', members: 8, rank_points: 612.25, participation: 0.5 },
+          { vertical: 'Driverless', members: 3, rank_points: 306.7, participation: 0.333 },
         ],
       },
     },
@@ -123,10 +124,10 @@ test('the verticals board is a table with your vertical marked', async () => {
     within(table)
       .getAllByRole('columnheader')
       .map((h) => h.textContent),
-  ).toEqual(['Vertical', 'XP per member', 'Played, last 7 days'])
+  ).toEqual(['Vertical', 'Average rank', 'Played, last 7 days'])
   const [, mech, dv] = within(table).getAllByRole('row')
-  expect(mech).toHaveTextContent('Mechanical8 members12.350%')
-  expect(dv).toHaveTextContent('DriverlessYours3 members6.733%')
+  expect(mech).toHaveTextContent('Mechanical8 membersJefe II 12 LP50%')
+  expect(dv).toHaveTextContent('DriverlessYours3 membersMingo IV 6 LP33%')
   expect(dv).toHaveClass('me')
   expect(screen.getByRole('link', { name: 'Verticals' })).toHaveAttribute('aria-current', 'true')
   expect(calls.some((c) => c.key === 'GET /api/leaderboard')).toBe(false)

@@ -35,10 +35,19 @@ def _link(d: Doc) -> DocLink:
 
 
 def feedback(checked: Checked) -> Feedback:
+    s = checked.score
     return Feedback(
-        xp=checked.xp,
-        level=checked.level,
-        level_up=checked.level_up,
+        xp=s.xp if s else 0,
+        lp=s.lp if s else 0,
+        bonuses=s.bonuses if s else {},
+        combo=s.combo if s else 0,
+        comeback=bool(s and s.comeback),
+        cushioned=bool(s and s.cushioned),
+        promoted=bool(s and s.promoted),
+        demoted=bool(s and s.demoted),
+        rank_points=s.points if s and s.level else None,
+        level=s.level if s and s.level else None,
+        level_up=bool(s and s.level_up),
         passed=checked.passed,
         correct=checked.correct,
         official=checked.official,

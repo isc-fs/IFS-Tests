@@ -55,6 +55,7 @@ const FINISHED = {
     correct: 1,
     graded: 2,
     xp: 76,
+    lp: 21.4,
     counted: true,
     bar_to_beat: 'The last team to get a slot had 2 correct answers.',
     items: [
@@ -114,7 +115,7 @@ test('a run: one question at a time, then the results', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Check answer' }))
 
   expect(await screen.findByRole('heading', { name: '1 of 2 right' })).toBeInTheDocument()
-  expect(screen.getByText('+76 XP for the season.')).toBeInTheDocument()
+  expect(screen.getByText('+21 LP and +76 XP.')).toBeInTheDocument()
   expect(sent('POST /api/mock/sessions/44/answer').map((c) => c.body)).toEqual([
     { value: '30', attempt_id: 7 },
     { value: '0.5', attempt_id: 8 },
@@ -126,12 +127,14 @@ test('a run: one question at a time, then the results', async () => {
   expect(within(review).getByText('Spring rate?')).toBeVisible()
 })
 
-test('a replay shows the reduced XP it earned', async () => {
+test('a replay shows the reduced LP and XP it earned', async () => {
   renderApp('/mock/44', {
     'GET /api/me': { body: MEMBER },
-    'GET /api/mock/sessions/44': { body: { ...FINISHED, summary: { ...FINISHED.summary, counted: false, xp: 8 } } },
+    'GET /api/mock/sessions/44': {
+      body: { ...FINISHED, summary: { ...FINISHED.summary, counted: false, xp: 8, lp: 2.4 } },
+    },
   })
-  expect(await screen.findByText(/A replay: \+8 XP\. Only your first run/)).toBeInTheDocument()
+  expect(await screen.findByText(/A replay: \+2 LP and \+8 XP\. Only your first run/)).toBeInTheDocument()
 })
 
 test('an unknown run explains itself', async () => {

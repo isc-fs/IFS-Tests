@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted (September 2026). Numbers live in `src/ifs_tests/domain/xp.py`; tune them there.
+Superseded in part by [ADR 0007](0007-ranked-lp-and-account-level.md) (September 2026): the ladder, titles and training wheels stay; XP, levels, penalties and position floors are replaced by a rank with LP and an account level.
 
 ## Context
 

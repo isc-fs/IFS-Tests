@@ -96,6 +96,7 @@ class AreaState:
     correct: bool | None
     late: bool | None
     xp: int
+    lp: float
 
 
 @dataclass
@@ -103,6 +104,7 @@ class Status:
     day: date
     streak: int
     xp_today: int
+    lp_today: float
     areas: list[AreaState]
 
 
@@ -130,11 +132,13 @@ def status(db: DB, user: User, now: datetime) -> Status:
                 correct=a.correct if a else None,
                 late=a.late if a else None,
                 xp=a.xp if a else 0,
+                lp=a.lp if a else 0.0,
             )
         )
     order = {a: i for i, a in enumerate(rules.AREAS)}
     areas.sort(key=lambda s: order[s.area])
-    return Status(day, rules.streak(_on_time_days(db, user), day), sum(a.xp for a in areas), areas)
+    run = rules.streak(_on_time_days(db, user), day)
+    return Status(day, run, sum(a.xp for a in areas), round(sum(a.lp for a in areas), 2), areas)
 
 
 def start(db: DB, user: User, area: str, now: datetime) -> tuple[Question, Attempt]:
@@ -176,6 +180,7 @@ class Result:
     checked: Checked
     late: bool
     xp: int
+    lp: float
     streak: int
 
 
@@ -194,7 +199,7 @@ def answer(
     )
     if a is None or a.day is None or a.deadline_at is None:
         raise UserError("Start the question first.", 404)
-    level_up = False
+    granted = None
     if a.submitted_at is None:
         q = db.get_one(Question, a.question_id)
         checked = check(db, q, options, value, unsure)
@@ -225,12 +230,14 @@ def answer(
                 passed=checked.passed,
                 hint=a.hint_used,
             )
-            db.execute(update(Attempt).where(Attempt.id == a.id).values(xp=granted.xp))
-            level_up = granted.level_up
+            db.execute(update(Attempt).where(Attempt.id == a.id).values(xp=granted.xp, lp=granted.lp))
         db.commit()
         db.refresh(a)
     result = review_attempt(db, user, a)
-    result.checked.level_up = level_up
+    if (
+        granted
+    ):  # the request that scored it tells of promotions and bonuses; reloads show the stored XP and LP
+        result.checked.score = granted
     return result
 
 
@@ -258,8 +265,8 @@ def close_expired(db: DB, now: datetime, user_id: int | None = None) -> int:
         ).first()
         if recorded:
             repeat = xp.last_seen(db, owner, q.id, now, other_than=attempt_id) is not None
-            granted = xp.grant(db, owner, q, "daily", correct, now, late=True, repeat=repeat)
-            db.execute(update(Attempt).where(Attempt.id == attempt_id).values(xp=granted.xp))
+            granted = xp.grant(db, owner, q, "daily", correct, now, answered=False, late=True, repeat=repeat)
+            db.execute(update(Attempt).where(Attempt.id == attempt_id).values(xp=granted.xp, lp=granted.lp))
             closed += 1
         db.commit()  # one attempt per transaction: attempt then player, the same lock order as answering
     return closed
@@ -271,8 +278,8 @@ def review_attempt(db: DB, user: User, a: Attempt) -> Result:
     checked = check(db, q, a.answer.get("options"), a.answer.get("value"), a.passed)
     checked.correct = a.correct
     run = rules.streak(_on_time_days(db, user), a.day) if a.day else 0
-    checked.xp, checked.level = a.xp, xp.level(db, user.id)
-    return Result(q, checked, bool(a.late), a.xp, run)
+    checked.score = xp.stored(db, user.id, a)
+    return Result(q, checked, bool(a.late), a.xp, a.lp, run)
 
 
 def review(db: DB, user: User, area: str, now: datetime) -> Result:

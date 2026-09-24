@@ -1,17 +1,23 @@
-"""Awarding XP for answers, and keeping question difficulty in line with how people do."""
+"""Scoring answers (LP for the rank, XP for the account level) and keeping question difficulty in line with how
+people do."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import hashlib
+import hmac
+from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Any
 
-from sqlalchemy import case, func, select, update
+from sqlalchemy import Row, case, func, select, update
 from sqlalchemy.orm import Session as DB
 
 from ..db.models import AnswerOption, Attempt, MockSession, Question, User
 from ..domain import daily as daily_rules
 from ..domain import leaderboard as board_rules
+from ..domain import rank as rank_rules
 from ..domain import xp as rules
+from . import hints
 
 
 def streak_days(db: DB, user_id: int, now: datetime) -> int:
@@ -27,13 +33,22 @@ def streak_days(db: DB, user_id: int, now: datetime) -> int:
     return daily_rules.streak({d for d in days if d}, daily_rules.madrid_day(now))
 
 
-def lock(db: DB, user_id: int) -> tuple[int, str]:
+def lock(db: DB, user_id: int) -> Row[Any]:
     """Take the player's row lock until commit, so their answers are scored one at a time. NO KEY UPDATE
-    still lets rows that reference the user (attempts, sessions) be inserted meanwhile. Returns XP and position."""
-    row = db.execute(
-        select(User.xp, User.position).where(User.id == user_id).with_for_update(key_share=True)
+    still lets rows that reference the user (attempts, sessions) be inserted meanwhile."""
+    return db.execute(
+        select(
+            User.xp,
+            User.position,
+            User.rank_points,
+            User.rank_season,
+            User.rank_best,
+            User.combo,
+            User.miss_streak,
+        )
+        .where(User.id == user_id)
+        .with_for_update(key_share=True)
     ).one()
-    return row.xp, row.position
 
 
 def last_seen(
@@ -58,21 +73,63 @@ def last_seen(
     return db.scalar(stmt)
 
 
-def level(db: DB, user_id: int) -> int:
-    return rules.level_for(db.execute(select(User.xp).where(User.id == user_id)).scalar_one())
-
-
 def _options(db: DB, question: Question) -> int:
     if question.answer_kind != "choice-one":
         return 0
     return db.scalar(select(func.count()).where(AnswerOption.question_id == question.id)) or 0
 
 
+def answered_today(db: DB, user_id: int, question_id: int, now: datetime) -> bool:
+    """Whether the player already answered this question today (Madrid), graded or not: once a day pays."""
+    start = board_rules.madrid_midnight(daily_rules.madrid_day(now))
+    return bool(
+        db.scalar(
+            select(func.count()).where(
+                Attempt.user_id == user_id, Attempt.question_id == question_id, Attempt.created_at >= start
+            )
+        )
+    )
+
+
+def first_wins(db: DB, user_id: int, now: datetime) -> int:
+    """Right answers already paid today (Madrid), outside live quizzes. The answer being scored has no XP yet."""
+    start = board_rules.madrid_midnight(daily_rules.madrid_day(now))
+    return (
+        db.scalar(
+            select(func.count()).where(
+                Attempt.user_id == user_id,
+                Attempt.mode != "live",
+                Attempt.correct.is_(True),
+                Attempt.late.is_not(True),  # right but late earned a wrong answer's XP, no first win
+                Attempt.xp > 0,
+                Attempt.created_at >= start,
+            )
+        )
+        or 0
+    )
+
+
+def _crit(db: DB, user_id: int, question_id: int, now: datetime) -> bool:
+    """A rare double, fixed per player, question and day on the server: answering again can't reroll it."""
+    salt = hints.salt(db)
+    message = f"crit:{user_id}:{question_id}:{daily_rules.madrid_day(now)}".encode()
+    roll = int.from_bytes(hmac.new(salt, message, hashlib.sha256).digest()[:8], "big") / 2**64
+    return roll < rules.CRIT_CHANCE
+
+
 @dataclass
 class Grant:
     xp: int
-    level: int
-    level_up: bool
+    lp: float
+    bonuses: dict[str, int] = field(default_factory=dict)
+    combo: int = 0  # right answers in a row, this one included
+    comeback: bool = False
+    cushioned: bool = False
+    points: float = 0.0
+    promoted: bool = False  # into a division not reached before this season
+    demoted: bool = False
+    level: int = 0  # account level; 0 when not looked up (a mock summary item): no standing shown
+    level_up: bool = False
 
 
 def grant(
@@ -83,38 +140,93 @@ def grant(
     correct: bool | None,
     now: datetime,
     *,
+    answered: bool = True,
     hint: bool = False,
     repeat: bool = False,
     late: bool = False,
     again_today: bool = False,
     passed: bool = False,
 ) -> Grant:
-    """Work out the XP for one answer and add it to the player's lifetime XP, which never drops below the
-    level their position starts at. The caller stores `xp` on the attempt and commits."""
-    before, position = lock(db, user_id)
-    amount = rules.award(
+    """Score one answer in both currencies: LP for the rank, XP for the account level. The caller stores
+    `xp` and `lp` on the attempt and commits. Live answers are a table's: XP only, and they leave the
+    player's combo and bad run alone."""
+    state = lock(db, user_id)
+    points = rank_rules.current_points(state.rank_points, state.rank_season, state.position, now)
+    best = (
+        state.rank_best if state.rank_season == rank_rules.season_of(now) else rank_rules.division_of(points)
+    )
+    live = mode == "live"
+    right = bool(correct) and not late and not passed
+    options = _options(db, question)
+    lp = rank_rules.lp_award(
+        correct,
+        points,
+        question.difficulty,
+        mode,
+        area=question.area,
+        answer_kind=question.answer_kind,
+        options=options,
+        hint=hint,
+        repeat=repeat,
+        late=late,
+        passed=passed,
+        again_today=again_today,
+        miss_streak=state.miss_streak,
+    )
+    earned = rules.xp_award(
         correct,
         question.difficulty,
         mode,
-        rules.level_for(before),
-        streak_days(db, user_id, now),
-        hint,
-        repeat,
-        late,
-        again_today,
-        area=question.area,
-        answer_kind=question.answer_kind,
-        options=_options(db, question),
+        answered=answered,
+        hint=hint,
+        repeat=repeat,
+        late=late,
         passed=passed,
+        again_today=again_today,
+        first_win=right and not live and first_wins(db, user_id, now) < rules.FIRST_WINS,
+        combo=0 if live else state.combo,
+        streak_days=streak_days(db, user_id, now),
+        crit=right and not again_today and _crit(db, user_id, question.id, now),
     )
-    total = db.execute(
+    combo, miss = state.combo, state.miss_streak
+    if not live and correct is not None and not (right and again_today):
+        combo = combo + 1 if right else 0
+        miss = rank_rules.next_miss_streak(miss, correct, passed, late)
+    after = max(0.0, round(points + lp.amount, 2))
+    division = rank_rules.division_of(after)
+    xp_after = db.execute(
         update(User)
         .where(User.id == user_id)
-        .values(xp=func.greatest(rules.floor_for(position), User.xp + amount))
+        .values(
+            xp=User.xp + earned.amount,
+            rank_points=after,
+            rank_season=rank_rules.season_of(now),
+            rank_best=max(best, division),
+            combo=combo,
+            miss_streak=miss,
+        )
         .returning(User.xp)
     ).scalar_one()
-    after = rules.level_for(total)
-    return Grant(amount, after, after > rules.level_for(before))
+    level = rules.account_level(xp_after)[0]
+    return Grant(
+        xp=earned.amount,
+        lp=round(after - points, 2),
+        bonuses=earned.bonuses,
+        combo=combo if right else 0,
+        comeback=lp.comeback,
+        cushioned=lp.cushioned,
+        points=after,
+        promoted=division > best,
+        demoted=division < rank_rules.division_of(points),
+        level=level,
+        level_up=level > rules.account_level(state.xp)[0],
+    )
+
+
+def stored(db: DB, user_id: int, a: Attempt) -> Grant:
+    """An attempt scored earlier, as a reload shows it: its XP and LP, and where the player stands now."""
+    xp, points = db.execute(select(User.xp, User.rank_points).where(User.id == user_id)).one()
+    return Grant(xp=a.xp, lp=a.lp, points=points, level=rules.account_level(xp)[0])
 
 
 def recalibrate(db: DB) -> int:

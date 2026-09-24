@@ -60,7 +60,7 @@ collaborative, and one person per table submits: letting everyone submit is too 
   one to use it, but only the captain submits. When the time runs out, whatever the captain has entered is
   sent, as in daily and mock questions; proposals are never sent on their own. Proposals are optional: a table
   that talks it through and lets the captain type is fine.
-- **Captain** by default is the member with the highest level at the table; the host can change it in the
+- **Captain** by default is the member with the highest rank at the table (ADR 0007); the host can change it in the
   lobby or between questions.
 
 ### Who answers which question
@@ -82,7 +82,7 @@ collaborative, and one person per table submits: letting everyone submit is too 
 - **Per-table and per-topic results** come underneath: which tables got their questions right, and which
   topics lose points, so each sub-department knows what to study. With speed points on, tables also get a
   Kahoot-style points ranking.
-- **XP:** every member at a table earns (or, at higher levels, loses) the table's result on its questions, as a
+- **XP (ADR 0007: XP only, never LP):** every member at a table earns the table's result on its questions, as a
   shared result: the answer is collective. Mode `live` is worth ×1.5 like a mock quiz, and each member's own
   level decides the penalty (by kind of question, as in ADR 0004). "I'm not sure" is available to the captain.
   Members who joined but sat at no table earn nothing.

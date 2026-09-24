@@ -153,6 +153,7 @@ class Summary:
     correct: int
     graded: int
     xp: int
+    lp: float
     counted: bool
     bar_to_beat: str | None
     items: list[Item]
@@ -216,7 +217,10 @@ def _advance(db: DB, s: MockSession, now: datetime) -> tuple[Question, Attempt] 
             repeat = (
                 not s.counted or xp.last_seen(db, s.user_id, q.id, s.started_at, other_than=a.id) is not None
             )
-            a.xp = xp.grant(db, s.user_id, q, "mock", a.correct, now, repeat=repeat, late=True).xp
+            timed_out = xp.grant(
+                db, s.user_id, q, "mock", a.correct, now, answered=False, repeat=repeat, late=True
+            )
+            a.xp, a.lp = timed_out.xp, timed_out.lp
     s.position = sum(1 for a in attempts.values() if a.submitted_at)
     if current is None:
         s.finished_at = s.finished_at or now
@@ -232,7 +236,8 @@ def _summary(db: DB, s: MockSession) -> Summary:
         answer = a.answer if a else {}
         checked = check(db, q, answer.get("options"), answer.get("value"), bool(a and a.passed))
         checked.correct = a.correct if a else (False if q.graded else None)
-        checked.xp = a.xp if a else 0
+        # level 0: a summary item carries its own XP and LP, not where the player stands now
+        checked.score = xp.Grant(xp=a.xp if a else 0, lp=a.lp if a else 0.0, level=0)
         items.append(Item(q, checked, bool(a and a.late)))
     correct = sum(1 for i in items if i.checked.correct)
     quiz = db.get_one(Quiz, s.quiz_id)
@@ -240,6 +245,7 @@ def _summary(db: DB, s: MockSession) -> Summary:
         correct=correct,
         graded=sum(1 for q in questions if q.graded),
         xp=sum(a.xp for a in attempts.values()),
+        lp=round(sum(a.lp for a in attempts.values()), 2),
         counted=s.counted,
         bar_to_beat=rules.bar_to_beat(quiz.last_qualifier),
         items=items,
@@ -306,6 +312,6 @@ def answer(
                 passed=checked.passed,
                 hint=a.hint_used,
             )
-            db.execute(update(Attempt).where(Attempt.id == a.id).values(xp=granted.xp))
+            db.execute(update(Attempt).where(Attempt.id == a.id).values(xp=granted.xp, lp=granted.lp))
         db.commit()
     return state(db, user, session_id, now)

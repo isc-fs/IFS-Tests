@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlsplit
 
 from sqlalchemy import and_, exists, or_, select, union
@@ -32,6 +32,9 @@ from ..db.models import (
 from ..domain.daily import madrid_day
 from ..domain.grading import grade
 from .errors import UserError
+
+if TYPE_CHECKING:
+    from .xp import Grant
 
 MAX_QUIZ_LABELS = 4
 
@@ -68,9 +71,7 @@ class Checked:
     official: str | None
     correct_options: list[int]
     solutions: list[tuple[str | None, list[str]]]
-    xp: int = 0  # set by the mode that scored the answer
-    level: int | None = None
-    level_up: bool = False
+    score: Grant | None = None  # set by the mode that scored the answer
     passed: bool = False
 
 

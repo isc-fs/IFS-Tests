@@ -32,6 +32,7 @@ def _state(db: Db, s: mock.State, now: Now) -> MockState:
             correct=s.summary.correct,
             graded=s.summary.graded,
             xp=s.summary.xp,
+            lp=s.summary.lp,
             counted=s.summary.counted,
             bar_to_beat=s.summary.bar_to_beat,
             items=[

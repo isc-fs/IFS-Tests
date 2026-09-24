@@ -67,29 +67,50 @@ class Aids(Out):
 
 
 class Step(BaseModel):
-    """One level of the ladder and what it changes."""
+    """One division of the ladder and what it changes."""
 
-    level: int
+    division: int
     tier: Tier
     title: str | None = Field(description="Null for the top until the player reaches DT V: a surprise")
-    xp: int = Field(description="Lifetime XP that reaches it")
+    points: int = Field(description="Rank points where it starts")
     aids: Aids
-    penalty: int = Field(description="Percentage of a right answer's XP a wrong answer costs")
+    stakes: int = Field(description="How hard a wrong answer bites here, in percent (80 at Mingo I)")
+
+
+class RankOut(BaseModel):
+    """The rank (ADR 0007): divisions of 100 LP that go up and down with how well you answer."""
+
+    points: float
+    division: int
+    title: str
+    tier: Tier
+    lp: float = Field(description="LP into the division; uncapped at the top")
+    stakes: int
+    swing: tuple[float, float] = Field(description="A middling daily question right and wrong, at this rank")
+    miss_streak: int = Field(
+        description="Wrong answers in a row; from 3 losses halve and a right one pays 1.5x"
+    )
+    aids: Aids
+    ladder: list[Step]
+
+
+class AccountOut(BaseModel):
+    """The account level: XP from every answer, it only goes up."""
+
+    level: int
+    xp: int
+    into: int = Field(description="XP into the current level")
+    needed: int = Field(description="XP the current level needs")
+    next_milestone: int | None = Field(description="The next level with an emblem frame")
+    combo: int = Field(description="Right answers in a row")
+    first_wins_left: int = Field(description="Right answers left today with the first-win bonus")
+    streak: int
+    streak_bonus: int = Field(description="Extra XP on right answers from the daily streak, in percent")
 
 
 class Progress(BaseModel):
-    """Level, title and what help the player still gets. XP always refers to lifetime XP."""
-
-    level: int
-    title: str
-    tier: Tier
-    level_xp: int = Field(description="Lifetime XP at which the current level started")
-    next_level_xp: int | None = Field(description="Null at the top")
-    penalty: int = Field(description="Percentage of a right answer's XP a wrong answer costs")
-    streak: int
-    streak_bonus: int = Field(description="Extra XP on gains, in percent")
-    aids: Aids
-    ladder: list[Step]
+    rank: RankOut
+    account: AccountOut
 
 
 class Me(Out):
@@ -150,6 +171,7 @@ class AdminUser(Out):
     status: Status
     position: Position
     xp: int
+    rank_points: float
     leaderboard_opt_out: bool
     last_seen: datetime | None
     created_at: datetime
@@ -180,6 +202,7 @@ class ExportAccount(BaseModel):
     role: str
     status: str
     xp: int
+    rank_points: float
     hidden_from_leaderboard: bool
     joined_at: datetime
     last_seen: datetime | None
@@ -206,6 +229,7 @@ class ExportAnswer(BaseModel):
     passed: bool
     hint_used: bool
     xp: int
+    lp: float
     late: bool | None
     day: date | None
     started_at: datetime
@@ -395,7 +419,10 @@ class KeyIn(In):
 
 
 class AnswerIn(KeyIn):
-    unsure: bool = Field(default=False, description='"I\'m not sure": no answer, no XP, no penalty in time')
+    unsure: bool = Field(
+        default=False,
+        description="\"I'm not sure\": no answer; the official one shown for half a wrong answer's LP",
+    )
 
 
 class SolutionOut(BaseModel):
@@ -410,9 +437,19 @@ class Feedback(BaseModel):
     official: str | None
     correct_options: list[int]
     solutions: list[SolutionOut]
-    xp: int = Field(default=0, description="XP this answer earned (negative when it cost XP)")
-    level: int | None = Field(default=None, description="Your level after this answer")
-    level_up: bool = Field(default=False, description="This answer took you to a new level")
+    xp: int = Field(default=0, description="XP this answer earned")
+    lp: float = Field(default=0, description="LP it won or lost")
+    bonuses: dict[str, int] = Field(
+        default_factory=dict, description="XP bonuses: first_win, combo, streak, crit"
+    )
+    combo: int = Field(default=0, description="Right answers in a row, this one included")
+    comeback: bool = Field(default=False, description="A right answer after a bad run: 1.5x LP")
+    cushioned: bool = Field(default=False, description="A loss halved by the bad run")
+    promoted: bool = Field(default=False, description="Into a division not reached before this season")
+    demoted: bool = Field(default=False)
+    rank_points: float | None = Field(default=None, description="Rank points after this answer")
+    level: int | None = Field(default=None, description="Account level after this answer")
+    level_up: bool = Field(default=False, description="This answer took the account to a new level")
     passed: bool = Field(default=False, description='The player said "I\'m not sure"')
 
 
@@ -424,12 +461,14 @@ class DailyArea(BaseModel):
     correct: bool | None
     late: bool | None
     xp: int
+    lp: float
 
 
 class DailyStatus(BaseModel):
     day: date
     streak: int
     xp_today: int
+    lp_today: float
     areas: list[DailyArea]
 
 
@@ -447,6 +486,7 @@ class DailyResult(BaseModel):
     feedback: Feedback
     late: bool
     xp: int
+    lp: float
     streak: int
 
 
@@ -478,6 +518,7 @@ class MockSummary(BaseModel):
     correct: int
     graded: int
     xp: int
+    lp: float
     counted: bool
     bar_to_beat: str | None
     items: list[MockItem]
@@ -591,17 +632,20 @@ class LeaderRow(BaseModel):
     rank: int
     display_name: str
     vertical: Vertical | None
-    xp: int
+    score: float = Field(
+        description="Rank points on the ranked board (season, everyone); LP won on the others"
+    )
     me: bool
-    level: int = Field(description="Lifetime level, for the level emblem")
+    division: int = Field(description="Current division (0 = Mingo I … 15 = the top), for the emblem")
     title: str
+    level: int = Field(description="Account level")
 
 
 class MyRank(BaseModel):
     """The requesting member's own place, shown even when they are hidden or outside the top rows."""
 
     rank: int
-    xp: int
+    score: float
     hidden: bool = Field(description="Opted out: others don't see them on the board")
 
 
@@ -616,7 +660,7 @@ class Leaderboard(BaseModel):
 class VerticalRow(BaseModel):
     vertical: Vertical
     members: int
-    xp_per_member: float
+    rank_points: float = Field(description="The members' average rank points")
     participation: float = Field(
         description="Share of members who answered a daily question in the last 7 days"
     )

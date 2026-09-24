@@ -2,7 +2,8 @@ import { type ReactNode, useEffect, useId, useRef, useState } from 'react'
 import type { AnswerIn, Feedback, HintOut, PlayQuestion } from '../api/types.gen'
 import { errorMessage, ME_KEY, queryClient, useMe } from '../lib/api'
 import { AREAS, TOPICS } from '../lib/areas'
-import { changes, TOP_LEVEL, tierOf, xp } from '../lib/xp'
+import { changes, lp, numeral, TOP, tierOf } from '../lib/rank'
+import { BONUS_NAMES, xp } from '../lib/xp'
 import { Emblem } from './Emblem'
 import { QuestionDocs } from './QuestionDocs'
 import { Field, Form, Notice } from './Form'
@@ -41,47 +42,62 @@ export function QuestionMeta({ question, children }: { question: PlayQuestion; c
   )
 }
 
-function Promotion({ level }: { level: number }) {
+/** A division reached for the first time this season. Dropping and climbing back doesn't play it again. */
+function Promotion({ division }: { division: number }) {
   const { data: me } = useMe()
-  const ladder = me?.progress?.ladder
-  const step = ladder?.[level]
+  const ladder = me?.progress?.rank.ladder
+  const step = ladder?.[division]
   const title = step?.title ?? null
-  const newTier = level >= TOP_LEVEL || level % 5 === 0
-  const what = step ? changes(step, ladder?.[level - 1]) : []
+  const newTier = division >= TOP || division % 5 === 0
+  const what = step ? changes(step, ladder?.[division - 1]) : []
   return (
     <div className={`promotion${newTier ? ' new-tier' : ''}`}>
-      <Emblem level={level} title={title} size={newTier ? 96 : 72} />
+      <Emblem division={division} title={title} size={newTier ? 96 : 72} />
       <div>
         <strong className="promotion-title">
-          {level >= TOP_LEVEL
-            ? `You reached the top: ${title ?? 'legend'}!`
-            : `Promoted to ${title ?? `level ${level}`}!`}
+          {division >= TOP ? `You reached the top: ${title ?? 'legend'}!` : `Promoted to ${title ?? 'a new division'}!`}
         </strong>
-        {newTier && level < TOP_LEVEL && <span> Welcome to {tierOf(level)}.</span>}
+        {newTier && division < TOP && <span> Welcome to {tierOf(division)}.</span>}
         {what.length > 0 && <span className="muted"> {what.join(' · ')}.</span>}
       </div>
     </div>
   )
 }
 
-function Earned({ feedback }: { feedback: Feedback }) {
-  const up = feedback.level_up === true && feedback.level != null
+/** What an answer did: LP for the rank, XP and its bonuses for the account, and any promotion or level-up. */
+function Earned({ feedback: f }: { feedback: Feedback }) {
   useEffect(() => {
-    if (feedback.level != null) queryClient.invalidateQueries({ queryKey: ME_KEY })
-  }, [feedback.level])
-  const amount = feedback.xp ?? 0
-  if (!amount && !up) return null
+    if (f.level != null) queryClient.invalidateQueries({ queryKey: ME_KEY })
+  }, [f.level])
+  if (f.level == null) return null
+  const division = f.rank_points == null ? 0 : Math.min(Math.floor(f.rank_points / 100), TOP)
+  const { lp: moved = 0, xp: earned = 0, combo = 0 } = f
+  const bonuses = Object.entries(f.bonuses ?? {})
   return (
     <output className="earned">
-      {amount !== 0 && <span className={amount > 0 ? 'xp gain' : 'xp loss'}>{xp(amount)}</span>}
-      {up && <Promotion level={feedback.level as number} />}
+      <span className="chips-row">
+        {moved !== 0 && <span className={moved > 0 ? 'xp gain' : 'xp loss'}>{lp(moved)}</span>}
+        <span className="xp gain">{xp(earned)}</span>
+        {bonuses.map(([name, amount]) => (
+          <span key={name} className={`bonus bonus-${name}`}>
+            {name === 'combo' ? `Combo ×${combo - 1}` : (BONUS_NAMES[name] ?? name)} +{amount}
+          </span>
+        ))}
+        {f.comeback && <span className="bonus">Comeback ×1.5 LP</span>}
+        {f.cushioned && <span className="bonus quiet">Loss halved: rough patch</span>}
+        {f.demoted && <span className="bonus quiet">Down to {divisionName(division)}</span>}
+        {f.level_up && <span className="bonus level">Account level {f.level}!</span>}
+      </span>
+      {f.promoted && <Promotion division={division} />}
     </output>
   )
 }
 
+const divisionName = (division: number) => (division >= TOP ? 'the top' : `${tierOf(division)} ${numeral(division)}`)
+
 function Result({ feedback }: { feedback: Feedback }) {
   const verdict = feedback.passed ? (
-    <Notice tone="ok">You weren't sure, so here is the answer. Nothing gained or lost.</Notice>
+    <Notice tone="ok">You weren't sure, so here is the answer. It costs half the LP a wrong answer would.</Notice>
   ) : feedback.correct === true ? (
     <Notice tone="ok">Correct.</Notice>
   ) : feedback.correct === false ? (
@@ -95,11 +111,14 @@ function Result({ feedback }: { feedback: Feedback }) {
       </>
     )
   return (
-    <Notice tone="ok">
-      {feedback.official
-        ? "This one isn't graded automatically: compare your answer with the official one."
-        : 'FS-Quiz has no official answer for this question.'}
-    </Notice>
+    <>
+      <Notice tone="ok">
+        {feedback.official
+          ? "This one isn't graded automatically: compare your answer with the official one."
+          : 'FS-Quiz has no official answer for this question.'}
+      </Notice>
+      <Earned feedback={feedback} />
+    </>
   )
 }
 
@@ -157,7 +176,7 @@ export function QuestionCard({
   const [hintError, setHintError] = useState<string>()
   const { data: me } = useMe()
   const gradable = question.graded && question.answer_kind !== 'self'
-  const hintable = !!onHint && !!me?.progress?.aids.hint && gradable
+  const hintable = !!onHint && !!me?.progress?.rank.aids.hint && gradable
   const unsure = allowUnsure && gradable
   const askHint = () => onHint?.().then(setHint, (e: unknown) => setHintError(errorMessage(e)))
   const after = useRef<HTMLDivElement>(null)
@@ -273,7 +292,7 @@ export function QuestionCard({
             </button>
             {hintable && !hint && (
               <button type="button" className="secondary" disabled={pending} onClick={askHint}>
-                Hint (halves the XP)
+                Hint (halves the win)
               </button>
             )}
             {unsure && (
@@ -291,13 +310,13 @@ export function QuestionCard({
         )}
         {hint && (
           <Notice tone="ok">
-            <strong>Hint:</strong> {hint.text} Right answers now earn half the XP.
+            <strong>Hint:</strong> {hint.text} A right answer now wins half the LP and XP.
           </Notice>
         )}
         {hintError && <Notice tone="error">{hintError}</Notice>}
         {unsure && !answered && !expired && (
           <p className="muted answer-note" id={`${legend}-unsure`}>
-            Not sure? You see the answer and nothing is gained or lost. A wrong answer can cost XP.
+            Not sure? You see the answer for half the LP a wrong one costs.
           </p>
         )}
       </Form>

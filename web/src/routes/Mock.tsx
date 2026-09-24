@@ -16,6 +16,7 @@ import { LearningAids } from '../components/LearningAids'
 import { Page } from '../components/Page'
 import { QuestionCard } from '../components/QuestionCard'
 import { queryClient } from '../lib/api'
+import { lp } from '../lib/rank'
 import { xp } from '../lib/xp'
 
 const CLASSES = ['ev', 'cv', 'dv']
@@ -67,7 +68,7 @@ export default function Mock() {
     <Page title="Mock quizzes" eyebrow="Past registration quizzes, on their real clock">
       <p className="lede">
         One question at a time, each with the time it had in the real quiz. You see your results at the end. Your first
-        run of a quiz each season earns full XP; replays earn a tenth.
+        run of a quiz each season counts in full for your rank and XP; replays count a quarter.
       </p>
       <div className="row">
         <div className="field">
@@ -111,8 +112,8 @@ function Summary({ summary }: { summary: MockSummary }) {
       </h2>
       <p>
         {summary.counted
-          ? `${xp(summary.xp)} for the season.`
-          : `A replay: ${xp(summary.xp)}. Only your first run of a quiz each season earns full XP.`}
+          ? `${lp(summary.lp)} and ${xp(summary.xp)}.`
+          : `A replay: ${lp(summary.lp)} and ${xp(summary.xp)}. Only your first run of a quiz each season counts in full.`}
       </p>
       {summary.bar_to_beat && <p className="muted">{summary.bar_to_beat}</p>}
       <p>

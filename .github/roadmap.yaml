@@ -101,7 +101,9 @@ phases:
     branches:
       - name: feat/17-privacy-account
         scope: Privacy notice, data export and deletion, season rollover, attribution
-      - name: feat/18-launch
+      - name: feat/18-ranked-lp
+        scope: A League-style rank with LP that goes up and down, and an account level from XP that only goes up (ADR 0007)
+      - name: feat/19-launch
         scope: Load test, restore drill, handover documentation, launch checklist
 
   - number: 6
@@ -110,15 +112,15 @@ phases:
     deferred: true
     note: "Ideas to prioritise with the team once the MVP is in use"
     branches:
-      - name: feat/19-admin-totp
+      - name: feat/20-admin-totp
         scope: Second factor for admin accounts
-      - name: feat/20-notion-sync
+      - name: feat/21-notion-sync
         scope: Push scores and streaks to the Notion Team Directory
-      - name: feat/21-solution-bounty
+      - name: feat/22-solution-bounty
         scope: Members write worked solutions, reviewers approve, XP awarded
-      - name: feat/22-team-questions
+      - name: feat/23-team-questions
         scope: Team-written questions, starting with Driverless
-      - name: feat/23-rule-page-links
+      - name: feat/24-rule-page-links
         scope: Download each rulebook once (polite, cached), index rule numbers to pages, link references like EV 4.7.6 to their page
 
 sidequests: []

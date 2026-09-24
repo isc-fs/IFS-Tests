@@ -76,7 +76,7 @@ def test_periods_start_at_midnight_in_madrid(now: datetime, period: str, since: 
     assert madrid_midnight(first_day(period, madrid_day(now))) == since
 
 
-def m(vertical: str | None, points: int, played: bool = False) -> Member:
+def m(vertical: str | None, points: float, played: bool = False) -> Member:
     return Member(vertical, points, played)
 
 

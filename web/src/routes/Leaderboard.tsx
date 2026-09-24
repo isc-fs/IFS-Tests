@@ -6,6 +6,12 @@ import { Emblem } from '../components/Emblem'
 import { ErrorNotice } from '../components/Form'
 import { Page } from '../components/Page'
 import { useMe } from '../lib/api'
+import { lp, lpIn, numeral, TOP, tierOf } from '../lib/rank'
+
+const title = (points: number) => {
+  const d = Math.min(Math.floor(points / 100), TOP)
+  return d >= TOP ? 'The top' : `${tierOf(d)} ${numeral(d)}`
+}
 
 const BOARDS = {
   everyone: 'Everyone',
@@ -62,7 +68,7 @@ export default function Leaderboard() {
   const board = pick<Board>(BOARDS, params.get('board'), 'everyone')
   const period = pick<Period>(PERIODS, params.get('period'), 'season')
   return (
-    <Page title="Leaderboard" eyebrow="XP from practice, daily questions, mock quizzes and live quizzes">
+    <Page title="Leaderboard" eyebrow="Ranked by LP: daily questions, practice and mock quizzes">
       <div className="stack">
         <Chips label="Board" options={BOARDS} current={board} to={(b) => href(b, period)} />
         <Chips label="Period" options={PERIODS} current={period} to={(p) => href(board, p)} />
@@ -72,22 +78,22 @@ export default function Leaderboard() {
   )
 }
 
-function Row({ row }: { row: LeaderRow }) {
+function Row({ row, ranked }: { row: LeaderRow; ranked: boolean }) {
   return (
     <li value={row.rank} className={row.me ? 'item me' : 'item'}>
       <span className="place">{row.rank}</span>
-      <Emblem level={row.level} title={row.title} size={32} />
+      <Emblem division={row.division} title={row.title} size={32} />
       <span>
         <span className="item-title">
           {row.display_name}
           {row.me && <span className="badge">You</span>}
         </span>
         <span className="muted">
-          {row.title}
+          {row.title} · level {row.level}
           {row.vertical && ` · ${row.vertical}`}
         </span>
       </span>
-      <span className="points">{row.xp.toLocaleString('en-GB')} XP</span>
+      <span className="points">{ranked ? `${lpIn(row.score)} LP` : lp(row.score)}</span>
     </li>
   )
 }
@@ -95,10 +101,12 @@ function Row({ row }: { row: LeaderRow }) {
 function People({ board, period }: { board: PersonBoard; period: Period }) {
   const q = useQuery({ ...getLeaderboardOptions({ query: { board, period } }), placeholderData: keepPreviousData })
   const when = period === 'season' ? 'this season' : 'in the last 7 days'
+  const ranked = board === 'everyone' && period === 'season'
   const title = `${BOARDS[board]}, ${PERIODS[period].toLowerCase()}`
   return (
     <section className="panel stack" aria-labelledby="board-title">
       <h2 id="board-title">{title}</h2>
+      <p className="muted">{ranked ? 'By rank: division, then LP.' : `By LP won ${when}: climbers first.`}</p>
       <p className={q.isPending || q.isPlaceholderData ? 'muted' : 'sr-only'} aria-live="polite">
         {q.isPending || q.isPlaceholderData ? 'Loading the board…' : ''}
       </p>
@@ -112,7 +120,7 @@ function People({ board, period }: { board: PersonBoard; period: Period }) {
         <>
           <ol className="list board" aria-labelledby="board-title">
             {q.data.rows.map((row) => (
-              <Row key={`${row.rank}-${row.display_name}`} row={row} />
+              <Row key={`${row.rank}-${row.display_name}`} row={row} ranked={ranked} />
             ))}
           </ol>
           <p className="muted">
@@ -124,7 +132,11 @@ function People({ board, period }: { board: PersonBoard; period: Period }) {
       {q.data?.me && !q.data.rows.some((r) => r.me) && (
         <div className="my-rank">
           <p>
-            <strong>You: #{q.data.me.rank}</strong> with {q.data.me.xp.toLocaleString('en-GB')} XP.
+            <strong>You: #{q.data.me.rank}</strong>{' '}
+            {ranked
+              ? `at ${Math.floor(q.data.me.score).toLocaleString('en-GB')} points`
+              : `with ${lp(q.data.me.score)}`}
+            .
           </p>
           <p className="muted">
             {q.data.me.hidden ? (
@@ -149,8 +161,9 @@ function Verticals({ period }: { period: Period }) {
     <section className="panel stack" aria-labelledby="board-title">
       <h2 id="board-title">Verticals, {PERIODS[period].toLowerCase()}</h2>
       <p className="muted">
-        Average XP per active member and the share who answered a daily question in the last 7 days. People who hide
-        themselves from the leaderboard aren't counted, and only verticals with at least 3 counted members are shown.
+        The average rank of each vertical's active members, and the share who answered a daily question in the last 7
+        days. People who hide themselves from the leaderboard aren't counted, and only verticals with at least 3 counted
+        members are shown.
       </p>
       <p className={q.isPending || q.isPlaceholderData ? 'muted' : 'sr-only'} aria-live="polite">
         {q.isPending || q.isPlaceholderData ? 'Loading the board…' : ''}
@@ -163,7 +176,7 @@ function Verticals({ period }: { period: Period }) {
             <thead>
               <tr>
                 <th scope="col">Vertical</th>
-                <th scope="col">XP per member</th>
+                <th scope="col">Average rank</th>
                 <th scope="col">Played, last 7 days</th>
               </tr>
             </thead>
@@ -175,7 +188,9 @@ function Verticals({ period }: { period: Period }) {
                     {r.vertical === user?.vertical && <span className="badge">Yours</span>}
                     <span className="muted">{r.members} members</span>
                   </th>
-                  <td>{r.xp_per_member.toFixed(1)}</td>
+                  <td>
+                    {title(r.rank_points)} <span className="muted">{lpIn(r.rank_points)} LP</span>
+                  </td>
                   <td>{Math.round(r.participation * 100)}%</td>
                 </tr>
               ))}

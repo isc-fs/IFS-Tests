@@ -18,12 +18,15 @@ from ifs_tests.bank import images
 from ifs_tests.bank.mirror import load_bank
 from ifs_tests.bank.sample import SAMPLE_DIR
 from ifs_tests.db.models import AnswerOption, Attempt, DailyQuestion, MockSession, Question, User
+from ifs_tests.domain import rank as rank_rules
+from ifs_tests.domain import xp as xp_rules
 from ifs_tests.domain.daily import madrid_day
-from ifs_tests.domain.xp import award, floor_for, level_for
 from ifs_tests.services import accounts, daily, live, mock, practice, privacy, review
 from ifs_tests.services import bank as bank_service
 from ifs_tests.services import xp as xp_service
 from ifs_tests.services.bank import import_bank
+
+from ..api.helpers import right_answer
 
 pytestmark = pytest.mark.integration
 NOW = datetime(2026, 10, 1, tzinfo=UTC)
@@ -156,12 +159,12 @@ def test_a_double_start_gives_one_attempt_and_one_deadline(
 
 
 def test_a_double_submit_is_graded_once(db: Session, app_engine: Engine, daily_player: User) -> None:
-    # A returning member well above their floor, so a wrong answer costs XP too and a double grant shows.
-    start = floor_for("member") + 1000
-    daily_player.position, daily_player.xp = "member", start
+    # Right or wrong, an answer moves LP, so a double grant would show in the rank.
+    daily_player.position, daily_player.rank_points = "member", 900.0
     db.commit()
     _, attempt = daily.start(db, daily_player, "rules", NOW)
-    options = list(db.scalars(select(AnswerOption.id).where(AnswerOption.question_id == attempt.question_id)))
+    q = db.get_one(Question, attempt.question_id)
+    options = list(db.scalars(select(AnswerOption.id).where(AnswerOption.question_id == q.id)))
     later = NOW + timedelta(seconds=10)
     results = race(
         app_engine,
@@ -170,13 +173,18 @@ def test_a_double_submit_is_graded_once(db: Session, app_engine: Engine, daily_p
             for o in options
         ],
     )
-    assert len({(r.checked.correct, r.xp) for r in results}) == 1, results
+    assert len({(r.checked.correct, r.xp, r.lp) for r in results}) == 1, results
     row = db.get_one(Attempt, attempt.id)
     db.refresh(row)
     assert row.submitted_at == later and row.answer["options"][0] in options
-    assert row.xp == award(row.correct, 3, "daily", level_for(start)) != 0
+    assert row.correct is not None
+    expected = rank_rules.lp_award(
+        row.correct, 900, 3, "daily", area=q.area, answer_kind=q.answer_kind, options=len(options)
+    )
+    assert row.lp == pytest.approx(expected.amount) != 0
+    assert row.xp == xp_rules.xp_award(row.correct, 3, "daily", first_win=row.correct).amount
     db.refresh(daily_player)
-    assert daily_player.xp == start + row.xp
+    assert (daily_player.xp, daily_player.rank_points) == pytest.approx((row.xp, 900 + row.lp))
 
 
 def test_a_double_start_of_a_mock_quiz_opens_one_run(
@@ -264,16 +272,84 @@ def test_two_tabs_cannot_both_score_the_first_right_answer(
         app_engine,
         *[lambda s: practice.answer(s, s.get_one(User, daily_player.id), qid, right, None, NOW)] * 4,
     )
-    assert sorted(r.xp for r in results) == [0, 0, 0, award(True, 3, "practice", 0)], results
+    first = xp_rules.xp_award(True, 3, "practice", first_win=True).amount
+    assert sorted(r.score.xp for r in results) == [0, 0, 0, first], results
+    assert sorted(r.score.lp > 0 for r in results) == [False, False, False, True], results
+    gained = max(r.score.lp for r in results)
     db.refresh(daily_player)
-    assert daily_player.xp == award(True, 3, "practice", 0)
+    assert (daily_player.xp, daily_player.rank_points, daily_player.combo) == pytest.approx(
+        (first, gained, 1)
+    )
+
+
+def _practise_at_once(engine: Engine, player: User, answers: list[tuple[int, dict[str, Any]]]) -> list[Any]:
+    """One player answering several practice questions in parallel tabs; returns each answer's score."""
+    return race(
+        engine,
+        *[
+            (
+                lambda s, q=q, b=b: (
+                    practice.answer(
+                        s, s.get_one(User, player.id), q, b.get("options"), b.get("value"), NOW
+                    ).score
+                )
+            )
+            for q, b in answers
+        ],
+    )
+
+
+def test_parallel_right_answers_by_one_player_build_the_combo_one_at_a_time(
+    db: Session, app_engine: Engine, daily_player: User
+) -> None:
+    daily_player.rank_points, daily_player.combo = 500.0, 2
+    db.commit()
+    qids = list(db.scalars(select(Question.id).where(Question.graded, Question.playable).limit(4)))
+    results = _practise_at_once(app_engine, daily_player, [(q, right_answer(db, q)) for q in qids])
+    assert not any(isinstance(r, Exception) for r in results), results
+    # Scored one after another: each saw the previous one's combo, points and first wins.
+    assert sorted(g.combo for g in results) == [3, 4, 5, 6], results
+    assert sum("first_win" in g.bonuses for g in results) == xp_rules.FIRST_WINS
+    assert len({g.points for g in results}) == 4
+    db.refresh(daily_player)
+    assert daily_player.combo == 6
+    assert daily_player.rank_points == pytest.approx(500 + sum(g.lp for g in results))
+    assert daily_player.rank_points == pytest.approx(max(g.points for g in results))
+    stored = db.scalars(select(Attempt.lp).where(Attempt.user_id == daily_player.id)).all()
+    assert sorted(stored) == pytest.approx(sorted(g.lp for g in results))
+
+
+def test_parallel_wrong_answers_by_one_player_count_the_bad_run_one_at_a_time(
+    db: Session, app_engine: Engine, daily_player: User
+) -> None:
+    daily_player.rank_points, daily_player.miss_streak, daily_player.combo = 500.0, 1, 3
+    db.commit()
+    wrong = {"value": "-1"}
+    qids = list(
+        db.scalars(
+            select(Question.id).where(
+                Question.graded,
+                Question.playable,
+                Question.answer_kind.in_(["number", "numbers", "range", "text"]),
+            )
+        )
+    )
+    assert len(qids) >= 4
+    results = _practise_at_once(app_engine, daily_player, [(q, wrong) for q in qids[:4]])
+    assert not any(isinstance(r, Exception) for r in results), results
+    # Wrong answers 2, 3, 4 and 5 in a row: only the two scored with three misses behind them are cushioned.
+    assert sum(g.cushioned for g in results) == 2, results
+    assert all(g.lp < 0 and g.combo == 0 for g in results), results
+    db.refresh(daily_player)
+    assert (daily_player.miss_streak, daily_player.combo) == (5, 0)
+    assert daily_player.rank_points == pytest.approx(500 + sum(g.lp for g in results))
 
 
 def test_closing_abandoned_dailies_never_deadlocks_with_a_late_answer(
     db: Session, app_engine: Engine, daily_player: User, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # The nightly job holds one abandoned attempt and the player's row while the player answers another late.
-    daily_player.position, daily_player.xp = "member", floor_for("member") + 1000
+    daily_player.position, daily_player.rank_points = "member", 900.0
     db.commit()
     started = [daily.start(db, daily_player, area, NOW)[1].id for area in ("mech", "elec")]
     later = NOW + timedelta(hours=1)
@@ -371,6 +447,7 @@ def test_a_captain_double_submitting_sends_one_answer_and_shares_xp_once(
     assert sum(r is None for r in results) == 1, results  # the rest are "already answered"
     rows = db.scalars(select(Attempt).where(Attempt.mode == "live")).all()
     assert sorted(a.user_id for a in rows) == sorted(u.id for u in table)
+    assert all(a.lp == 0 for a in rows)  # a table's answer never moves anyone's rank
 
 
 def test_closing_a_question_while_the_captain_answers_never_loses_or_doubles_it(

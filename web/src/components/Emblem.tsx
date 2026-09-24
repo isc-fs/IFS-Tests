@@ -1,5 +1,5 @@
 import { useId } from 'react'
-import { division, pips, tierOf } from '../lib/xp'
+import { numeral, pips, tierOf } from '../lib/rank'
 
 const SHAPES = {
   Mingo: 'M32 4 L56 12 V30 C56 45 46 55 32 60 C18 55 8 45 8 30 V12 Z',
@@ -10,12 +10,12 @@ const SHAPES = {
 
 const TOPS: Record<string, string> = { 'Gigante Noble': 'gigante', Villano: 'villano', Leyenda: 'leyenda' }
 
-/** A level emblem: the tier sets the shape and metal, pips count the division. The top has its own art. */
-export function Emblem({ level, title, size = 48 }: { level: number; title: string | null; size?: number }) {
+/** A rank emblem: the tier sets the shape and metal, pips count the division. The top has its own art. */
+export function Emblem({ division, title, size = 48 }: { division: number; title: string | null; size?: number }) {
   const id = useId()
-  const tier = tierOf(level)
+  const tier = tierOf(division)
   const variant = tier === 'Top' ? (title ? (TOPS[title] ?? 'leyenda') : 'mystery') : tier.toLowerCase()
-  const n = pips(level)
+  const n = pips(division)
   return (
     <svg
       className={`emblem emblem-${variant}`}
@@ -59,7 +59,7 @@ export function Emblem({ level, title, size = 48 }: { level: number; title: stri
       )}
       {tier !== 'Top' && (
         <text className="emblem-numeral" x="32" y={tier === 'Mingo' ? 38 : 39} textAnchor="middle">
-          {division(level)}
+          {numeral(division)}
         </text>
       )}
       {Array.from({ length: n }, (_, i) => (

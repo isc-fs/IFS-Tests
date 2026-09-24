@@ -105,3 +105,12 @@ def app_client(app_engine: Engine, clock: Clock, db: Session) -> Iterator[TestCl
 def new_client(app_client: TestClient) -> Callable[[], TestClient]:
     """Another browser: same app, separate cookie jar."""
     return lambda: TestClient(app_client.app, base_url=PUBLIC_ORIGIN, headers={"X-CSRF": "1"})
+
+
+@pytest.fixture(autouse=True)
+def no_crits(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Critical answers are a 5 % draw from a random server secret: off everywhere, so XP can be asserted exactly.
+    A test that wants one patches `services.xp._crit` back."""
+    from ifs_tests.services import xp
+
+    monkeypatch.setattr(xp, "_crit", lambda *_: False)

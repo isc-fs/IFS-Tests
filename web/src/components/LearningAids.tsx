@@ -15,7 +15,7 @@ const useWide = () => useSyncExternalStore(subscribe, () => media()?.matches ?? 
 /** Useful formulas on one side of the question and reading on the other, for the levels that still get them.
  * Open beside the question on wide screens, folded above and below it on narrow ones. */
 export function LearningAids({ question, children }: { question: PlayQuestion; children: ReactNode }) {
-  const aids = useMe().data?.progress?.aids
+  const aids = useMe().data?.progress?.rank.aids
   const shown = !!aids && (aids.formulas || aids.learn_more)
   const topic = question.topic ?? 'general'
   const { data } = useQuery({ ...topicAidsOptions({ path: { topic } }), enabled: shown, staleTime: Infinity })

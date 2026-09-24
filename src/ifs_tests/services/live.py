@@ -32,7 +32,6 @@ from ..db.models import (
 from ..domain import daily as timing
 from ..domain import live as rules
 from ..domain import mock as mock_rules
-from ..domain import xp as xp_rules
 from . import xp
 from .errors import UserError
 from .questions import Checked, Shown, check, show
@@ -194,9 +193,9 @@ def seat(db: DB, host: User, code: str, tables: list[dict[str, Any]]) -> None:
         seen |= members
     db.execute(update(LivePlayer).where(LivePlayer.session_id == s.id).values(table_id=None))
     db.execute(delete(LiveTable).where(LiveTable.session_id == s.id))
-    levels = dict(db.execute(select(User.id, User.xp).where(User.id.in_(seen))).tuples().all())
+    levels = dict(db.execute(select(User.id, User.rank_points).where(User.id.in_(seen))).tuples().all())
     for t in tables:
-        # A table built by hand gets its most experienced member as captain until the host picks another.
+        # A table built by hand gets its best-ranked member as captain until the host picks another.
         captain = t.get("captain_id") or max(
             t["member_ids"], key=lambda uid: (levels[uid], -uid), default=None
         )
@@ -218,11 +217,11 @@ def seat(db: DB, host: User, code: str, tables: list[dict[str, Any]]) -> None:
 def seat_by_subdepartment(db: DB, host: User, code: str) -> None:
     s = _hosted(db, host, code)
     rows = db.execute(
-        select(User.id, User.subdepartments, User.xp)
+        select(User.id, User.subdepartments, User.rank_points)
         .join(LivePlayer, LivePlayer.user_id == User.id)
         .where(LivePlayer.session_id == s.id, ~LivePlayer.removed)
     )
-    players = [rules.Player(uid, tuple(subs or ()), xp_rules.level_for(total)) for uid, subs, total in rows]
+    players = [rules.Player(uid, tuple(subs or ()), points) for uid, subs, points in rows]
     tables = [asdict(t) for t in rules.seat_by_subdepartment(players)]
     for t in tables:  # the table of people without a sub-department takes the questions nobody owns
         t["catch_all"] = t["name"] == rules.EVERYONE_ELSE
@@ -454,7 +453,8 @@ def answer(
 
 
 def _share(db: DB, s: LiveSession, a: LiveAnswer, now: datetime) -> None:
-    """Every member seated when the table answered shares its XP, each at their own level."""
+    """Every member seated when the table answered shares its XP. A table's answer isn't one person's
+    performance, so it never moves anyone's rank."""
     q = db.get_one(Question, db.get_one(LiveQuestion, (s.id, a.position)).question_id)
     scored = set(
         db.scalars(

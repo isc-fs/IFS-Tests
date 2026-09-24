@@ -21,6 +21,7 @@ def _result(db: Db, r: daily.Result) -> DailyResult:
         feedback=feedback(r.checked),
         late=r.late,
         xp=r.xp,
+        lp=r.lp,
         streak=r.streak,
     )
 
@@ -32,6 +33,7 @@ def daily_status(user: Member, db: Db, now: Now) -> DailyStatus:
         day=s.day,
         streak=s.streak,
         xp_today=s.xp_today,
+        lp_today=s.lp_today,
         areas=[DailyArea.model_validate(asdict(a)) for a in s.areas],
     )
 
