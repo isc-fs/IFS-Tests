@@ -156,7 +156,8 @@ and mock questions it costs at most half the LP a wrong answer would.
 
 ### Learning aids
 
-At the lower divisions, panels sit beside the question (above and below it on a narrow screen):
+At the lower divisions, panels sit beside the question (above and below it on a narrow screen). They take their
+place as the question opens and fill in a moment later, so the question never moves and keeps what you entered:
 
 - **Useful formulas** for the question's topic;
 - **Learn more**: reading links.
