@@ -1,6 +1,7 @@
-import { screen, waitFor } from '@testing-library/react'
+import { onlineManager } from '@tanstack/react-query'
+import { act, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { expect, test } from 'vitest'
+import { afterEach, expect, test } from 'vitest'
 import { MEMBER, progress, renderApp } from '../test/render'
 
 const QUESTION = {
@@ -54,6 +55,8 @@ function daily(secondsLeft: number, failures: number) {
   }
 }
 
+afterEach(() => onlineManager.setOnline(true))
+
 const start = async () => userEvent.click(await screen.findByRole('button', { name: 'Start the Mechanical question' }))
 
 test('a send at zero that hits a proxy error is sent again by itself', async () => {
@@ -87,4 +90,38 @@ test("an answer the server refuses isn't sent again by itself", async () => {
   expect(await screen.findByText('Start the question first.')).toBeInTheDocument()
   await new Promise((r) => setTimeout(r, 700))
   await waitFor(() => expect(sent('POST /api/daily/attempts/99/answer')).toHaveLength(1))
+})
+
+test('offline, the answer waits for the connection and the page says so', async () => {
+  const { sent } = renderApp('/daily', daily(120, 0))
+  await start()
+  await userEvent.click(await screen.findByRole('radio', { name: 'AS Emergency' }))
+  act(() => onlineManager.setOnline(false))
+  expect(screen.getByText(/You're offline/)).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: 'Check answer' }))
+  expect(
+    screen.getByText(
+      "Your answer goes as soon as the connection is back. The clock keeps running: the server's clock decides whether it arrived in time.",
+    ),
+  ).toBeInTheDocument()
+  expect(sent('POST /api/daily/attempts/99/answer')).toHaveLength(0)
+  act(() => onlineManager.setOnline(true))
+  expect(await screen.findByText(/Correct: \+15 LP, \+60 XP/)).toBeInTheDocument()
+  expect(sent('POST /api/daily/attempts/99/answer')).toHaveLength(1)
+  expect(screen.queryByText(/You're offline/)).toBeNull()
+})
+
+test('offline, a page waiting for its data says why', async () => {
+  renderApp('/practice', {
+    'GET /api/me': { body: MEMBER },
+    'GET /api/practice/areas': { body: [] },
+    'GET /api/practice/next': { body: QUESTION },
+  })
+  await screen.findByText(QUESTION.text)
+  act(() => onlineManager.setOnline(false))
+  await userEvent.click(screen.getByRole('button', { name: 'Skip this question' }))
+  expect(screen.getByText('Picking a question…')).toBeInTheDocument()
+  expect(screen.getByText("You're offline. The page carries on when the connection is back.")).toBeInTheDocument()
+  act(() => onlineManager.setOnline(true))
+  expect(await screen.findByText(QUESTION.text)).toBeInTheDocument()
 })

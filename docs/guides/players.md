@@ -114,6 +114,10 @@ page tries twice more within about a second and a half. If it still fails, it sa
 didn't reach the server.** with a **Send my answer again** button; the server's clock decides whether it still
 counts.
 
+**Offline.** Without a connection a banner says **You're offline. The page carries on when the connection is back.**
+An answer you send meanwhile waits and goes when the connection returns. The clock keeps running, and the server's
+clock decides whether the answer arrived in time.
+
 **Streak.** Each day with at least one daily question answered on time (right, wrong or "I'm not sure") extends
 your streak. Each day of streak after the first adds 5 % XP to right answers, up to +50 %.
 

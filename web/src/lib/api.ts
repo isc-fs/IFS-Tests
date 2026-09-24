@@ -1,4 +1,5 @@
-import { QueryClient, useQuery } from '@tanstack/react-query'
+import { onlineManager, QueryClient, useQuery } from '@tanstack/react-query'
+import { useSyncExternalStore } from 'react'
 import { client } from '../api/client.gen'
 import { me } from '../api/sdk.gen'
 import type { Me } from '../api/types.gen'
@@ -41,6 +42,10 @@ async function fetchMe(): Promise<Me | null> {
   if (!response?.ok || !data) throw new Error('The server is not answering right now.')
   return data
 }
+
+/** Whether the browser has a connection. Without one, TanStack pauses requests and sends them when it's back. */
+export const useOnline = () =>
+  useSyncExternalStore(onlineManager.subscribe.bind(onlineManager), () => onlineManager.isOnline())
 
 /** The signed-in user, `null` when signed out. Other failures (500, offline) are errors, not sign-outs. */
 export function useMe() {

@@ -1534,3 +1534,10 @@ details[open] > summary::before {
   border-color: var(--isc-green);
   background: var(--isc-cream);
 }
+.notice.offline {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  border-radius: 0;
+  text-align: center;
+}

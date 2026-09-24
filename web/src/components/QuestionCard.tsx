@@ -1,6 +1,6 @@
 import { type ReactNode, useEffect, useId, useRef, useState } from 'react'
 import type { AnswerIn, Feedback, HintOut, PlayQuestion } from '../api/types.gen'
-import { errorMessage, ME_KEY, queryClient, useMe } from '../lib/api'
+import { errorMessage, ME_KEY, queryClient, useMe, useOnline } from '../lib/api'
 import { AREAS, TOPICS } from '../lib/areas'
 import { changes, lp, numeral, TOP, tierOf } from '../lib/rank'
 import { BONUS_NAMES, xp } from '../lib/xp'
@@ -250,6 +250,7 @@ export function QuestionCard({
   const [hint, setHint] = useState<HintOut>()
   const [hintError, setHintError] = useState<string>()
   const { data: me } = useMe()
+  const online = useOnline()
   const gradable = question.graded && question.answer_kind !== 'self'
   const hintable = !!onHint && !!me?.progress?.rank.aids.hint && gradable
   const unsure = allowUnsure && gradable
@@ -365,6 +366,12 @@ export function QuestionCard({
           />
         )}
         {expired && !answered && !stuck && <Notice tone="error">Time's up. Sending your answer…</Notice>}
+        {pending && !online && (
+          <Notice tone="info">
+            Your answer goes as soon as the connection is back.
+            {clock && " The clock keeps running: the server's clock decides whether it arrived in time."}
+          </Notice>
+        )}
         {stuck && (
           <>
             <Notice tone="error">Time's up, and your answer didn't reach the server.</Notice>
