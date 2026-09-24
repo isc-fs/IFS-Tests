@@ -21,7 +21,7 @@ from ifs_tests.db.models import AnswerOption, Attempt, DailyQuestion, MockSessio
 from ifs_tests.domain import rank as rank_rules
 from ifs_tests.domain import xp as xp_rules
 from ifs_tests.domain.daily import madrid_day
-from ifs_tests.services import accounts, daily, live, mock, practice, privacy, review
+from ifs_tests.services import accounts, daily, live, mock, practice, privacy, review, streaks
 from ifs_tests.services import bank as bank_service
 from ifs_tests.services import xp as xp_service
 from ifs_tests.services.bank import import_bank
@@ -277,8 +277,11 @@ def test_two_tabs_cannot_both_score_the_first_right_answer(
     assert sorted(r.score.lp > 0 for r in results) == [False, False, False, True], results
     gained = max(r.score.lp for r in results)
     db.refresh(daily_player)
+    placed = rank_rules.placement(
+        "mingo"
+    )  # a player created before placement is placed on their first answer
     assert (daily_player.xp, daily_player.rank_points, daily_player.combo) == pytest.approx(
-        (first, gained, 1)
+        (first, placed + gained, 1)
     )
 
 
@@ -322,22 +325,23 @@ def test_parallel_right_answers_by_one_player_build_the_combo_one_at_a_time(
 def test_parallel_wrong_answers_by_one_player_count_the_bad_run_one_at_a_time(
     db: Session, app_engine: Engine, daily_player: User
 ) -> None:
-    daily_player.rank_points, daily_player.miss_streak, daily_player.combo = 500.0, 1, 3
+    daily_player.rank_points, daily_player.miss_streak, daily_player.combo = 500.0, 2, 3
     db.commit()
-    wrong = {"value": "-1"}
-    qids = list(
-        db.scalars(
-            select(Question.id).where(
-                Question.graded,
-                Question.playable,
-                Question.answer_kind.in_(["number", "numbers", "range", "text"]),
+    started = [daily.start(db, daily_player, area, NOW)[1].id for area in ("mech", "elec", "rules")]
+    db.commit()
+    results = race(
+        app_engine,
+        *[
+            (
+                lambda s, a=a: (
+                    daily.answer(s, s.get_one(User, daily_player.id), a, None, "-1", NOW).checked.score
+                )
             )
-        )
+            for a in started
+        ],
     )
-    assert len(qids) >= 4
-    results = _practise_at_once(app_engine, daily_player, [(q, wrong) for q in qids[:4]])
     assert not any(isinstance(r, Exception) for r in results), results
-    # Wrong answers 2, 3, 4 and 5 in a row: only the two scored with three misses behind them are cushioned.
+    # Wrong daily answers 3, 4 and 5 in a row: only the two scored with three misses behind them are cushioned.
     assert sum(g.cushioned for g in results) == 2, results
     assert all(g.lp < 0 and g.combo == 0 for g in results), results
     db.refresh(daily_player)
@@ -462,3 +466,60 @@ def test_closing_a_question_while_the_captain_answers_never_loses_or_doubles_it(
     answered = results[1] is None
     rows = db.scalars(select(Attempt).where(Attempt.mode == "live")).all()
     assert len(rows) == (len(table) if answered else 0), results
+
+
+def test_a_rehearsal_sharing_xp_never_deadlocks_with_the_nightly_streak_job(
+    db: Session, app_engine: Engine, daily_player: User, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    host = User(email="td@x.com", password_hash="x", display_name="Host", position="technical_director")
+    players = [
+        User(email=f"u{i}@x.com", password_hash="x", display_name=f"U{i}", streak_freezes=1) for i in range(4)
+    ]
+    db.add_all([host, *players])
+    db.commit()
+    low, high = players[:2], players[2:]
+    config = {
+        "questions": "areas",
+        "areas": ["rules"],
+        "count": 1,
+        "timing": "fixed",
+        "seconds": 60,
+        "feedback": "end",
+        "routing": "all",
+        "speed_points": False,
+    }
+    s = live.create(db, host, config, NOW)
+    for p in players:
+        live.join(db, p, s.code, NOW)
+    live.seat(
+        db,
+        host,
+        s.code,
+        [
+            {"name": "High", "member_ids": [p.id for p in high], "captain_id": high[0].id},
+            {"name": "Low", "member_ids": [p.id for p in low], "captain_id": low[0].id},
+        ],
+    )
+    live.advance(db, host, s.code, NOW)
+    for captain in (high[0], low[0]):  # the table with the higher ids answers first
+        live.answer(db, db.get_one(User, captain.id), s.code, [], None, False, NOW)
+    halfway = threading.Event()
+    grant = xp_service.grant
+
+    def slow_grant(session: Session, uid: int, *args: Any, **kwargs: Any) -> Any:
+        granted = grant(session, uid, *args, **kwargs)
+        if uid == high[-1].id:
+            halfway.set()
+            time.sleep(1.0)
+        return granted
+
+    monkeypatch.setattr(xp_service, "grant", slow_grant)
+
+    def nightly(session: Session) -> dict[str, int]:
+        halfway.wait(10)
+        return streaks.nightly(session, NOW)
+
+    results = race(
+        app_engine, lambda session: live.end(session, session.get_one(User, host.id), s.code, NOW), nightly
+    )
+    assert not any(isinstance(r, Exception) for r in results), results

@@ -22,9 +22,16 @@ type Area = 'mech' | 'elec' | 'rules'
 
 const duration = (s: number) => (s % 60 ? `${Math.floor(s / 60)} min ${s % 60} s` : `${s / 60} min`)
 
-function outcome(a: { correct: boolean | null; late: boolean | null; xp: number; lp: number }): string {
+function outcome(a: {
+  correct: boolean | null
+  late: boolean | null
+  passed?: boolean
+  xp: number
+  lp: number
+}): string {
   const moved = `${lp(a.lp)}, ${xp(a.xp)}`
-  if (a.late) return `Out of time, counted as wrong: ${moved}.`
+  if (a.late) return a.correct === null ? 'Out of time: no XP.' : `Out of time, counted as wrong: ${moved}.`
+  if (a.passed) return `You weren't sure: ${moved}.`
   if (a.correct) return `Correct: ${moved}.`
   return a.correct === false ? `Not this time: ${moved}.` : `Compare with the official answer: ${moved}.`
 }
@@ -107,7 +114,7 @@ function Summary({ result, onDone }: { result?: DailyResult; onDone: () => void 
   return (
     <>
       <p className="lede">
-        {outcome({ ...result, correct: result.feedback.correct })}
+        {outcome({ ...result, correct: result.feedback.correct, passed: result.feedback.passed })}
         {result.streak > 0 && ` Streak: ${result.streak} day${result.streak > 1 ? 's' : ''}.`}
       </p>
       <button type="button" onClick={onDone}>

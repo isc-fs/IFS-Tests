@@ -52,7 +52,7 @@ function Promotion({ division }: { division: number }) {
   const what = step ? changes(step, ladder?.[division - 1]) : []
   return (
     <div className={`promotion${newTier ? ' new-tier' : ''}`}>
-      <Emblem division={division} title={title} size={newTier ? 96 : 72} />
+      <Emblem division={division} title={title} size={newTier ? 96 : 72} decorative />
       <div>
         <strong className="promotion-title">
           {division >= TOP ? `You reached the top: ${title ?? 'legend'}!` : `Promoted to ${title ?? 'a new division'}!`}
@@ -66,6 +66,7 @@ function Promotion({ division }: { division: number }) {
 
 /** What an answer did: LP for the rank, XP and its bonuses for the account, and any promotion or level-up. */
 function Earned({ feedback: f }: { feedback: Feedback }) {
+  const { data: me } = useMe()
   useEffect(() => {
     if (f.level != null) queryClient.invalidateQueries({ queryKey: ME_KEY })
   }, [f.level])
@@ -73,27 +74,74 @@ function Earned({ feedback: f }: { feedback: Feedback }) {
   const division = f.rank_points == null ? 0 : Math.min(Math.floor(f.rank_points / 100), TOP)
   const { lp: moved = 0, xp: earned = 0, combo = 0 } = f
   const bonuses = Object.entries(f.bonuses ?? {})
+  const back = f.demoted ? comesBack(me?.progress?.rank.ladder, division) : ''
+  const frame = f.level_up && [10, 25, 50, 100].includes(f.level)
   return (
-    <output className="earned">
+    <div className="earned">
       <span className="chips-row">
-        {moved !== 0 && <span className={moved > 0 ? 'xp gain' : 'xp loss'}>{lp(moved)}</span>}
+        {moved !== 0 && <span className={moved > 0 ? 'lp gain' : 'lp loss'}>{lp(moved)}</span>}
         <span className="xp gain">{xp(earned)}</span>
         {bonuses.map(([name, amount]) => (
           <span key={name} className={`bonus bonus-${name}`}>
-            {name === 'combo' ? `Combo ×${combo - 1}` : (BONUS_NAMES[name] ?? name)} +{amount}
+            {name === 'combo' ? `Combo: ${combo} in a row` : (BONUS_NAMES[name] ?? name)} +{amount} XP
           </span>
         ))}
-        {f.comeback && <span className="bonus">Comeback ×1.5 LP</span>}
+        {f.comeback && <span className="bonus">Comeback: 1.5× LP</span>}
         {f.cushioned && <span className="bonus quiet">Loss halved: rough patch</span>}
-        {f.demoted && <span className="bonus quiet">Down to {divisionName(division)}</span>}
-        {f.level_up && <span className="bonus level">Account level {f.level}!</span>}
+        {f.rose && <span className="bonus quiet">Back to {divisionName(division)}</span>}
+        {f.demoted && (
+          <span className="bonus quiet">
+            Down to {divisionName(division)}
+            {back && ` · ${back}`}
+          </span>
+        )}
       </span>
       {f.promoted && <Promotion division={division} />}
-    </output>
+      {f.level_up && (
+        <p className={`level-up${frame ? ' frame' : ''}`}>
+          <strong>Level {f.level}!</strong> {frame ? 'A new badge frame is yours.' : 'Your account levelled up.'}
+        </p>
+      )}
+    </div>
   )
 }
 
 const divisionName = (division: number) => (division >= TOP ? 'the top' : `${tierOf(division)} ${numeral(division)}`)
+
+type Ladder = { aids: { formulas: boolean; learn_more: boolean; hint: boolean } }[]
+
+/** What help a drop into `division` brings back, from the division above. */
+function comesBack(ladder: Ladder | undefined, division: number): string {
+  const here = ladder?.[division]?.aids
+  const above = ladder?.[division + 1]?.aids
+  if (!here || !above) return ''
+  const back = [
+    here.formulas && !above.formulas && 'formulas',
+    here.learn_more && !above.learn_more && 'reading',
+    here.hint && !above.hint && 'hints',
+  ].filter(Boolean)
+  return back.length ? `${back.join(' and ')} are back` : ''
+}
+
+/** One sentence for screen readers when the answer comes back. */
+function announce(f: Feedback): string {
+  const verdict = f.passed
+    ? 'Not sure:'
+    : f.correct === true
+      ? 'Right answer:'
+      : f.correct === false
+        ? 'Wrong answer:'
+        : 'Answer sent:'
+  if (f.level == null) return verdict.replace(':', '.')
+  const moved = f.lp ?? 0
+  const parts = [
+    moved ? `${moved > 0 ? 'Plus' : 'Minus'} ${lp(Math.abs(moved)).slice(1)}` : '',
+    `plus ${f.xp ?? 0} XP`,
+    f.promoted ? 'Promoted!' : '',
+    f.level_up ? `Level ${f.level}!` : '',
+  ].filter(Boolean)
+  return `${verdict} ${parts.join(', ')}.`.replace(': Plus', ': plus').replace(': Minus', ': minus')
+}
 
 function Result({ feedback }: { feedback: Feedback }) {
   const verdict = feedback.passed ? (
@@ -292,7 +340,7 @@ export function QuestionCard({
             </button>
             {hintable && !hint && (
               <button type="button" className="secondary" disabled={pending} onClick={askHint}>
-                Hint (halves the win)
+                Hint (a right answer earns half)
               </button>
             )}
             {unsure && (
@@ -316,12 +364,15 @@ export function QuestionCard({
         {hintError && <Notice tone="error">{hintError}</Notice>}
         {unsure && !answered && !expired && (
           <p className="muted answer-note" id={`${legend}-unsure`}>
-            Not sure? You see the answer for half the LP a wrong one costs.
+            Not sure? See the answer for half the LP a wrong answer costs. You still earn a little XP.
           </p>
         )}
       </Form>
+      <p className="sr-only" aria-live="polite">
+        {feedback ? announce(feedback) : ''}
+      </p>
       {feedback && (
-        <div className="stack" ref={after} aria-live="polite">
+        <div className="stack" ref={after}>
           <Result feedback={feedback} />
           {feedback.official && !choice && (
             <p>

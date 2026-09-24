@@ -213,18 +213,55 @@ def _advance(db: DB, s: MockSession, now: datetime) -> tuple[Question, Attempt] 
             current = q, a
             break
         if a.submitted_at is None:
-            a.submitted_at, a.late, a.correct = now, True, False if q.graded else None
-            repeat = (
-                not s.counted or xp.last_seen(db, s.user_id, q.id, s.started_at, other_than=a.id) is not None
-            )
-            timed_out = xp.grant(
-                db, s.user_id, q, "mock", a.correct, now, answered=False, repeat=repeat, late=True
-            )
-            a.xp, a.lp = timed_out.xp, timed_out.lp
+            _time_out(db, s, q, a, now)
     s.position = sum(1 for a in attempts.values() if a.submitted_at)
     if current is None:
         s.finished_at = s.finished_at or now
     return current
+
+
+def _time_out(db: DB, s: MockSession, q: Question, a: Attempt, now: datetime) -> None:
+    """A question left to run out: closed as late and wrong, like an answer sent after the time."""
+    a.submitted_at, a.late, a.correct = now, True, False if q.graded else None
+    repeat = xp.last_seen(db, s.user_id, q.id, s.started_at, other_than=a.id) is not None
+    timed_out = xp.grant(
+        db,
+        s.user_id,
+        q,
+        "mock",
+        a.correct,
+        now,
+        answered=False,
+        repeat=repeat,
+        late=True,
+        again_today=xp.answered_today(db, s.user_id, q.id, now, other_than=a.id),
+        ranked=s.counted,
+    )
+    a.xp, a.lp = timed_out.xp, timed_out.lp
+
+
+def close_expired(db: DB, now: datetime) -> int:
+    """Nightly: charge questions left to run out in runs nobody came back to. The run itself stays open; the
+    next question starts its clock when its player returns."""
+    rows = db.execute(
+        select(Attempt.id, Attempt.session_id)
+        .where(
+            Attempt.mode == "mock",
+            Attempt.submitted_at.is_(None),
+            Attempt.deadline_at < now - timing.GRACE,
+        )
+        .order_by(Attempt.user_id, Attempt.id)
+    ).all()
+    closed = 0
+    for attempt_id, session_id in rows:
+        s = db.get_one(MockSession, session_id, with_for_update=True)
+        a = db.get_one(Attempt, attempt_id, populate_existing=True)
+        if a.submitted_at is None:
+            _time_out(db, s, db.get_one(Question, a.question_id), a, now)
+            s.position += 1
+            closed += 1
+        db.commit()  # one question per transaction: session, then player, the order answering takes
+    return closed
 
 
 def _summary(db: DB, s: MockSession) -> Summary:
@@ -296,10 +333,10 @@ def answer(
             )
             .returning(Attempt.id)
         ).first()
-        if recorded:  # replays of a quiz already run this season, or questions seen before, earn like repeats
-            repeat = (
-                not s.counted or xp.last_seen(db, user.id, q.id, s.started_at, other_than=a.id) is not None
-            )
+        if (
+            recorded
+        ):  # a replay of a quiz already run this season earns XP only; questions seen before, a quarter
+            repeat = xp.last_seen(db, user.id, q.id, s.started_at, other_than=a.id) is not None
             granted = xp.grant(
                 db,
                 user.id,
@@ -311,6 +348,8 @@ def answer(
                 late=late,
                 passed=checked.passed,
                 hint=a.hint_used,
+                again_today=xp.answered_today(db, user.id, q.id, now, other_than=a.id),
+                ranked=s.counted,
             )
             db.execute(update(Attempt).where(Attempt.id == a.id).values(xp=granted.xp, lp=granted.lp))
         db.commit()

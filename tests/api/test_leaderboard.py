@@ -297,7 +297,7 @@ def test_the_board_shows_the_top_fifty_and_your_own_rank_below(
     assert b["me"] == {"rank": 52, "score": points(db, "Marta"), "hidden": False}
 
 
-def test_late_answers_lose_lp_and_replays_win_less(
+def test_late_answers_lose_lp_and_replays_win_none(
     team: None, app_client: TestClient, new_client: NewClient, db: Session, clock: Clock
 ) -> None:
     c = join(app_client, new_client, "Marta")
@@ -306,7 +306,7 @@ def test_late_answers_lose_lp_and_replays_win_less(
     replay = play_mock(db, marta, clock.now)
     late = play_daily(db, marta, "elec", clock.now, late=True)
     assert (first.counted, replay.counted) == (True, False)
-    assert late < 0 < replay.lp < first.lp
+    assert late < 0 == replay.lp < first.lp  # a replay of a quiz already run this season is XP only
     total = round(first.lp + replay.lp + late, 2)
     assert points(db, "Marta") == round(50 + total, 2)
     assert board(c)["me"] == {"rank": 1, "score": points(db, "Marta"), "hidden": False}
@@ -321,21 +321,22 @@ def test_vertical_board_averages_the_members_rank(
     assert c.patch("/api/me", json={"vertical": "Driverless"}).status_code == 200
     play_daily(db, user(db, "Marta"), "mech", clock.now)
     play_mock(db, add(db, "Leo", "Driverless", leaderboard_opt_out=True), clock.now)  # left out entirely
-    add(db, "Pau", "Driverless", rank_points=550)  # members who didn't play count too
-    add(db, "Kai", "Driverless", rank_points=1050)
+    play_daily(db, add(db, "Pau", "Driverless", rank_points=550), "mech", clock.now)
+    play_daily(db, add(db, "Kai", "Driverless", rank_points=1050), "mech", clock.now)
+    add(db, "Bea", "Driverless", rank_points=1400)  # hasn't played this season: only her placement, left out
     play_daily(db, add(db, "Ana", "Driverless", status="alumni", rank_points=1400), "mech", clock.now)
     for name in ("Tom", "Eva"):  # a vertical of two is too small to show
         play_daily(db, add(db, name, "Mechanical"), "mech", clock.now)
     play_daily(db, add(db, "Sol"), "elec", clock.now)  # no vertical
 
-    average = round((points(db, "Marta") + 550 + 1050) / 3, 1)
+    average = round((points(db, "Marta") + points(db, "Pau") + points(db, "Kai")) / 3, 1)
     r = c.get("/api/leaderboard/verticals")
     assert r.status_code == 200
     assert r.json() == {
         "period": "season",
-        "rows": [{"vertical": "Driverless", "members": 3, "rank_points": average, "participation": 0.333}],
+        "rows": [{"vertical": "Driverless", "members": 3, "rank_points": average, "participation": 1.0}],
     }
-    assert not any(name in r.text for name in ("Leo", "Marta", "Pau", "@"))
+    assert not any(name in r.text for name in ("Leo", "Marta", "Pau", "Bea", "@"))
 
     clock.advance(days=7)
     login(c, email("Marta"), PASSWORD)
@@ -359,16 +360,17 @@ def test_opted_out_members_stay_out_of_vertical_averages(
     c = join(app_client, new_client, "Marta")
     assert c.patch("/api/me", json={"vertical": "Driverless"}).status_code == 200
     play_daily(db, user(db, "Marta"), "mech", clock.now)
-    add(db, "Pau", "Driverless")
-    add(db, "Sara", "Driverless")
+    play_daily(db, add(db, "Pau", "Driverless"), "mech", clock.now)
+    play_daily(db, add(db, "Sara", "Driverless"), "mech", clock.now)
     leo = add(db, "Leo", "Driverless", leaderboard_opt_out=True, rank_points=1400)
     play_daily(db, leo, "elec", clock.now)
     play_mock(db, leo, clock.now)
     [v] = c.get("/api/leaderboard/verticals").json()["rows"]
-    assert (v["members"], v["rank_points"]) == (3, round(points(db, "Marta") / 3, 1))
-    add(db, "Pol", "Electronics")
-    add(db, "Ona", "Electronics")
-    add(db, "Hid", "Electronics", leaderboard_opt_out=True)
+    together = points(db, "Marta") + points(db, "Pau") + points(db, "Sara")
+    assert (v["members"], v["rank_points"]) == (3, round(together / 3, 1))
+    for name in ("Pol", "Ona"):
+        play_daily(db, add(db, name, "Electronics"), "mech", clock.now)
+    play_daily(db, add(db, "Hid", "Electronics", leaderboard_opt_out=True), "mech", clock.now)
     assert [r["vertical"] for r in c.get("/api/leaderboard/verticals").json()["rows"]] == ["Driverless"]
 
 
@@ -398,7 +400,7 @@ def test_a_mock_run_started_before_the_season_turns_scores_in_the_old_one(
         b = right_answer(db, q.id)
         st = mock.answer(db, marta, s.id, a.id, b.get("options"), b.get("value"), after)
     assert st.summary and st.summary.counted and st.summary.lp > 0
-    later = after + timedelta(hours=1)
+    later = after + timedelta(days=1)  # the same questions again the same day would pay nothing
     new = play_mock(db, marta, later)
     assert new.counted  # the first run of the new season counts in full
     clock.now = later

@@ -82,18 +82,18 @@ function Row({ row, ranked }: { row: LeaderRow; ranked: boolean }) {
   return (
     <li value={row.rank} className={row.me ? 'item me' : 'item'}>
       <span className="place">{row.rank}</span>
-      <Emblem division={row.division} title={row.title} size={32} />
+      <Emblem division={row.division} title={row.title} size={32} decorative />
       <span>
         <span className="item-title">
           {row.display_name}
           {row.me && <span className="badge">You</span>}
         </span>
         <span className="muted">
-          {row.title} · level {row.level}
+          {ranked ? `Level ${row.level}` : `${row.title} · Level ${row.level}`}
           {row.vertical && ` · ${row.vertical}`}
         </span>
       </span>
-      <span className="points">{ranked ? `${lpIn(row.score)} LP` : lp(row.score)}</span>
+      <span className="points">{ranked ? `${row.title} · ${lpIn(row.score)} LP` : lp(row.score)}</span>
     </li>
   )
 }
@@ -102,10 +102,10 @@ function People({ board, period }: { board: PersonBoard; period: Period }) {
   const q = useQuery({ ...getLeaderboardOptions({ query: { board, period } }), placeholderData: keepPreviousData })
   const when = period === 'season' ? 'this season' : 'in the last 7 days'
   const ranked = board === 'everyone' && period === 'season'
-  const title = `${BOARDS[board]}, ${PERIODS[period].toLowerCase()}`
+  const heading = `${BOARDS[board]}, ${PERIODS[period].toLowerCase()}`
   return (
     <section className="panel stack" aria-labelledby="board-title">
-      <h2 id="board-title">{title}</h2>
+      <h2 id="board-title">{heading}</h2>
       <p className="muted">{ranked ? 'By rank: division, then LP.' : `By LP won ${when}: climbers first.`}</p>
       <p className={q.isPending || q.isPlaceholderData ? 'muted' : 'sr-only'} aria-live="polite">
         {q.isPending || q.isPlaceholderData ? 'Loading the board…' : ''}
@@ -132,11 +132,8 @@ function People({ board, period }: { board: PersonBoard; period: Period }) {
       {q.data?.me && !q.data.rows.some((r) => r.me) && (
         <div className="my-rank">
           <p>
-            <strong>You: #{q.data.me.rank}</strong>{' '}
-            {ranked
-              ? `at ${Math.floor(q.data.me.score).toLocaleString('en-GB')} points`
-              : `with ${lp(q.data.me.score)}`}
-            .
+            <strong>You: #{q.data.me.rank}</strong>
+            {ranked ? `, ${title(q.data.me.score)} · ${lpIn(q.data.me.score)} LP.` : ` with ${lp(q.data.me.score)}.`}
           </p>
           <p className="muted">
             {q.data.me.hidden ? (
@@ -149,7 +146,13 @@ function People({ board, period }: { board: PersonBoard; period: Period }) {
           </p>
         </div>
       )}
-      {q.data && !q.data.me && q.data.rows.length > 0 && <p className="muted">You haven't scored {when} yet.</p>}
+      {q.data && !q.data.me && q.data.rows.length > 0 && (
+        <p className="muted">
+          {ranked
+            ? 'Answer a daily, practice or mock question to join the ranked board.'
+            : `You haven't scored ${when} yet.`}
+        </p>
+      )}
     </section>
   )
 }
@@ -161,9 +164,9 @@ function Verticals({ period }: { period: Period }) {
     <section className="panel stack" aria-labelledby="board-title">
       <h2 id="board-title">Verticals, {PERIODS[period].toLowerCase()}</h2>
       <p className="muted">
-        The average rank of each vertical's active members, and the share who answered a daily question in the last 7
-        days. People who hide themselves from the leaderboard aren't counted, and only verticals with at least 3 counted
-        members are shown.
+        The average rank of each vertical's members who played for their rank this season, and the share who answered a
+        daily question in the last 7 days. People who hide themselves from the leaderboard aren't counted, and only
+        verticals with at least 3 counted members are shown.
       </p>
       <p className={q.isPending || q.isPlaceholderData ? 'muted' : 'sr-only'} aria-live="polite">
         {q.isPending || q.isPlaceholderData ? 'Loading the board…' : ''}

@@ -448,6 +448,7 @@ class Feedback(BaseModel):
     comeback: bool = Field(default=False, description="A right answer after a bad run: 1.5x LP")
     cushioned: bool = Field(default=False, description="A loss halved by the bad run")
     promoted: bool = Field(default=False, description="Into a division not reached before this season")
+    rose: bool = Field(default=False, description="Back up into a division reached before")
     demoted: bool = Field(default=False)
     rank_points: float | None = Field(default=None, description="Rank points after this answer")
     level: int | None = Field(default=None, description="Account level after this answer")
@@ -462,6 +463,7 @@ class DailyArea(BaseModel):
     deadline_at: datetime | None
     correct: bool | None
     late: bool | None
+    passed: bool = Field(default=False, description='Answered "I\'m not sure"')
     xp: int
     lp: float
 

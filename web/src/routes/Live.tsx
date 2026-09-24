@@ -16,7 +16,7 @@ import { Answered, answerText, Reveal, Results, RoomScore, ScreenOptions, Tables
 import { APP_NAME, Page } from '../components/Page'
 import { Qr } from '../components/Qr'
 import { QuestionCard } from '../components/QuestionCard'
-import { errorMessage, queryClient, useMe } from '../lib/api'
+import { errorMessage, ME_KEY, queryClient, useMe } from '../lib/api'
 import { AREAS, TOPICS } from '../lib/areas'
 import { joinUrl, refresh, tableName, toggle, useLive } from '../lib/live'
 import { HostControls } from './LiveHost'
@@ -278,6 +278,14 @@ const settings = (s: LiveState) =>
     .filter(Boolean)
     .join(' · ')
 
+/** The end: results, and the XP everyone at a table shared shows on the cards straight away. */
+function Finished({ s }: { s: LiveState }) {
+  useEffect(() => {
+    queryClient.invalidateQueries({ queryKey: ME_KEY })
+  }, [])
+  return <Results s={s} />
+}
+
 function PlayerView({ s }: { s: LiveState }) {
   const table = s.tables.find((t) => t.id === s.my_table_id)
   const names = new Map(s.players.map((p) => [p.user_id, p.name]))
@@ -302,7 +310,7 @@ function PlayerView({ s }: { s: LiveState }) {
       </div>
     )
   }
-  if (s.state === 'finished') return <Results s={s} />
+  if (s.state === 'finished') return <Finished s={s} />
   return (
     <div className="stack">
       {seat}

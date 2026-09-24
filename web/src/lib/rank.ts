@@ -24,10 +24,11 @@ export function lpIn(points: number): number {
 const fmt = (n: number) =>
   Math.abs(n) < 1 && n !== 0 ? Math.abs(n).toFixed(1) : Math.round(Math.abs(n)).toLocaleString('en-GB')
 
-/** "+13 LP", "−8 LP" (a real minus sign), "+0.4 LP" for the small moves of practice at high ranks. */
+/** "+13 LP", "−8 LP" (a real minus sign), "+0.4 LP" and "+<0.1 LP" for the small moves at high ranks. */
 export function lp(amount: number): string {
-  if (amount > 0) return `+${fmt(amount)} LP`
-  if (amount < 0) return `−${fmt(amount)} LP`
+  const size = Math.abs(amount) < 0.05 ? '<0.1' : fmt(amount)
+  if (amount > 0) return `+${size} LP`
+  if (amount < 0) return `−${size} LP`
   return '0 LP'
 }
 
@@ -37,8 +38,8 @@ type Step = { aids: { formulas: boolean; learn_more: boolean; hint: boolean }; s
 export function changes(step: Step, before: Step | undefined): string[] {
   if (!before) return ['Formulas, reading and a hint on every question']
   const out: string[] = []
-  if (before.aids.formulas && !step.aids.formulas) out.push('Formulas panel goes')
-  if (before.aids.learn_more && !step.aids.learn_more) out.push('Reading panel goes')
-  if (before.aids.hint && !step.aids.hint) out.push('No more hints')
+  if (before.aids.formulas && !step.aids.formulas) out.push("You've outgrown the formulas panel")
+  if (before.aids.learn_more && !step.aids.learn_more) out.push("You've outgrown the reading panel")
+  if (before.aids.hint && !step.aids.hint) out.push('No more hints: the quiz as it is on the day')
   return out
 }

@@ -31,7 +31,8 @@ TOP_TITLE = "Leyenda"
 # A question's rating from its difficulty (1-5), on the same scale as rank points.
 Q_MID, Q_STEP, SCALE = 650, 170, 600
 K = {"daily": 30.0, "mock": 20.0, "practice": 5.0, "live": 0.0}  # live: a table's answer isn't one person's
-REPEAT = 0.25  # a question already graded this season, or a mock replay
+REPEAT = 0.25  # a question already graded this season
+PRACTICE_CAP = 15.0  # LP practice can win in a day: it's for learning, the daily question is for climbing
 HINT = 0.5  # of the gain
 PASS = 0.5  # "I'm not sure" costs half a wrong answer: free passes would let anyone climb forever
 SOFTEN = {"choice-one": 1.0, "choice-many": 0.75}  # typed answers 0.5: a slip in a sum isn't not knowing
@@ -114,8 +115,10 @@ def season_of(now: datetime) -> int:
 
 def current_points(points: float, placed_in: int, position: str, now: datetime) -> float:
     """Rank points as they stand this season: a season not yet started for this player resets first.
-    Season 0 is someone just placed (at sign-up or by the migration)."""
-    if placed_in in (0, season_of(now)):
+    Season 0 is someone placed by the migration, or who joined through the release before it (not placed)."""
+    if placed_in == 0:
+        return max(points, placement(position))
+    if placed_in == season_of(now):
         return points
     return season_reset(points, position)
 
@@ -164,13 +167,14 @@ def lp_award(
     k = K[mode] * (REPEAT if repeat else 1)
     e = expected(points, difficulty, answer_kind, options)
     down = miss_streak >= CUSHION_AFTER
+    # Slips in a sum aren't not knowing a rule, and typed answers play harder than their rating: both ways.
+    k *= 1.0 if area == "rules" else SOFTEN.get(answer_kind, TYPED)
     if correct and not late and not passed:
         if again_today:
             return Lp(0.0)
         gain = k * (1 - e) * (HINT if hint else 1) * (COMEBACK if down else 1)
         return Lp(round(gain, 2), comeback=down and gain > 0)
-    soften = 1.0 if area == "rules" else SOFTEN.get(answer_kind, TYPED)
-    loss = k * e * DIVISION_TABLE[division_of(points)].stakes * soften * (CUSHION if down else 1)
+    loss = k * e * DIVISION_TABLE[division_of(points)].stakes * (CUSHION if down else 1)
     if passed and not late:
         loss *= PASS
     return Lp(-round(loss, 2), cushioned=down and loss > 0)

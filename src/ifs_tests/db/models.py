@@ -126,7 +126,9 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     # Their job on the team (it places them on the ladder), and their account XP, which only goes up.
     position: Mapped[str] = mapped_column(String(24), server_default="mingo")
-    xp: Mapped[int] = mapped_column(server_default="0")
+    xp: Mapped[int] = mapped_column("account_xp", server_default="0")
+    # The lifetime XP of the release before ADR 0007, kept while it may still run during a deploy. Unused.
+    legacy_xp: Mapped[int] = mapped_column("xp", server_default="0")
     # The rank (domain/rank.py): 100 points per division, placed at `rank_season`'s start; 0 = not placed yet.
     rank_points: Mapped[float] = mapped_column(Numeric(8, 2, asdecimal=False), server_default="0")
     rank_season: Mapped[int] = mapped_column(SmallInteger, server_default="0")

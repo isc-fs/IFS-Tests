@@ -131,7 +131,8 @@ def board(db: DB, user: User, area: str | None, period: str, now: datetime) -> B
 
 
 def verticals(db: DB, period: str, now: datetime) -> list[rules.VerticalScore]:
-    """Average rank of each vertical's active members, and how many played this week."""
+    """Average rank of each vertical's members who played for it this season, and how many played this week.
+    Members who haven't played would only add their placement, which says more about positions than play."""
     week_start = rules.first_day("week", madrid_day(now))
     played = set(
         db.scalars(
@@ -142,9 +143,10 @@ def verticals(db: DB, period: str, now: datetime) -> list[rules.VerticalScore]:
     )
     # People who opted out are left out entirely: counting them in an average lets anyone subtract the
     # named members' ranks and recover theirs.
+    ranked = {sc[0] for sc in _scores(db, "season", now)}
     members = db.execute(
         select(User.id, User.vertical, User.rank_points).where(
-            User.status == "active", User.leaderboard_opt_out.is_(False)
+            User.status == "active", User.leaderboard_opt_out.is_(False), User.id.in_(ranked)
         )
     )
     return rules.vertical_board(rules.Member(v, float(p), i in played) for i, v, p in members)

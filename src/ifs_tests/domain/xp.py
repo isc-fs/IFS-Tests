@@ -20,7 +20,8 @@ RESTED_PER_DAY, RESTED_CAP = 150, 450  # XP banked per full day away; it doubles
 MILESTONES = (10, 25, 50, 100)  # account levels that earn an emblem frame
 
 MIN_SAMPLE = 20  # answers before success rates start to move a question's difficulty
-PRIOR = {"choice-one": 2, "choice-many": 3, "numbers": 4}
+# Single choice starts at 3 like typed answers: with the guess floor, a 2 made it look easier than it plays.
+PRIOR = {"choice-one": 3, "choice-many": 3, "numbers": 4}
 
 
 @dataclass(frozen=True)
@@ -56,7 +57,7 @@ def xp_award(
     if not answered or again_today:
         return Xp(0)
     base = BASE_XP[difficulty] * MODE[mode] * (REPEAT if repeat else 1) * (HINT if hint else 1)
-    if correct is None or (passed and not late):
+    if correct is None or passed:
         return Xp(round(base * PASS))
     if not correct or late:
         return Xp(round(base * WRONG))

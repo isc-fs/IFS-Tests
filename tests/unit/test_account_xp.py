@@ -67,12 +67,12 @@ def test_streak_bonus(days: int, share: float) -> None:
 @pytest.mark.parametrize(
     ("kind", "time_s", "answered", "right", "expected"),
     [
-        ("choice-one", None, 0, 0, 2),
+        ("choice-one", None, 0, 0, 3),
         ("choice-many", None, 0, 0, 3),
         ("number", 600, 0, 0, 4),
         ("numbers", 600, 0, 0, 5),
-        ("choice-one", 45, 0, 0, 1),
-        ("choice-one", None, 19, 0, 2),  # too few answers to trust the rate
+        ("choice-one", 45, 0, 0, 2),
+        ("choice-one", None, 19, 0, 3),  # too few answers to trust the rate
         ("choice-one", None, 40, 2, 4),  # 5 % right: much harder than it looks
         ("numbers", 600, 50, 48, 2),  # 96 % right: easier than it looks
     ],

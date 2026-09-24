@@ -69,14 +69,14 @@ test('a hint rules out options, says what it costs and is asked for once', async
       },
     }),
   )
-  await userEvent.click(await screen.findByRole('button', { name: 'Hint (halves the win)' }))
+  await userEvent.click(await screen.findByRole('button', { name: 'Hint (a right answer earns half)' }))
   expect(
     await screen.findByText(/Two options left: one of them is right\. A right answer now wins half the LP and XP\./),
   ).toBeInTheDocument()
   expect(screen.getByRole('radio', { name: '0.512 m' })).toBeDisabled()
   expect(screen.getByRole('radio', { name: '1.020 m' })).toBeDisabled()
   expect(screen.getByRole('radio', { name: '0.713 m' })).toBeEnabled()
-  expect(screen.queryByRole('button', { name: 'Hint (halves the win)' })).toBeNull()
+  expect(screen.queryByRole('button', { name: 'Hint (a right answer earns half)' })).toBeNull()
   await waitFor(() => expect(sent('POST /api/practice/questions/7/hint')).toHaveLength(1))
 })
 
@@ -93,6 +93,6 @@ test('a refused hint explains itself', async () => {
       'POST /api/practice/questions/7/hint': { status: 404, body: { detail: "There's no hint for this question." } },
     }),
   )
-  await userEvent.click(await screen.findByRole('button', { name: 'Hint (halves the win)' }))
+  await userEvent.click(await screen.findByRole('button', { name: 'Hint (a right answer earns half)' }))
   expect(await screen.findByText("There's no hint for this question.")).toBeInTheDocument()
 })

@@ -13,6 +13,9 @@ export function RankCard({ me, road = true }: { me: Me; road?: boolean }) {
   const nextTitle = next?.title ?? 'the top'
   const ahead = next ? changes(next, r.ladder[r.division]) : []
   const [right, wrong] = r.swing
+  const have = Math.floor(r.lp)
+  const fragile = r.division > 0 && r.division < r.ladder.length - 1 && r.lp < -wrong
+  const below = r.ladder[r.division - 1]?.title
   const aids = [
     r.aids.formulas && 'useful formulas',
     r.aids.learn_more && 'reading to learn more',
@@ -21,12 +24,14 @@ export function RankCard({ me, road = true }: { me: Me; road?: boolean }) {
   return (
     <section className={`panel stack level-card tier-${r.tier.toLowerCase()}`} aria-labelledby="rank-title">
       <div className="level-head">
-        <Emblem division={r.division} title={r.title} size={72} />
+        <Emblem division={r.division} title={r.title} size={72} decorative />
         <div>
-          <p className="eyebrow">Your rank</p>
-          <h2 id="rank-title">{r.title}</h2>
+          <p className="eyebrow">Rank · how well you answer</p>
+          <h2 id="rank-title">
+            <span className="sr-only">Your rank:</span> {r.title}
+          </h2>
           <p className="muted">
-            {n(r.lp)} LP{next && ` · ${n(100 - r.lp)} LP to ${nextTitle}`}
+            {n(have)} LP{next && ` · ${100 - have} LP to ${nextTitle}`}
           </p>
         </div>
       </div>
@@ -52,8 +57,14 @@ export function RankCard({ me, road = true }: { me: Me; road?: boolean }) {
       </ol>
       <ul className="level-facts">
         <li>
-          <strong>At your rank:</strong> a daily question is worth {lp(right)} right, {lp(wrong)} wrong.
+          <strong>At your rank:</strong> a daily question is worth {lp(right)} right, {lp(wrong)} wrong, {lp(wrong / 2)}{' '}
+          if you're not sure.
         </li>
+        {fragile && below && (
+          <li>
+            <strong>Careful:</strong> one wrong daily question and you drop to {below}.
+          </li>
+        )}
         {r.miss_streak >= 3 && (
           <li>
             <strong>Rough patch:</strong> losses are halved and your next right answer pays 1.5×.
@@ -84,11 +95,13 @@ export function AccountCard({ me }: { me: Me }) {
           {a.level}
         </span>
         <div>
-          <p className="eyebrow">Account</p>
-          <h2 id="account-title">Level {a.level}</h2>
+          <p className="eyebrow">Level · how much you play</p>
+          <h2 id="account-title">
+            <span className="sr-only">Your account:</span> Level {a.level}
+          </h2>
           <p className="muted">
             {a.into.toLocaleString('en-GB')} / {a.needed.toLocaleString('en-GB')} XP to level {a.level + 1}
-            {a.next_milestone && ` · a new frame at level ${a.next_milestone}`}
+            {a.next_milestone && ` · a new badge frame at level ${a.next_milestone}`}
           </p>
         </div>
       </div>
@@ -97,7 +110,7 @@ export function AccountCard({ me }: { me: Me }) {
         <li className={a.first_wins_left ? 'on' : undefined}>
           <strong>First wins:</strong>{' '}
           {a.first_wins_left
-            ? `+50 % XP on your next ${a.first_wins_left} right answer${a.first_wins_left === 1 ? '' : 's'} today.`
+            ? `+50 % XP on your next ${a.first_wins_left === 1 ? '' : `${a.first_wins_left} `}right answer${a.first_wins_left === 1 ? '' : 's'} today.`
             : 'used up today, back tomorrow.'}
         </li>
         <li className={a.combo ? 'on' : undefined}>
@@ -116,11 +129,15 @@ export function AccountCard({ me }: { me: Me }) {
         </li>
         {a.rested_xp > 0 && (
           <li className="on">
-            <strong>Rested:</strong> {a.rested_xp} XP banked while you were away doubles your next right answers.
+            <strong>Rested:</strong> {a.rested_xp} bonus XP saved up while you were away. Your next right answers earn
+            double until it runs out.
           </li>
         )}
       </ul>
-      <p className="muted small">A 7-day streak earns a freeze (hold up to 2); days away bank rested XP.</p>
+      <p className="muted small">
+        Keep a 7-day streak to earn a freeze (hold up to 2): it saves your streak on a day you miss. Each full day away
+        saves up 150 rested XP.
+      </p>
     </section>
   )
 }

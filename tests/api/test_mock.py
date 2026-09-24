@@ -17,7 +17,7 @@ from ifs_tests.domain.xp import xp_award
 from ifs_tests.services.bank import import_bank
 
 from ..conftest import Clock
-from .helpers import login, member, right_answer
+from .helpers import PASSWORD, login, member, right_answer
 
 pytestmark = pytest.mark.integration
 NewClient = Callable[[], TestClient]
@@ -116,16 +116,22 @@ def test_a_full_run_scores_each_answer_and_shows_it_only_at_the_end(player: Test
     assert (quiz["best"], quiz["open_session"]) == (5, None)
 
 
-def test_replays_in_the_same_season_earn_a_quarter(player: TestClient, db: Session) -> None:
+def test_replays_pay_nothing_the_same_day_and_xp_only_after(
+    player: TestClient, db: Session, clock: Clock
+) -> None:
     first = run_through(player, db)["summary"]
+    assert first["lp"] > 0
     again = run_through(player, db)["summary"]
-    # The first wins went to the first run; the combo carries on and caps.
-    assert (again["correct"], again["xp"], again["counted"]) == (
-        5,
-        run_xp(5, combo=5, first_wins=0, repeat=True),
+    assert (again["correct"], again["xp"], again["lp"], again["counted"]) == (5, 0, 0, False)
+    clock.advance(days=1)
+    player.post("/auth/login", json={"email": "marta@alu.comillas.edu", "password": PASSWORD})
+    later = run_through(player, db)["summary"]
+    # A quarter of the XP, with a new day's first wins and the combo carried on; no LP for a replay.
+    assert (later["xp"], later["lp"], later["counted"]) == (
+        run_xp(5, combo=5, first_wins=3, repeat=True),
+        0,
         False,
     )
-    assert 0 < again["lp"] < first["lp"] / 2
 
 
 def test_starting_again_resumes_the_same_question_and_clock(player: TestClient, clock: Clock) -> None:

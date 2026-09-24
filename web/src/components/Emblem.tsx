@@ -11,7 +11,18 @@ const SHAPES = {
 const TOPS: Record<string, string> = { 'Gigante Noble': 'gigante', Villano: 'villano', Leyenda: 'leyenda' }
 
 /** A rank emblem: the tier sets the shape and metal, pips count the division. The top has its own art. */
-export function Emblem({ division, title, size = 48 }: { division: number; title: string | null; size?: number }) {
+export function Emblem({
+  division,
+  title,
+  size = 48,
+  decorative = false,
+}: {
+  division: number
+  title: string | null
+  size?: number
+  /** Its title is already written next to it: screen readers skip the picture. */
+  decorative?: boolean
+}) {
   const id = useId()
   const tier = tierOf(division)
   const variant = tier === 'Top' ? (title ? (TOPS[title] ?? 'leyenda') : 'mystery') : tier.toLowerCase()
@@ -24,8 +35,9 @@ export function Emblem({ division, title, size = 48 }: { division: number; title
       viewBox="0 0 64 72"
       // An inline SVG needs role="img" and a label to be read as one image; an <img> can't take CSS colours.
       // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role
-      role="img"
-      aria-label={title ?? 'A title still to discover'}
+      role={decorative ? undefined : 'img'}
+      aria-hidden={decorative || undefined}
+      aria-label={decorative ? undefined : (title ?? 'A title still to discover')}
     >
       <defs>
         <linearGradient id={`${id}-metal`} x1="0" y1="0" x2="0" y2="1">

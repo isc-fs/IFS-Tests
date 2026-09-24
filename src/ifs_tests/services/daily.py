@@ -87,6 +87,7 @@ class AreaState:
     deadline_at: datetime | None
     correct: bool | None
     late: bool | None
+    passed: bool
     xp: int
     lp: float
 
@@ -123,6 +124,7 @@ def status(db: DB, user: User, now: datetime) -> Status:
                 deadline_at=a.deadline_at if a else None,
                 correct=a.correct if a else None,
                 late=a.late if a else None,
+                passed=bool(a and a.passed),
                 xp=a.xp if a else 0,
                 lp=a.lp if a else 0.0,
             )
@@ -221,6 +223,7 @@ def answer(
                 repeat=repeat,
                 passed=checked.passed,
                 hint=a.hint_used,
+                again_today=xp.answered_today(db, user.id, q.id, now, other_than=a.id),
             )
             db.execute(update(Attempt).where(Attempt.id == a.id).values(xp=granted.xp, lp=granted.lp))
         db.commit()

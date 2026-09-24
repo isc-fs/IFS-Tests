@@ -44,9 +44,8 @@ export function RankRoad({ me }: { me: Me }) {
                     className={`road-step ${state}${s.division === r.ladder.length - 1 && s.title ? ' revealed' : ''}`}
                     aria-current={state === 'current' ? 'step' : undefined}
                   >
-                    <Emblem division={s.division} title={s.title} size={tier === 'Top' ? 88 : 52} />
+                    <Emblem division={s.division} title={s.title} size={tier === 'Top' ? 88 : 52} decorative />
                     <strong className="road-title">{s.title ?? '???'}</strong>
-                    <span className="road-xp">{s.points.toLocaleString('en-GB')} points</span>
                     {state === 'current' && (
                       <>
                         <span className="badge">You are here</span>

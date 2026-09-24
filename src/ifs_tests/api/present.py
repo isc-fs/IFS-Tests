@@ -44,6 +44,7 @@ def feedback(checked: Checked) -> Feedback:
         comeback=bool(s and s.comeback),
         cushioned=bool(s and s.cushioned),
         promoted=bool(s and s.promoted),
+        rose=bool(s and s.rose),
         demoted=bool(s and s.demoted),
         rank_points=s.points if s and s.level else None,
         level=s.level if s and s.level else None,

@@ -331,6 +331,12 @@ export type DailyArea = {
      */
     late: boolean | null;
     /**
+     * Passed
+     *
+     * Answered "I'm not sure"
+     */
+    passed?: boolean;
+    /**
      * Xp
      */
     xp: number;
@@ -923,6 +929,12 @@ export type Feedback = {
      * Into a division not reached before this season
      */
     promoted?: boolean;
+    /**
+     * Rose
+     *
+     * Back up into a division reached before
+     */
+    rose?: boolean;
     /**
      * Demoted
      */

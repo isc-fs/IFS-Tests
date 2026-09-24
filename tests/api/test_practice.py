@@ -81,6 +81,7 @@ def test_choice_answers(player: TestClient, db: Session, bank: dict[int, int], c
         "comeback": False,
         "cushioned": False,
         "promoted": False,
+        "rose": False,
         "demoted": False,
         "rank_points": MINGO + won,
         "level": 1,
@@ -89,9 +90,8 @@ def test_choice_answers(player: TestClient, db: Session, bank: dict[int, int], c
     }
     assert won > 0 and set(first.bonuses) == {"first_win"}
     no = player.post(f"/api/practice/questions/{qid}/answer", json={"options": [wrong]}).json()
-    # Graded earlier today: no XP again, but a wrong answer still costs LP (at the repeat rate).
-    assert (no["correct"], no["xp"], no["combo"]) == (False, 0, 0)
-    assert no["lp"] == lp(db, qid, MINGO + won, False, repeat=True) < 0
+    # Graded earlier today: no XP again, and practice moves no LP on a question seen before.
+    assert (no["correct"], no["xp"], no["combo"], no["lp"]) == (False, 0, 0, 0)
     same_day = player.post(f"/api/practice/questions/{qid}/answer", json={"options": [right]}).json()
     assert (same_day["correct"], same_day["xp"], same_day["lp"]) == (True, 0, 0)  # no farming it
     clock.advance(hours=11)
@@ -102,16 +102,17 @@ def test_choice_answers(player: TestClient, db: Session, bank: dict[int, int], c
     assert (again["correct"], again["xp"], again["lp"], again["level"]) == (
         True,
         xp_award(True, 3, "practice", repeat=True, first_win=True).amount,
-        lp(db, qid, before, True, repeat=True),
+        0,  # a question seen before: XP only, practice doesn't climb on repeats
         1,
     )
-    assert 0 < again["lp"] < won
+    assert points(db) == before
 
     multi = bank[90003]
     a, b, *_ = options(db, multi)
     r = player.post(f"/api/practice/questions/{multi}/answer", json={"options": [b, a]}).json()
     assert r["correct"] is True and sorted(r["correct_options"]) == sorted([a, b])
-    assert (r["xp"], r["combo"]) == (xp_award(True, 3, "practice", first_win=True, combo=1).amount, 2)
+    # The repeat above was right on a new day: it carried the combo on.
+    assert (r["xp"], r["combo"]) == (xp_award(True, 3, "practice", first_win=True, combo=2).amount, 3)
     assert r["lp"] > 0
     stored = db.scalars(select(Attempt.lp).where(Attempt.question_id == multi)).one()
     assert (stored, points(db)) == (r["lp"], r["rank_points"])

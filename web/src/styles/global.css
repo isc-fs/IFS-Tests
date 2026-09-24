@@ -446,10 +446,6 @@ button.danger:hover {
   min-height: auto;
   margin: 2px 0 0;
 }
-.choice:has(input:checked) {
-  border-color: var(--isc-green);
-  background: var(--isc-cream);
-}
 .choice.right {
   border-color: var(--isc-green);
   background: #e7f3ec;
@@ -1491,4 +1487,30 @@ details[open] > summary::before {
 .account-card .small {
   margin: 0;
   font-size: var(--isc-fs-caption);
+}
+.lp.gain {
+  color: var(--isc-gold-ink);
+  font-weight: 700;
+}
+.lp.loss {
+  color: var(--isc-c-error);
+  font-weight: 700;
+}
+.earned {
+  display: grid;
+  gap: 8px;
+}
+.level-up {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--isc-green) 12%, transparent);
+}
+.level-up.frame {
+  background: var(--isc-green);
+  color: var(--isc-white);
+}
+.choice:has(input:checked):not(.right, .wrong) {
+  border-color: var(--isc-green);
+  background: var(--isc-cream);
 }

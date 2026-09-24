@@ -96,7 +96,12 @@ def _touch(s: LiveSession) -> None:
 def _finish(db: DB, s: LiveSession, now: datetime) -> None:
     s.state, s.finished_at = "finished", now
     _touch(s)
-    for a in db.scalars(select(LiveAnswer).where(LiveAnswer.session_id == s.id, ~LiveAnswer.granted)):
+    held = db.scalars(select(LiveAnswer).where(LiveAnswer.session_id == s.id, ~LiveAnswer.granted)).all()
+    # Lock everyone who shares in them at once, in id order, before any table: two tables' players in
+    # different orders would otherwise deadlock with other answers or the nightly jobs.
+    everyone = sorted({uid for a in held for uid in a.member_ids})
+    db.execute(select(User.id).where(User.id.in_(everyone)).order_by(User.id).with_for_update(key_share=True))
+    for a in held:
         _share(db, s, a, now)  # a rehearsal's XP, held back so it couldn't give answers away
 
 

@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import {
   answerMockMutation,
@@ -15,7 +15,7 @@ import { ErrorNotice, Notice } from '../components/Form'
 import { LearningAids } from '../components/LearningAids'
 import { Page } from '../components/Page'
 import { QuestionCard } from '../components/QuestionCard'
-import { queryClient } from '../lib/api'
+import { ME_KEY, queryClient, useMe } from '../lib/api'
 import { lp } from '../lib/rank'
 import { xp } from '../lib/xp'
 
@@ -105,6 +105,11 @@ export default function Mock() {
 }
 
 function Summary({ summary }: { summary: MockSummary }) {
+  const { data: me } = useMe()
+  useEffect(() => {
+    queryClient.invalidateQueries({ queryKey: ME_KEY }) // the run's LP and XP are in now
+  }, [])
+  const rank = me?.progress?.rank
   return (
     <section className="panel stack" aria-labelledby="summary-title">
       <h2 id="summary-title">
@@ -115,6 +120,11 @@ function Summary({ summary }: { summary: MockSummary }) {
           ? `${lp(summary.lp)} and ${xp(summary.xp)}.`
           : `A replay: ${lp(summary.lp)} and ${xp(summary.xp)}. Only your first run of a quiz each season counts in full.`}
       </p>
+      {rank && me?.progress && (
+        <p className="muted">
+          Now {rank.title} · {Math.floor(rank.lp)} LP · Level {me.progress.account.level}
+        </p>
+      )}
       {summary.bar_to_beat && <p className="muted">{summary.bar_to_beat}</p>}
       <p>
         <Link to="/mock">Back to the quizzes</Link>

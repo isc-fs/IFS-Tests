@@ -3275,6 +3275,12 @@
       ],
       "title": "Late"
      },
+     "passed": {
+      "type": "boolean",
+      "title": "Passed",
+      "description": "Answered \"I'm not sure\"",
+      "default": false
+     },
      "xp": {
       "type": "integer",
       "title": "Xp"
@@ -4231,6 +4237,12 @@
       "type": "boolean",
       "title": "Promoted",
       "description": "Into a division not reached before this season",
+      "default": false
+     },
+     "rose": {
+      "type": "boolean",
+      "title": "Rose",
+      "description": "Back up into a division reached before",
       "default": false
      },
      "demoted": {

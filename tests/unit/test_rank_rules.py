@@ -8,6 +8,7 @@ import pytest
 
 from ifs_tests.domain.rank import (
     DIVISION_TABLE,
+    PRACTICE_CAP,
     TOP,
     expected,
     lp_award,
@@ -144,13 +145,15 @@ def _season(
     seed: int, start: str, active: float, practice: int, mock_every: int, skill: float, improve: float
 ) -> Run:
     """A seeded season (September to August): dailies, some practice, a mock now and then, from a bank of 1,000
-    questions (seen ones are easier and pay a quarter)."""
+    questions (seen ones are easier). As services/xp.grant scores them: practice moves LP only on fresh questions
+    and up to its daily cap; only first-time daily and mock answers count towards a bad run."""
     rng = random.Random(seed)
     points, miss, seen = placement(start), 0, set()
     reached: dict[int, int] = {}
     trace: dict[int, float] = {}
     for day in range(1, 366):
         if rng.random() < active:
+            room = PRACTICE_CAP
             plays = [("daily", 3), ("practice", practice)] + ([("mock", 10)] if day % mock_every == 0 else [])
             for mode, n in plays:
                 for _ in range(n):
@@ -161,11 +164,25 @@ def _season(
                     seen.add(q)
                     p = min(0.88, skill + day * improve) - 0.06 * (d - 3)
                     right = rng.random() < (p + 0.3 * (1 - p) if repeat else p)
+                    if mode == "practice" and repeat:
+                        continue
+                    run = mode != "practice" and not repeat
                     lp = lp_award(
-                        right, points, d, mode, area=area, answer_kind=kind, repeat=repeat, miss_streak=miss
-                    )
-                    points = max(0.0, points + lp.amount)
-                    miss = next_miss_streak(miss, right, False, False)
+                        right,
+                        points,
+                        d,
+                        mode,
+                        area=area,
+                        answer_kind=kind,
+                        repeat=repeat,
+                        miss_streak=miss if run else 0,
+                    ).amount
+                    if mode == "practice" and lp > 0:
+                        lp = min(lp, room)
+                        room -= lp
+                    points = max(0.0, points + lp)
+                    if run:
+                        miss = next_miss_streak(miss, right, False, False)
         for mark in (500, 1000, 1500):
             if points >= mark:
                 reached.setdefault(mark, day)
@@ -186,10 +203,10 @@ def test_pacing_matches_the_design() -> None:
     typical = runs(start="mingo", active=0.6, practice=3, mock_every=14, skill=0.45, improve=0.0015)
     casual = runs(start="mingo", active=0.3, practice=0, mock_every=10**6, skill=0.45, improve=0.0015)
     weak_td = runs(start="technical_director", active=0.6, practice=3, mock_every=14, skill=0.5, improve=0)
-    assert 15 <= _median_day(strong, 500) <= 35  # Jefe in about a month
-    assert 85 <= _median_day(strong, 1000) <= 130  # DT around the January registration quizzes
-    assert 220 <= _median_day(strong, 1500) <= 290  # the top in spring
-    assert 50 <= _median_day(typical, 500) <= 100 and _median_day(typical, 1500) == float("inf")
+    assert 20 <= _median_day(strong, 500) <= 45  # Jefe in about a month
+    assert 120 <= _median_day(strong, 1000) <= 185  # DT around the January and February registration quizzes
+    assert 280 <= _median_day(strong, 1500) <= 365  # the top, for the strongest, by the summer events
+    assert 60 <= _median_day(typical, 500) <= 120 and _median_day(typical, 1500) == float("inf")
     assert _median_day(casual, 1500) == float("inf")
     # A Technical Director who answers half right drops out of DT within a month: the rank is earned.
     assert statistics.median(t[30] for _, t in weak_td) < 1000

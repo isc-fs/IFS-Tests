@@ -28,11 +28,11 @@ test('the board lists everyone by rank and highlights you', async () => {
   const list = await screen.findByRole('list', { name: 'Everyone, this season' })
   const items = within(list).getAllByRole('listitem')
   expect(items.map((i) => i.textContent)).toEqual([
-    '1IIILeoMingo III · level 7 · Mechanical40 LP', // "III" is the emblem's numeral
-    '2IIIMartaYouMingo III · level 7 · Driverless30 LP',
-    '2IIIPauMingo III · level 7 · Mechanical30 LP',
+    '1IIILeoLevel 7 · MechanicalMingo III · 40 LP', // "III" is the emblem's numeral, hidden from screen readers
+    '2IIIMartaYouLevel 7 · DriverlessMingo III · 30 LP',
+    '2IIIPauLevel 7 · MechanicalMingo III · 30 LP',
   ])
-  expect(within(items[0]).getByRole('img', { name: 'Mingo III' })).toBeInTheDocument()
+  expect(items[0].querySelector('.emblem-mingo')).toHaveAttribute('aria-hidden', 'true')
   expect(items[1]).toHaveClass('me')
   expect(items[1]).toHaveAttribute('value', '2')
   expect(screen.getByText('3 people on this board.')).toBeInTheDocument()
@@ -102,7 +102,9 @@ test('an empty board says how to get on it', async () => {
 
 test('members who have not scored are told so under the board', async () => {
   renderApp('/leaderboard', api({ ...BOARD, rows: [row(1, 'Leo', 40)], me: null, players: 1 }))
-  expect(await screen.findByText("You haven't scored this season yet.")).toBeInTheDocument()
+  expect(
+    await screen.findByText('Answer a daily, practice or mock question to join the ranked board.'),
+  ).toBeInTheDocument()
   expect(screen.getByText('1 person on this board.')).toBeInTheDocument()
 })
 

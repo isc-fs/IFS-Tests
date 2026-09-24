@@ -104,7 +104,7 @@ phases:
       - name: feat/18-ranked-lp
         scope: A League-style rank with LP that goes up and down, and an account level from XP that only goes up (ADR 0007)
       - name: feat/19-launch
-        scope: Load test, restore drill, handover documentation, launch checklist
+        scope: Load test, restore drill, handover documentation, launch checklist; drop the old users.xp column (ADR 0007)
 
   - number: 6
     title: After launch

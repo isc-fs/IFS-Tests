@@ -9,10 +9,10 @@ test('a Department Head is placed at Jefe I, practises, and both the rank and th
     `Head ${Date.now().toString(36)}${info.project.name[0]}`,
     'Department Head: placed at Jefe I',
   )
-  const card = page.getByRole('region', { name: 'Jefe I' })
+  const card = page.getByRole('region', { name: 'Your rank: Jefe I' })
   await expect(card).toContainText('50 LP · 50 LP to Jefe II') // placed 50 LP into their division
   await expect(card).toContainText('Help: a hint per question.')
-  await expect(page.getByRole('region', { name: 'Level 1' })).toContainText('0 / 300 XP to level 2')
+  await expect(page.getByRole('region', { name: 'Your account: Level 1' })).toContainText('0 / 300 XP to level 2')
 
   await page.getByRole('link', { name: 'Practice' }).first().click()
   const question = page.getByRole('article')
@@ -29,8 +29,8 @@ test('a Department Head is placed at Jefe I, practises, and both the rank and th
     await question.getByRole('button', { name: 'Next question' }).click()
   }
   await page.goto('/')
-  await expect(page.getByRole('region', { name: /^(Mingo|Jefe) / })).toBeVisible()
-  await expect(page.getByRole('region', { name: /^Level \d+$/ })).not.toContainText('0 / 300 XP')
+  await expect(page.getByRole('region', { name: /^Your rank: (Mingo|Jefe) / })).toBeVisible()
+  await expect(page.getByRole('region', { name: /^Your account: Level \d+$/ })).not.toContainText('0 / 300 XP')
 
   await page.getByRole('link', { name: 'Your road to the top' }).click()
   const road = page.getByRole('region', { name: 'Your road to the top' })

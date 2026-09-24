@@ -287,34 +287,64 @@ def test_the_combo_grows_with_right_answers_and_a_wrong_one_resets_it(
     assert progress(c)["account"]["first_wins_left"] == 3
 
 
+def daily(c: TestClient, db: Session, area: str, body: str) -> dict[str, Any]:
+    started = c.post(f"/api/daily/{area}/start").json()
+    qid = started["question"]["id"]
+    answer = {"right": right_answer(db, qid), "wrong": _wrong(started), "unsure": {"unsure": True}}[body]
+    r = c.post(f"/api/daily/attempts/{started['attempt_id']}/answer", json=answer)
+    assert r.status_code == 200, r.text
+    return {"qid": qid, **r.json()["feedback"]}
+
+
 def test_three_wrong_in_a_row_cushion_the_losses_until_a_comeback(
     signed_in: TestClient, new_client: NewClient, db: Session, bank: dict[int, int]
 ) -> None:
     c = new_client()
-    join(signed_in, c, "Leo", "member")
-    points = 350.0
-    for i, f in enumerate((90001, 90003, 90008)):
-        r = practise(c, bank[f], wrong(db, bank[f]))
-        assert (r["lp"], r["cushioned"]) == (approx(lp(db, bank[f], False, points, miss_streak=i)), False)
-        points = r["rank_points"]
-    assert progress(c)["rank"]["miss_streak"] == 3
-    slip = practise(c, bank[90002], wrong(db, bank[90002]))
-    halved = lp(db, bank[90002], False, points, miss_streak=3)
-    assert halved == approx(lp(db, bank[90002], False, points) / 2, abs=0.02)
-    assert (slip["cushioned"], slip["lp"]) == (True, approx(halved))
-    points = slip["rank_points"]
-    unsure = practise(c, bank[90004], {"unsure": True})  # a pass leaves the bad run as it is
-    halved = lp(db, bank[90004], False, points, passed=True, miss_streak=4)
-    assert (unsure["cushioned"], unsure["lp"]) == (True, approx(halved))
-    assert progress(c)["rank"]["miss_streak"] == 4
-    points = unsure["rank_points"]
-    back = practise(c, bank[90011], right_answer(db, bank[90011]))
-    boosted = lp(db, bank[90011], True, points, miss_streak=4)
-    assert boosted == approx(lp(db, bank[90011], True, points) * 1.5, abs=0.02)
+    leo = join(signed_in, c, "Leo", "member")
+    set_rank(db, leo["id"], 350.0, miss_streak=2)
+    slip = practise(c, bank[90001], wrong(db, bank[90001]))
+    assert (slip["cushioned"], progress(c)["rank"]["miss_streak"]) == (
+        False,
+        2,
+    )  # practice misses don't count
+    third = daily(c, db, "mech", "wrong")
+    assert (third["cushioned"], progress(c)["rank"]["miss_streak"]) == (False, 3)
+    points = third["rank_points"]
+    fourth = daily(c, db, "elec", "wrong")
+    halved = lp(db, fourth["qid"], False, points, "daily", miss_streak=3)
+    assert halved == approx(lp(db, fourth["qid"], False, points, "daily") / 2, abs=0.02)
+    assert (fourth["cushioned"], fourth["lp"]) == (True, approx(halved))
+    points = fourth["rank_points"]
+    back = daily(c, db, "rules", "right")
+    boosted = lp(db, back["qid"], True, points, "daily", miss_streak=4)
+    assert boosted == approx(lp(db, back["qid"], True, points, "daily") * 1.5, abs=0.02)
     assert (back["comeback"], back["cushioned"], back["lp"]) == (True, False, approx(boosted))
     assert progress(c)["rank"]["miss_streak"] == 0
-    again = practise(c, bank[90006], right_answer(db, bank[90006]))
-    assert again["comeback"] is False
+
+
+def test_a_pass_leaves_the_bad_run_as_it_is(
+    signed_in: TestClient, new_client: NewClient, db: Session, bank: dict[int, int]
+) -> None:
+    c = new_client()
+    leo = join(signed_in, c, "Leo", "member")
+    set_rank(db, leo["id"], 350.0, miss_streak=3)
+    unsure = daily(c, db, "mech", "unsure")
+    halved = lp(db, unsure["qid"], False, 350.0, "daily", passed=True, miss_streak=3)
+    assert (unsure["cushioned"], unsure["lp"]) == (True, approx(halved))
+    assert progress(c)["rank"]["miss_streak"] == 3
+
+
+def test_the_bad_run_counter_is_capped(
+    signed_in: TestClient, new_client: NewClient, db: Session, bank: dict[int, int]
+) -> None:
+    c = new_client()
+    leo = join(signed_in, c, "Leo", "member")
+    set_rank(db, leo["id"], 350.0, miss_streak=99, combo=99)
+    daily(c, db, "mech", "wrong")
+    daily(c, db, "elec", "right")
+    daily(c, db, "rules", "wrong")
+    rank = progress(c)
+    assert (rank["rank"]["miss_streak"], rank["account"]["combo"]) == (1, 0)
 
 
 def test_im_not_sure_costs_half_a_wrong_answer_and_shows_the_answer(
@@ -332,8 +362,8 @@ def test_im_not_sure_costs_half_a_wrong_answer_and_shows_the_answer(
     a = db.scalars(select(Attempt)).one()
     assert (a.passed, a.correct, a.answer["unsure"]) == (True, False, True) and a.lp == approx(cost)
     next_madrid_day(c, clock)
-    again = practise(c, qid, right_answer(db, qid))  # seen already: a repeat
-    assert again["lp"] == approx(lp(db, qid, True, 1050 + cost, repeat=True))
+    again = practise(c, qid, right_answer(db, qid))  # seen already: practice moves no LP on repeats
+    assert (again["lp"], again["xp"]) == (0, earned(True, repeat=True, first_win=True))
 
 
 def test_im_not_sure_does_nothing_to_the_rank_for_an_ungraded_question(
@@ -345,7 +375,7 @@ def test_im_not_sure_does_nothing_to_the_rank_for_an_ungraded_question(
     assert (r["correct"], r["passed"], r["lp"], r["xp"]) == (None, False, 0, earned(None))
 
 
-def test_practice_pays_nothing_again_the_same_day_and_a_quarter_the_next(
+def test_practice_pays_nothing_again_the_same_day_and_no_lp_on_a_question_seen_before(
     signed_in: TestClient, new_client: NewClient, db: Session, clock: Clock, bank: dict[int, int]
 ) -> None:
     c = new_client()
@@ -360,11 +390,10 @@ def test_practice_pays_nothing_again_the_same_day_and_a_quarter_the_next(
     points = first["rank_points"]
     next_madrid_day(c, clock)
     later = practise(c, qid, right)
-    repeat = lp(db, qid, True, points, repeat=True)
-    assert repeat == approx(lp(db, qid, True, points) / 4, abs=0.02)
-    assert (later["lp"], later["xp"]) == (
-        approx(repeat),
+    assert (later["lp"], later["xp"], later["rank_points"]) == (
+        0,  # grinding known questions doesn't climb
         earned(True, repeat=True, first_win=True, combo=1),
+        points,
     )
     assert c.get("/api/me").json()["xp"] == first["xp"] + later["xp"]
 
@@ -494,12 +523,13 @@ def test_a_question_seen_before_pays_a_quarter_as_the_daily(
 
 
 def test_a_question_seen_before_pays_a_quarter_in_a_mock_quiz(
-    signed_in: TestClient, new_client: NewClient, db: Session, bank: dict[int, int]
+    signed_in: TestClient, new_client: NewClient, db: Session, bank: dict[int, int], clock: Clock
 ) -> None:
     c = new_client()
     join(signed_in, c, "Ana")
     seen = bank[90001]  # the first question of quiz 9002
     points = practise(c, seen, right_answer(db, seen))["rank_points"]
+    next_madrid_day(c, clock)  # seen earlier in the season, not today
     state = c.post("/api/mock/quizzes/9002/start").json()
     assert state["current"]["question"]["id"] == seen
     state = finish_mock(c, db, state)
@@ -633,7 +663,10 @@ def test_im_not_sure_in_the_daily_keeps_the_streak_but_not_after_the_clock(
     clock.now = datetime.fromisoformat(late["deadline_at"]) + timedelta(seconds=10)
     r = c.post(f"/api/daily/attempts/{late['attempt_id']}/answer", json={"unsure": True}).json()
     full = lp(db, late["question"]["id"], False, 1050 + cost, "daily", late=True)
-    assert (r["xp"], r["lp"]) == (earned(False, "daily", late=True), approx(full))  # a full wrong answer
+    assert (r["xp"], r["lp"]) == (
+        earned(None, "daily"),
+        approx(full),
+    )  # a full wrong answer's LP, a pass's XP
 
 
 def test_im_not_sure_in_a_mock_quiz_moves_on_at_half_a_wrong_answer(
@@ -909,3 +942,86 @@ def test_a_freeze_is_earned_every_seven_days_and_saves_a_missed_one(
     login(c, "ana@alu.comillas.edu", PASSWORD)
     account = progress(c)["account"]
     assert (account["streak"], account["streak_freezes"]) == (8, 0)
+
+
+def test_an_abandoned_mock_question_is_charged_by_the_nightly_job_once(
+    signed_in: TestClient, new_client: NewClient, db: Session, bank: dict[int, int], clock: Clock
+) -> None:
+    c = new_client()
+    toni = join(signed_in, c, "Toni", "technical_director")
+    state = c.post("/api/mock/quizzes/9002/start").json()
+    qid = state["current"]["question"]["id"]
+    clock.advance(days=2)
+    closed = maintenance.run(db, clock.now)["mock_questions_closed"]
+    assert closed == 1 and maintenance.run(db, clock.now)["mock_questions_closed"] == 0
+    a = db.scalars(select(Attempt).where(Attempt.user_id == toni["id"], Attempt.question_id == qid)).one()
+    assert (a.late, a.xp) == (True, 0) and a.lp < 0
+    assert db.get_one(User, toni["id"]).rank_points == approx(1050 + a.lp)
+
+
+def test_rested_xp_survives_a_daily_started_and_abandoned(
+    signed_in: TestClient, new_client: NewClient, db: Session, bank: dict[int, int], clock: Clock
+) -> None:
+    c = new_client()
+    join(signed_in, c, "Ana")
+    practise(c, bank[90001], right_answer(db, bank[90001]))
+    clock.advance(days=3)
+    login(c, "ana@alu.comillas.edu", PASSWORD)
+    c.post("/api/daily/mech/start")  # opened, never answered: not playing
+    clock.advance(days=1)
+    maintenance.run(db, clock.now)
+    login(c, "ana@alu.comillas.edu", PASSWORD)
+    assert progress(c)["account"]["rested_xp"] == 450  # three full days away, capped
+
+
+def test_practice_wins_at_most_its_daily_cap_of_lp(
+    signed_in: TestClient, new_client: NewClient, db: Session, bank: dict[int, int]
+) -> None:
+    c = new_client()
+    ana = join(signed_in, c, "Ana")
+    db.execute(update(Attempt).values(lp=0))
+    db.add(
+        Attempt(
+            user_id=ana["id"],
+            question_id=bank[90011],
+            mode="practice",
+            answer={},
+            correct=True,
+            lp=rank_rules.PRACTICE_CAP - 0.5,
+            created_at=datetime.now(UTC).replace(year=2026, month=10, day=1, hour=9),
+        )
+    )
+    db.commit()
+    r = practise(c, bank[90001], right_answer(db, bank[90001]))
+    assert r["lp"] == approx(0.5)  # only what the cap had left
+
+
+def test_a_night_the_job_missed_is_caught_up(
+    signed_in: TestClient, new_client: NewClient, db: Session, bank: dict[int, int], clock: Clock
+) -> None:
+    c = new_client()
+    ana = join(signed_in, c, "Ana")
+    first = daily_rules.madrid_day(clock.now)
+    for i in (0, 1, 2, 4):  # day 4 (i = 3) missed
+        db.add(
+            Attempt(
+                user_id=ana["id"],
+                question_id=bank[90001],
+                mode="daily",
+                answer={},
+                correct=True,
+                day=first + timedelta(days=i),
+                area="rules",
+                created_at=clock.now + timedelta(days=i),
+                submitted_at=clock.now + timedelta(days=i),
+                late=False,
+            )
+        )
+    db.execute(update(User).where(User.id == ana["id"]).values(streak_freezes=1))
+    db.commit()
+    # The job doesn't run the night after the missed day; the next night still saves it.
+    night = board_rules.madrid_midnight(first + timedelta(days=5)) + timedelta(hours=3)
+    assert maintenance.run(db, night)["freezes_used"] == 1
+    clock.now = night + timedelta(hours=7)
+    login(c, "ana@alu.comillas.edu", PASSWORD)
+    assert progress(c)["account"]["streak"] == 5  # four played and the saved day

@@ -61,7 +61,8 @@ export default function Home() {
         </p>
       </section>
       <p className="home-board">
-        Right answers climb your rank; every answer levels up your account.{' '}
+        Your rank shows how well you answer: right answers win LP (league points), wrong ones lose them. Your level
+        shows how much you play: every answer adds XP, and XP never goes down.{' '}
         <Link to="/leaderboard">See the leaderboard</Link>
       </p>
     </Page>
