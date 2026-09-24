@@ -463,6 +463,9 @@ button.danger:hover {
   font-family: var(--isc-font-mono);
   white-space: pre-line;
 }
+.quiz-notes li {
+  white-space: pre-line;
+}
 .chips {
   list-style: none;
   margin: 0;

@@ -158,15 +158,18 @@ The rulebooks, handbooks and other documents a quiz was based on. Linked, never 
 | `graded` | Answers can be scored automatically; daily questions, mock quizzes and live quizzes use graded ones only |
 | `playable` | Served to players: `NOT images_missing AND NOT excluded` |
 | `images_missing` | An image referenced by the question isn't in the media directory yet |
-| `excluded`, `exclusion_note` | Hidden by a reviewer, and why |
+| `excluded`, `exclusion_note` | Hidden, and why: by a reviewer, or by the import when FS-Quiz says it removed the question (the note then starts with "FS-Quiz") |
 | `labels_reviewed` | A reviewer confirmed area and topic; re-imports keep them |
 | `source_hash` | SHA-256 of the FS-Quiz content (type, text, time, answers, images, solutions); an unchanged hash skips the question on re-import |
 | `key_changed_at` | Set when a re-import changed the official answer, dropped a correction or touched a hidden question: the reviewers' "changed" queue |
+| `upstream_note` | FS-Quiz's sentence saying the question was removed from its quiz, as last seen on import (`domain/upstream.py`). A new note hides the question once; the same note on later imports doesn't hide it again |
 | `created_at`, `updated_at` | |
 
 ### `answer_options`
 
-The choices of a choice question: `question_id` (→ `questions`, `ON DELETE CASCADE`, indexed), `position`, `text`. Which options are correct is **not** here.
+The choices of a choice question: `question_id` (→ `questions`, `ON DELETE CASCADE`, indexed), `position`, `text`, `fsquiz_id` (FS-Quiz's answer ID; null only for rows loaded before migration 0017, until the next `push` fills it) and `retired`. Which options are correct is **not** here.
+
+An option's `id` is stable: `attempts.answer`, `live_answers.answer` and choice keys point at it. A re-import updates options in place, matched by `fsquiz_id` (or by text for rows without one), and never deletes them: an option FS-Quiz removed becomes `retired`, which players are never offered again but which still shows in the answers that picked it.
 
 ### `answer_keys`
 
@@ -174,7 +177,7 @@ One row per question (`question_id` is the primary key, → `questions`, `ON DEL
 
 | Column | Meaning |
 |---|---|
-| `key` | FS-Quiz's answer parsed by `domain/keys.py`: `{"kind": "choice", "mode": "one"\|"all", "options": [option ids]}`, `{"kind": "number"\|"numbers"\|"range"\|"text", "accept": [...]}`, `{"kind": "self"}`, or null when there is no official answer |
+| `key` | FS-Quiz's answer parsed by `domain/keys.py`: `{"kind": "choice", "mode": "one"\|"all", "options": [option ids]}`, `{"kind": "number"\|"numbers"\|"range"\|"text", "accept": [...]}` (any accepted alternative counts), `{"kind": "self"}` (shown, not graded; also a choice question with a single option), or null when there is no official answer. Re-parsed on every import, so a parser fix reaches questions FS-Quiz didn't change |
 | `display` | The official answer as text, shown after answering |
 | `override`, `override_display` | A reviewer's correction in the same format; used instead of `key` (`AnswerKey.effective`); dropped when FS-Quiz changes the question |
 
@@ -371,6 +374,7 @@ Retention: alumni and disabled accounts are deleted 365 days after `left_at`; th
 | 0014 | Ranked LP (ADR 0007): `attempts.lp`; `users.rank_points`, `rank_season`, `rank_best`, `combo`, `miss_streak`, `account_xp`. Places everyone by position, raises single-choice difficulty by one, fills `account_xp` from positive attempt XP. Expand only: `users.xp` stays |
 | 0015 | Rested XP and streak freezes: `streak_freezes` table; `users.rested_xp`, `rested_on`, `streak_freezes`, `freeze_earned_on` |
 | 0016 | The function `purge_audit_log(before)` for the nightly audit purge, executable by `app_rt` ([`audit_log`](#audit_log)) |
+| 0017 | Stable options: `answer_options.fsquiz_id` and `retired`; `questions.upstream_note`. Expand only: the previous release ignores the new columns, and the next `ifs-tests push` fills `fsquiz_id` |
 | 0018 | `live_tables.proposals`, a counter per table so a proposal wakes only that table's screens. Expand only |
 
 ### Expand/contract

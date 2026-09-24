@@ -291,6 +291,8 @@ class Question(Base):
     labels_reviewed: Mapped[bool] = mapped_column(server_default="false")
     source_hash: Mapped[str] = mapped_column(String(64))
     key_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # FS-Quiz's own note that the question was removed from its quiz, as last seen on import.
+    upstream_note: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -304,6 +306,10 @@ class AnswerOption(Base):
     question_id: Mapped[int] = mapped_column(ForeignKey("questions.id", ondelete="CASCADE"), index=True)
     position: Mapped[int]
     text: Mapped[str] = mapped_column(Text)
+    # FS-Quiz's answer ID: re-imports update the option in place, so stored answers keep pointing at it.
+    fsquiz_id: Mapped[int | None]
+    # Gone upstream: never offered again, kept for the answers that picked it.
+    retired: Mapped[bool] = mapped_column(server_default="false")
 
 
 class AnswerKey(Base):

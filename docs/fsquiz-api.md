@@ -29,10 +29,13 @@ Event ──< Quiz >──< Question ──< Answer
                       └─── LastQualifier (score / time of the last team that got a slot)
 ```
 
-- A **quiz** is one registration quiz: event(s), year, class (`ev`, `cv`, `dv`), date, status, free-text `information` (e.g. "Question 1 has been removed").
+- A **quiz** is one registration quiz: event(s), year, class (`ev`, `cv`, `dv`), date, status, free-text `information`. The notes say things like "Retake quiz", "commas are used instead of dots for decimal places" and, for 19 quizzes, which questions were removed after the quiz was held: "Questions 3, 5 and 12 were later removed". The number is the question's `position_index` in that quiz (not its place in the list: quiz 53 has no position 13). Some removed questions also say so in their solution ("Question has been removed from the quiz"). The import hides those questions until a reviewer looks at them (`domain/upstream.py`); on the 2026-09-22 mirror that is 20 questions, among them 723 and 724, since quizzes 76 and 81 carry the same note on different questions.
 - A quiz can belong to several events (FSCH + FSPT, FSA + FSF share quizzes).
 - A **question** can appear in several quizzes (381 of 1,072 do). `position_index` is its order inside each quiz.
 - Question `type`: `single-choice`, `multi-choice`, `input` (exact value in the single correct answer), `input-range` (correct answer text is `"lo-hi"`, e.g. `"11.7-12.1"`) and the undocumented `drag_sort`.
+- An **answer** has an `answer_id`, unique across the bank, which we keep on each option (`answer_options.fsquiz_id`) so a reload updates options in place instead of renumbering them.
+- Typed answers write several values with a comma and a space (`"560, 30"`, `"580000, 129"`) and decimals with a point or a bare comma (`"388,8"`); no answer on the 2026-09-22 mirror uses a comma and a space as a decimal comma. A pair can also mean "either value" (question 635: `"118, 122"`, where the solution says 122 was also accepted); a reviewer corrects those to `118 or 122`.
+- Four single-choice questions have one option only, always right: 623 and 625 (uploads FS-Quiz can't take), 861 (a written explanation) and 887 (a range stored as the only option). They aren't graded.
 - `time` is the time budget for that question in seconds, as set in the real quiz. `0`/`null` means unknown.
 - **There is no topic or category field.** Splitting questions between mechanical and electrical is our job (see `ifs_tests/topics.py`).
 
@@ -86,7 +89,7 @@ The cheapest complete mirror is:
 4. Optional: page `GET /question` (~43 calls) to find questions that are in no published quiz (9 today), then `GET /question/{id}` for those.
 5. Optional: images from `img.fs-quiz.eu` (375 files).
 
-That is ~130 calls for everything, versus ~1,100 if you went question by question. Raw responses are cached, so re-running only fetches quizzes that are new; `--refresh` fetches steps 1–3 again (images stay cached), which is the only way to pick up changes to quizzes already mirrored, new document editions and new last-qualifier results. The server's `deploy/refresh-bank.sh` always passes `--refresh`, so run it once a season, after the January–February quizzes are published.
+That is ~130 calls for everything, versus ~1,100 if you went question by question. Raw responses are cached, so re-running only fetches quizzes that are new; `--refresh` fetches steps 1–3 again (images stay cached), which is the only way to pick up changes to quizzes already mirrored, new document editions and new last-qualifier results. The server's `deploy/refresh-bank.sh` always passes `--refresh` (unless told `--no-mirror`, which only loads the mirror already there), so run it once a season, after the January–February quizzes are published.
 
 ```bash
 uv sync

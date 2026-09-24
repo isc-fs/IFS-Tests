@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
@@ -148,11 +149,17 @@ def _value_count(key: dict[str, Any] | None) -> int | None:
     return counts.pop() if len(counts) == 1 else None
 
 
-def show(db: DB, questions: list[Question]) -> list[Shown]:
+def show(db: DB, questions: list[Question], picked: Iterable[int] = ()) -> list[Shown]:
+    """`picked`: option IDs a player already chose, shown even if FS-Quiz has since removed them."""
     ids = [q.id for q in questions]
     options: dict[int, list[AnswerOption]] = defaultdict(list)
     for o in db.scalars(
-        select(AnswerOption).where(AnswerOption.question_id.in_(ids)).order_by(AnswerOption.position)
+        select(AnswerOption)
+        .where(
+            AnswerOption.question_id.in_(ids),
+            AnswerOption.retired.is_(False) | AnswerOption.id.in_(list(picked)),
+        )
+        .order_by(AnswerOption.position, AnswerOption.id)
     ):
         options[o.question_id].append(o)
     found = db.scalars(select(AnswerKey).where(AnswerKey.question_id.in_(ids)))
@@ -171,16 +178,11 @@ def playable(db: DB, question_id: int) -> Question:
     return q
 
 
-def check(db: DB, q: Question, options: list[int] | None, value: str | None, unsure: bool = False) -> Checked:
-    """Grade an answer and return everything needed to explain it. Never call before the player answered.
-    `unsure` is "I'm not sure": no answer, marked not right, the official answer shown."""
-    choices = db.scalars(select(AnswerOption.id).where(AnswerOption.question_id == q.id)).all()
-    if options and not set(options) <= set(choices):
-        raise UserError("Pick one of the listed answers.")
+def explain(db: DB, q: Question, correct: bool | None, passed: bool = False) -> Checked:
+    """The official answer and solutions around a result. Past results come from the stored attempt and go
+    straight here: they are never graded again, so a later bank reload or correction can't change them."""
     key = db.get(AnswerKey, q.id)
     k = key.effective if key else None
-    passed = unsure and q.graded
-    correct = (False if passed else grade(k, options=options, value=value)) if q.graded else None
     solutions = db.scalars(select(Solution).where(Solution.question_id == q.id).order_by(Solution.id)).all()
     return Checked(
         correct=correct,
@@ -189,6 +191,20 @@ def check(db: DB, q: Question, options: list[int] | None, value: str | None, uns
         solutions=[(s.text, list(s.images)) for s in solutions],
         passed=passed,
     )
+
+
+def check(db: DB, q: Question, options: list[int] | None, value: str | None, unsure: bool = False) -> Checked:
+    """Grade a new answer and return everything needed to explain it. Never call before the player answered.
+    `unsure` is "I'm not sure": no answer, marked not right, the official answer shown. An option FS-Quiz
+    removed while the question was on screen is still accepted (and graded against the current key)."""
+    choices = db.scalars(select(AnswerOption.id).where(AnswerOption.question_id == q.id)).all()
+    if options and not set(options) <= set(choices):
+        raise UserError("Pick one of the listed answers.")
+    key = db.get(AnswerKey, q.id)
+    k = key.effective if key else None
+    passed = unsure and q.graded
+    correct = (False if passed else grade(k, options=options, value=value)) if q.graded else None
+    return explain(db, q, correct, passed)
 
 
 def running(db: DB, user_id: int, now: datetime, *, daily: bool = True) -> set[int]:

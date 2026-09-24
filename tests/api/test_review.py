@@ -302,3 +302,44 @@ def test_a_hidden_question_changed_upstream_comes_back_to_the_queue(
     next(q for q in changed["questions"] if q["question_id"] == 90001)["text"] += " (fixed upstream)"
     import_bank(db, changed, SAMPLE_DIR / "img", tmp_path, clock.now)
     assert [r["id"] for r in page(reviewer, queue="changed")["rows"]] == [bank[90001]]
+
+
+def test_fsquiz_removals_land_in_hidden_with_the_quiz_note(
+    reviewer: TestClient, db: Session, clock: Clock, tmp_path: Path, bank: dict[int, int]
+) -> None:
+    changed = copy.deepcopy(load_bank(SAMPLE_DIR))
+    changed["quizzes"][1]["information"] = "Question 2 was later deleted because the answer was wrong"
+    report = import_bank(db, changed, SAMPLE_DIR / "img", tmp_path, clock.now)
+    assert report.hidden == 1
+    qid = bank[90002]
+    assert [r["id"] for r in page(reviewer, queue="excluded")["rows"]] == [qid]
+    d = reviewer.get(f"/api/review/questions/{qid}").json()
+    assert d["exclusion_note"] == "FS-Quiz: Question 2 was later deleted because the answer was wrong"
+    assert d["quiz_notes"] == ["FS Demo 2025 CV: Question 2 was later deleted because the answer was wrong"]
+    assert reviewer.patch(f"/api/review/questions/{qid}", json={"excluded": False}).json()["playable"]
+    assert import_bank(db, changed, SAMPLE_DIR / "img", tmp_path, clock.now).hidden == 0
+
+
+def test_a_choice_question_with_one_option_cannot_be_corrected_into_grading(
+    reviewer: TestClient, db: Session, clock: Clock, tmp_path: Path, bank: dict[int, int]
+) -> None:
+    changed = copy.deepcopy(load_bank(SAMPLE_DIR))
+    lone = next(q for q in changed["questions"] if q["question_id"] == 90011)
+    lone["answers"] = lone["answers"][:1]
+    import_bank(db, changed, SAMPLE_DIR / "img", tmp_path, clock.now)
+    qid = bank[90011]
+    d = reviewer.get(f"/api/review/questions/{qid}").json()
+    assert not d["graded"] and [o["text"] for o in d["options"]] == ["AS Emergency"]
+    assert qid in [r["id"] for r in page(reviewer, queue="ungraded")["rows"]]
+    r = reviewer.put(f"/api/review/questions/{qid}/answer", json={"options": [d["options"][0]["id"]]})
+    assert r.status_code == 409
+
+
+def test_a_correction_can_accept_either_of_two_values(
+    reviewer: TestClient, player: TestClient, bank: dict[int, int]
+) -> None:
+    qid = bank[90012]
+    fixed = reviewer.put(f"/api/review/questions/{qid}/answer", json={"value": "2778 or 2800"}).json()
+    assert (fixed["answer_kind"], fixed["correction"]) == ("number", "2778 or 2800")
+    ok = player.post(f"/api/practice/questions/{qid}/answer", json={"value": "2800"}).json()
+    assert ok["correct"] is True

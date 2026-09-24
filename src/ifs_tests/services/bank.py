@@ -1,11 +1,13 @@
 """Load the mirrored FS-Quiz bank (bank.json) into the database. Safe to run again: unchanged questions are
-skipped, changed ones are updated, and a changed official answer is flagged for review."""
+skipped, changed ones are updated in place (options keep their IDs, so answers already given stay valid), a
+changed official answer is flagged for review, and questions FS-Quiz says it removed are hidden."""
 
 from __future__ import annotations
 
 import hashlib
 import json
 import logging
+from collections import defaultdict
 from dataclasses import asdict, dataclass
 from datetime import date, datetime
 from pathlib import Path
@@ -32,7 +34,7 @@ from ..db.models import (
     quiz_documents,
     quiz_events,
 )
-from ..domain import keys
+from ..domain import keys, upstream
 from ..domain import xp as xp_rules
 
 log = logging.getLogger(__name__)
@@ -47,6 +49,8 @@ class ImportReport:
     key_changed: int = 0
     ungraded: int = 0
     missing_images: int = 0
+    rekeyed: int = 0
+    hidden: int = 0
 
 
 def source_hash(q: dict[str, Any]) -> str:
@@ -119,7 +123,55 @@ def _write_solutions(db: DB, q: Question, raw: dict[str, Any], media: _Media) ->
         db.add(Solution(question_id=q.id, text=sol["text"], images=pictures))
 
 
-def _write_question(db: DB, q: Question, raw: dict[str, Any], media: _Media, now: datetime) -> bool:
+def _sync_options(db: DB, q: Question, raw: dict[str, Any], current: list[AnswerOption]) -> list[int] | None:
+    """Update a choice question's options in place, matched by FS-Quiz's answer ID (or by text, for rows from
+    before the ID was kept), so answers already given keep pointing at them. Options gone upstream are
+    retired, not deleted. Returns our IDs in FS-Quiz's order."""
+    answers = raw["answers"] if raw["type"] in CHOICE else []
+    wanted = {a["answer_id"] for a in answers}
+    by_id = {o.fsquiz_id: o for o in current if o.fsquiz_id in wanted}
+    spare = [o for o in current if o.fsquiz_id not in wanted]
+    kept = []
+    for i, a in enumerate(answers):
+        text = keys.clean(a["text"] or "")
+        o = by_id.get(a["answer_id"]) or next((s for s in spare if s.text == text), None)
+        if o is None:
+            o = AnswerOption(question_id=q.id)
+            db.add(o)
+        elif o in spare:
+            spare.remove(o)
+        o.fsquiz_id, o.position, o.text, o.retired = a["answer_id"], i, text, False
+        kept.append(o)
+    for o in spare:
+        o.retired = True
+    db.flush()
+    return [o.id for o in kept] if raw["type"] in CHOICE else None
+
+
+def _serve_key(q: Question, key: AnswerKey) -> None:
+    q.graded = key.effective is not None and key.effective["kind"] != "self"
+    q.answer_kind = keys.answer_kind(q.type, key.effective)
+
+
+def _rekey(db: DB, q: Question, raw: dict[str, Any], current: list[AnswerOption], key: AnswerKey) -> bool:
+    """Same FS-Quiz content: read its answer again, in case a newer release parses it differently."""
+    parsed = keys.build_key(raw["type"], raw["answers"], _sync_options(db, q, raw, current))
+    if key.key == parsed:
+        return False
+    key.key = parsed
+    _serve_key(q, key)
+    return True
+
+
+def _write_question(
+    db: DB,
+    q: Question,
+    raw: dict[str, Any],
+    media: _Media,
+    now: datetime,
+    current: list[AnswerOption],
+    previous: AnswerKey | None,
+) -> bool:
     """Bring a question up to date with `raw`. Returns whether it needs a reviewer's eyes again:
     its official answer changed, or a reviewer's override had to be dropped because the question changed."""
     images = [media(p) for p in raw["images"]]
@@ -128,8 +180,9 @@ def _write_question(db: DB, q: Question, raw: dict[str, Any], media: _Media, now
     q.playable = not q.images_missing and not q.excluded
     q.updated_at = now
     fresh = q.id is None
-    if not fresh and q.source_hash == source_hash(raw):
+    if not fresh and previous is not None and q.source_hash == source_hash(raw):
         # Same content (only images or media were missing): keep options, keys and overrides as they are.
+        _rekey(db, q, raw, current, previous)
         _write_solutions(db, q, raw, media)
         return False
 
@@ -143,35 +196,34 @@ def _write_question(db: DB, q: Question, raw: dict[str, Any], media: _Media, now
     if fresh:
         db.add(q)
         db.flush()
-    else:
-        db.execute(delete(AnswerOption).where(AnswerOption.question_id == q.id))
-
-    option_ids = None
-    if raw["type"] in CHOICE:
-        options = [
-            AnswerOption(question_id=q.id, position=i, text=keys.clean(a["text"] or ""))
-            for i, a in enumerate(raw["answers"])
-        ]
-        db.add_all(options)
-        db.flush()
-        option_ids = [o.id for o in options]
-    key = keys.build_key(raw["type"], raw["answers"], option_ids)
+    key = keys.build_key(raw["type"], raw["answers"], _sync_options(db, q, raw, current))
     shown = keys.display(raw["type"], raw["answers"])
-    q.graded = key is not None and key["kind"] != "self"
 
-    previous = db.get(AnswerKey, q.id)
     changed = False
     if previous is None:
-        db.add(AnswerKey(question_id=q.id, key=key, display=shown))
+        previous = AnswerKey(question_id=q.id, key=key, display=shown)
+        db.add(previous)
     else:
         # A hidden question that changed upstream may have been fixed: ask a reviewer to look again.
         changed = previous.display != shown or previous.override is not None or q.excluded
         previous.key, previous.display = key, shown
         previous.override = previous.override_display = None
+    _serve_key(q, previous)
     if changed:
         q.key_changed_at = now
     _write_solutions(db, q, raw, media)
     return changed
+
+
+def _hide_removed(q: Question, note: str | None) -> bool:
+    """Hide a question FS-Quiz says it removed from its quiz, the first time the note appears: a reviewer who
+    shows it again isn't overruled by the next import."""
+    new = note is not None and note != q.upstream_note
+    q.upstream_note = note
+    if not new or q.excluded:
+        return False
+    q.excluded, q.exclusion_note, q.playable = True, (note or "")[:200], False
+    return True
 
 
 def _all_in(media_dir: Path, names: list[str]) -> bool:
@@ -183,10 +235,15 @@ def import_bank(
 ) -> ImportReport:
     report = ImportReport()
     media = _Media(image_dir, media_dir)
+    removed = upstream.notes(bank)
     _upsert_events_and_quizzes(db, bank)
     # Locked, so a reviewer hiding or relabelling a question mid-import isn't undone by stale values.
     locked = db.scalars(select(Question).where(Question.fsquiz_id.is_not(None)).with_for_update())
     existing = {q.fsquiz_id: q for q in locked}
+    answer_keys = {k.question_id: k for k in db.scalars(select(AnswerKey))}
+    options: dict[int, list[AnswerOption]] = defaultdict(list)
+    for o in db.scalars(select(AnswerOption).order_by(AnswerOption.position, AnswerOption.id)):
+        options[o.question_id].append(o)
     # Media files can be lost independently of the database (a restore on a new server): rewrite those.
     lost_solution_media = {
         qid
@@ -204,13 +261,18 @@ def import_bank(
             and q.id not in lost_solution_media
         ):
             report.unchanged += 1
-            continue
-        if q is None:
-            q = existing[raw["question_id"]] = Question(fsquiz_id=raw["question_id"])
-            report.added += 1
+            if _rekey(db, q, raw, options[q.id], answer_keys[q.id]):
+                q.updated_at = now
+                report.rekeyed += 1
         else:
-            report.updated += 1
-        report.key_changed += _write_question(db, q, raw, media, now)
+            if q is None:
+                q = existing[raw["question_id"]] = Question(fsquiz_id=raw["question_id"])
+                report.added += 1
+            else:
+                report.updated += 1
+            current = options[q.id] if q.id is not None else []
+            report.key_changed += _write_question(db, q, raw, media, now, current, answer_keys.get(q.id))
+        report.hidden += _hide_removed(q, removed.get(raw["question_id"]))
 
     ids = [q["quiz_id"] for q in bank["quizzes"]]
     db.execute(delete(QuizQuestion).where(QuizQuestion.quiz_id.in_(ids)))

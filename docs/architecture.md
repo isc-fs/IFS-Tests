@@ -96,6 +96,7 @@ Everything under `src/ifs_tests/` (empty `__init__.py` files left out).
 | **domain/** (pure) | |
 | `domain/accounts.py` | Session expiry, lockout, link validity, last-admin rule, email and display-name cleaning, name skeletons; retention periods |
 | `domain/keys.py` | Parsing FS-Quiz answers into gradable keys (choice, number, numbers, range, text, self) |
+| `domain/upstream.py` | Reading FS-Quiz's notes that a question was removed from its quiz (quiz `information`, solutions) |
 | `domain/grading.py` | Grading an answer against a key, with numeric tolerance |
 | `domain/hints.py` | Generating a hint from the key without giving the answer away |
 | `domain/daily.py` | Madrid day, daily pick, time budgets, lateness and grace, streaks and streak freezes |
@@ -108,7 +109,7 @@ Everything under `src/ifs_tests/` (empty `__init__.py` files left out).
 | `services/errors.py` | `UserError`: message, HTTP status and per-field messages |
 | `services/accounts.py` | Invites, registration, first admin, sign-in and lockout, password reset and change, profile, admin changes (under `ADMIN_LOCK`), audit helper |
 | `services/privacy.py` | Data export, account deletion, alumni, the nightly retention purge ([ADR 0006](adr/0006-personal-data.md)) |
-| `services/questions.py` | Questions as players see them (options, quiz labels, documents), `check` (grading an answer), and answer secrecy (`running`, `running_for`, `not_running`) |
+| `services/questions.py` | Questions as players see them (options, quiz labels, documents), `check` (grading a new answer), `explain` (the official answer around a stored result, never re-graded), and answer secrecy (`running`, `running_for`, `not_running`) |
 | `services/practice.py` | Practice areas, next question, one question by ID, answering |
 | `services/daily.py` | Choosing the day's questions (`ensure_daily`), start, answer, closing abandoned ones |
 | `services/mock.py` | Mock runs: start, advance, time-outs, answer, summary |
@@ -215,7 +216,7 @@ FS-Quiz answers are public on fs-quiz.eu, so the goal is narrower: the server ne
 | Place | What happens to a running question |
 |---|---|
 | Practice (`services/practice.py`, `services/hints.practice`) | Not offered as the next question; opening it by ID (`GET /api/practice/questions/{id}`), answering it or asking a hint is refused (409) |
-| Review tools (`services/review.detail`) | The reviewer sees the question with `answer_hidden: true` and no official answer or marked options |
+| Review tools (`services/review.detail`) | The reviewer sees the question with `answer_hidden: true` and no official answer, marked options or quiz notes |
 | Daily start (`services/daily.start`) | Refused if the day's question is still to come in the player's mock run or live quiz |
 | Mock summary (`services/mock._summary`) | The official answer and solution are blanked for questions still running elsewhere |
 | Live reveals (`services/live._score`, `api/routes/live.py`) | Blanked the same way, and the tables' answers are hidden |
@@ -236,9 +237,16 @@ flowchart LR
     RV["reviewers"] -->|"labels, exclusions, corrections"| DB
 ```
 
-- **Mirror** (`bank/mirror.py`, `bank/client.py`): one call lists every quiz, one call per quiz returns its questions; raw responses are cached so re-runs fetch only what is missing, unless `--refresh` re-fetches every quiz, the documents and the last qualifiers' results (images stay cached). `normalize.py` fixes the API's inconsistencies ([fsquiz-api.md](fsquiz-api.md)). Be polite: mirror only when new quizzes are published. On the server, `deploy/refresh-bank.sh <env>` runs `mirror --refresh --images` and `push` with the deployed image, once a season.
+- **Mirror** (`bank/mirror.py`, `bank/client.py`): one call lists every quiz, one call per quiz returns its questions; raw responses are cached so re-runs fetch only what is missing, unless `--refresh` re-fetches every quiz, the documents and the last qualifiers' results (images stay cached). `normalize.py` fixes the API's inconsistencies ([fsquiz-api.md](fsquiz-api.md)). Be polite: mirror only when new quizzes are published. On the server, `deploy/refresh-bank.sh <env>` runs `mirror --refresh --images` and `push` with the deployed image, once a season; `--no-mirror` runs only the `push`, for a release that changes how answers are read.
 - **Push** (`services/bank.import_bank`): upserts events, quizzes and documents, then each question. Answers are parsed into keys by `domain/keys.py`; area and topic come from `bank/topics.py` keyword tagging unless a reviewer has confirmed them (`labels_reviewed`). Images become WebP files of at most 150 KB (longest side at most 1600 px) named by content hash under `IFS_MEDIA_DIR`, served from `/media/` with a one-year immutable cache. The import writes a `bank.import` audit entry with its counts.
-- **Re-import rules.** A question is skipped when its content hash (type, text, time, answers, images, solutions) is unchanged and its images and solution images are all present. If only images were missing, they are filled in and options, keys and reviewer corrections stay. If the content changed: labels are re-tagged (unless reviewed), options and key are rewritten, any reviewer correction is dropped, difficulty goes back to its starting value, and `key_changed_at` is set when the official answer changed, a correction was dropped or the question was hidden, which puts it back in the reviewers' "changed" queue. A question missing an image is kept but not playable until the image arrives.
+- **Re-import rules.** A reload must never break what players already did: attempts store option IDs, and finished mock runs, daily reviews and live results are rebuilt from them.
+  - A question is skipped when its content hash (type, text, time, answers, images, solutions) is unchanged and its images and solution images are all present. Its answer is still parsed again and the key rewritten if a newer release reads it differently (`rekeyed` in the report); a reviewer's correction stays.
+  - If only images were missing, they are filled in and options, keys and reviewer corrections stay.
+  - If the content changed: labels are re-tagged (unless reviewed), the key is rewritten, any reviewer correction is dropped, difficulty goes back to its starting value, and `key_changed_at` is set when the official answer changed, a correction was dropped or the question was hidden, which puts it back in the reviewers' "changed" queue. A change to the text alone isn't flagged: it can't change what is graded.
+  - **Options are updated in place, never deleted.** They are matched to FS-Quiz's answers by answer ID (by text for rows loaded before the ID was kept), so their IDs survive a typo fix, a reordering or a new solution. An option FS-Quiz removed is kept as `retired`: never offered again, but still shown in the answers that picked it. A player who has the question open can still send the option on screen.
+  - **Stored results are never graded again.** Summaries and reviews take right/wrong from the attempt (`questions.explain`); only new answers go through `questions.check`, which validates the options.
+  - **Questions FS-Quiz removed** from a quiz after it was held (its quiz `information` says "Question 3 was later removed", or its solution says the question was removed; `domain/upstream.py`) are hidden, with FS-Quiz's sentence as the reason, the first time the note appears (`questions.upstream_note` remembers it). A reviewer who shows one again isn't overruled by the next reload.
+  - A question missing an image is kept but not playable until the image arrives.
 - **Difficulty** starts from the kind of answer and the real quiz's time budget (`domain/xp.difficulty`) and, once 20 people have answered, is pulled towards their success rate by the nightly job (`services/xp.recalibrate`). Only each person's first on-time answer counts; live answers are excluded.
 
 ## Environments

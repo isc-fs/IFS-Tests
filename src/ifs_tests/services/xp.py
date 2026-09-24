@@ -92,7 +92,8 @@ def last_seen(
 def _options(db: DB, question: Question) -> int:
     if question.answer_kind != "choice-one":
         return 0
-    return db.scalar(select(func.count()).where(AnswerOption.question_id == question.id)) or 0
+    offered = AnswerOption.question_id == question.id, AnswerOption.retired.is_(False)
+    return db.scalar(select(func.count()).where(*offered)) or 0
 
 
 def answered_today(
