@@ -337,6 +337,27 @@ test('the host cannot start with unsaved tables, and a failed settings save expl
   expect(await screen.findByText('Pick the quiz to replay.')).toBeInTheDocument()
 })
 
+test('seating by sub-department replaces the unsaved tables, so the host can start', async () => {
+  let seated = false
+  const { sent } = at(
+    '/live/ABC234',
+    HOST,
+    { ...base, role: 'host' },
+    {
+      'GET /api/live/sessions/ABC234': () => ({
+        body: seated ? { ...base, role: 'host', tables: [table] } : { ...base, role: 'host' },
+      }),
+      'POST /api/live/sessions/ABC234/tables/auto': () => ((seated = true), { status: 204 }),
+    },
+  )
+  await userEvent.click(await screen.findByRole('button', { name: 'Add a table' }))
+  expect(screen.getByRole('button', { name: 'Start (save the tables first)' })).toBeDisabled()
+  await userEvent.click(screen.getByRole('button', { name: 'Seat by sub-department' }))
+  expect(await screen.findByRole('button', { name: 'Start the quiz' })).toBeEnabled()
+  expect(screen.getByRole('button', { name: 'Tables saved' })).toBeDisabled()
+  expect(sent('POST /api/live/sessions/ABC234/tables/auto')).toHaveLength(1)
+})
+
 test('after the last question the host finishes, and ending early asks first', async () => {
   const { sent } = at(
     '/live/ABC234',

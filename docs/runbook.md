@@ -121,15 +121,8 @@ The bank lives in the database; images live in the `media` volume; the raw FS-Qu
 ```bash
 deploy/refresh-bank.sh staging     # then the same for prod
 ```
-It runs `ifs-tests mirror --images` then `ifs-tests push` with the deployed image. The mirror fetches only what the volume doesn't have yet (about 130 requests the first time plus one per image, one request per second): **new quizzes and missing images**. It does not re-fetch quizzes already mirrored, the document list (rulebooks and handbooks) or the last qualifiers' results. The push is safe to repeat: unchanged questions are skipped, and a question whose official answer changed upstream is flagged under Admin → Question bank and in the Review "Changed upstream" queue. Images FS-Quiz can't serve are skipped; questions that need a missing image stay hidden until it arrives. The mirror needs outbound HTTPS from the api container (through the `proxy` network).
+It runs `ifs-tests mirror --refresh --images` then `ifs-tests push` with the deployed image. The mirror re-fetches every quiz, the document list (rulebooks and handbooks) and the last qualifiers' results, so corrected questions, new editions and new results arrive, not just new quizzes: about 125 requests, one per second. Images already in the volume are kept; only missing ones are fetched. The push is safe to repeat: unchanged questions are skipped, and a question whose official answer changed upstream is flagged under Admin → Question bank and in the Review "Changed upstream" queue. Images FS-Quiz can't serve are skipped; questions that need a missing image stay hidden until it arrives. The mirror needs outbound HTTPS from the api container (through the `proxy` network).
 
-To also pick up changes to quizzes already mirrored, new rulebook and handbook editions, and new last-qualifier results, re-fetch everything once (about 130 requests), then push:
-```bash
-cd /srv/quiz/repo
-IMAGE_TAG=$(cat /srv/quiz/prod/deployed-tag) docker compose --project-directory deploy -f deploy/compose.yaml \
-  --env-file /srv/quiz/prod/.env run --rm --no-deps api ifs-tests mirror --images --refresh
-deploy/refresh-bank.sh prod
-```
 Do this on staging first. Each environment has its own mirror, so each refresh costs FS-Quiz its own requests: don't repeat it without reason ([AGENTS.md](../AGENTS.md), server etiquette).
 
 ---

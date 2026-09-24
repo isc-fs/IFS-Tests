@@ -5,15 +5,16 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ifs_tests.bank.mirror import load_bank
 from ifs_tests.bank.sample import SAMPLE_DIR
-from ifs_tests.db.models import User
+from ifs_tests.db.models import AuditLog, User
 from ifs_tests.services.bank import import_bank
 
 from ..conftest import Clock
-from .helpers import invite, login, member, register
+from .helpers import PASSWORD, invite, login, member, register
 
 pytestmark = pytest.mark.integration
 NewClient = Callable[[], TestClient]
@@ -77,6 +78,35 @@ def test_self_changes_and_the_last_admin_are_guarded(
     assert second.patch(f"/api/admin/users/{admin.id}", json={"status": "disabled"}).status_code == 200
     assert app_client.get("/api/me").status_code == 401  # disabled: sessions gone
     assert second.patch(f"/api/admin/users/{second_id}", json={"role": "member"}).status_code == 403
+
+
+def test_admins_change_a_members_email(
+    app_client: TestClient, admin: User, new_client: NewClient, db: Session
+) -> None:
+    login(app_client)
+    ana = new_client()
+    uid = member(app_client, ana, "ana@alu.comillas.edu", "Ana")["id"]
+    member(app_client, new_client(), "leo@alu.comillas.edu", "Leo")
+    path = f"/api/admin/users/{uid}"
+
+    r = app_client.patch(path, json={"email": "  Ana.Ruiz@Alu.Comillas.EDU "})
+    assert r.status_code == 200, r.text
+    assert r.json()["email"] == "ana.ruiz@alu.comillas.edu"
+    assert ana.get("/api/me").status_code == 200  # still signed in
+    assert login(new_client(), "ana.ruiz@alu.comillas.edu", PASSWORD)["display_name"] == "Ana"
+
+    bad = app_client.patch(path, json={"email": "not an email"})
+    assert (bad.status_code, bad.json()["fields"]) == (400, {"email": "Enter a valid email address."})
+    taken = app_client.patch(path, json={"email": "LEO@alu.comillas.edu"})
+    assert (taken.status_code, taken.json()["fields"]) == (
+        409,
+        {"email": "An account with this email already exists."},
+    )
+    assert app_client.patch(path, json={"email": "x" * 255}).status_code == 422
+    assert ana.patch(path, json={"email": "me@alu.comillas.edu"}).status_code == 403
+
+    entries = db.scalars(select(AuditLog).where(AuditLog.action == "user.email")).all()
+    assert [(e.actor_id, e.target, e.details) for e in entries] == [(admin.id, f"user:{uid}", {})]
 
 
 def test_reviewers_cannot_administer(app_client: TestClient, admin: User, new_client: NewClient) -> None:

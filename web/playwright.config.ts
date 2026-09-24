@@ -1,6 +1,6 @@
 import { defineConfig, devices } from '@playwright/test'
 
-// Runs against the full local stack: `docker compose up -d --build` (see e2e/README in the runbook).
+// Runs against the full local stack: `docker compose up -d --build` (see docs/testing.md).
 export default defineConfig({
   testDir: 'e2e',
   fullyParallel: false,

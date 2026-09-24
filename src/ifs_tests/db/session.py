@@ -12,8 +12,13 @@ from ..settings import get_settings
 
 @lru_cache
 def get_engine() -> Engine:
+    settings = get_settings()
     return create_engine(
-        get_settings().database_url, pool_pre_ping=True, pool_size=10, max_overflow=10, pool_timeout=10
+        settings.database_url,
+        pool_pre_ping=True,
+        pool_size=settings.db_pool_size,
+        max_overflow=settings.db_max_overflow,
+        pool_timeout=10,
     )
 
 

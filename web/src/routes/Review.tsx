@@ -269,8 +269,9 @@ function Detail() {
         )}
         {hidden && (
           <Notice tone="info">
-            This is one of your live questions (today's daily question or part of a mock quiz you're running). Its
-            answer stays hidden until you've answered it.
+            This question is still running for you: today's daily question, a mock quiz you're running, or a live quiz
+            you're playing in. Its answer stays hidden until you've answered it (in a live quiz, until the results are
+            shown).
           </Notice>
         )}
         {q.images_missing && <Notice tone="error">An image is missing, so players never see this question.</Notice>}

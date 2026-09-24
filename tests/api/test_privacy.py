@@ -3,15 +3,15 @@ from __future__ import annotations
 import threading
 import time
 from collections.abc import Callable
-from datetime import timedelta
+from datetime import date, timedelta
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine, func, select, update
+from sqlalchemy import Engine, func, inspect, select, update
 from sqlalchemy.orm import Session, sessionmaker
 
-from ifs_tests.db.models import Attempt, AuditLog, Invite, LiveAnswer, LiveSession, User
+from ifs_tests.db.models import Attempt, AuditLog, Base, Invite, LiveAnswer, LiveSession, StreakFreeze, User
 from ifs_tests.db.models import Session as LoginSession
 from ifs_tests.services import maintenance, privacy
 from ifs_tests.services.accounts import AccountError
@@ -69,6 +69,122 @@ def test_the_export_holds_my_data_and_nobody_elses(
     assert data["sign_ins"] and [h["action"] for h in data["account_history"]] == ["user.register"]
     text = str(data)
     assert "leo@" not in text and "argon2" not in text and "hash" not in text
+
+
+# Where each users column appears in the export's "account", or why it doesn't.
+ACCOUNT = {
+    "email": "email",
+    "display_name": "display_name",
+    "vertical": "vertical",
+    "subdepartments": "subdepartments",
+    "position": "position",
+    "role": "role",
+    "status": "status",
+    "xp": "xp",
+    "legacy_xp": "xp_before_ranked",
+    "rank_points": "rank_points",
+    "rank_season": "rank_season",
+    "rank_best": "best_division",
+    "combo": "right_in_a_row",
+    "miss_streak": "wrong_in_a_row",
+    "rested_xp": "rested_xp",
+    "rested_on": "rested_on",
+    "streak_freezes": "streak_freezes",
+    "freeze_earned_on": "streak_freeze_earned_on",
+    "leaderboard_opt_out": "hidden_from_leaderboard",
+    "created_at": "joined_at",
+    "last_seen": "last_seen",
+    "failed_logins": "failed_sign_ins",
+    "locked_until": "locked_until",
+    "left_at": "inactive_since",
+}
+ACCOUNT_NOT_EXPORTED = {
+    "id": "the database's key, meaningless outside it",
+    "password_hash": "a secret, and says nothing about the person",
+}
+# Each column that points at a user: where the export holds those rows, or why it doesn't.
+POINTING = {
+    ("attempts", "user_id"): "answers",
+    ("practice_hints", "user_id"): "pending_hints",
+    ("mock_sessions", "user_id"): "mock_runs",
+    ("live_players", "user_id"): "live.joined",
+    ("live_tables", "captain_id"): "live.joined",
+    ("live_sessions", "host_id"): "live.hosted",
+    ("live_answers", "by_user_id"): "live.answers_sent_as_captain",
+    ("live_proposals", "user_id"): "live.proposals",
+    ("reports", "user_id"): "reports",
+    ("invites", "used_by"): "invite",
+    ("streak_freezes", "user_id"): "streak_freezes_used",
+    ("password_resets", "user_id"): "password_resets",
+    ("sessions", "user_id"): "sign_ins",
+}
+POINTING_NOT_EXPORTED = {
+    ("invites", "created_by"): "an admin's work on someone else's account: in actions",
+    ("password_resets", "created_by"): "an admin's work on someone else's account: in actions",
+    ("reports", "resolved_by"): "a reviewer's work on someone else's report: in actions",
+}
+
+
+def test_every_personal_column_is_exported_or_deliberately_left_out(
+    app_client: TestClient, admin: User, new_client: NewClient
+) -> None:
+    """A new users column or table pointing at a user fails here until it is exported (ADR 0006) or
+    listed above with a reason."""
+    columns = {a.key for a in inspect(User).column_attrs}
+    assert columns == ACCOUNT.keys() | ACCOUNT_NOT_EXPORTED.keys()
+    pointing = {
+        (t.name, c.name)
+        for t in Base.metadata.tables.values()
+        for c in t.columns
+        if any(fk.column.table.name == "users" for fk in c.foreign_keys)
+    }
+    assert pointing == POINTING.keys() | POINTING_NOT_EXPORTED.keys()
+
+    login(app_client)
+    marta = new_client()
+    member(app_client, marta, "marta@alu.comillas.edu", "Marta")
+    data = export(marta)
+    assert set(ACCOUNT.values()) <= data["account"].keys()
+    for path in POINTING.values():
+        part = data
+        for key in path.split("."):
+            assert key in part, path
+            part = part[key]
+    assert "actions" in data
+
+
+def test_the_export_holds_the_rank_and_account_level_state(
+    app_client: TestClient, admin: User, new_client: NewClient, db: Session
+) -> None:
+    login(app_client)
+    marta = new_client()
+    uid = member(app_client, marta, "marta@alu.comillas.edu", "Marta")["id"]
+    values = {
+        "legacy_xp": 1234,
+        "rank_season": 2025,
+        "rank_best": 5,
+        "combo": 4,
+        "miss_streak": 2,
+        "rested_xp": 300,
+        "rested_on": date(2026, 9, 28),
+        "streak_freezes": 1,
+        "freeze_earned_on": date(2026, 9, 21),
+    }
+    db.execute(update(User).where(User.id == uid).values(values))
+    db.add_all(StreakFreeze(user_id=uid, day=date(2026, 9, d)) for d in (29, 25))
+    db.commit()
+    app_client.post(f"/api/admin/users/{uid}/reset-link")
+
+    data = export(marta)
+    a = data["account"]
+    assert (a["xp_before_ranked"], a["rank_season"], a["best_division"]) == (1234, 2025, "Jefe I")
+    assert (a["right_in_a_row"], a["wrong_in_a_row"]) == (4, 2)
+    assert (a["rested_xp"], a["rested_on"]) == (300, "2026-09-28")
+    assert (a["streak_freezes"], a["streak_freeze_earned_on"]) == (1, "2026-09-21")
+    assert data["streak_freezes_used"] == ["2026-09-25", "2026-09-29"]
+    resets = data["password_resets"]
+    assert [(r["created_at"], r["used_at"]) for r in resets] == [("2026-10-01T10:00:00Z", None)]
+    assert "hash" not in str(resets)
 
 
 def test_the_export_keeps_a_mock_run_secret_until_it_ends(player: TestClient, db: Session) -> None:  # noqa: F811
@@ -207,11 +323,14 @@ def test_alumni_are_deleted_a_year_after_they_leave(
 
 
 def test_the_audit_log_keeps_two_years(signed_in: TestClient, db: Session, clock: Clock) -> None:
-    db.execute(update(AuditLog).values(at=clock.now))
+    # The database function measures the keep on its own clock too, so these entries are dated in the past.
+    db.execute(update(AuditLog).values(at=clock.now - timedelta(days=700)))
     db.commit()
     before = count(db, AuditLog)
-    assert maintenance.run(db, clock.now + timedelta(days=729))["audit_purged"] == 0
-    assert maintenance.run(db, clock.now + timedelta(days=740))["audit_purged"] == before
+    assert maintenance.run(db, clock.now)["audit_purged"] == 0
+    db.execute(update(AuditLog).values(at=clock.now - timedelta(days=1000)))
+    db.commit()
+    assert maintenance.run(db, clock.now)["audit_purged"] == before
 
 
 def test_any_latin_name_downloads_its_data(

@@ -21,7 +21,11 @@ def main(argv: list[str] | None = None) -> None:
     sub = p.add_subparsers(dest="cmd", required=True)
 
     m = sub.add_parser("mirror", help="download the FS-Quiz bank (cached; only fetches what is missing)")
-    m.add_argument("--refresh", action="store_true", help="re-fetch every quiz, ignoring the cache")
+    m.add_argument(
+        "--refresh",
+        action="store_true",
+        help="re-fetch every quiz, the documents and qualifier results (images stay cached)",
+    )
     m.add_argument(
         "--question-index",
         action="store_true",
@@ -56,7 +60,7 @@ def main(argv: list[str] | None = None) -> None:
     r = sub.add_parser("reset-link", help="print a one-time password reset link for a user")
     r.add_argument("--email", required=True)
 
-    sub.add_parser("maintenance", help="expire old sessions and links now")
+    sub.add_parser("maintenance", help="run the nightly maintenance job now (idempotent)")
     sub.add_parser("scheduler", help="run the nightly jobs forever (the scheduler service)")
 
     args = p.parse_args(argv)

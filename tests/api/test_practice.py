@@ -4,10 +4,11 @@ from collections.abc import Callable
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
-from ifs_tests.db.models import Attempt, Question, User
+from ifs_tests.db.models import Attempt, DailyQuestion, Question, User
+from ifs_tests.domain.daily import madrid_day
 from ifs_tests.domain.rank import placement
 from ifs_tests.domain.xp import xp_award
 
@@ -176,3 +177,19 @@ def test_progress_per_area(player: TestClient, db: Session, bank: dict[int, int]
     assert (areas["mech"]["answered"], areas["mech"]["correct"]) == (2, 1)
     assert areas["mech"]["topics"]["structures"] == 2
     assert areas["elec"]["answered"] == 0
+
+
+def test_practice_never_shows_a_question_still_running_for_the_player(
+    player: TestClient, db: Session, bank: dict[int, int], clock: Clock
+) -> None:
+    daily = db.get_one(Question, bank[90011])
+    day = madrid_day(clock.now)
+    db.execute(delete(DailyQuestion).where(DailyQuestion.day == day, DailyQuestion.area == daily.area))
+    db.add(DailyQuestion(day=day, area=daily.area, question_id=daily.id))
+    db.commit()
+    r = player.get(f"/api/practice/questions/{daily.id}")  # its clock hasn't started: no peeking
+    assert r.status_code == 409 and "answer it there first" in r.json()["detail"]
+    assert daily.id not in {player.get("/api/practice/next").json()["id"] for _ in range(30)}
+    assert player.post("/api/mock/quizzes/9002/start").status_code == 200
+    assert player.get(f"/api/practice/questions/{bank[90002]}").status_code == 409  # later in the mock run
+    assert player.get(f"/api/practice/questions/{bank[90004]}").status_code == 200

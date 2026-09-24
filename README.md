@@ -95,7 +95,7 @@ feat/<n>[-short-title]   →  new functionality  (feat/7-bank-push, feat/8 ...)
 fix/<n>[-short-title]    →  bug fix            (fix/1, fix/2-mirror-retry ...)
 ```
 
-The next number of each type is the last closed issue of that type plus one. The short title is optional but recommended.
+The next number of each type is the highest existing tracking-issue number of that type, open or closed, plus one. The short title is optional but recommended.
 
 ### Tracking issues
 

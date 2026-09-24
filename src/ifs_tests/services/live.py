@@ -139,6 +139,31 @@ def share_pending(db: DB, now: datetime) -> int:
     return sum(share(db, sid, now) for sid in ids)
 
 
+def finish_abandoned(db: DB, now: datetime) -> int:
+    """Nightly: finish the sessions their host never ended, so the players get their XP and the questions
+    stop running for them. One session per transaction, its row locked before any player's, as answering."""
+    ids = db.scalars(
+        select(LiveSession.id)
+        .where(LiveSession.state != "finished", LiveSession.created_at < now - rules.ABANDONED_AFTER)
+        .order_by(LiveSession.id)
+    ).all()
+    db.commit()
+    finished = 0
+    for sid in ids:
+        s = db.scalar(
+            select(LiveSession)
+            .where(LiveSession.id == sid, LiveSession.state != "finished")
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        if s is not None:
+            _finish(db, s, now)
+            finished += 1
+        db.commit()
+        share(db, sid, now)
+    return finished
+
+
 def lock_hosted(db: DB, host_id: int) -> list[LiveSession]:
     """The sessions someone still hosts, locked before their account is: the order answering takes (the
     session, then the players' rows), so deleting a host can't deadlock with a captain's answer."""
@@ -238,9 +263,7 @@ def seat(db: DB, host: User, code: str, tables: list[dict[str, Any]]) -> None:
     levels = dict(db.execute(select(User.id, User.rank_points).where(User.id.in_(seen))).tuples().all())
     for t in tables:
         # A table built by hand gets its best-ranked member as captain until the host picks another.
-        captain = t.get("captain_id") or max(
-            t["member_ids"], key=lambda uid: (levels[uid], -uid), default=None
-        )
+        captain = t.get("captain_id") or rules.captain({uid: levels[uid] for uid in t["member_ids"]})
         table = LiveTable(
             session_id=s.id,
             name=t["name"],
@@ -282,9 +305,22 @@ def move(db: DB, host: User, code: str, user_id: int, table_id: int | None) -> N
     ):
         if t.id != table_id:
             t.captain_id = None
-    player.table_id = table_id
+    left, player.table_id = player.table_id, table_id
+    _recaptain(db, s, {left, table_id})
     _touch(s)
     db.commit()
+
+
+def _recaptain(db: DB, s: LiveSession, table_ids: set[int | None]) -> None:
+    """A table left without a captain gets its best-ranked member, as seating does: it can still answer."""
+    for t in db.scalars(select(LiveTable).where(LiveTable.id.in_(table_ids - {None}))):
+        if t.captain_id is None:
+            ranks = db.execute(
+                select(User.id, User.rank_points)
+                .join(LivePlayer, LivePlayer.user_id == User.id)
+                .where(LivePlayer.session_id == s.id, LivePlayer.table_id == t.id, ~LivePlayer.removed)
+            )
+            t.captain_id = rules.captain(dict(ranks.tuples().all()))
 
 
 def edit_table(
@@ -307,6 +343,9 @@ def edit_table(
 
 def remove(db: DB, host: User, code: str, user_id: int) -> None:
     s = _hosted(db, host, code)
+    left = db.scalar(
+        select(LivePlayer.table_id).where(LivePlayer.session_id == s.id, LivePlayer.user_id == user_id)
+    )
     db.execute(
         update(LiveTable)
         .where(LiveTable.session_id == s.id, LiveTable.captain_id == user_id)
@@ -317,6 +356,7 @@ def remove(db: DB, host: User, code: str, user_id: int) -> None:
         .where(LivePlayer.session_id == s.id, LivePlayer.user_id == user_id)
         .values(removed=True, table_id=None)
     )
+    _recaptain(db, s, {left})
     _touch(s)
     db.commit()
 
@@ -738,8 +778,8 @@ def results_csv(db: DB, user: User, code: str) -> str:
         [
             "question",
             "text",
+            "for table",
             "answered by",
-            "table",
             "captain",
             "answer",
             "official answer",
