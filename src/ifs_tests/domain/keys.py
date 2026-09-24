@@ -1,11 +1,14 @@
 """Answer keys: turn FS-Quiz's free-text correct answers into something the server can grade.
 
 FS-Quiz stores every answer as text. Input answers mix decimal points and commas, lists separated by
-"," or ";", ranges written "lo-hi", zero-width spaces and the odd garbled value. A key is plain JSON:
+"," or ";", ranges written "lo-hi", zero-width spaces and the odd garbled value. A comma followed by a space
+always separates values ("118, 122"); a bare one between digits is a decimal comma ("64,107"). "a or b" gives
+alternatives, any of which is right. A key is plain JSON:
 
     {"kind": "choice", "mode": "one" | "all", "options": [option ids]}
     {"kind": "number" | "numbers" | "range" | "text", "accept": [alternative, ...]}
     {"kind": "self"}      an official answer exists but can't be graded automatically: shown, not scored
+                          (also a choice question with a single option: it can't be got wrong)
 
 Numbers keep their decimals so a key of "82.9" accepts what rounds to it (see grading.py).
 """
@@ -23,6 +26,7 @@ _DASHES = {0x2212: "-", 0x2013: "-", 0x2014: "-"}
 _NUMBER = re.compile(r"^[+-]?\d+(?:[.,]\d+)?$")
 _RANGE = re.compile(r"^([+-]?\d+(?:[.,]\d+)?)\s*-\s*([+-]?\d+(?:[.,]\d+)?)$")
 _SEQUENCE = re.compile(r"^\d+(?:-\d+){2,}$")
+_OR = re.compile(r"\s+or\s+", re.IGNORECASE)
 MAX_TEXT = 24
 
 
@@ -32,7 +36,10 @@ def clean(text: str) -> str:
 
 def number(text: str) -> dict[str, Any] | None:
     """'82,9' -> {'v': 82.9, 'd': 1}: the value and how many decimals it was given with."""
-    text = clean(text).replace(" ", "")
+    text = clean(text)
+    if re.search(r",\s", text):
+        return None
+    text = text.replace(" ", "")
     if not _NUMBER.match(text):
         return None
     decimals = len(re.split(r"[.,]", text)[1]) if re.search(r"[.,]", text) else 0
@@ -103,6 +110,8 @@ def build_key(qtype: str, answers: list[dict[str, Any]], option_ids: list[int] |
     if not correct:
         return None
     if qtype in ("single-choice", "multi-choice"):
+        if len(answers) < 2:
+            return {"kind": "self"}
         ids = option_ids if option_ids is not None else list(range(len(answers)))
         return {
             "kind": "choice",
@@ -110,7 +119,8 @@ def build_key(qtype: str, answers: list[dict[str, Any]], option_ids: list[int] |
             "options": [ids[i] for i in correct],
         }
     if qtype in ("input", "input-range"):
-        alternatives = [_alternative(qtype, answers[i]["text"] or "") for i in correct]
+        texts = [t for i in correct for t in _OR.split(answers[i]["text"] or "")]
+        alternatives = [_alternative(qtype, t) for t in texts]
         kinds = {a[0] for a in alternatives if a}
         if None not in alternatives and len(kinds) == 1:
             return {"kind": kinds.pop(), "accept": [a[1] for a in alternatives if a]}

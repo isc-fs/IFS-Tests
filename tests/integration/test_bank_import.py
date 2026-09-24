@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from ifs_tests.bank.mirror import load_bank
@@ -192,3 +192,100 @@ def test_images_arriving_later_keep_a_reviewers_correction(
     assert (report.updated, report.key_changed) == (1, 0)
     assert beam.playable and key.override is not None and key.override["options"] == [options[1]]
     assert db.scalars(select(AnswerOption.id).where(AnswerOption.question_id == beam.id)).all() == options
+
+
+def option_rows(db: Session, question_id: int) -> dict[str, AnswerOption]:
+    rows = db.scalars(select(AnswerOption).where(AnswerOption.question_id == question_id))
+    return {o.text: o for o in rows}
+
+
+def test_a_changed_choice_question_keeps_its_options(
+    db: Session, clock: Clock, tmp_path: Path, sample: dict[str, Any]
+) -> None:
+    import_bank(db, copy.deepcopy(sample), SAMPLE_DIR / "img", tmp_path, clock.now)
+    q = by_fsquiz(db, 90008)
+    before = {text: o.id for text, o in option_rows(db, q.id).items()}
+    answers = raw(sample, 90008)["answers"]
+    answers.reverse()
+    answers[0]["text"] = "10 seconds"  # reworded: same answer ID, same option
+    answers[:] = [a for a in answers if a["text"] != "5 s"]
+    answers.append({"answer_id": 99, "text": "20 s", "is_correct": False})
+    report = import_bank(db, copy.deepcopy(sample), SAMPLE_DIR / "img", tmp_path, clock.now)
+    db.expire_all()
+
+    after = option_rows(db, q.id)
+    assert report.key_changed == 0
+    assert after["10 seconds"].id == before["10 s"] and after["2 s"].id == before["2 s"]
+    assert after["5 s"].id == before["5 s"] and after["5 s"].retired
+    assert not after["20 s"].retired and after["20 s"].id not in before.values()
+    assert [o.text for o in sorted(after.values(), key=lambda o: o.position) if not o.retired] == [
+        "10 seconds",
+        "2 s",
+        "1 s",
+        "20 s",
+    ]
+    assert db.get_one(AnswerKey, q.id).key == {"kind": "choice", "mode": "one", "options": [before["2 s"]]}
+
+
+def test_options_from_before_answer_ids_were_kept_are_matched(
+    db: Session, clock: Clock, tmp_path: Path, sample: dict[str, Any]
+) -> None:
+    import_bank(db, copy.deepcopy(sample), SAMPLE_DIR / "img", tmp_path, clock.now)
+    before = {o.id: o.text for o in db.scalars(select(AnswerOption))}
+    db.execute(update(AnswerOption).values(fsquiz_id=None))
+    db.commit()
+    raw(sample, 90001)["answers"].reverse()  # changed upstream in the meantime
+    import_bank(db, copy.deepcopy(sample), SAMPLE_DIR / "img", tmp_path, clock.now)
+    db.expire_all()
+    rows = db.scalars(select(AnswerOption)).all()
+    assert {o.id: o.text for o in rows} == before
+    assert all(o.fsquiz_id is not None and not o.retired for o in rows)
+
+
+def test_an_unchanged_question_is_read_again_by_a_newer_parser(
+    db: Session, clock: Clock, tmp_path: Path, sample: dict[str, Any]
+) -> None:
+    import_bank(db, sample, SAMPLE_DIR / "img", tmp_path, clock.now)
+    stale, corrected = by_fsquiz(db, 90002), by_fsquiz(db, 90012)
+    db.get_one(AnswerKey, stale.id).key = {"kind": "number", "accept": [{"v": 3.2, "d": 1}]}
+    stale.answer_kind = "text"
+    fix = {"kind": "number", "accept": [{"v": 2800.0, "d": 0}]}
+    db.get_one(AnswerKey, corrected.id).key = {"kind": "self"}
+    db.get_one(AnswerKey, corrected.id).override = fix
+    db.commit()
+    report = import_bank(db, sample, SAMPLE_DIR / "img", tmp_path, clock.now)
+    db.expire_all()
+    assert (report.unchanged, report.rekeyed, report.key_changed) == (12, 2, 0)
+    assert db.get_one(AnswerKey, stale.id).key == {"kind": "number", "accept": [{"v": 0.32, "d": 2}]}
+    assert by_fsquiz(db, 90002).answer_kind == "number"
+    assert db.get_one(AnswerKey, corrected.id).override == fix and by_fsquiz(db, 90012).graded
+
+
+def test_a_choice_question_with_one_option_is_not_graded(
+    db: Session, clock: Clock, tmp_path: Path, sample: dict[str, Any]
+) -> None:
+    raw(sample, 90011)["answers"] = raw(sample, 90011)["answers"][:1]
+    import_bank(db, sample, SAMPLE_DIR / "img", tmp_path, clock.now)
+    q = by_fsquiz(db, 90011)
+    assert not q.graded and q.answer_kind == "choice-one"
+    assert db.get_one(AnswerKey, q.id).key == {"kind": "self"}
+    assert db.get_one(AnswerKey, q.id).display == "AS Emergency"
+
+
+def test_questions_fsquiz_removed_are_hidden_once(
+    db: Session, clock: Clock, tmp_path: Path, sample: dict[str, Any]
+) -> None:
+    sample["quizzes"][1]["information"] = "Retake.\n\nQuestions 2 and 4 were later removed"  # 90002, 90008
+    raw(sample, 90011)["solutions"] = [{"solution_id": 1, "text": "Question has been removed.", "images": []}]
+    report = import_bank(db, sample, SAMPLE_DIR / "img", tmp_path, clock.now)
+    assert report.hidden == 3
+    for fsquiz_id in (90002, 90008, 90011):
+        q = by_fsquiz(db, fsquiz_id)
+        assert q.excluded and not q.playable and (q.exclusion_note or "").startswith("FS-Quiz")
+    assert by_fsquiz(db, 90002).exclusion_note == "FS-Quiz: Questions 2 and 4 were later removed"
+
+    shown_again = by_fsquiz(db, 90002)
+    shown_again.excluded, shown_again.playable = False, True  # a reviewer checked it
+    db.commit()
+    report = import_bank(db, sample, SAMPLE_DIR / "img", tmp_path, clock.now)
+    assert report.hidden == 0 and by_fsquiz(db, 90002).playable

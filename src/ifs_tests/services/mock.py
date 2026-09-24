@@ -16,7 +16,7 @@ from ..domain import daily as timing
 from ..domain import mock as rules
 from . import xp
 from .errors import UserError
-from .questions import Checked, check, running
+from .questions import Checked, check, explain, running
 
 
 def labels(db: DB, quizzes: list[Quiz]) -> dict[int, str]:
@@ -287,10 +287,9 @@ def _summary(db: DB, s: MockSession, now: datetime) -> Summary:
     for q in questions:
         a = attempts.get(q.id)
         answer = a.answer if a else {}
-        checked = check(db, q, answer.get("options"), answer.get("value"), bool(a and a.passed))
+        checked = explain(db, q, a.correct if a else (False if q.graded else None), bool(a and a.passed))
         if q.id in busy:
             checked.official, checked.correct_options, checked.solutions = None, [], []
-        checked.correct = a.correct if a else (False if q.graded else None)
         # level 0: a summary item carries its own XP and LP, not where the player stands now
         checked.score = xp.Grant(xp=a.xp if a else 0, lp=a.lp if a else 0.0, level=0)
         items.append(Item(q, checked, bool(a and a.late), answer))

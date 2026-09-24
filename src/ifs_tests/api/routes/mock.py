@@ -27,7 +27,8 @@ def _state(db: Db, s: mock.State, now: Now) -> MockState:
         )
     summary = None
     if s.summary:
-        shown = questions.show(db, [i.question for i in s.summary.items])
+        picked = [o for i in s.summary.items for o in i.answer.get("options") or []]
+        shown = questions.show(db, [i.question for i in s.summary.items], picked)
         summary = MockSummary(
             correct=s.summary.correct,
             graded=s.summary.graded,

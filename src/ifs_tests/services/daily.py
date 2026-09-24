@@ -15,7 +15,7 @@ from ..db.models import Attempt, DailyQuestion, Question, User
 from ..domain import daily as rules
 from . import hints, streaks, xp
 from .errors import UserError
-from .questions import Checked, check, running
+from .questions import Checked, check, explain, running
 
 LOCK = 0x1F5DA11  # pg advisory lock key for choosing the day's questions
 
@@ -288,8 +288,7 @@ def close_expired(db: DB, now: datetime, user_id: int | None = None) -> int:
 def review_attempt(db: DB, user: User, a: Attempt) -> Result:
     """The stored result of a submitted attempt: retries and reloads never re-grade."""
     q = db.get_one(Question, a.question_id)
-    checked = check(db, q, a.answer.get("options"), a.answer.get("value"), a.passed)
-    checked.correct = a.correct
+    checked = explain(db, q, a.correct, a.passed)
     run = rules.streak(_on_time_days(db, user), a.day) if a.day else 0
     checked.score = xp.stored(db, user.id, a)
     return Result(q, checked, bool(a.late), a.xp, a.lp, run, a.answer)

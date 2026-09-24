@@ -30,7 +30,7 @@ The page opens on a row of queue chips, each with how many questions it holds:
 | **Changed upstream** | Questions FS-Quiz changed since they were loaded, and whose answer, correction or hiding needs a second look. | Check the answer, correct it if needed, press **I've checked it**. |
 | **Unclassified** | Questions the keyword guess couldn't place, not yet checked by a reviewer. | Pick the area and topic, **Confirm labels**. |
 | **Not graded** | Visible questions MingoQuiz can't grade automatically: players only compare with the official answer. | Give a correct answer in a gradable format, if there is one. |
-| **Hidden** | Questions a reviewer hid from players. | Bring back any that were fixed. |
+| **Hidden** | Questions a reviewer hid from players, and those FS-Quiz says it removed from its quiz (the reason starts with "FS-Quiz"). | Bring back any that were fixed or that are fine. |
 | **All** | Every question. | Use with search. |
 
 Under the chips:
@@ -57,6 +57,9 @@ The page is headed "Question *id*", with **Back to the queues** at the top. From
   against.
 - "An image is missing, so players never see this question." when a figure didn't download. Such a question is
   kept out of every mode until the bank is loaded again with its images.
+- **FS-Quiz's notes on its quizzes**: the free-text notes of the past quizzes it appeared in, such as "Question 10
+  was later deleted because the original correct answer was wrong" or "commas are used instead of dots for decimal
+  places". Hidden, like the answer, while the question is running for you.
 
 ### Changed upstream
 
@@ -97,7 +100,10 @@ automatically: players only see the official answer. Give a correct answer to gr
 
 - On a choice question, tick **The correct option** (single choice) or **All correct options** (multiple choice).
 - On a typed question, fill **Accepted answer**: a number (`82.9`), a range (`11.7-12.1`), values separated by `;`
-  (`518.4; 604.8`) or a short code. Anything else is refused with "That can't be graded automatically."
+  (`518.4; 604.8`) or a short code. Write `or` between answers when any of them is right (`118 or 122`). Anything
+  else is refused with "That can't be graded automatically."
+- A choice question with a single option isn't graded (it can't be got wrong) and can't be corrected into grading:
+  "A question with a single option can't be graded." Leave it ungraded, or hide it.
 
 Press **Save correction**. **Use FS-Quiz's answer again** removes your correction.
 
@@ -132,11 +138,20 @@ For each question:
 - **Changed at FS-Quiz** (text, options or answers): the new version replaces the old. Confirmed labels stay;
   unconfirmed labels are guessed again. A correction is dropped, since it was made for the old version. A hidden
   question stays hidden. The question goes to **Changed upstream** if its official answer changed, if it had a
-  correction, or if it was hidden (it may have been fixed).
+  correction, or if it was hidden (it may have been fixed). A change to the wording alone doesn't: it can't change
+  what is graded.
+- **Removed by FS-Quiz**: when a quiz note or the solution says the question was later removed or deleted from its
+  quiz (a wrong answer, a confusing wording), it is hidden with FS-Quiz's sentence as the reason and lands in
+  **Hidden**. Read the note: if the question is fine (or you corrected it), **Show to players again**; later reloads
+  won't hide it again unless FS-Quiz writes a new note. Quizzes 76 and 81 say "Question 10" of different questions
+  (723 and 724), so both are hidden; one of them is probably fine.
 - **New**: labelled by keyword guess; the unclassified ones land in **Unclassified**.
 
-After a reload, work through **Changed upstream** and **Unclassified**. Admins see a notice on the Admin page when
-questions changed.
+A reload never changes past results: options keep their identity when FS-Quiz edits them, an option FS-Quiz removed
+still shows in the answers that picked it, and finished mock runs and daily reviews show the result as it was graded.
+
+After a reload, work through **Changed upstream**, **Hidden** (what FS-Quiz removed) and **Unclassified**. Admins
+see a notice on the Admin page when questions changed.
 
 ## The secrecy rule
 
@@ -180,6 +195,9 @@ their result.
 
 **A question isn't graded and FS-Quiz's answer is prose.** Leave it ungraded: players compare with the official
 answer themselves. Correct it only when there is one clear number, range, list of values or short code.
+
+**Question 635 wants 118 but "118" is marked wrong.** FS-Quiz wrote "118, 122", which reads as two values; its
+solution says either was accepted. Correct it to `118 or 122`.
 
 **I can't find a question.** Use **All** and **Search the text**; hidden questions are in **Hidden**. Questions with a
 missing image appear in the queues but players never see them.

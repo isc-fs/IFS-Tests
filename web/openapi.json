@@ -6488,6 +6488,14 @@
       "type": "boolean",
       "title": "Answer Hidden",
       "description": "The reviewer's own live question: answers withheld until answered"
+     },
+     "quiz_notes": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Quiz Notes",
+      "description": "FS-Quiz's notes on the quizzes it appeared in, e.g. that a question was later removed"
      }
     },
     "type": "object",
@@ -6514,7 +6522,8 @@
      "reports",
      "answered",
      "right",
-     "answer_hidden"
+     "answer_hidden",
+     "quiz_notes"
     ],
     "title": "ReviewQuestion",
     "description": "Everything a reviewer needs about one question, answers included (reviewers only)."
