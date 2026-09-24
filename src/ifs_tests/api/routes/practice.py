@@ -37,8 +37,8 @@ def next_question(
 
 
 @router.get("/questions/{question_id}")
-def practice_question(question_id: Id, _: Member, db: Db) -> PlayQuestion:
-    return _one(db, questions.playable(db, question_id))
+def practice_question(question_id: Id, user: Member, db: Db, now: Now) -> PlayQuestion:
+    return _one(db, practice.question(db, user, question_id, now))
 
 
 @router.post("/questions/{question_id}/answer")
