@@ -6433,6 +6433,22 @@
       ],
       "title": "Key Changed At"
      },
+     "upstream_change": {
+      "anyOf": [
+       {
+        "type": "string",
+        "enum": [
+         "answer",
+         "content"
+        ]
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Upstream Change",
+      "description": "Why it is in the changed-upstream queue: its answer or options changed (any correction was removed), or a hidden question changed"
+     },
      "official": {
       "anyOf": [
        {
@@ -6515,6 +6531,7 @@
      "excluded",
      "exclusion_note",
      "key_changed_at",
+     "upstream_change",
      "official",
      "correction",
      "options",

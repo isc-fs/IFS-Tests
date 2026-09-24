@@ -618,6 +618,10 @@ class ReviewQuestion(BaseModel):
     excluded: bool
     exclusion_note: str | None
     key_changed_at: datetime | None
+    upstream_change: Literal["answer", "content"] | None = Field(
+        description="Why it is in the changed-upstream queue: its answer or options changed (any correction was "
+        "removed), or a hidden question changed"
+    )
     official: str | None
     correction: str | None
     options: list[ReviewOption]

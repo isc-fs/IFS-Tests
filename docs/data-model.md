@@ -161,7 +161,8 @@ The rulebooks, handbooks and other documents a quiz was based on. Linked, never 
 | `excluded`, `exclusion_note` | Hidden, and why: by a reviewer, or by the import when FS-Quiz says it removed the question (the note then starts with "FS-Quiz") |
 | `labels_reviewed` | A reviewer confirmed area and topic; re-imports keep them |
 | `source_hash` | SHA-256 of the FS-Quiz content (type, text, time, answers, images, solutions); an unchanged hash skips the question on re-import |
-| `key_changed_at` | Set when a re-import changed the official answer, dropped a correction or touched a hidden question: the reviewers' "changed" queue |
+| `graded_hash` | SHA-256 of what is graded (type; options by FS-Quiz answer ID and which are correct, or the typed answers). A change drops a reviewer's correction and resets difficulty; any other change keeps them. Null for rows loaded before migration 0020, until the next `push` fills it |
+| `key_changed_at`, `upstream_change` | When and why a re-import put the question in the reviewers' "changed" queue: `answer` (what is graded changed; any correction was dropped) or `content` (a hidden question changed). Cleared when a reviewer confirms they checked it |
 | `upstream_note` | FS-Quiz's sentence saying the question was removed from its quiz, as last seen on import (`domain/upstream.py`). A new note hides the question once; the same note on later imports doesn't hide it again |
 | `created_at`, `updated_at` | |
 
@@ -376,6 +377,7 @@ Retention: alumni and disabled accounts are deleted 365 days after `left_at`; th
 | 0016 | The function `purge_audit_log(before)` for the nightly audit purge, executable by `app_rt` ([`audit_log`](#audit_log)) |
 | 0017 | Stable options: `answer_options.fsquiz_id` and `retired`; `questions.upstream_note`. Expand only: the previous release ignores the new columns, and the next `ifs-tests push` fills `fsquiz_id` |
 | 0018 | `live_tables.proposals`, a counter per table so a proposal wakes only that table's screens. Expand only |
+| 0020 | `questions.graded_hash` and `upstream_change`: a new solution, image or wording upstream keeps a reviewer's correction. Expand only: the previous release ignores them, and the next `ifs-tests push` fills `graded_hash` |
 
 ### Expand/contract
 

@@ -2184,6 +2184,12 @@ export type ReviewQuestion = {
      */
     key_changed_at: string | null;
     /**
+     * Upstream Change
+     *
+     * Why it is in the changed-upstream queue: its answer or options changed (any correction was removed), or a hidden question changed
+     */
+    upstream_change: 'answer' | 'content' | null;
+    /**
      * Official
      */
     official: string | null;

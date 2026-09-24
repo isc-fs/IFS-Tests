@@ -152,7 +152,7 @@ def test_correcting_a_typed_answer_changes_how_it_is_entered(
     assert cleared["answer_kind"] == "self"
 
 
-def test_an_upstream_change_drops_the_correction_and_asks_again(
+def test_an_answer_changed_upstream_drops_the_correction_and_asks_again(
     reviewer: TestClient, db: Session, clock: Clock, tmp_path: Path, bank: dict[int, int]
 ) -> None:
     qid = bank[90002]
@@ -162,12 +162,12 @@ def test_an_upstream_change_drops_the_correction_and_asks_again(
     assert reviewer.get(f"/api/review/questions/{qid}").json()["correction"] == "0.321"
 
     changed = copy.deepcopy(load_bank(SAMPLE_DIR))
-    next(q for q in changed["questions"] if q["question_id"] == 90002)["text"] += " Round to 3 decimals."
+    next(q for q in changed["questions"] if q["question_id"] == 90002)["answers"][0]["text"] = "0.33"
     clock.advance(hours=1)
     report = import_bank(db, changed, SAMPLE_DIR / "img", tmp_path, clock.now)
     assert report.key_changed == 1
     d = reviewer.get(f"/api/review/questions/{qid}").json()
-    assert d["correction"] is None and d["key_changed_at"] is not None
+    assert d["correction"] is None and d["key_changed_at"] is not None and d["upstream_change"] == "answer"
     assert [r["id"] for r in page(reviewer, queue="changed")["rows"]] == [qid]
     ok = reviewer.patch(f"/api/review/questions/{qid}", json={"acknowledge_change": True}).json()
     assert ok["key_changed_at"] is None and page(reviewer)["queues"]["changed"] == 0

@@ -171,7 +171,7 @@ def update(db: DB, reviewer: User, question_id: int, changes: dict[str, Any], no
         q.exclusion_note = (note or None) if q.excluded else None
     acknowledged = bool(changes.get("acknowledge_change")) and q.key_changed_at is not None
     if acknowledged:
-        q.key_changed_at = None
+        q.key_changed_at = q.upstream_change = None
     _serve(q)
     after = {k: getattr(q, k) for k in before}
     diff = {k: [before[k], after[k]] for k in before if before[k] != after[k]}
