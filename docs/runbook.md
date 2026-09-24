@@ -84,7 +84,7 @@ What `deploy/deploy.sh` does, in order:
 3. Starts `db` and `backup` if they aren't running.
 4. Takes a dump named `quiz-<date>-<time>-pre-<tag>.dump` (skipped on the very first deploy).
 5. Runs `alembic upgrade head` as `migrator`, in one transaction (skipped when the database is already ahead of the image, as in a [roll back](#3-roll-back)).
-6. Starts `api` and `scheduler` on the new tag, waits up to 90 s for them to be healthy, and smoke-tests the api: `/healthz` answers 200 with a CSP header, an unknown `/api/` route is 404, and the OpenAPI schema is hidden.
+6. Starts `api` and `scheduler` on the new tag, waits up to 90 s for them to be healthy, and smoke-tests the api: `/healthz` answers 200 with a CSP header, `/` serves the app's page, an unknown `/api/` route is 404, the OpenAPI schema is hidden, and `/readyz` answers 200, which means the app reached the database with its own role (`app_rt`, `APP_PASSWORD`). Both containers' health checks need the database too (the api's is `/readyz`; the scheduler only beats while the database answers), so a wrong `APP_PASSWORD` or a dead database fails here. The smoke test runs even when a container isn't healthy, so its `FAIL` lines say what's wrong. An image from before `/readyz` existed (a rollback to an old release) prints `skip readyz`.
 7. On success: writes the tag to `/srv/quiz/<env>/deployed-tag` and appends a line (UTC time, env, tag, who) to `/srv/quiz/<env>/deploy-history`. On failure: starts the previous tag again and exits with an error.
 
 Starting the scheduler also runs the day's jobs whose time has passed (it keeps no memory across restarts), so every deploy runs the nightly maintenance once more. The jobs are idempotent; that's expected.
@@ -103,7 +103,8 @@ Starting the scheduler also runs the day's jobs whose time has passed (it keeps 
 | The image pull | Nothing changed | Check the tag in the "Publish image" summary; check the GHCR package is still public |
 | `pre-deploy dump` | Nothing changed; the app is still on the previous tag | `docker logs quiz-<env>-backup-1`; check disk space (`df -h`) |
 | `migrating` | The migration rolled back as a whole; the app is still on the previous tag | Read the error; fix it in a new commit and publish a new image. Nothing to roll back |
-| `rolling back to <previous>` then `failed to start or failed the smoke test` | The database is migrated (expand-only, so the previous release works with it); the app is back on the previous tag | Find the cause on staging (below). Nothing else to do on prod |
+| `FAIL readyz ...`, then `rolling back to <previous>` | The app can't reach the database with `APP_PASSWORD`; the previous tag is started again, but with the same `.env`, so the site still fails if the `.env` changed | Almost always `APP_PASSWORD` in `.env` doesn't match the `app_rt` role (for example half-way through a [password rotation](#7-secrets-rotation)), or `db` isn't running (`docker ps`). Fix the `.env` or the role's password and deploy the tag again. Rolling back never undoes an `.env` change |
+| `rolling back to <previous>` then `failed to start or failed the smoke test` (without `FAIL readyz`) | The database is migrated (expand-only, so the previous release works with it); the app is back on the previous tag | Find the cause on staging (below). Nothing else to do on prod |
 | Anything, on the first deploy of an environment | No previous tag to go back to | `docker logs quiz-<env>-api-1` |
 
 To see why a tag doesn't start (rolling back replaces the failed container and its logs), start it on staging by hand and read its logs, then put staging back:
@@ -136,13 +137,13 @@ deploy/deploy.sh prod v0.2.3      # any earlier release tag
 ```
 Migrations are written expand/contract, so the previous release works with the newer schema. When the database is already ahead of the older image (the bad release added a migration the older image doesn't know), `deploy.sh` detects it and skips the migration step instead of failing; that is safe by the expand/contract rule. Everything else runs as in a deploy, including the pre-deploy dump.
 
-Roll back first. Only if data must also be undone, restore the dump taken just before the bad release (`quiz-<date>-<time>-pre-<tag>.dump`, [section 4](#4-backups-and-restore)) afterwards: `restore.sh` migrates the restored dump with the tag now deployed. Everything since that dump is lost; announce it.
+Roll back first. Only if data must also be undone, restore the dump taken just before the bad release (`quiz-<date>-<time>-pre-<tag>.dump`, [section 4](#4-backups-and-restore)) afterwards. In that order, the dump is at the schema of the release you are back on: the restore replaces the whole schema, so the bad release's tables go too, and there is nothing to migrate. Everything since that dump is lost; announce it.
 
 ---
 
 ## 4. Backups and restore
 
-- **Nightly** at 03:30 Madrid time (a time that exists on daylight-saving nights) the `backup` service writes a `pg_dump` (custom format) to the `backups` volume as `quiz-<date>-<time>-nightly.dump` and deletes dumps older than 14 days, even when that night's dump failed. **Before every deploy** `deploy.sh` takes one more. Script: `deploy/db/backup.sh`.
+- **Nightly** at 03:30 Madrid time (a time that exists on daylight-saving nights) the `backup` service writes a `pg_dump` (custom format) to the `backups` volume as `quiz-<date>-<time>-nightly.dump` and deletes dumps older than 14 days, even when that night's dump failed. **Before every deploy** `deploy.sh` takes one more, and **before every restore** `restore.sh` takes a safety dump (`...-pre-restore.dump`); both are kept 14 days like the others. Script: `deploy/db/backup.sh`.
 - **Hetzner** also snapshots the whole server daily (7 kept).
 - If `BACKUP_HEARTBEAT_URL` is set, each successful dump (nightly and pre-deploy) pings it; the monitor alerts when a ping is missing. The `backup` container reaches the internet only for this, through its own `egress` network; `db` stays on the internal network. A ping that fails is logged as `backup: heartbeat ping failed`, and the dump is kept.
 
@@ -150,17 +151,40 @@ Roll back first. Only if data must also be undone, restore the dump taken just b
 deploy/restore.sh prod                                   # list dumps
 deploy/restore.sh prod quiz-20261003-033000-nightly.dump # restore (asks you to type the environment name)
 ```
-Restoring stops the app and the scheduler, restores the dump as `migrator`, runs the migrations (older dumps predate newer releases) and starts them again.
+What `deploy/restore.sh` does, in order:
+1. Checks the arguments, the `.env` file, its permissions and its `QUIZ_ENV`, as `deploy.sh` does.
+2. Reads the dump's schema revision and asks the deployed image whether it knows it. A dump taken on a newer release than the one deployed (after a roll back, for example) is refused: deploy that release first, or pick an older dump. Nothing has changed at this point.
+3. Asks you to type the environment name.
+4. Stops `api` and `scheduler` and takes a safety dump of the current data, `quiz-<date>-<time>-pre-restore.dump`.
+5. In **one transaction**: drops the `public` schema with everything in it, recreates it, loads the dump as `migrator` (tables, data, and the grants the dump carries) and re-applies `deploy/db/roles.sql`. Tables that newer migrations created don't survive, and the privileges end up exactly as in a freshly migrated database (`app_rt` still can't rewrite `audit_log`). If anything fails, the transaction rolls back and the data is as it was.
+6. Runs `alembic upgrade head` as `migrator`: an older dump is brought up to the deployed release.
+7. Starts `api` and `scheduler` again, **whatever happened** from step 4 on (on a failure it prints `restore: FAILED, see above` first).
+
+| The script stopped at | What state you're in | What to do |
+|---|---|---|
+| `QUIZ_ENV ...`, `must be chmod 600`, `no dump named`, `invalid dump file name` | Nothing changed | Fix the argument or the file |
+| `can't read <file>: is it complete?` | Nothing changed | The file is truncated or damaged (a full disk during the dump?). Pick another dump |
+| `... which <tag> doesn't know` | Nothing changed | Deploy the release the dump was taken on (or a later one), or pick an older dump |
+| The safety dump | The app was stopped and started again; nothing else changed | `df -h`; `docker logs quiz-<env>-backup-1` |
+| `restoring <file>` then `FAILED` | The transaction rolled back: the data is as it was, and the app is running again | Read the error. `role "..." does not exist` means the dump grants something to a role this database doesn't have |
+| `migrating` then `FAILED` | The database holds the dump, still at its old revision, under a newer release: expect errors | Fix the migration error, or go back to where you were by restoring the safety dump (`...-pre-restore.dump`) |
+
+To undo a restore, restore its safety dump the same way.
 
 **Restoring brings back accounts deleted since the dump.** Before restoring, list them: `SELECT target, at FROM audit_log WHERE action = 'user.delete' AND at > '<dump time>';`. After restoring, delete those accounts again from Admin.
 
-**Restore drill, once per term:** copy a prod dump into the staging volume and restore it there.
+### 4.1 Restore drill
+
+Once per term, and whenever the restore procedure changes: copy a prod dump into the staging volume and restore it there. Staging must run a release at least as new as prod (it normally does); otherwise the script refuses the dump.
 ```bash
 docker cp quiz-prod-backup-1:/backups/<file> /tmp/<file>
 docker cp /tmp/<file> quiz-staging-backup-1:/backups/<file> && rm /tmp/<file>
-deploy/restore.sh staging <file>
+time deploy/restore.sh staging <file>
+curl -s https://quiz-staging.iscracingteam.com/readyz     # {"status":"ok"}
 ```
-Time it (the target is 2 hours for prod, [architecture](architecture.md#targets)). Staging then holds real member data: restore a staging dump again afterwards, or delete the copy.
+Sign in on staging and open the leaderboard. Note how long it took (the target is 2 hours for prod, [architecture](architecture.md#targets)) and the date in [handover.md](handover.md#status).
+
+Staging now holds real member data. Put it back by restoring the safety dump the drill took (`deploy/restore.sh staging` lists it as `...-pre-restore.dump`), then delete the two dumps that hold prod data, the copied one and the safety dump the put-back took: `docker exec quiz-staging-backup-1 rm /backups/<file> /backups/<newest ...-pre-restore.dump>`.
 
 **Offsite copy:** none yet. If the team decides on a Hetzner Storage Box, add a nightly `rsync` of the backups volume.
 
@@ -170,8 +194,8 @@ Time it (the target is 2 hours for prod, [architecture](architecture.md#targets)
 
 | Task | Command |
 |---|---|
-| Status and health | `docker ps --filter name=quiz-` (api, scheduler and db show `healthy`) |
-| Is the site up | `curl -sI https://quiz.iscracingteam.com/healthz` |
+| Status and health | `docker ps --filter name=quiz-` (api, scheduler and db show `healthy`; api and scheduler turn `unhealthy` when they can't reach the database) |
+| Is the site up | `curl -sI https://quiz.iscracingteam.com/healthz` (the app process answers), then `curl -s https://quiz.iscracingteam.com/readyz` (`{"status":"ok"}`: it reaches the database too; 503 `unavailable`: it doesn't, see the api's log) |
 | Database shell (read-only) | `docker exec -it quiz-prod-db-1 psql -U backup_ro -d quiz` |
 | Database shell (superuser, for fixes) | `docker exec -it quiz-prod-db-1 psql -U postgres -d quiz` |
 | Disk used by the app | `docker system df -v \| grep quiz-` and `df -h` |
@@ -210,7 +234,7 @@ docker logs -f quiz-prod-api-1          # follow live
    docker logs --since 30h quiz-prod-scheduler-1 | grep -E "daily|maintenance"
    ```
    A healthy night shows one `daily: {'mech': ..., 'elec': ..., 'rules': ...}` line and one `maintenance: {...}` line with a count per step (the keys and what each means: [maintenance calendar](maintenance.md#nightly-automatic)). A `maintenance failed` line with a traceback means the job stopped at that step; most steps commit as they go, so what ran before it stays done, and the next run (it is idempotent) picks up the rest.
-2. The container's health (`docker ps`) only says the scheduler loop is alive (it touches a heartbeat file every 30 s); it doesn't say a job succeeded. A job that fails is logged and not retried until the next day or the next restart.
+2. The container's health (`docker ps`) only says the scheduler loop is alive and reaches the database (it touches a heartbeat file every 30 s, only after a `SELECT 1` succeeds; otherwise it logs `database unavailable: ...` and turns `unhealthy` a few minutes later); it doesn't say a job succeeded. A job that fails is logged and not retried until the next day or the next restart.
 3. The jobs keep no record in the database. Indirect checks: today's daily questions exist (`SELECT area, question_id FROM daily_questions WHERE day = (now() AT TIME ZONE 'Europe/Madrid')::date;`, though the first visitor of the day also picks them), and retention deletions appear in the audit log as `user.delete` with `"by": "retention"`.
 
 ### 5.3 Run the maintenance by hand
@@ -231,7 +255,7 @@ Runs the whole nightly job now and prints the counts. It is idempotent and safe 
 
 1. **Say so.** Tell the other maintainers and, if members are affected, the team (the channel the team uses for announcements).
 2. **Find what's broken:**
-   - Site down: `curl -sI https://quiz.iscracingteam.com/healthz`, then `docker ps --filter name=quiz-`, then the api's logs. If the containers are healthy but the site isn't reachable, it's Nginx, the certificate or DNS: call the consultant.
+   - Site down: `curl -sI https://quiz.iscracingteam.com/healthz` and `curl -s https://quiz.iscracingteam.com/readyz`, then `docker ps --filter name=quiz-`, then the api's logs. `/healthz` fine but `/readyz` 503: the app can't reach the database (is `quiz-prod-db-1` running? does `APP_PASSWORD` match the role?). If the containers are healthy but the site isn't reachable, it's Nginx, the certificate or DNS: call the consultant.
    - Broken right after a deploy: roll back ([section 3](#3-roll-back)) first, investigate afterwards.
    - Disk full: `df -h`, `docker system df`. Old dumps are pruned automatically; ask the consultant before deleting anything else.
    - Wrong scores or data after a release: roll back; if data must be undone, restore the pre-deploy dump (everything since is lost; announce it).
@@ -262,7 +286,7 @@ Then put it in `/srv/quiz/prod/.env`:
 | `backup_ro` | `BACKUP_PASSWORD` | backup service |
 | `postgres` | `POSTGRES_PASSWORD` | only when the volume is first created; rotate it with `\password postgres` all the same |
 
-Finally redeploy the same tag, which recreates every container whose settings changed: `deploy/deploy.sh prod $(cat /srv/quiz/prod/deployed-tag)`. The `db` service receives all four passwords in its environment (for first-time set-up), so changing any of them recreates the database container too: a short outage of a few seconds while Postgres restarts on the same volume. The api reconnects by itself. Do it outside a live quiz. Update the copy in the password manager. Same for staging.
+Finally redeploy the same tag, which recreates every container whose settings changed: `deploy/deploy.sh prod $(cat /srv/quiz/prod/deployed-tag)`. The `db` service receives all four passwords in its environment (for first-time set-up), so changing any of them recreates the database container too: a short outage of a few seconds while Postgres restarts on the same volume. The api reconnects by itself. If `APP_PASSWORD` in `.env` doesn't match what you set in `psql`, the deploy fails at `readyz` ([section 2.2](#22-when-a-deploy-fails)): fix whichever is wrong and deploy again. Do it outside a live quiz. Update the copy in the password manager. Same for staging.
 
 There is one more secret, inside the database: the `hint_salt` row of the `settings` table, created automatically. It draws hints, the daily question and critical hits. It needs no rotation; changing it would change every hint and the next daily draws.
 

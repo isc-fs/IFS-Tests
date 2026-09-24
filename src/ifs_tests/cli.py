@@ -88,7 +88,7 @@ def main(argv: list[str] | None = None) -> None:
 
 
 def _app_command(args: argparse.Namespace) -> None:
-    from sqlalchemy import select
+    from sqlalchemy import select, text
 
     from .db.models import User
     from .db.session import session_factory
@@ -120,8 +120,13 @@ def _app_command(args: argparse.Namespace) -> None:
             with make_db() as db:
                 return ensure_daily(db, madrid_day(at))
 
+        def ping() -> None:
+            with make_db() as db:
+                db.execute(text("SELECT 1"))
+
         run_forever(
-            [Job("daily", clock_time(0, 1), daily_questions), Job("maintenance", clock_time(3, 0), nightly)]
+            [Job("daily", clock_time(0, 1), daily_questions), Job("maintenance", clock_time(3, 0), nightly)],
+            ping,
         )
         return
 

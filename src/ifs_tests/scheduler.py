@@ -39,10 +39,21 @@ def tick(jobs: list[Job], last_run: dict[str, date], now: datetime) -> None:
         last_run[job.name] = now.astimezone(MADRID).date()
 
 
-def run_forever(jobs: list[Job], poll_seconds: float = 30) -> None:
+def beat(ping: Callable[[], object]) -> bool:
+    """Touch the heartbeat only if the database answers, so the health check also covers the connection."""
+    try:
+        ping()
+    except Exception as e:
+        log.warning("database unavailable: %s", getattr(e, "orig", None) or e)
+        return False
+    HEARTBEAT.touch()
+    return True
+
+
+def run_forever(jobs: list[Job], ping: Callable[[], object], poll_seconds: float = 30) -> None:
     last_run: dict[str, date] = {}
     log.info("scheduler: %s", ", ".join(f"{j.name}@{j.at:%H:%M}" for j in jobs))
     while True:
         tick(jobs, last_run, datetime.now(UTC))
-        HEARTBEAT.touch()
+        beat(ping)
         time.sleep(poll_seconds)

@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
 
 from ifs_tests.api.app import create_app
+from ifs_tests.api.deps import get_db
 from ifs_tests.settings import Settings
 
 
@@ -28,6 +32,26 @@ def test_healthz_and_security_headers(dist: Path) -> None:
     assert "frame-ancestors 'none'" in r.headers["content-security-policy"]
     assert r.headers["x-content-type-options"] == "nosniff"
     assert client(dist).head("/healthz").status_code == 200
+
+
+@pytest.mark.integration
+def test_readyz_queries_the_database(app_client: TestClient) -> None:
+    r = app_client.get("/readyz")
+    assert r.status_code == 200 and r.json() == {"status": "ok"}
+    assert app_client.head("/readyz").status_code == 200
+
+
+def test_readyz_is_503_when_the_database_is_unreachable(dist: Path) -> None:
+    engine = create_engine("postgresql+psycopg://app_rt:wrong@127.0.0.1:1/quiz")
+
+    def unreachable() -> Iterator[Session]:
+        with Session(engine) as s:
+            yield s
+
+    app = create_app(Settings(env="test", web_dist=dist, public_origin="https://quiz.example"))
+    app.dependency_overrides[get_db] = unreachable
+    r = TestClient(app).get("/readyz")
+    assert r.status_code == 503 and r.json() == {"status": "unavailable"}
 
 
 def test_spa_fallback_and_asset_caching(dist: Path) -> None:

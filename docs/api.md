@@ -183,7 +183,8 @@ No session needed; the CSRF header still is.
 
 | Path | Purpose |
 |---|---|
-| `GET`/`HEAD /healthz` | `{"status": "ok", "version": ...}`. Process only, never touches the database; used by the container health check and uptime probes. Not in the OpenAPI document |
+| `GET`/`HEAD /healthz` | `{"status": "ok", "version": ...}`. Liveness: process only, never touches the database; the image's own health check and uptime probes use it. Not in the OpenAPI document |
+| `GET`/`HEAD /readyz` | Readiness: runs `SELECT 1` through the app's own database role and pool. `{"status": "ok"}`, or 503 `{"status": "unavailable"}` (the cause goes to the api log, never the response). No auth. Used by the api's health check in `deploy/compose.yaml` and by `deploy.sh`'s smoke test. Not in the OpenAPI document |
 | `GET /media/{name}` | Question and solution images, cached for a year (names are content hashes) |
 | `GET /assets/*` | The SPA's built files, cached for a year |
 | any other `GET` | The SPA's `index.html` (`no-cache`), so client-side routes load |

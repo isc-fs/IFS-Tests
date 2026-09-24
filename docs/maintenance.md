@@ -54,7 +54,7 @@ Reviewers, on their own rhythm: work through the **Reported** queue in Review ([
 
 ## Every term
 
-- **Restore drill** ([runbook 4](runbook.md#4-backups-and-restore)): restore a prod dump into staging and time it. Put staging back afterwards.
+- **Restore drill** ([runbook 4.1](runbook.md#41-restore-drill)): restore a prod dump into staging, time it and check the site. Put staging back afterwards.
 
 ---
 

@@ -5,10 +5,10 @@
 #   deploy/deploy.sh prod v0.3.0
 #
 # Pulls the image, dumps the database, runs migrations as `migrator`, restarts the stack and smoke-tests
-# it. If the smoke test fails, the previous tag is started again (migrations are expand/contract, so the
-# previous image still works with the new schema). Rolling back to an older tag works the same way: when
-# the database is already past every migration the older image knows, migrations are skipped. Run it from
-# a checkout of the repo on the server.
+# it (including /readyz, a database query as the app role, and the SPA at /). If the smoke test fails, the
+# previous tag is started again (migrations are expand/contract, so the previous image still works with the
+# new schema). Rolling back to an older tag works the same way: when the database is already past every
+# migration the older image knows, migrations are skipped. Run it from a checkout of the repo on the server.
 set -euo pipefail
 
 die() { echo "deploy: $*" >&2; exit 1; }
@@ -80,19 +80,29 @@ def get(path):
 
 health = get("/healthz")
 csp = health.headers.get("content-security-policy", "")
+spa = get("/")
 checks = {
     "healthz 200": health.status == 200,
     "CSP header": "default-src 'self'" in csp,
+    "SPA shell at /": spa.status == 200 and '<div id="root">' in spa.read().decode(errors="replace"),
     "unknown API route 404": get("/api/__smoke__").status == 404,
     "OpenAPI hidden": get("/api/openapi.json").status == 404,
 }
+ready = get("/readyz")
+if ready.headers.get_content_type() == "text/html":
+    print("  skip readyz: this image predates it (a rollback to an older release)")
+else:
+    checks["readyz 200 (database reachable as app_rt)"] = ready.status == 200
 for name, ok in checks.items():
     print(("  ok   " if ok else "  FAIL ") + name)
 sys.exit(0 if all(checks.values()) else 1)
 PY
 }
 
-if compose "$tag" up -d --remove-orphans --wait --wait-timeout 90 api scheduler && smoke; then
+healthy=0
+compose "$tag" up -d --remove-orphans --wait --wait-timeout 90 api scheduler && healthy=1
+# Smoke-test even when a container isn't healthy: its checks say why (readyz FAIL: the database or APP_PASSWORD).
+if smoke && [[ $healthy == 1 ]]; then
   echo "$tag" > "$dir/deployed-tag"
   echo "$(date -u +%FT%TZ) $env $tag $(whoami)" >> "$dir/deploy-history"
   log "done: $env is on $tag"

@@ -11,7 +11,7 @@ flowchart LR
     B["Browser<br/>React SPA"] -->|"HTTPS :443"| N["Shared Nginx on the team server<br/>TLS, HSTS, rate limits<br/>deploy/nginx/quiz.conf"]
     N -->|"proxy network :8000"| A
     subgraph P["Compose project quiz-prod (quiz-staging is identical)"]
-        A["api<br/>uvicorn, 2 workers<br/>/api, /auth, /media, /healthz, SPA"]
+        A["api<br/>uvicorn, 2 workers<br/>/api, /auth, /media, /healthz, /readyz, SPA"]
         S["scheduler<br/>ifs-tests scheduler<br/>00:01 daily questions<br/>03:00 maintenance"]
         K["backup<br/>pg_dump at 03:30<br/>kept 14 days<br/>egress network for the heartbeat ping"]
         D[("db<br/>PostgreSQL 17<br/>internal network only")]
@@ -24,7 +24,7 @@ flowchart LR
     K --- V3[("backups volume")]
 ```
 
-- **One origin.** FastAPI serves `/api/*` (JSON), `/auth/*` (sign-in, registration, resets), `/media/*` (question images), `/assets/*` (the built SPA's hashed files), `/healthz`, and `index.html` for every other GET so the SPA's client-side routes work. No CORS, simple cookies. See `create_app` in `src/ifs_tests/api/app.py`.
+- **One origin.** FastAPI serves `/api/*` (JSON), `/auth/*` (sign-in, registration, resets), `/media/*` (question images), `/assets/*` (the built SPA's hashed files), `/healthz` and `/readyz`, and `index.html` for every other GET so the SPA's client-side routes work. No CORS, simple cookies. See `create_app` in `src/ifs_tests/api/app.py`.
 - **The database is never exposed.** `db` and `scheduler` sit only on an internal Docker network with no route out; `api` also joins the `proxy` network that Nginx uses, and `backup` an `egress` network used only for its heartbeat ping. Hardening of the containers is in [security.md](security.md).
 - **Backups:** the `backup` container dumps the database nightly and before every deploy (`deploy/db/backup.sh`); Hetzner also snapshots the whole server. Restores are in the [runbook](runbook.md).
 - **Local development** runs only `db` and `api` (`compose.yaml` at the repository root); there is no scheduler locally, so run `docker compose exec api ifs-tests maintenance` when you need the nightly job.
@@ -59,9 +59,9 @@ Everything under `src/ifs_tests/` (empty `__init__.py` files left out).
 | `__init__.py` | The package version (from the installed package metadata), shown by `/healthz` and the OpenAPI document |
 | `settings.py` | Configuration from `IFS_*` environment variables or `.env`: environment, database URL, public origin, paths, database pool size; cookie name and CSRF origins derived from them; refuses to start staging or prod without `https://` |
 | `cli.py` | The `ifs-tests` command: `mirror`, `stats`, `show`, `topics`, `push`, `openapi`, `create-admin`, `invite`, `reset-link`, `maintenance`, `scheduler` |
-| `scheduler.py` | A minimal daily job runner for the `scheduler` container (Madrid times, heartbeat file for the health check) |
+| `scheduler.py` | A minimal daily job runner for the `scheduler` container (Madrid times, a heartbeat file for the health check, touched only while the database answers) |
 | **api/** | |
-| `api/app.py` | Builds the FastAPI app: middleware, exception handlers, routers, `/healthz`, 404 for unknown `/api` and `/auth` paths, `/media` and SPA static files |
+| `api/app.py` | Builds the FastAPI app: middleware, exception handlers, routers, `/healthz` (liveness) and `/readyz` (a database query), 404 for unknown `/api` and `/auth` paths, `/media` and SPA static files |
 | `api/security.py` | `SecurityHeaders` (CSP and other headers on every response) and `CSRFGuard` middleware |
 | `api/deps.py` | Request dependencies: database session `Db`, clock `Now`, `AppSettings`, and the role guards `Member`, `Reviewer`, `Admin` |
 | `api/schemas.py` | Every request and response body; field descriptions end up in the OpenAPI document |
@@ -149,7 +149,7 @@ The `scheduler` container runs `ifs-tests scheduler` (`cli.py`), which loops eve
 
 - A job runs at most once per Madrid date. If the process starts after a job's time (a deploy, the server's 04:00 reboot), the job runs once straight away; every job is idempotent, so that is safe.
 - A failing job is logged (`docker compose logs scheduler`) and not retried until the next day.
-- The loop touches `/tmp/scheduler-heartbeat`; the container's health check fails if it is older than 120 seconds.
+- After each pass the loop runs `SELECT 1` and, only if it succeeds, touches `/tmp/scheduler-heartbeat` (`scheduler.beat`); the container's health check fails if the file is older than 120 seconds. So the scheduler turns unhealthy when it can't reach the database (a wrong `APP_PASSWORD`, the database down), not only when the loop is stuck; each missed beat logs `database unavailable: ...`.
 - The `backup` container runs its own loop: a dump at 03:30, after maintenance and before the 04:00 reboot.
 - `ifs-tests maintenance` runs the same maintenance job by hand.
 - Both the `api` and `scheduler` containers run with `TZ=Europe/Madrid`, so their log timestamps are Madrid time; the database itself keeps UTC (`timezone=UTC`), and every Madrid-day rule computes the day in code (`domain/daily.madrid_day`).
