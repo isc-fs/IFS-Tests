@@ -14,6 +14,7 @@ import { ErrorNotice, Notice } from '../components/Form'
 import { Page } from '../components/Page'
 import { QuestionCard } from '../components/QuestionCard'
 import { queryClient } from '../lib/api'
+import { xp } from '../lib/xp'
 
 const CLASSES = ['ev', 'cv', 'dv']
 const minutes = (s: number) => `${Math.round(s / 60)} min`
@@ -64,7 +65,7 @@ export default function Mock() {
     <Page title="Mock quizzes" eyebrow="Past registration quizzes, on their real clock">
       <p className="lede">
         One question at a time, each with the time it had in the real quiz. You see your results at the end. Your first
-        run of a quiz each season scores 2 points per correct answer.
+        run of a quiz each season earns full XP; replays earn a tenth.
       </p>
       <div className="row">
         <div className="field">
@@ -108,8 +109,8 @@ function Summary({ summary }: { summary: MockSummary }) {
       </h2>
       <p>
         {summary.counted
-          ? `${summary.points} points for the season.`
-          : 'A replay: it doesn’t score, only your first run of a quiz each season does.'}
+          ? `${xp(summary.xp)} for the season.`
+          : `A replay: ${xp(summary.xp)}. Only your first run of a quiz each season earns full XP.`}
       </p>
       {summary.bar_to_beat && <p className="muted">{summary.bar_to_beat}</p>}
       <p>
@@ -179,11 +180,13 @@ export function MockRun() {
                     Question {i + 1}:{' '}
                     {item.late
                       ? 'out of time'
-                      : item.feedback.correct === null
-                        ? 'not graded'
-                        : item.feedback.correct
-                          ? 'right'
-                          : 'wrong'}
+                      : item.feedback.passed
+                        ? 'not sure'
+                        : item.feedback.correct === null
+                          ? 'not graded'
+                          : item.feedback.correct
+                            ? 'right'
+                            : 'wrong'}
                   </summary>
                   <QuestionCard question={item.question} feedback={item.feedback} onAnswer={() => {}} />
                 </details>

@@ -80,14 +80,18 @@ phases:
         scope: Reviewer tools for topic labels, answer keys and exclusions
       - name: feat/12-leaderboard
         scope: Season leaderboards per person, area and vertical, with opt-out
+      - name: feat/13-xp-levels
+        scope: XP by difficulty, streak bonus, levels and ranks, penalties that grow with level
+      - name: feat/14-learning-aids
+        scope: Formulas, reading and hints beside the question, taken away level by level
 
   - number: 4
     title: Launch
     tag: v1.0.0
     branches:
-      - name: feat/13-privacy-account
+      - name: feat/15-privacy-account
         scope: Privacy notice, data export and deletion, season rollover, attribution
-      - name: feat/14-launch
+      - name: feat/16-launch
         scope: Load test, restore drill, handover documentation, launch checklist
 
   - number: 5
@@ -96,15 +100,15 @@ phases:
     deferred: true
     note: "Ideas to prioritise with the team once the MVP is in use"
     branches:
-      - name: feat/15-admin-totp
+      - name: feat/17-admin-totp
         scope: Second factor for admin accounts
-      - name: feat/16-notion-sync
+      - name: feat/18-notion-sync
         scope: Push scores and streaks to the Notion Team Directory
-      - name: feat/17-solution-bounty
-        scope: Members write worked solutions, reviewers approve, points awarded
-      - name: feat/18-team-questions
+      - name: feat/19-solution-bounty
+        scope: Members write worked solutions, reviewers approve, XP awarded
+      - name: feat/20-team-questions
         scope: Team-written questions, starting with Driverless
-      - name: feat/19-quiz-day-drill
+      - name: feat/21-quiz-day-drill
         scope: Full-team rehearsal under real registration-quiz conditions
 
 sidequests: []

@@ -23,6 +23,11 @@ export type AdminUser = {
     vertical: Vertical | null;
     role: Role;
     status: Status;
+    position: Position;
+    /**
+     * Xp
+     */
+    xp: number;
     /**
      * Leaderboard Opt Out
      */
@@ -42,6 +47,24 @@ export type AdminUser = {
 };
 
 /**
+ * Aids
+ */
+export type Aids = {
+    /**
+     * Formulas
+     */
+    formulas: boolean;
+    /**
+     * Learn More
+     */
+    learn_more: boolean;
+    /**
+     * Hint
+     */
+    hint: boolean;
+};
+
+/**
  * AnswerIn
  */
 export type AnswerIn = {
@@ -53,6 +76,12 @@ export type AnswerIn = {
      * Value
      */
     value?: string | null;
+    /**
+     * Unsure
+     *
+     * "I'm not sure": no answer, no XP, no penalty in time
+     */
+    unsure?: boolean;
 };
 
 /**
@@ -188,9 +217,9 @@ export type DailyArea = {
      */
     late: boolean | null;
     /**
-     * Points
+     * Xp
      */
-    points: number;
+    xp: number;
 };
 
 /**
@@ -204,9 +233,9 @@ export type DailyResult = {
      */
     late: boolean;
     /**
-     * Points
+     * Xp
      */
-    points: number;
+    xp: number;
     /**
      * Streak
      */
@@ -226,9 +255,9 @@ export type DailyStatus = {
      */
     streak: number;
     /**
-     * Points Today
+     * Xp Today
      */
-    points_today: number;
+    xp_today: number;
     /**
      * Areas
      */
@@ -257,6 +286,30 @@ export type Feedback = {
      * Solutions
      */
     solutions: Array<SolutionOut>;
+    /**
+     * Xp
+     *
+     * XP this answer earned (negative when it cost XP)
+     */
+    xp?: number;
+    /**
+     * Level
+     *
+     * Your level after this answer
+     */
+    level?: number | null;
+    /**
+     * Level Up
+     *
+     * This answer took you to a new level
+     */
+    level_up?: boolean;
+    /**
+     * Passed
+     *
+     * The player said "I'm not sure"
+     */
+    passed?: boolean;
 };
 
 /**
@@ -294,6 +347,22 @@ export type InviteInfo = {
 };
 
 /**
+ * KeyIn
+ *
+ * An answer as options picked or a typed value.
+ */
+export type KeyIn = {
+    /**
+     * Options
+     */
+    options?: Array<number> | null;
+    /**
+     * Value
+     */
+    value?: string | null;
+};
+
+/**
  * LeaderRow
  */
 export type LeaderRow = {
@@ -307,13 +376,23 @@ export type LeaderRow = {
     display_name: string;
     vertical: Vertical | null;
     /**
-     * Points
+     * Xp
      */
-    points: number;
+    xp: number;
     /**
      * Me
      */
     me: boolean;
+    /**
+     * Level
+     *
+     * Lifetime level, for the rank emblem
+     */
+    level: number;
+    /**
+     * Title
+     */
+    title: string;
 };
 
 /**
@@ -394,6 +473,12 @@ export type Me = {
      * Leaderboard Opt Out
      */
     leaderboard_opt_out: boolean;
+    position: Position;
+    /**
+     * Xp
+     */
+    xp: number;
+    progress?: Progress | null;
 };
 
 /**
@@ -408,6 +493,12 @@ export type MockAnswerIn = {
      * Value
      */
     value?: string | null;
+    /**
+     * Unsure
+     *
+     * "I'm not sure": no answer, no XP, no penalty in time
+     */
+    unsure?: boolean;
     /**
      * Attempt Id
      */
@@ -521,9 +612,9 @@ export type MockSummary = {
      */
     graded: number;
     /**
-     * Points
+     * Xp
      */
-    points: number;
+    xp: number;
     /**
      * Counted
      */
@@ -549,9 +640,9 @@ export type MyRank = {
      */
     rank: number;
     /**
-     * Points
+     * Xp
      */
-    points: number;
+    xp: number;
     /**
      * Hidden
      *
@@ -667,6 +758,25 @@ export type PlayQuestion = {
 };
 
 /**
+ * Position
+ *
+ * Someone's job on the team. Not their XP level: a DT on the ladder is not a Technical Director.
+ */
+export const Position = {
+    MINGO: 'mingo',
+    MEMBER: 'member',
+    DEPARTMENT_HEAD: 'department_head',
+    TECHNICAL_DIRECTOR: 'technical_director'
+} as const;
+
+/**
+ * Position
+ *
+ * Someone's job on the team. Not their XP level: a DT on the ladder is not a Technical Director.
+ */
+export type Position = typeof Position[keyof typeof Position];
+
+/**
  * ProfileIn
  */
 export type ProfileIn = {
@@ -679,6 +789,59 @@ export type ProfileIn = {
      * Leaderboard Opt Out
      */
     leaderboard_opt_out?: boolean | null;
+};
+
+/**
+ * Progress
+ *
+ * Level, title and what help the player still gets. XP always refers to lifetime XP.
+ */
+export type Progress = {
+    /**
+     * Level
+     */
+    level: number;
+    /**
+     * Title
+     */
+    title: string;
+    /**
+     * Tier
+     */
+    tier: 'Mingo' | 'Jefe' | 'DT' | 'Top';
+    /**
+     * Level Xp
+     *
+     * Lifetime XP at which the current level started
+     */
+    level_xp: number;
+    /**
+     * Next Level Xp
+     *
+     * Null at the top
+     */
+    next_level_xp: number | null;
+    /**
+     * Penalty
+     *
+     * Percentage of a right answer's XP a wrong answer costs
+     */
+    penalty: number;
+    /**
+     * Streak
+     */
+    streak: number;
+    /**
+     * Streak Bonus
+     *
+     * Extra XP on gains, in percent
+     */
+    streak_bonus: number;
+    aids: Aids;
+    /**
+     * Ladder
+     */
+    ladder: Array<Step>;
 };
 
 /**
@@ -702,6 +865,10 @@ export type RegisterIn = {
      */
     password: string;
     vertical?: Vertical | null;
+    /**
+     * Job on the team; sets the starting level
+     */
+    position?: Position;
 };
 
 /**
@@ -1027,6 +1194,41 @@ export const Status = {
 export type Status = typeof Status[keyof typeof Status];
 
 /**
+ * Step
+ *
+ * One level of the ladder and what it changes.
+ */
+export type Step = {
+    /**
+     * Level
+     */
+    level: number;
+    /**
+     * Tier
+     */
+    tier: 'Mingo' | 'Jefe' | 'DT' | 'Top';
+    /**
+     * Title
+     *
+     * Null for the top until the player reaches DT V: a surprise
+     */
+    title: string | null;
+    /**
+     * Xp
+     *
+     * Lifetime XP that reaches it
+     */
+    xp: number;
+    aids: Aids;
+    /**
+     * Penalty
+     *
+     * Percentage of a right answer's XP a wrong answer costs
+     */
+    penalty: number;
+};
+
+/**
  * TimedQuestion
  *
  * A question whose clock is running. `server_now` lets the browser correct for its own clock.
@@ -1063,6 +1265,7 @@ export type TokenIn = {
 export type UserPatch = {
     role?: Role | null;
     status?: Status | null;
+    position?: Position | null;
 };
 
 /**
@@ -1135,9 +1338,9 @@ export type VerticalRow = {
      */
     members: number;
     /**
-     * Points Per Member
+     * Xp Per Member
      */
-    points_per_member: number;
+    xp_per_member: number;
     /**
      * Participation
      *
@@ -2049,7 +2252,7 @@ export type RemoveCorrectionResponses = {
 export type RemoveCorrectionResponse = RemoveCorrectionResponses[keyof RemoveCorrectionResponses];
 
 export type CorrectAnswerData = {
-    body: AnswerIn;
+    body: KeyIn;
     path: {
         /**
          * Question Id

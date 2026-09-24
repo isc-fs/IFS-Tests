@@ -7,7 +7,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from ..db.models import Role, Status, Vertical
+from ..db.models import Position, Role, Status, Vertical
 
 
 class In(BaseModel):
@@ -40,6 +40,7 @@ class RegisterIn(TokenIn):
     display_name: str = Field(max_length=64)
     password: str = Field(max_length=256)
     vertical: Vertical | None = None
+    position: Position = Field(default=Position.mingo, description="Job on the team; sets the starting level")
 
 
 class ResetIn(TokenIn):
@@ -56,6 +57,38 @@ class ResetInfo(Out):
     expires_at: datetime
 
 
+class Aids(BaseModel):
+    formulas: bool
+    learn_more: bool
+    hint: bool
+
+
+class Step(BaseModel):
+    """One level of the ladder and what it changes."""
+
+    level: int
+    tier: Literal["Mingo", "Jefe", "DT", "Top"]
+    title: str | None = Field(description="Null for the top until the player reaches DT V: a surprise")
+    xp: int = Field(description="Lifetime XP that reaches it")
+    aids: Aids
+    penalty: int = Field(description="Percentage of a right answer's XP a wrong answer costs")
+
+
+class Progress(BaseModel):
+    """Level, title and what help the player still gets. XP always refers to lifetime XP."""
+
+    level: int
+    title: str
+    tier: Literal["Mingo", "Jefe", "DT", "Top"]
+    level_xp: int = Field(description="Lifetime XP at which the current level started")
+    next_level_xp: int | None = Field(description="Null at the top")
+    penalty: int = Field(description="Percentage of a right answer's XP a wrong answer costs")
+    streak: int
+    streak_bonus: int = Field(description="Extra XP on gains, in percent")
+    aids: Aids
+    ladder: list[Step]
+
+
 class Me(Out):
     id: int
     email: str
@@ -63,6 +96,9 @@ class Me(Out):
     vertical: Vertical | None
     role: Role
     leaderboard_opt_out: bool
+    position: Position
+    xp: int
+    progress: Progress | None = None
 
 
 class ProfileIn(In):
@@ -103,6 +139,8 @@ class AdminUser(Out):
     vertical: Vertical | None
     role: Role
     status: Status
+    position: Position
+    xp: int
     leaderboard_opt_out: bool
     last_seen: datetime | None
     created_at: datetime
@@ -112,6 +150,7 @@ class AdminUser(Out):
 class UserPatch(In):
     role: Role | None = None
     status: Status | None = None
+    position: Position | None = None
 
 
 class BankSummary(BaseModel):
@@ -151,9 +190,15 @@ class PlayQuestion(BaseModel):
     quizzes: list[str]
 
 
-class AnswerIn(In):
+class KeyIn(In):
+    """An answer as options picked or a typed value."""
+
     options: list[Annotated[int, Field(ge=1, le=2**31 - 1)]] | None = Field(default=None, max_length=40)
     value: str | None = Field(default=None, max_length=200)
+
+
+class AnswerIn(KeyIn):
+    unsure: bool = Field(default=False, description='"I\'m not sure": no answer, no XP, no penalty in time')
 
 
 class SolutionOut(BaseModel):
@@ -168,6 +213,10 @@ class Feedback(BaseModel):
     official: str | None
     correct_options: list[int]
     solutions: list[SolutionOut]
+    xp: int = Field(default=0, description="XP this answer earned (negative when it cost XP)")
+    level: int | None = Field(default=None, description="Your level after this answer")
+    level_up: bool = Field(default=False, description="This answer took you to a new level")
+    passed: bool = Field(default=False, description='The player said "I\'m not sure"')
 
 
 class DailyArea(BaseModel):
@@ -177,13 +226,13 @@ class DailyArea(BaseModel):
     deadline_at: datetime | None
     correct: bool | None
     late: bool | None
-    points: int
+    xp: int
 
 
 class DailyStatus(BaseModel):
     day: date
     streak: int
-    points_today: int
+    xp_today: int
     areas: list[DailyArea]
 
 
@@ -200,7 +249,7 @@ class DailyResult(BaseModel):
     question: PlayQuestion
     feedback: Feedback
     late: bool
-    points: int
+    xp: int
     streak: int
 
 
@@ -231,7 +280,7 @@ class MockItem(BaseModel):
 class MockSummary(BaseModel):
     correct: int
     graded: int
-    points: int
+    xp: int
     counted: bool
     bar_to_beat: str | None
     items: list[MockItem]
@@ -345,15 +394,17 @@ class LeaderRow(BaseModel):
     rank: int
     display_name: str
     vertical: Vertical | None
-    points: int
+    xp: int
     me: bool
+    level: int = Field(description="Lifetime level, for the rank emblem")
+    title: str
 
 
 class MyRank(BaseModel):
     """The requesting member's own place, shown even when they are hidden or outside the top rows."""
 
     rank: int
-    points: int
+    xp: int
     hidden: bool = Field(description="Opted out: others don't see them on the board")
 
 
@@ -368,7 +419,7 @@ class Leaderboard(BaseModel):
 class VerticalRow(BaseModel):
     vertical: Vertical
     members: int
-    points_per_member: float
+    xp_per_member: float
     participation: float = Field(
         description="Share of members who answered a daily question in the last 7 days"
     )

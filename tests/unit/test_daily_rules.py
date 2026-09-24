@@ -4,7 +4,7 @@ from datetime import UTC, date, datetime, timedelta
 
 import pytest
 
-from ifs_tests.domain.daily import Candidate, budget, is_late, madrid_day, pick, points, streak
+from ifs_tests.domain.daily import Candidate, budget, is_late, madrid_day, pick, streak
 
 D = date(2026, 10, 1)
 
@@ -66,17 +66,3 @@ def test_streak_counts_back_from_today_or_yesterday() -> None:
     assert streak(days - {D}, D) == 2  # today not answered yet: yesterday's streak still stands
     assert streak(days, D + timedelta(days=2)) == 0
     assert streak(set(), D) == 0
-
-
-@pytest.mark.parametrize(
-    ("correct", "late", "days", "expected"),
-    [
-        (True, False, 1, 10),
-        (True, False, 3, 12),
-        (True, False, 30, 15),
-        (False, False, 5, 0),
-        (True, True, 5, 0),
-    ],
-)
-def test_points(correct: bool, late: bool, days: int, expected: int) -> None:
-    assert points(correct, late, days) == expected

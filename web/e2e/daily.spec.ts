@@ -17,7 +17,7 @@ test('answer a daily question once, against the clock', async ({ browser }, info
   if (await choices.count()) await choices.first().check()
   else await card.getByLabel('Your answer').fill('1')
   await card.getByRole('button', { name: 'Check answer' }).click()
-  await expect(card.getByText(/points\./)).toBeVisible()
+  await expect(card.getByText(/^(Correct|Not quite)\.$/)).toBeVisible()
   await card.getByRole('button', { name: "Back to today's questions" }).click()
   await expect(page.getByRole('button', { name: 'See the Rules question' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Start the Rules question' })).toHaveCount(0)

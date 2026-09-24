@@ -1434,7 +1434,7 @@
      "content": {
       "application/json": {
        "schema": {
-        "$ref": "#/components/schemas/AnswerIn"
+        "$ref": "#/components/schemas/KeyIn"
        }
       }
      }
@@ -1732,6 +1732,13 @@
      "status": {
       "$ref": "#/components/schemas/Status"
      },
+     "position": {
+      "$ref": "#/components/schemas/Position"
+     },
+     "xp": {
+      "type": "integer",
+      "title": "Xp"
+     },
      "leaderboard_opt_out": {
       "type": "boolean",
       "title": "Leaderboard Opt Out"
@@ -1774,12 +1781,37 @@
      "vertical",
      "role",
      "status",
+     "position",
+     "xp",
      "leaderboard_opt_out",
      "last_seen",
      "created_at",
      "locked_until"
     ],
     "title": "AdminUser"
+   },
+   "Aids": {
+    "properties": {
+     "formulas": {
+      "type": "boolean",
+      "title": "Formulas"
+     },
+     "learn_more": {
+      "type": "boolean",
+      "title": "Learn More"
+     },
+     "hint": {
+      "type": "boolean",
+      "title": "Hint"
+     }
+    },
+    "type": "object",
+    "required": [
+     "formulas",
+     "learn_more",
+     "hint"
+    ],
+    "title": "Aids"
    },
    "AnswerIn": {
     "properties": {
@@ -1811,6 +1843,12 @@
        }
       ],
       "title": "Value"
+     },
+     "unsure": {
+      "type": "boolean",
+      "title": "Unsure",
+      "description": "\"I'm not sure\": no answer, no XP, no penalty in time",
+      "default": false
      }
     },
     "additionalProperties": false,
@@ -2024,9 +2062,9 @@
       ],
       "title": "Late"
      },
-     "points": {
+     "xp": {
       "type": "integer",
-      "title": "Points"
+      "title": "Xp"
      }
     },
     "type": "object",
@@ -2037,7 +2075,7 @@
      "deadline_at",
      "correct",
      "late",
-     "points"
+     "xp"
     ],
     "title": "DailyArea"
    },
@@ -2053,9 +2091,9 @@
       "type": "boolean",
       "title": "Late"
      },
-     "points": {
+     "xp": {
       "type": "integer",
-      "title": "Points"
+      "title": "Xp"
      },
      "streak": {
       "type": "integer",
@@ -2067,7 +2105,7 @@
      "question",
      "feedback",
      "late",
-     "points",
+     "xp",
      "streak"
     ],
     "title": "DailyResult"
@@ -2083,9 +2121,9 @@
       "type": "integer",
       "title": "Streak"
      },
-     "points_today": {
+     "xp_today": {
       "type": "integer",
-      "title": "Points Today"
+      "title": "Xp Today"
      },
      "areas": {
       "items": {
@@ -2099,7 +2137,7 @@
     "required": [
      "day",
      "streak",
-     "points_today",
+     "xp_today",
      "areas"
     ],
     "title": "DailyStatus"
@@ -2141,6 +2179,36 @@
       },
       "type": "array",
       "title": "Solutions"
+     },
+     "xp": {
+      "type": "integer",
+      "title": "Xp",
+      "description": "XP this answer earned (negative when it cost XP)",
+      "default": 0
+     },
+     "level": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Level",
+      "description": "Your level after this answer"
+     },
+     "level_up": {
+      "type": "boolean",
+      "title": "Level Up",
+      "description": "This answer took you to a new level",
+      "default": false
+     },
+     "passed": {
+      "type": "boolean",
+      "title": "Passed",
+      "description": "The player said \"I'm not sure\"",
+      "default": false
      }
     },
     "type": "object",
@@ -2228,6 +2296,43 @@
     ],
     "title": "InviteInfo"
    },
+   "KeyIn": {
+    "properties": {
+     "options": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "integer",
+         "maximum": 2147483647.0,
+         "minimum": 1.0
+        },
+        "type": "array",
+        "maxItems": 40
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Options"
+     },
+     "value": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 200
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Value"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "title": "KeyIn",
+    "description": "An answer as options picked or a typed value."
+   },
    "LeaderRow": {
     "properties": {
      "rank": {
@@ -2248,13 +2353,22 @@
        }
       ]
      },
-     "points": {
+     "xp": {
       "type": "integer",
-      "title": "Points"
+      "title": "Xp"
      },
      "me": {
       "type": "boolean",
       "title": "Me"
+     },
+     "level": {
+      "type": "integer",
+      "title": "Level",
+      "description": "Lifetime level, for the rank emblem"
+     },
+     "title": {
+      "type": "string",
+      "title": "Title"
      }
     },
     "type": "object",
@@ -2262,8 +2376,10 @@
      "rank",
      "display_name",
      "vertical",
-     "points",
-     "me"
+     "xp",
+     "me",
+     "level",
+     "title"
     ],
     "title": "LeaderRow"
    },
@@ -2391,6 +2507,23 @@
      "leaderboard_opt_out": {
       "type": "boolean",
       "title": "Leaderboard Opt Out"
+     },
+     "position": {
+      "$ref": "#/components/schemas/Position"
+     },
+     "xp": {
+      "type": "integer",
+      "title": "Xp"
+     },
+     "progress": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Progress"
+       },
+       {
+        "type": "null"
+       }
+      ]
      }
     },
     "type": "object",
@@ -2400,7 +2533,9 @@
      "display_name",
      "vertical",
      "role",
-     "leaderboard_opt_out"
+     "leaderboard_opt_out",
+     "position",
+     "xp"
     ],
     "title": "Me"
    },
@@ -2434,6 +2569,12 @@
        }
       ],
       "title": "Value"
+     },
+     "unsure": {
+      "type": "boolean",
+      "title": "Unsure",
+      "description": "\"I'm not sure\": no answer, no XP, no penalty in time",
+      "default": false
      },
      "attempt_id": {
       "type": "integer",
@@ -2636,9 +2777,9 @@
       "type": "integer",
       "title": "Graded"
      },
-     "points": {
+     "xp": {
       "type": "integer",
-      "title": "Points"
+      "title": "Xp"
      },
      "counted": {
       "type": "boolean",
@@ -2667,7 +2808,7 @@
     "required": [
      "correct",
      "graded",
-     "points",
+     "xp",
      "counted",
      "bar_to_beat",
      "items"
@@ -2680,9 +2821,9 @@
       "type": "integer",
       "title": "Rank"
      },
-     "points": {
+     "xp": {
       "type": "integer",
-      "title": "Points"
+      "title": "Xp"
      },
      "hidden": {
       "type": "boolean",
@@ -2693,7 +2834,7 @@
     "type": "object",
     "required": [
      "rank",
-     "points",
+     "xp",
      "hidden"
     ],
     "title": "MyRank",
@@ -2885,6 +3026,17 @@
     "title": "PlayQuestion",
     "description": "A question before it is answered: nothing here may reveal the answer."
    },
+   "Position": {
+    "type": "string",
+    "enum": [
+     "mingo",
+     "member",
+     "department_head",
+     "technical_director"
+    ],
+    "title": "Position",
+    "description": "Someone's job on the team. Not their XP level: a DT on the ladder is not a Technical Director."
+   },
    "ProfileIn": {
     "properties": {
      "display_name": {
@@ -2925,6 +3077,84 @@
     "type": "object",
     "title": "ProfileIn"
    },
+   "Progress": {
+    "properties": {
+     "level": {
+      "type": "integer",
+      "title": "Level"
+     },
+     "title": {
+      "type": "string",
+      "title": "Title"
+     },
+     "tier": {
+      "type": "string",
+      "enum": [
+       "Mingo",
+       "Jefe",
+       "DT",
+       "Top"
+      ],
+      "title": "Tier"
+     },
+     "level_xp": {
+      "type": "integer",
+      "title": "Level Xp",
+      "description": "Lifetime XP at which the current level started"
+     },
+     "next_level_xp": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Next Level Xp",
+      "description": "Null at the top"
+     },
+     "penalty": {
+      "type": "integer",
+      "title": "Penalty",
+      "description": "Percentage of a right answer's XP a wrong answer costs"
+     },
+     "streak": {
+      "type": "integer",
+      "title": "Streak"
+     },
+     "streak_bonus": {
+      "type": "integer",
+      "title": "Streak Bonus",
+      "description": "Extra XP on gains, in percent"
+     },
+     "aids": {
+      "$ref": "#/components/schemas/Aids"
+     },
+     "ladder": {
+      "items": {
+       "$ref": "#/components/schemas/Step"
+      },
+      "type": "array",
+      "title": "Ladder"
+     }
+    },
+    "type": "object",
+    "required": [
+     "level",
+     "title",
+     "tier",
+     "level_xp",
+     "next_level_xp",
+     "penalty",
+     "streak",
+     "streak_bonus",
+     "aids",
+     "ladder"
+    ],
+    "title": "Progress",
+    "description": "Level, title and what help the player still gets. XP always refers to lifetime XP."
+   },
    "RegisterIn": {
     "properties": {
      "token": {
@@ -2956,6 +3186,11 @@
         "type": "null"
        }
       ]
+     },
+     "position": {
+      "$ref": "#/components/schemas/Position",
+      "description": "Job on the team; sets the starting level",
+      "default": "mingo"
      }
     },
     "additionalProperties": false,
@@ -3496,6 +3731,60 @@
     ],
     "title": "Status"
    },
+   "Step": {
+    "properties": {
+     "level": {
+      "type": "integer",
+      "title": "Level"
+     },
+     "tier": {
+      "type": "string",
+      "enum": [
+       "Mingo",
+       "Jefe",
+       "DT",
+       "Top"
+      ],
+      "title": "Tier"
+     },
+     "title": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Title",
+      "description": "Null for the top until the player reaches DT V: a surprise"
+     },
+     "xp": {
+      "type": "integer",
+      "title": "Xp",
+      "description": "Lifetime XP that reaches it"
+     },
+     "aids": {
+      "$ref": "#/components/schemas/Aids"
+     },
+     "penalty": {
+      "type": "integer",
+      "title": "Penalty",
+      "description": "Percentage of a right answer's XP a wrong answer costs"
+     }
+    },
+    "type": "object",
+    "required": [
+     "level",
+     "tier",
+     "title",
+     "xp",
+     "aids",
+     "penalty"
+    ],
+    "title": "Step",
+    "description": "One level of the ladder and what it changes."
+   },
    "TimedQuestion": {
     "properties": {
      "attempt_id": {
@@ -3557,6 +3846,16 @@
       "anyOf": [
        {
         "$ref": "#/components/schemas/Status"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "position": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Position"
        },
        {
         "type": "null"
@@ -3655,9 +3954,9 @@
       "type": "integer",
       "title": "Members"
      },
-     "points_per_member": {
+     "xp_per_member": {
       "type": "number",
-      "title": "Points Per Member"
+      "title": "Xp Per Member"
      },
      "participation": {
       "type": "number",
@@ -3669,7 +3968,7 @@
     "required": [
      "vertical",
      "members",
-     "points_per_member",
+     "xp_per_member",
      "participation"
     ],
     "title": "VerticalRow"

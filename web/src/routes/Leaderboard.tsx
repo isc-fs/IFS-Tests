@@ -2,6 +2,7 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router'
 import { getLeaderboardOptions, verticalLeaderboardOptions } from '../api/@tanstack/react-query.gen'
 import type { LeaderRow } from '../api/types.gen'
+import { Emblem } from '../components/Emblem'
 import { ErrorNotice } from '../components/Form'
 import { Page } from '../components/Page'
 import { useMe } from '../lib/api'
@@ -61,7 +62,7 @@ export default function Leaderboard() {
   const board = pick<Board>(BOARDS, params.get('board'), 'everyone')
   const period = pick<Period>(PERIODS, params.get('period'), 'season')
   return (
-    <Page title="Leaderboard" eyebrow="Points from daily questions and mock quizzes">
+    <Page title="Leaderboard" eyebrow="XP from practice, daily questions and mock quizzes">
       <div className="stack">
         <Chips label="Board" options={BOARDS} current={board} to={(b) => href(b, period)} />
         <Chips label="Period" options={PERIODS} current={period} to={(p) => href(board, p)} />
@@ -75,14 +76,18 @@ function Row({ row }: { row: LeaderRow }) {
   return (
     <li value={row.rank} className={row.me ? 'item me' : 'item'}>
       <span className="place">{row.rank}</span>
+      <Emblem level={row.level} title={row.title} size={32} />
       <span>
         <span className="item-title">
           {row.display_name}
           {row.me && <span className="badge">You</span>}
         </span>
-        {row.vertical && <span className="muted">{row.vertical}</span>}
+        <span className="muted">
+          {row.title}
+          {row.vertical && ` · ${row.vertical}`}
+        </span>
       </span>
-      <span className="points">{row.points} pts</span>
+      <span className="points">{row.xp.toLocaleString('en-GB')} XP</span>
     </li>
   )
 }
@@ -99,7 +104,9 @@ function People({ board, period }: { board: PersonBoard; period: Period }) {
       </p>
       <ErrorNotice error={q.error} />
       {q.data && q.data.rows.length === 0 && !q.data.me && (
-        <p>Nobody has scored {when} yet. Answer the daily questions or run a mock quiz to get on the board.</p>
+        <p>
+          Nobody has scored {when} yet. Practise, answer the daily questions or run a mock quiz to get on the board.
+        </p>
       )}
       {!!q.data?.rows.length && (
         <>
@@ -117,7 +124,7 @@ function People({ board, period }: { board: PersonBoard; period: Period }) {
       {q.data?.me && !q.data.rows.some((r) => r.me) && (
         <div className="my-rank">
           <p>
-            <strong>You: #{q.data.me.rank}</strong> with {q.data.me.points} pts.
+            <strong>You: #{q.data.me.rank}</strong> with {q.data.me.xp.toLocaleString('en-GB')} XP.
           </p>
           <p className="muted">
             {q.data.me.hidden ? (
@@ -142,7 +149,7 @@ function Verticals({ period }: { period: Period }) {
     <section className="panel stack" aria-labelledby="board-title">
       <h2 id="board-title">Verticals, {PERIODS[period].toLowerCase()}</h2>
       <p className="muted">
-        Average points per active member and the share who answered a daily question in the last 7 days. People who hide
+        Average XP per active member and the share who answered a daily question in the last 7 days. People who hide
         themselves from the leaderboard aren't counted, and only verticals with at least 3 counted members are shown.
       </p>
       <p className={q.isPending || q.isPlaceholderData ? 'muted' : 'sr-only'} aria-live="polite">
@@ -156,7 +163,7 @@ function Verticals({ period }: { period: Period }) {
             <thead>
               <tr>
                 <th scope="col">Vertical</th>
-                <th scope="col">Points per member</th>
+                <th scope="col">XP per member</th>
                 <th scope="col">Played, last 7 days</th>
               </tr>
             </thead>
@@ -168,7 +175,7 @@ function Verticals({ period }: { period: Period }) {
                     {r.vertical === user?.vertical && <span className="badge">Yours</span>}
                     <span className="muted">{r.members} members</span>
                   </th>
-                  <td>{r.points_per_member.toFixed(1)}</td>
+                  <td>{r.xp_per_member.toFixed(1)}</td>
                   <td>{Math.round(r.participation * 100)}%</td>
                 </tr>
               ))}

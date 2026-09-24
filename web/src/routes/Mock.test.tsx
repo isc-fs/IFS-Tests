@@ -54,7 +54,7 @@ const FINISHED = {
   summary: {
     correct: 1,
     graded: 2,
-    points: 2,
+    xp: 76,
     counted: true,
     bar_to_beat: 'The last team to get a slot had 2 correct answers.',
     items: [
@@ -67,6 +67,11 @@ const FINISHED = {
         question: q(2, 'Damping?'),
         feedback: { correct: false, official: '0.7', correct_options: [], solutions: [] },
         late: true,
+      },
+      {
+        question: q(3, 'Ride height?'),
+        feedback: { correct: false, passed: true, official: '30 mm', correct_options: [], solutions: [] },
+        late: false,
       },
     ],
   },
@@ -109,13 +114,14 @@ test('a run: one question at a time, then the results', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Check answer' }))
 
   expect(await screen.findByRole('heading', { name: '1 of 2 right' })).toBeInTheDocument()
-  expect(screen.getByText('2 points for the season.')).toBeInTheDocument()
+  expect(screen.getByText('+76 XP for the season.')).toBeInTheDocument()
   expect(sent('POST /api/mock/sessions/44/answer').map((c) => c.body)).toEqual([
     { value: '30', attempt_id: 7 },
     { value: '0.5', attempt_id: 8 },
   ])
   const review = screen.getByRole('list', { name: '' })
   expect(within(review).getByText('Question 2: out of time')).toBeInTheDocument()
+  expect(within(review).getByText('Question 3: not sure')).toBeInTheDocument()
   await userEvent.click(within(review).getByText('Question 1: right'))
   expect(within(review).getByText('Spring rate?')).toBeVisible()
 })
@@ -123,9 +129,9 @@ test('a run: one question at a time, then the results', async () => {
 test('a replay says it does not score', async () => {
   renderApp('/mock/44', {
     'GET /api/me': { body: MEMBER },
-    'GET /api/mock/sessions/44': { body: { ...FINISHED, summary: { ...FINISHED.summary, counted: false, points: 0 } } },
+    'GET /api/mock/sessions/44': { body: { ...FINISHED, summary: { ...FINISHED.summary, counted: false, xp: 8 } } },
   })
-  expect(await screen.findByText(/A replay: it doesn’t score/)).toBeInTheDocument()
+  expect(await screen.findByText(/A replay: \+8 XP\. Only your first run/)).toBeInTheDocument()
 })
 
 test('an unknown run explains itself', async () => {

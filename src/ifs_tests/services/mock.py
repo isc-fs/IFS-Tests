@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session as DB
 from ..db.models import Attempt, Event, MockSession, Question, Quiz, QuizQuestion, User, quiz_events
 from ..domain import daily as timing
 from ..domain import mock as rules
+from . import xp
 from .errors import UserError
 from .questions import Checked, check
 
@@ -151,7 +152,7 @@ class Item:
 class Summary:
     correct: int
     graded: int
-    points: int
+    xp: int
     counted: bool
     bar_to_beat: str | None
     items: list[Item]
@@ -212,6 +213,10 @@ def _advance(db: DB, s: MockSession, now: datetime) -> tuple[Question, Attempt] 
             break
         if a.submitted_at is None:
             a.submitted_at, a.late, a.correct = now, True, False if q.graded else None
+            repeat = (
+                not s.counted or xp.last_seen(db, s.user_id, q.id, s.started_at, other_than=a.id) is not None
+            )
+            a.xp = xp.grant(db, s.user_id, q, "mock", a.correct, now, repeat=repeat, late=True).xp
     s.position = sum(1 for a in attempts.values() if a.submitted_at)
     if current is None:
         s.finished_at = s.finished_at or now
@@ -225,15 +230,16 @@ def _summary(db: DB, s: MockSession) -> Summary:
     for q in questions:
         a = attempts.get(q.id)
         answer = a.answer if a else {}
-        checked = check(db, q, answer.get("options"), answer.get("value"))
+        checked = check(db, q, answer.get("options"), answer.get("value"), bool(a and a.passed))
         checked.correct = a.correct if a else (False if q.graded else None)
+        checked.xp = a.xp if a else 0
         items.append(Item(q, checked, bool(a and a.late)))
     correct = sum(1 for i in items if i.checked.correct)
     quiz = db.get_one(Quiz, s.quiz_id)
     return Summary(
         correct=correct,
         graded=sum(1 for q in questions if q.graded),
-        points=sum(a.points for a in attempts.values()),
+        xp=sum(a.xp for a in attempts.values()),
         counted=s.counted,
         bar_to_beat=rules.bar_to_beat(quiz.last_qualifier),
         items=items,
@@ -261,6 +267,7 @@ def answer(
     options: list[int] | None,
     value: str | None,
     now: datetime,
+    unsure: bool = False,
 ) -> State:
     """Answer the question on screen and move on. Answering it again changes nothing."""
     s = _session(db, user, session_id)
@@ -269,19 +276,27 @@ def answer(
         raise UserError("That question isn't part of this run.", 404)
     if a.submitted_at is None:
         q = db.get_one(Question, a.question_id)
-        checked = check(db, q, options, value)
+        checked = check(db, q, options, value, unsure)
         late = timing.is_late(now, a.deadline_at)
-        scores = bool(checked.correct) and not late and s.counted
-        db.execute(
+        recorded = db.execute(
             update(Attempt)
             .where(Attempt.id == a.id, Attempt.submitted_at.is_(None))
             .values(
-                answer={"options": options, "value": value},
+                answer={"options": options, "value": value, "unsure": checked.passed},
                 correct=checked.correct,
                 submitted_at=now,
                 late=late,
-                points=rules.POINTS_PER_CORRECT if scores else 0,
+                passed=checked.passed,
             )
-        )
+            .returning(Attempt.id)
+        ).first()
+        if recorded:  # replays of a quiz already run this season, or questions seen before, earn like repeats
+            repeat = (
+                not s.counted or xp.last_seen(db, user.id, q.id, s.started_at, other_than=a.id) is not None
+            )
+            granted = xp.grant(
+                db, user.id, q, "mock", checked.correct, now, repeat=repeat, late=late, passed=checked.passed
+            )
+            db.execute(update(Attempt).where(Attempt.id == a.id).values(xp=granted.xp))
         db.commit()
     return state(db, user, session_id, now)

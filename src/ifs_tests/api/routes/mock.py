@@ -31,7 +31,7 @@ def _state(db: Db, s: mock.State, now: Now) -> MockState:
         summary = MockSummary(
             correct=s.summary.correct,
             graded=s.summary.graded,
-            points=s.summary.points,
+            xp=s.summary.xp,
             counted=s.summary.counted,
             bar_to_beat=s.summary.bar_to_beat,
             items=[
@@ -83,5 +83,5 @@ def mock_state(session_id: Id, user: Member, db: Db, now: Now) -> MockState:
 
 @router.post("/sessions/{session_id}/answer")
 def answer_mock(session_id: Id, body: MockAnswerIn, user: Member, db: Db, now: Now) -> MockState:
-    s = mock.answer(db, user, session_id, body.attempt_id, body.options, body.value, now)
+    s = mock.answer(db, user, session_id, body.attempt_id, body.options, body.value, now, body.unsure)
     return _state(db, s, now)

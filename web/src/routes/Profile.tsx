@@ -4,8 +4,11 @@ import { useNavigate } from 'react-router'
 import { changePasswordMutation, logoutMutation, updateMeMutation } from '../api/@tanstack/react-query.gen'
 import { type Me, Vertical } from '../api/types.gen'
 import { ErrorNotice, Field, Form, Notice, PASSWORD_HINT, SelectField, useFieldErrors } from '../components/Form'
+import { LevelCard } from '../components/LevelCard'
+import { RankRoad } from '../components/RankRoad'
 import { Page } from '../components/Page'
 import { ME_KEY, queryClient, useMe } from '../lib/api'
+import { POSITION_NAMES } from '../lib/xp'
 
 export default function Profile() {
   const { data: user } = useMe()
@@ -21,6 +24,8 @@ export default function Profile() {
   return (
     <Page title="Profile" eyebrow="Your account">
       <p className="muted">Signed in as {user.email}</p>
+      <LevelCard me={user} road={false} />
+      <RankRoad me={user} />
       <ProfileForm user={user} />
       <PasswordForm />
       <section className="panel" aria-label="Session">
@@ -73,6 +78,10 @@ function ProfileForm({ user }: { user: Me }) {
           <option key={v}>{v}</option>
         ))}
       </SelectField>
+      <p className="position">
+        <strong>Position on the team:</strong> {POSITION_NAMES[user.position]}.{' '}
+        <span className="muted">Only an admin can change it.</span>
+      </p>
       <label className="check">
         <input
           type="checkbox"

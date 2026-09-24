@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session as DB
 
 from ..db.models import Attempt, DailyQuestion, Question, User
 from ..domain import daily as rules
+from . import xp
 from .errors import UserError
 from .questions import Checked, check
 
@@ -94,18 +95,19 @@ class AreaState:
     deadline_at: datetime | None
     correct: bool | None
     late: bool | None
-    points: int
+    xp: int
 
 
 @dataclass
 class Status:
     day: date
     streak: int
-    points_today: int
+    xp_today: int
     areas: list[AreaState]
 
 
 def status(db: DB, user: User, now: datetime) -> Status:
+    close_expired(db, now, user.id)
     day = rules.madrid_day(now)
     chosen = ensure_daily(db, day)
     mine = {
@@ -127,12 +129,12 @@ def status(db: DB, user: User, now: datetime) -> Status:
                 deadline_at=a.deadline_at if a else None,
                 correct=a.correct if a else None,
                 late=a.late if a else None,
-                points=a.points if a else 0,
+                xp=a.xp if a else 0,
             )
         )
     order = {a: i for i, a in enumerate(rules.AREAS)}
     areas.sort(key=lambda s: order[s.area])
-    return Status(day, rules.streak(_on_time_days(db, user), day), sum(a.points for a in areas), areas)
+    return Status(day, rules.streak(_on_time_days(db, user), day), sum(a.xp for a in areas), areas)
 
 
 def start(db: DB, user: User, area: str, now: datetime) -> tuple[Question, Attempt]:
@@ -173,46 +175,96 @@ class Result:
     question: Question
     checked: Checked
     late: bool
-    points: int
+    xp: int
     streak: int
 
 
 def answer(
-    db: DB, user: User, attempt_id: int, options: list[int] | None, value: str | None, now: datetime
+    db: DB,
+    user: User,
+    attempt_id: int,
+    options: list[int] | None,
+    value: str | None,
+    now: datetime,
+    unsure: bool = False,
 ) -> Result:
-    """Submit once. Late answers are recorded but score nothing; repeats return the stored result."""
+    """Submit once. Late answers are recorded and count as wrong; repeats return the stored result."""
     a = db.scalar(
         select(Attempt).where(Attempt.id == attempt_id, Attempt.user_id == user.id, Attempt.mode == "daily")
     )
     if a is None or a.day is None or a.deadline_at is None:
         raise UserError("Start the question first.", 404)
     if a.submitted_at is None:
-        checked = check(db, db.get_one(Question, a.question_id), options, value)
+        q = db.get_one(Question, a.question_id)
+        checked = check(db, q, options, value, unsure)
         late = rules.is_late(now, a.deadline_at)
-        days = _on_time_days(db, user) | ({a.day} if not late else set())
-        db.execute(
+        recorded = db.execute(
             update(Attempt)
             .where(Attempt.id == a.id, Attempt.submitted_at.is_(None))
             .values(
-                answer={"options": options, "value": value},
+                answer={"options": options, "value": value, "unsure": checked.passed},
                 correct=checked.correct,
                 submitted_at=now,
                 late=late,
-                points=rules.points(bool(checked.correct), late, rules.streak(days, a.day)),
+                passed=checked.passed,
             )
-        )
+            .returning(Attempt.id)
+        ).first()
+        if recorded:  # only the request that recorded the answer earns the XP
+            repeat = xp.last_seen(db, user.id, q.id, now, other_than=a.id) is not None
+            granted = xp.grant(
+                db, user.id, q, "daily", checked.correct, now, late=late, repeat=repeat, passed=checked.passed
+            )
+            db.execute(update(Attempt).where(Attempt.id == a.id).values(xp=granted.xp))
+            db.commit()
+            db.refresh(a)
+            result = review_attempt(db, user, a)
+            result.checked.level_up = granted.level_up
+            return result
         db.commit()
         db.refresh(a)
     return review_attempt(db, user, a)
 
 
+def close_expired(db: DB, now: datetime, user_id: int | None = None) -> int:
+    """Close daily questions left to run out: late and wrong, like an answer sent after the time.
+    Otherwise closing the tab on a hard question would dodge the XP a wrong answer costs."""
+    stmt = (
+        select(Attempt.id, Attempt.question_id, Attempt.user_id)
+        .where(
+            Attempt.mode == "daily", Attempt.submitted_at.is_(None), Attempt.deadline_at < now - rules.GRACE
+        )
+        .order_by(Attempt.user_id, Attempt.id)
+    )
+    if user_id is not None:
+        stmt = stmt.where(Attempt.user_id == user_id)
+    closed = 0
+    for attempt_id, question_id, owner in db.execute(stmt).all():
+        q = db.get_one(Question, question_id)
+        correct = False if q.graded else None
+        recorded = db.execute(
+            update(Attempt)
+            .where(Attempt.id == attempt_id, Attempt.submitted_at.is_(None))
+            .values(correct=correct, submitted_at=now, late=True)
+            .returning(Attempt.id)
+        ).first()
+        if recorded:
+            repeat = xp.last_seen(db, owner, q.id, now, other_than=attempt_id) is not None
+            granted = xp.grant(db, owner, q, "daily", correct, now, late=True, repeat=repeat)
+            db.execute(update(Attempt).where(Attempt.id == attempt_id).values(xp=granted.xp))
+            closed += 1
+        db.commit()  # one attempt per transaction: attempt then player, the same lock order as answering
+    return closed
+
+
 def review_attempt(db: DB, user: User, a: Attempt) -> Result:
     """The stored result of a submitted attempt: retries and reloads never re-grade."""
     q = db.get_one(Question, a.question_id)
-    checked = check(db, q, a.answer.get("options"), a.answer.get("value"))
+    checked = check(db, q, a.answer.get("options"), a.answer.get("value"), a.passed)
     checked.correct = a.correct
     run = rules.streak(_on_time_days(db, user), a.day) if a.day else 0
-    return Result(q, checked, bool(a.late), a.points, run)
+    checked.xp, checked.level = a.xp, xp.level(db, user.id)
+    return Result(q, checked, bool(a.late), a.xp, run)
 
 
 def review(db: DB, user: User, area: str, now: datetime) -> Result:

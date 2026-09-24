@@ -7,12 +7,13 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from ifs_tests.bank.mirror import load_bank
 from ifs_tests.bank.sample import SAMPLE_DIR
 from ifs_tests.db.models import DailyQuestion, Question, User
+from ifs_tests.domain.xp import award
 from ifs_tests.services import daily
 from ifs_tests.services.bank import import_bank
 
@@ -21,11 +22,15 @@ from .helpers import PASSWORD, login, member, right_answer
 
 pytestmark = pytest.mark.integration
 NewClient = Callable[[], TestClient]
+DAILY = award(True, 3, "daily", 0)  # a right answer on the first day of a streak
+DAY_TWO = award(True, 3, "daily", 0, streak_days=2)
 
 
 @pytest.fixture
 def bank(db: Session, clock: Clock, tmp_path: Path) -> None:
     import_bank(db, load_bank(SAMPLE_DIR), SAMPLE_DIR / "img", tmp_path, clock.now)
+    db.execute(update(Question).values(difficulty=3))
+    db.commit()
 
 
 @pytest.fixture
@@ -84,25 +89,26 @@ def test_starting_reveals_the_question_and_resuming_keeps_the_clock(player: Test
 
 def test_one_try_scored_once(player: TestClient, db: Session) -> None:
     result = play(player, db, "elec")
-    assert (result["feedback"]["correct"], result["late"], result["points"], result["streak"]) == (
+    assert (result["feedback"]["correct"], result["late"], result["xp"], result["streak"]) == (
         True,
         False,
-        10,
+        DAILY,
         1,
     )
+    assert result["feedback"]["xp"] == DAILY
     attempt = player.post("/api/daily/elec/start")
     assert attempt.status_code == 409
     status = player.get("/api/daily").json()
     elec = next(a for a in status["areas"] if a["area"] == "elec")
-    assert (elec["state"], elec["correct"], elec["points"], status["points_today"], status["streak"]) == (
+    assert (elec["state"], elec["correct"], elec["xp"], status["xp_today"], status["streak"]) == (
         "done",
         True,
-        10,
-        10,
+        DAILY,
+        DAILY,
         1,
     )
     review = player.get("/api/daily/elec/review").json()
-    assert review["points"] == 10 and review["feedback"]["official"]
+    assert review["xp"] == DAILY and review["feedback"]["official"]
 
 
 def test_a_repeated_submit_returns_the_stored_result(player: TestClient, db: Session) -> None:
@@ -112,10 +118,10 @@ def test_a_repeated_submit_returns_the_stored_result(player: TestClient, db: Ses
     first = player.post(url, json={"options": wrong}).json()
     assert first["feedback"]["correct"] is False
     second = player.post(url, json=right_answer(db, started["question"]["id"])).json()
-    assert second["feedback"]["correct"] is False and second["points"] == 0
+    assert second["feedback"]["correct"] is False and second["xp"] == 0
 
 
-def test_late_answers_are_recorded_but_score_nothing(player: TestClient, db: Session, clock: Clock) -> None:
+def test_late_answers_are_recorded_but_earn_nothing(player: TestClient, db: Session, clock: Clock) -> None:
     started = player.post("/api/daily/rules/start").json()
     clock.now = datetime.fromisoformat(started["deadline_at"])
     clock.advance(seconds=4)
@@ -123,7 +129,7 @@ def test_late_answers_are_recorded_but_score_nothing(player: TestClient, db: Ses
         f"/api/daily/attempts/{started['attempt_id']}/answer",
         json=right_answer(db, started["question"]["id"]),
     ).json()
-    assert (r["feedback"]["correct"], r["late"], r["points"], r["streak"]) == (True, True, 0, 0)
+    assert (r["feedback"]["correct"], r["late"], r["xp"], r["streak"]) == (True, True, 0, 0)
 
 
 def test_within_the_grace_period_is_on_time(player: TestClient, db: Session, clock: Clock) -> None:
@@ -134,17 +140,17 @@ def test_within_the_grace_period_is_on_time(player: TestClient, db: Session, clo
         f"/api/daily/attempts/{started['attempt_id']}/answer",
         json=right_answer(db, started["question"]["id"]),
     ).json()
-    assert (r["late"], r["points"]) == (False, 10)
+    assert (r["late"], r["xp"]) == (False, DAILY)
 
 
 def test_streaks_grow_by_the_day_and_reset_after_a_gap(player: TestClient, db: Session, clock: Clock) -> None:
-    assert play(player, db, "mech")["points"] == 10
+    assert play(player, db, "mech")["xp"] == DAILY
     next_day(player, clock)
     day2 = play(player, db, "mech")
-    assert (day2["points"], day2["streak"]) == (11, 2)
-    assert play(player, db, "rules")["points"] == 11  # same day: same streak
+    assert (day2["xp"], day2["streak"]) == (DAY_TWO, 2)
+    assert play(player, db, "rules")["xp"] == DAY_TWO  # same day: same streak
     next_day(player, clock)
-    assert play(player, db, "elec", correct=False)["points"] == 0  # wrong but on time keeps the streak
+    assert play(player, db, "elec", correct=False)["xp"] == 0  # wrong but on time keeps the streak
     assert player.get("/api/daily").json()["streak"] == 3
     next_day(player, clock, 2)
     assert player.get("/api/daily").json()["streak"] == 0
@@ -162,7 +168,7 @@ def test_a_question_started_before_midnight_can_be_answered_after(
         f"/api/daily/attempts/{started['attempt_id']}/answer",
         json=right_answer(db, started["question"]["id"]),
     ).json()
-    assert (r["late"], r["points"]) == (False, 10)
+    assert (r["late"], r["xp"]) == (False, DAILY)
     assert player.post("/api/daily/rules/start").status_code == 200  # a new day, a new question
 
 

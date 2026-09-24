@@ -1,6 +1,9 @@
 import { type ReactNode, useEffect, useId, useRef, useState } from 'react'
 import type { AnswerIn, Feedback, PlayQuestion } from '../api/types.gen'
+import { ME_KEY, queryClient, useMe } from '../lib/api'
 import { AREAS, TOPICS } from '../lib/areas'
+import { changes, TOP_LEVEL, tierOf, xp } from '../lib/xp'
+import { Emblem } from './Emblem'
 import { Field, Form, Notice } from './Form'
 import { ReportProblem } from './ReportProblem'
 
@@ -37,9 +40,66 @@ export function QuestionMeta({ question, children }: { question: PlayQuestion; c
   )
 }
 
+function Promotion({ level }: { level: number }) {
+  const { data: me } = useMe()
+  const ladder = me?.progress?.ladder
+  const step = ladder?.[level]
+  const title = step?.title ?? null
+  const newTier = level >= TOP_LEVEL || level % 5 === 0
+  const what = step ? changes(step, ladder?.[level - 1]) : []
+  return (
+    <div className={`promotion${newTier ? ' new-tier' : ''}`}>
+      <Emblem level={level} title={title} size={newTier ? 96 : 72} />
+      <div>
+        <strong className="promotion-title">
+          {level >= TOP_LEVEL
+            ? `You reached the top: ${title ?? 'legend'}!`
+            : `Promoted to ${title ?? `level ${level}`}!`}
+        </strong>
+        {newTier && level < TOP_LEVEL && <span> Welcome to {tierOf(level)}.</span>}
+        {what.length > 0 && <span className="muted"> {what.join(' · ')}.</span>}
+      </div>
+    </div>
+  )
+}
+
+function Earned({ feedback }: { feedback: Feedback }) {
+  const up = feedback.level_up === true && feedback.level != null
+  useEffect(() => {
+    if (feedback.level != null) queryClient.invalidateQueries({ queryKey: ME_KEY })
+  }, [feedback.level])
+  const amount = feedback.xp ?? 0
+  if (!amount && !up) return null
+  return (
+    <output className="earned">
+      {amount !== 0 && <span className={amount > 0 ? 'xp gain' : 'xp loss'}>{xp(amount)}</span>}
+      {up && <Promotion level={feedback.level as number} />}
+    </output>
+  )
+}
+
 function Result({ feedback }: { feedback: Feedback }) {
-  if (feedback.correct === true) return <Notice tone="ok">Correct.</Notice>
-  if (feedback.correct === false) return <Notice tone="error">Not quite.</Notice>
+  if (feedback.passed)
+    return (
+      <>
+        <Notice tone="ok">You weren't sure, so here is the answer. Nothing gained or lost.</Notice>
+        <Earned feedback={feedback} />
+      </>
+    )
+  if (feedback.correct === true)
+    return (
+      <>
+        <Notice tone="ok">Correct.</Notice>
+        <Earned feedback={feedback} />
+      </>
+    )
+  if (feedback.correct === false)
+    return (
+      <>
+        <Notice tone="error">Not quite.</Notice>
+        <Earned feedback={feedback} />
+      </>
+    )
   return (
     <Notice tone="ok">
       {feedback.official
@@ -174,9 +234,27 @@ export function QuestionCard({
         )}
         {expired && !answered && <Notice tone="error">Time's up. Sending your answer…</Notice>}
         {!answered && !expired && (
-          <button type="submit" disabled={pending}>
-            {kind === 'self' ? 'Show the official answer' : 'Check answer'}
-          </button>
+          <div className="answer-actions">
+            <button type="submit" disabled={pending}>
+              {kind === 'self' ? 'Show the official answer' : 'Check answer'}
+            </button>
+            {question.graded && kind !== 'self' && (
+              <button
+                type="button"
+                className="secondary"
+                disabled={pending}
+                aria-describedby={`${legend}-unsure`}
+                onClick={() => onAnswer({ unsure: true })}
+              >
+                I'm not sure
+              </button>
+            )}
+          </div>
+        )}
+        {!answered && !expired && question.graded && kind !== 'self' && (
+          <p className="muted answer-note" id={`${legend}-unsure`}>
+            Not sure? You see the answer and nothing is gained or lost. A wrong answer can cost XP.
+          </p>
         )}
       </Form>
       {feedback && (

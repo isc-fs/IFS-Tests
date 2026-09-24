@@ -14,15 +14,16 @@ import { Page } from '../components/Page'
 import { QuestionCard } from '../components/QuestionCard'
 import { queryClient } from '../lib/api'
 import { AREAS } from '../lib/areas'
+import { xp } from '../lib/xp'
 
 type Area = 'mech' | 'elec' | 'rules'
 
 const duration = (s: number) => (s % 60 ? `${Math.floor(s / 60)} min ${s % 60} s` : `${s / 60} min`)
 
-function outcome(a: { correct: boolean | null; late: boolean | null; points: number }): string {
-  if (a.late) return 'Answered after the time ran out: no points.'
-  if (a.correct) return `Correct: +${a.points} points.`
-  return 'Not this time: no points.'
+function outcome(a: { correct: boolean | null; late: boolean | null; xp: number }): string {
+  if (a.late) return a.xp < 0 ? `Out of time, counted as wrong: ${xp(a.xp)}.` : 'Out of time: no XP.'
+  if (a.correct) return `Correct: ${xp(a.xp)}.`
+  return a.xp < 0 ? `Not this time: ${xp(a.xp)}.` : 'Not this time: no XP.'
 }
 
 function AreaCard({
@@ -148,11 +149,11 @@ export default function Daily() {
       {s && (
         <p className="lede">
           Streak: <strong>{s.streak === 1 ? '1 day' : `${s.streak} days`}</strong> · Today:{' '}
-          <strong>{s.points_today} points</strong>
+          <strong>{xp(s.xp_today)}</strong>
         </p>
       )}
       <p className="muted">
-        A correct answer in time scores 10 points, plus 1 for every day of your streak after the first (up to +5). New
+        A right answer in time earns twice the XP of practice, and every day of your streak adds 5 % (up to +50 %). New
         questions at midnight, Madrid time.
       </p>
       <ErrorNotice error={start.error ?? status.error} />

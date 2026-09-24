@@ -4,7 +4,7 @@ from datetime import date
 
 import pytest
 
-from ifs_tests.domain.mock import bar_to_beat, points, season
+from ifs_tests.domain.mock import bar_to_beat, season
 
 
 @pytest.mark.parametrize(
@@ -12,11 +12,6 @@ from ifs_tests.domain.mock import bar_to_beat, points, season
 )
 def test_seasons_start_in_september(day: date, expected: int) -> None:
     assert season(day) == expected
-
-
-def test_only_the_counted_session_scores() -> None:
-    assert points(7, True) == 14
-    assert points(7, False) == 0
 
 
 @pytest.mark.parametrize(

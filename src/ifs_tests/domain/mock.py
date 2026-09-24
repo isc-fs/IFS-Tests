@@ -1,21 +1,14 @@
-"""Mock quiz rules: seasons, which session counts, points and the bar to beat."""
+"""Mock quiz rules: seasons and the bar to beat."""
 
 from __future__ import annotations
 
 from datetime import date
 from typing import Any
 
-POINTS_PER_CORRECT = 2
-
 
 def season(day: date) -> int:
     """Seasons run September to August and are named by the year they start in."""
     return day.year if day.month >= 9 else day.year - 1
-
-
-def points(correct: int, counted: bool) -> int:
-    """Only a player's first go at a quiz in a season scores, so replaying it can't farm points."""
-    return POINTS_PER_CORRECT * correct if counted else 0
 
 
 def bar_to_beat(last_qualifier: dict[str, Any] | None) -> str | None:

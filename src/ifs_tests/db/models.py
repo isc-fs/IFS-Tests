@@ -80,7 +80,17 @@ class Vertical(StrEnum):
     board = "Board"
 
 
+class Position(StrEnum):
+    """Someone's job on the team. Not their XP level: a DT on the ladder is not a Technical Director."""
+
+    mingo = "mingo"
+    member = "member"
+    department_head = "department_head"
+    technical_director = "technical_director"
+
+
 ROLES: tuple[str, ...] = tuple(Role)
+POSITIONS: tuple[str, ...] = tuple(Position)
 STATUSES: tuple[str, ...] = tuple(Status)
 VERTICALS: tuple[str, ...] = tuple(Vertical)
 
@@ -96,6 +106,7 @@ class User(Base):
         CheckConstraint(_in("role", ROLES), name="role"),
         CheckConstraint(_in("status", STATUSES), name="status"),
         CheckConstraint(f"vertical IS NULL OR {_in('vertical', VERTICALS)}", name="vertical"),
+        CheckConstraint(_in("position", POSITIONS), name="position"),
     )
 
     id: Mapped[int] = mapped_column(Identity(), primary_key=True)
@@ -110,6 +121,9 @@ class User(Base):
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # Where the person started (Mingo, member, Department Head, Technical Director) and their lifetime XP.
+    position: Mapped[str] = mapped_column(String(24), server_default="mingo")
+    xp: Mapped[int] = mapped_column(server_default="0")
 
 
 Index("uq_users_display_name_lower", func.lower(User.display_name), unique=True)
@@ -209,6 +223,7 @@ class Question(Base):
     images: Mapped[list[str]] = mapped_column(ARRAY(String(64)), server_default="{}")
     area: Mapped[str] = mapped_column(String(16), index=True)
     topic: Mapped[str | None] = mapped_column(String(16))
+    difficulty: Mapped[int] = mapped_column(server_default="3")
     # How the answer is entered; safe to show before answering. "self" = reveal only.
     answer_kind: Mapped[str] = mapped_column(String(16))
     # Whether answers can be scored automatically. Daily questions and mock quizzes only use graded ones.
@@ -307,6 +322,10 @@ class Attempt(Base):
     session_id: Mapped[int | None] = mapped_column(
         ForeignKey("mock_sessions.id", ondelete="CASCADE"), index=True
     )
+    xp: Mapped[int] = mapped_column(server_default="0")
+    hint_used: Mapped[bool] = mapped_column(server_default="false")
+    # "I'm not sure": no answer given, the official one shown. Stored as not right.
+    passed: Mapped[bool] = mapped_column(server_default="false")
 
 
 Index(
@@ -338,7 +357,7 @@ class MockSession(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     quiz_id: Mapped[int] = mapped_column(ForeignKey("quizzes.id", ondelete="CASCADE"))
     season: Mapped[int]
-    # Only the first run of a quiz in a season scores points.
+    # Only the first run of a quiz in a season earns full XP.
     counted: Mapped[bool]
     position: Mapped[int] = mapped_column(server_default="0")
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
