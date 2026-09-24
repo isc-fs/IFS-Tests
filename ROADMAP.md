@@ -25,9 +25,9 @@ after launch.
 |:---:|---|---|---|
 | 1 | Foundations | ✅ done `feat/1-project-scope` · ✅ done `feat/2-fsquiz-client` · ✅ done `feat/3-team-proposal` | `v0.1.0` |
 | 2 | Platform foundation<br><sub>Staging live on the team server, accounts and the question bank in place</sub> | ✅ done `feat/4-platform-skeleton` · ✅ done `feat/5-server-deploy` · ✅ done `feat/6-accounts-auth` · ✅ done `feat/7-bank-push` | `v0.2.0` |
-| 3 | Training MVP<br><sub>One branch per way of answering questions, then the tools around them</sub> | ✅ done `feat/8-practice` · ✅ done `feat/9-daily-question` · ✅ done `feat/10-mock-quiz` · ✅ done `feat/11-admin-taxonomy` · ✅ done `feat/12-leaderboard` | `v0.3.0` |
-| 4 | Launch | 🔜 planned `feat/13-privacy-account` · 🔜 planned `feat/14-launch` | `v1.0.0` |
-| 5 | After launch _(deferred)_<br><sub>Ideas to prioritise with the team once the MVP is in use</sub> | ⏸ deferred `feat/15-admin-totp` · ⏸ deferred `feat/16-notion-sync` · ⏸ deferred `feat/17-solution-bounty` · ⏸ deferred `feat/18-team-questions` · ⏸ deferred `feat/19-quiz-day-drill` | `v1.1.0` |
+| 3 | Training MVP<br><sub>One branch per way of answering questions, then the tools around them</sub> | ✅ done `feat/8-practice` · ✅ done `feat/9-daily-question` · ✅ done `feat/10-mock-quiz` · ✅ done `feat/11-admin-taxonomy` · ✅ done `feat/12-leaderboard` · ✅ done `feat/13-xp-levels` · 🔄 active `feat/14-learning-aids` | `v0.3.0` |
+| 4 | Launch | 🔜 planned `feat/15-privacy-account` · 🔜 planned `feat/16-launch` | `v1.0.0` |
+| 5 | After launch _(deferred)_<br><sub>Ideas to prioritise with the team once the MVP is in use</sub> | ⏸ deferred `feat/17-admin-totp` · ⏸ deferred `feat/18-notion-sync` · ⏸ deferred `feat/19-solution-bounty` · ⏸ deferred `feat/20-team-questions` · ⏸ deferred `feat/21-quiz-day-drill` | `v1.1.0` |
 
 ## Branch diagram
 
@@ -98,19 +98,27 @@ gitGraph
     commit id: "✔ Season leaderboards per person, area and vertical, with opt-out"
     checkout dev
     merge feat/12-leaderboard
+    branch feat/13-xp-levels
+    commit id: "✔ XP by difficulty, streak bonus, levels and ranks, penalties that grow with level"
+    checkout dev
+    merge feat/13-xp-levels
+    branch feat/14-learning-aids
+    commit id: "… Formulas, reading and hints beside the question, taken away level by level"
+    checkout dev
+    merge feat/14-learning-aids
     checkout main
     merge dev tag: "v0.3.0"
     checkout dev
 
     %% Phase 4 — Launch
-    branch feat/13-privacy-account
+    branch feat/15-privacy-account
     commit id: "○ Privacy notice, data export and deletion, season rollover, attribution"
     checkout dev
-    merge feat/13-privacy-account
-    branch feat/14-launch
+    merge feat/15-privacy-account
+    branch feat/16-launch
     commit id: "○ Load test, restore drill, handover documentation, launch checklist"
     checkout dev
-    merge feat/14-launch
+    merge feat/16-launch
     checkout main
     merge dev tag: "v1.0.0"
     checkout dev
