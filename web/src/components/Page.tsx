@@ -1,6 +1,8 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
 
+export const APP_NAME = 'MingoQuiz'
+
 /** Sets the tab title and moves focus to the heading, so screen readers announce the new page. */
 export function Page({
   title,
@@ -15,7 +17,7 @@ export function Page({
 }) {
   const h1 = useRef<HTMLHeadingElement>(null)
   useEffect(() => {
-    document.title = `${title} · IFS-Tests`
+    document.title = `${title} · ${APP_NAME}`
     h1.current?.focus()
   }, [title])
   return (
@@ -44,7 +46,7 @@ export function Shell({ children }: { children: ReactNode }) {
 export function Brand() {
   return (
     <Link to="/" className="brand">
-      IFS-Tests
+      {APP_NAME}
     </Link>
   )
 }

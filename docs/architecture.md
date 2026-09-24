@@ -1,6 +1,6 @@
 # Architecture
 
-How the IFS-Tests platform is built and why. Decisions are recorded in [`adr/`](adr/); this page is the map.
+How the IFS-Tests platform (MingoQuiz, as users know it) is built and why. Decisions are recorded in [`adr/`](adr/); this page is the map.
 
 ## Overview
 

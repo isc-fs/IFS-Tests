@@ -36,7 +36,7 @@ test('the board lists everyone by rank and highlights you', async () => {
   expect(items[1]).toHaveAttribute('value', '2')
   expect(screen.getByText('3 people on this board.')).toBeInTheDocument()
   expect(screen.queryByText(/hidden from others/)).toBeNull()
-  expect(document.title).toBe('Leaderboard · IFS-Tests')
+  expect(document.title).toBe('Leaderboard · MingoQuiz')
 })
 
 test('chips and the period toggle live in the URL', async () => {
