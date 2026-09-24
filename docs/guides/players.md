@@ -147,6 +147,8 @@ daily questions, a mock run or a live quiz, and refuses to open one by its link 
   values).
 - Several values: separate them with semicolons, in the order the question asks, e.g. `12.5; 40`.
 - Text: capital letters and spaces don't matter.
+- On a phone, typed answers open the ordinary keyboard: switch it to numbers (**123** on an iPhone). A number pad
+  would leave out the minus sign (iPhone) and the semicolon.
 - Some questions aren't graded automatically: press **Show the official answer** and compare it yourself.
 
 ### Hints

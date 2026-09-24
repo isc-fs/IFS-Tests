@@ -125,3 +125,20 @@ test('offline, a page waiting for its data says why', async () => {
   act(() => onlineManager.setOnline(true))
   expect(await screen.findByText(QUESTION.text)).toBeInTheDocument()
 })
+
+// Phones' number pads can't type every answer: iOS's decimal pad has no minus sign, and none has a semicolon.
+// The keyboard follows the answer kind only, so it never tells a player the sign of the answer.
+test.each(['number', 'range', 'numbers', 'text'])('a %s answer gets the full keyboard', async (kind) => {
+  renderApp('/practice', {
+    'GET /api/me': { body: MEMBER },
+    'GET /api/practice/areas': { body: [] },
+    'GET /api/practice/next': { body: { ...QUESTION, answer_kind: kind, options: [], values: 2 } },
+  })
+  const field = await screen.findByLabelText('Your answer')
+  expect(field).toHaveAttribute('inputmode', 'text')
+  expect(field).toHaveAttribute('autocapitalize', 'off')
+  expect(field).toHaveAttribute('autocorrect', 'off')
+  expect(field).toHaveAttribute('spellcheck', 'false')
+  await userEvent.type(field, '-12,5; 40')
+  expect(field).toHaveValue('-12,5; 40')
+})

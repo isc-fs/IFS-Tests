@@ -352,8 +352,13 @@ export function QuestionCard({
         {!choice && kind !== 'self' && (
           <Field
             label={answerLabel}
-            inputMode={kind === 'text' ? 'text' : 'decimal'}
+            // Not a number pad: iOS's has no minus sign, and lists need a semicolon. The keyboard follows the
+            // kind, never the answer, so it can't hint at the answer's sign.
+            inputMode="text"
             autoComplete="off"
+            autoCapitalize="off"
+            autoCorrect="off"
+            spellCheck={false}
             value={value}
             readOnly={locked}
             maxLength={200}
