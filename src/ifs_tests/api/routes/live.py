@@ -1,19 +1,21 @@
 from __future__ import annotations
 
 import asyncio
+import logging
+import time
 from collections.abc import AsyncIterator
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Path, Request, Response
+from fastapi import APIRouter, BackgroundTasks, FastAPI, Path, Request, Response
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import StreamingResponse
 
 from ...domain.live import SUBDEPARTMENTS
 from ...services import live
 from ...services.live import View
-from ..deps import Db, Member, Now
+from ..deps import Db, Member, Now, background_db
 from ..present import feedback, play_question
 from ..schemas import (
     AdvanceIn,
@@ -39,6 +41,18 @@ Code = Annotated[LiveCode, Path()]
 Id = Annotated[int, Path(ge=1, le=2**31 - 1)]
 NO_CONTENT = Response(status_code=204)
 STREAM_SECONDS = 300
+POLL_SECONDS = 0.5  # how old the session may be, as a worker's event streams see it
+log = logging.getLogger(__name__)
+
+
+def _share(app: FastAPI, session_id: int, now: datetime) -> None:
+    with background_db(app) as db:
+        live.share(db, session_id, now)
+
+
+def _share_later(tasks: BackgroundTasks, request: Request, session_id: int, now: datetime) -> None:
+    """After the response: the captain whose answer closes a question doesn't wait while a room gets its XP."""
+    tasks.add_task(_share, request.app, session_id, now)
 
 
 def _state(v: View, now: datetime) -> LiveState:
@@ -106,15 +120,28 @@ def create_session(body: LiveConfig, user: Member, db: Db, now: Now) -> LiveCrea
     return LiveCreated(code=live.create(db, user, body.model_dump(), now).code)
 
 
+def _view(
+    tasks: BackgroundTasks, request: Request, user: Member, db: Db, code: str, now: datetime
+) -> LiveState:
+    v = live.view(db, user, code, now)
+    if v.closed:
+        _share_later(tasks, request, v.session.id, now)
+    return _state(v, now)
+
+
 @router.get("/sessions/{code}")
-def session_state(code: Code, user: Member, db: Db, now: Now) -> LiveState:
-    return _state(live.view(db, user, code, now), now)
+def session_state(
+    code: Code, request: Request, tasks: BackgroundTasks, user: Member, db: Db, now: Now
+) -> LiveState:
+    return _view(tasks, request, user, db, code, now)
 
 
 @router.post("/sessions/{code}/join")
-def join_session(code: Code, user: Member, db: Db, now: Now) -> LiveState:
+def join_session(
+    code: Code, request: Request, tasks: BackgroundTasks, user: Member, db: Db, now: Now
+) -> LiveState:
     live.join(db, user, code, now)
-    return _state(live.view(db, user, code, now), now)
+    return _view(tasks, request, user, db, code, now)
 
 
 @router.put("/sessions/{code}/config", status_code=204)
@@ -154,14 +181,25 @@ def remove_player(code: Code, user_id: Id, user: Member, db: Db) -> Response:
 
 
 @router.post("/sessions/{code}/advance", status_code=204)
-def advance_session(code: Code, user: Member, db: Db, now: Now, body: AdvanceIn | None = None) -> Response:
-    live.advance(db, user, code, now, (body.state, body.position) if body else None)
+def advance_session(
+    code: Code,
+    request: Request,
+    tasks: BackgroundTasks,
+    user: Member,
+    db: Db,
+    now: Now,
+    body: AdvanceIn | None = None,
+) -> Response:
+    sid = live.advance(db, user, code, now, (body.state, body.position) if body else None)
+    _share_later(tasks, request, sid, now)
     return NO_CONTENT
 
 
 @router.post("/sessions/{code}/end", status_code=204)
-def end_session(code: Code, user: Member, db: Db, now: Now) -> Response:
-    live.end(db, user, code, now)
+def end_session(
+    code: Code, request: Request, tasks: BackgroundTasks, user: Member, db: Db, now: Now
+) -> Response:
+    _share_later(tasks, request, live.end(db, user, code, now), now)
     return NO_CONTENT
 
 
@@ -172,8 +210,11 @@ def propose(code: Code, body: KeyIn, user: Member, db: Db, now: Now) -> Response
 
 
 @router.post("/sessions/{code}/answer", status_code=204)
-def answer(code: Code, body: AnswerIn, user: Member, db: Db, now: Now) -> Response:
-    live.answer(db, user, code, body.options, body.value, body.unsure, now)
+def answer(
+    code: Code, body: AnswerIn, request: Request, tasks: BackgroundTasks, user: Member, db: Db, now: Now
+) -> Response:
+    sid = live.answer(db, user, code, body.options, body.value, body.unsure, now)
+    _share_later(tasks, request, sid, now)
     return NO_CONTENT
 
 
@@ -187,22 +228,70 @@ def results(code: Code, user: Member, db: Db) -> Response:
     )
 
 
+@dataclass
+class _Watched:
+    watch: live.Watch | None = None
+    at: float = 0.0
+    polling: bool = False
+
+
+_watched: dict[str, _Watched] = {}
+_sharing: set[asyncio.Task[None]] = set()
+
+
+def _poll(app: FastAPI, code: str) -> live.Watch:
+    with background_db(app) as db:
+        return live.watch(db, code, datetime.now(UTC))
+
+
+def _shared(task: asyncio.Task[None]) -> None:
+    _sharing.discard(task)
+    if not task.cancelled() and task.exception() is not None:
+        log.error("Sharing live XP failed; the nightly job will retry", exc_info=task.exception())
+
+
+async def _latest(app: FastAPI, code: str) -> live.Watch:
+    """The session as this worker's event streams see it: read at most every POLL_SECONDS however many streams
+    are open, so a room of phones costs one query instead of one each. When the snapshot shows a question just
+    closed (its time ran out, or a late answer or the host closed it), its XP is shared in the background."""
+    w = _watched.setdefault(code, _Watched())
+    if w.watch is None or (not w.polling and time.monotonic() - w.at >= POLL_SECONDS):
+        w.polling = True
+        try:
+            new = await run_in_threadpool(_poll, app, code)
+        finally:
+            w.polling = False
+        old, w.watch, w.at = w.watch, new, time.monotonic()
+        if new.state in ("closed", "finished") and (
+            old is None or (old.state, old.position) != (new.state, new.position)
+        ):
+            task = asyncio.create_task(run_in_threadpool(_share, app, new.session_id, datetime.now(UTC)))
+            _sharing.add(task)
+            task.add_done_callback(_shared)
+        if len(_watched) > 64:  # sessions nobody watches any more
+            for stale in [c for c, x in _watched.items() if time.monotonic() - x.at > 60]:
+                del _watched[stale]
+    return w.watch
+
+
 @router.get("/sessions/{code}/events", response_class=StreamingResponse)
 async def events(code: Code, request: Request, user: Member, db: Db) -> StreamingResponse:
-    """A version number whenever the session changes (and when a question's time runs out), so screens know
-    to fetch the state again. No state travels here, so nobody sees more than their own GET shows them."""
+    """`<version>.<proposals>` whenever the session changes (and when a question's time runs out), or a proposal
+    reaches the viewer's table, so screens know to fetch the state again. No state travels here, so nobody sees
+    more than their own GET shows them."""
     # The same access check as the state.
     await run_in_threadpool(live.view, db, user, code, datetime.now(UTC))
 
     async def stream() -> AsyncIterator[str]:
-        last, quiet = -1, 0
+        last, quiet = "", 0
         for _ in range(STREAM_SECONDS):  # then the browser reconnects: no stream outlives a proxy's patience
             if await request.is_disconnected():
                 return
-            version = await run_in_threadpool(live.refresh, db, code, datetime.now(UTC))
-            if version != last:
-                last, quiet = version, 0
-                yield f"data: {version}\n\n"
+            w = await _latest(request.app, code)
+            token = f"{w.version}.{w.proposals.get(user.id, 0)}"
+            if token != last:
+                last, quiet = token, 0
+                yield f"data: {token}\n\n"
             elif quiet >= 15:
                 quiet = 0
                 yield ": still here\n\n"

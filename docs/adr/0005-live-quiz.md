@@ -128,6 +128,19 @@ by hand, captains, proposals, every-table and specialist routing, reveal after e
 end, a full past quiz on real timing with the bar to beat, speed points, projector screen, shared XP, CSV
 export. Still to come: a per-topic weakness report after a rehearsal.
 
+### As built (fix/9, 2026-09-25)
+
+Two details above changed after a red-team review; the ADR's decisions stand.
+
+- **Shared topics:** a topic several tables own no longer goes only to the first of them. Each question goes to the
+  owner that has had the fewest questions so far, so every specialist table answers; one table still answers each
+  question and its answer is still the room's. The lobby also warns about tables that would get no question.
+- **Load:** at the production limits (1 CPU) the "Load" figures above did not hold for a full meeting: every proposal
+  woke every screen and the api saturated. A proposal now wakes only its table, each worker polls a session once for
+  all its streams, the shared part of the state is built once per change, and XP is shared after responding. Current
+  measurements are in the [runbook](../runbook.md#55-live-quiz-capacity); 200 simultaneous state fetches take about
+  1.2 s at 1 CPU, one per screen (82) about 0.5 s.
+
 ## Open
 
 - **TS Testing:** which vertical it belongs to and which topics it owns (its Notion colour matches none).

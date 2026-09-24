@@ -196,7 +196,7 @@ These look like bugs to users and reviewers. They aren't; point people here or t
 ### Live quiz screens update late behind a proxy
 
 - **Symptom:** in a live quiz, screens take several seconds to follow the host.
-- **Cause:** screens learn about changes from the Server-Sent Events stream `GET /api/live/sessions/{code}/events`; a proxy that buffers responses holds the events back, and the screens fall back to polling every 5 seconds.
+- **Cause:** screens learn about changes from the Server-Sent Events stream `GET /api/live/sessions/{code}/events`; a proxy that buffers responses holds the events back, and the screens fall back to polling every 15 seconds (every 5 while the stream is down).
 - **Fix:** the app sends `X-Accel-Buffering: no` on that stream (`events` in `src/ifs_tests/api/routes/live.py`), and `deploy/nginx/quiz.conf` gives the stream its own location with `proxy_buffering off`. If you put a different proxy or CDN in front, turn off response buffering for that path. The stream also sends a comment every 15 seconds and ends after 300 seconds (the browser reconnects), so proxy read timeouts of 60 seconds or more are fine.
 
 ### A deploy fails with `FAIL readyz` and rolls back

@@ -6,7 +6,10 @@ from __future__ import annotations
 import csv
 import io
 import random
-from dataclasses import asdict, dataclass, field
+import threading
+import time
+from collections import defaultdict
+from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timedelta
 from typing import Any, Literal
 
@@ -102,8 +105,9 @@ def share(db: DB, session_id: int, now: datetime) -> int:
     """Share the XP of the answers whose results may now be known: closed questions of a quiz that shows right
     and wrong after each one, or everything once the quiz is over (a rehearsal holds it back so XP can't give
     answers away). One table's answer per transaction, locking only its players in id order: a long rehearsal
-    holds nobody's row for long, and nothing else waits on a whole room. Called after each commit that can
-    close a question; the nightly job sweeps up anything a crash left."""
+    holds nobody's row for long, and nothing else waits on a whole room. Runs after the response to whatever
+    closed a question (the captain doesn't wait for a room's XP), and sharers running at once split the work;
+    the nightly job sweeps up anything a crash left."""
     s = db.get_one(LiveSession, session_id)
     pending = select(LiveAnswer.position, LiveAnswer.table_id).where(
         LiveAnswer.session_id == session_id, ~LiveAnswer.granted
@@ -186,25 +190,48 @@ def _expired(s: LiveSession, now: datetime) -> bool:
     return s.state == "open" and s.deadline_at is not None and timing.is_late(now, s.deadline_at)
 
 
-def refresh(db: DB, code: str, now: datetime) -> int:
-    """Close a question whose time ran out; the version tells screens whether to fetch the state again.
-    One conditional update, so it can never close a question the host opened a moment earlier."""
+def _close_expired(db: DB, s: LiveSession, now: datetime) -> bool:
+    """Close the open question once its time and the grace have run out; True if this call closed it. A
+    conditional update, so it can never close a question the host opened a moment earlier."""
+    if not _expired(s, now):
+        return False
     closed = db.execute(
         update(LiveSession)
         .where(
-            LiveSession.code == code.upper(),
-            LiveSession.state == "open",
-            LiveSession.deadline_at < now - timing.GRACE,
+            LiveSession.id == s.id, LiveSession.state == "open", LiveSession.deadline_at < now - timing.GRACE
         )
         .values(state="closed", version=LiveSession.version + 1)
-        .returning(LiveSession.version)
-    ).scalar()
+        .returning(LiveSession.id)
+    ).first()
+    db.refresh(s)
+    return closed is not None
+
+
+@dataclass(frozen=True)
+class Watch:
+    """What the event streams compare: the session's version, which goes up on every change but a proposal,
+    and for each seated player the proposals counter of their table, so a proposal wakes only that table."""
+
+    session_id: int
+    state: str
+    position: int
+    version: int
+    proposals: dict[int, int]  # user_id -> proposals made to their table
+
+
+def watch(db: DB, code: str, now: datetime) -> Watch:
+    """Once a second per session and worker, for all of that worker's event streams. Also closes a question
+    whose time ran out."""
     s = _session(db, code)
-    version = closed if closed is not None else s.version
+    _close_expired(db, s, now)
+    seats = db.execute(
+        select(LivePlayer.user_id, LiveTable.proposals)
+        .join(LiveTable, LiveTable.id == LivePlayer.table_id)
+        .where(LivePlayer.session_id == s.id, ~LivePlayer.removed)
+    )
+    w = Watch(s.id, s.state, s.position, s.version, dict(seats.tuples().all()))
     db.commit()
-    if closed is not None:
-        share(db, s.id, now)
-    return version
+    return w
 
 
 def join(db: DB, user: User, code: str, now: datetime) -> LiveSession:
@@ -392,9 +419,10 @@ def _tables(db: DB, s: LiveSession) -> list[LiveTable]:
     return list(db.scalars(select(LiveTable).where(LiveTable.session_id == s.id).order_by(LiveTable.id)))
 
 
-def advance(db: DB, host: User, code: str, now: datetime, seen: tuple[str, int] | None = None) -> None:
+def advance(db: DB, host: User, code: str, now: datetime, seen: tuple[str, int] | None = None) -> int:
     """The host's one button: start, close the question, open the next one, finish after the last. `seen` is
-    the state the host's screen showed: a double tap, or a second device, mustn't skip a step."""
+    the state the host's screen showed: a double tap, or a second device, mustn't skip a step. Returns the
+    session's id: share its XP next."""
     s = _hosted(db, host, code)
     if seen is not None and seen != (s.state, s.position):
         raise UserError("The quiz has already moved on.", 409)
@@ -402,8 +430,7 @@ def advance(db: DB, host: User, code: str, now: datetime, seen: tuple[str, int] 
         s.state = "closed"
         _touch(s)
         db.commit()
-        share(db, s.id, now)
-        return
+        return s.id
     if s.state == "lobby":
         _start(db, s, now)
     elif s.state == "open":
@@ -416,7 +443,7 @@ def advance(db: DB, host: User, code: str, now: datetime, seen: tuple[str, int] 
         else:
             _open(s, nxt.position, nxt.budget_s, now)
     db.commit()
-    share(db, s.id, now)
+    return s.id
 
 
 def _start(db: DB, s: LiveSession, now: datetime) -> None:
@@ -430,14 +457,17 @@ def _start(db: DB, s: LiveSession, now: datetime) -> None:
     # Questions no table owns go to the chosen table, else the biggest: it has the widest mix of people.
     sizes = {t.id: len([p for p in _players(db, s).values() if p.table_id == t.id]) for t in tables}
     catch_all = next((t.id for t in tables if t.catch_all), max(tables, key=lambda t: sizes[t.id]).id)
-    specialists = s.config["routing"] == "owners"
-    for i, q in enumerate(questions):
+    if s.config["routing"] == "owners":
+        routed = rules.route([q.topic for q in questions], owners, catch_all)
+    else:
+        routed = [None] * len(questions)
+    for i, (q, table_id) in enumerate(zip(questions, routed, strict=True)):
         db.add(
             LiveQuestion(
                 session_id=s.id,
                 position=i,
                 question_id=q.id,
-                table_id=rules.owner(q.topic, owners, catch_all) if specialists else None,
+                table_id=table_id,
                 budget_s=_budget(s.config, q),
             )
         )
@@ -445,11 +475,11 @@ def _start(db: DB, s: LiveSession, now: datetime) -> None:
     _open(s, 0, db.get_one(LiveQuestion, (s.id, 0)).budget_s, now)
 
 
-def end(db: DB, host: User, code: str, now: datetime) -> None:
+def end(db: DB, host: User, code: str, now: datetime) -> int:
     s = _hosted(db, host, code)
     _finish(db, s, now)
     db.commit()
-    share(db, s.id, now)
+    return s.id
 
 
 def _running(db: DB, code: str, now: datetime) -> tuple[LiveSession, LiveQuestion]:
@@ -486,14 +516,16 @@ def propose(db: DB, user: User, code: str, answer: dict[str, Any], now: datetime
         .values(session_id=s.id, position=s.position, user_id=user.id, **row)
         .on_conflict_do_update(index_elements=["session_id", "position", "user_id"], set_=row)
     )
-    _touch(s)
+    # Not the session's version: only the screens at the target table show proposals, so only they refetch.
+    db.execute(update(LiveTable).where(LiveTable.id == target).values(proposals=LiveTable.proposals + 1))
     db.commit()
 
 
 def answer(
     db: DB, user: User, code: str, options: list[int] | None, value: str | None, unsure: bool, now: datetime
-) -> None:
-    """The captain sends the table's one answer. Every member seated at the table shares the XP."""
+) -> int:
+    """The captain sends the table's one answer. Every member seated at the table shares the XP. Returns the
+    session's id: share its XP next (the question may have closed)."""
     s, lq = _running(db, code, now)
     _still_here(db, user.id)
     table = db.scalar(select(LiveTable).where(LiveTable.session_id == s.id, LiveTable.captain_id == user.id))
@@ -544,7 +576,7 @@ def answer(
         s.state = "closed"
     _touch(s)
     db.commit()
-    share(db, s.id, now)  # every table answered: the question closed, its XP can go out
+    return s.id
 
 
 def _share(db: DB, s: LiveSession, a: LiveAnswer, now: datetime) -> None:
@@ -602,14 +634,48 @@ class TableView:
     points: int = 0
 
 
-@dataclass
+@dataclass(frozen=True)
+class Sent:
+    """A table's answer as the screens show it."""
+
+    table_id: int
+    answer: dict[str, Any]
+    correct: bool | None
+    passed: bool
+    points: int
+
+
+@dataclass(frozen=True)
 class Reveal:
     position: int
     shown: Shown
     table_id: int | None
     checked: Checked
-    answers: dict[int, LiveAnswer]
+    answers: dict[int, Sent]
     hidden: bool = False  # still running for the viewer elsewhere (their daily, a mock run): no answers shown
+
+
+@dataclass
+class Room:
+    """What every screen of a session shows at one version: built once per version and worker, then shared by
+    every request for that version (a room of phones refetching after each change). Each request adds what
+    depends on the viewer: their table, the proposals to it, and reveals of questions still running for them."""
+
+    code: str
+    version: int
+    built: float
+    host_name: str
+    players: dict[int, tuple[str, int | None]]  # user_id -> (name, table_id)
+    tables: list[TableView]
+    total: int
+    bar_to_beat: str | None = None
+    current: Shown | None = None
+    current_table_id: int | None = None
+    budget_s: int | None = None
+    sent: dict[int, dict[str, Any]] = field(default_factory=dict)  # the current question's answers by table
+    reveals: list[Reveal] = field(default_factory=list)
+    room_right: int | None = None
+    room_asked: int = 0
 
 
 @dataclass
@@ -631,6 +697,13 @@ class View:
     room_right: int | None = None
     room_asked: int = 0
     bar_to_beat: str | None = None
+    closed: bool = False  # this request closed a question whose time ran out: share its XP next
+
+
+# A room is rebuilt at least this often, so a changed name, a question edit or an answer correction shows.
+ROOM_TTL = 30.0
+_rooms: dict[int, Room] = {}
+_building: dict[int, threading.Lock] = {}
 
 
 def _revealed(s: LiveSession) -> bool:
@@ -639,109 +712,177 @@ def _revealed(s: LiveSession) -> bool:
 
 
 def view(db: DB, user: User, code: str, now: datetime) -> View:
-    refresh(db, code, now)
     s = _session(db, code)
-    players = _players(db, s)
-    if user.id != s.host_id and user.id not in players:  # admins too: they join like anyone else
+    closed = _close_expired(db, s, now)
+    room = _room(db, s)
+    if user.id != s.host_id and user.id not in room.players:  # admins too: they join like anyone else
         raise UserError("Join the live quiz first.", 403)
-    names = dict(
-        db.execute(select(User.id, User.display_name).where(User.id.in_([*players, s.host_id or 0])))
-        .tuples()
-        .all()
+    me = room.players.get(user.id)
+    my_table = me[1] if me else None
+    out = View(
+        session=s,
+        host_name=room.host_name,
+        role="host" if user.id == s.host_id else "player",
+        my_table_id=my_table,
+        captain=any(t.captain_id == user.id for t in room.tables),
+        players=[(uid, name, tid) for uid, (name, tid) in room.players.items()],
+        tables=room.tables,
+        total=room.total,
+        current=room.current,
+        current_table_id=room.current_table_id,
+        budget_s=room.budget_s,
+        room_right=room.room_right,
+        room_asked=room.room_asked,
+        bar_to_beat=room.bar_to_beat,
+        closed=closed,
     )
-    me = players.get(user.id)
-    tables = _tables(db, s)
+    if room.current is not None:
+        target = room.current_table_id or my_table
+        out.my_answer = room.sent.get(target) if target else None
+        if me is not None and target is not None:
+            rows = db.execute(
+                select(LiveProposal.user_id, LiveProposal.answer).where(
+                    LiveProposal.session_id == s.id,
+                    LiveProposal.position == s.position,
+                    LiveProposal.table_id == target,
+                )
+            )
+            out.proposals = [
+                (uid, room.players.get(uid, ("", None))[0], ans)
+                for uid, ans in rows
+                if my_table == target or uid == user.id
+            ]
+    if room.reveals:
+        busy = running(db, user.id, now)
+        out.reveals = [_blank(r) if r.shown.question.id in busy else r for r in room.reveals]
+    db.commit()  # read-only by now: give the connection back before the route serialises
+    return out
+
+
+def _blank(r: Reveal) -> Reveal:
+    """A question still running for the viewer elsewhere: no answer, and no table's answer either."""
+    return replace(
+        r, checked=replace(r.checked, official=None, correct_options=[], solutions=[]), hidden=True
+    )
+
+
+def _room(db: DB, s: LiveSession) -> Room:
+    """The shared part of the view for the version `s` was read at. A request whose version isn't the cached
+    one builds its own, and keeps it if it's newer; one build at a time per session, so a room of phones
+    refetching at once reads the database once."""
+
+    def cached() -> Room | None:
+        r = _rooms.get(s.id)
+        if r is None or time.monotonic() - r.built >= ROOM_TTL or (r.code, r.version) != (s.code, s.version):
+            return None
+        return r
+
+    if (r := cached()) is not None:
+        return r
+    with _building.setdefault(s.id, threading.Lock()):
+        if (r := cached()) is not None:
+            return r
+        r = _build(db, s)
+        old = _rooms.get(s.id)
+        if old is None or old.code != s.code or old.version <= r.version or r.built - old.built >= ROOM_TTL:
+            _rooms[s.id] = r
+        if len(_rooms) > 64:  # sessions long over
+            stale = min(_rooms, key=lambda k: _rooms[k].built)
+            del _rooms[stale]
+            _building.pop(stale, None)
+        return r
+
+
+def _build(db: DB, s: LiveSession) -> Room:
+    rows = db.execute(
+        select(LivePlayer.user_id, User.display_name, LivePlayer.table_id)
+        .join(User, User.id == LivePlayer.user_id)
+        .where(LivePlayer.session_id == s.id, ~LivePlayer.removed)
+        .order_by(LivePlayer.joined_at, LivePlayer.user_id)
+    ).tuples()
+    players = {uid: (name, tid) for uid, name, tid in rows}
+    seated: dict[int | None, list[int]] = defaultdict(list)
+    for uid, (_, tid) in players.items():
+        seated[tid].append(uid)
+    host = db.scalar(select(User.display_name).where(User.id == s.host_id)) if s.host_id else None
     questions = {
         lq.position: lq for lq in db.scalars(select(LiveQuestion).where(LiveQuestion.session_id == s.id))
     }
-    answers: dict[int, dict[int, LiveAnswer]] = {}
-    for a in db.scalars(select(LiveAnswer).where(LiveAnswer.session_id == s.id)):
-        answers.setdefault(a.position, {})[a.table_id] = a
-    lq = questions.get(s.position)
-    table_views = [
-        TableView(
-            t.id,
-            t.name,
-            t.captain_id,
-            list(t.topics),
-            t.catch_all,
-            [p.user_id for p in players.values() if p.table_id == t.id],
-            t.id in answers.get(s.position, {}),
-        )
-        for t in tables
-    ]
-    out = View(
-        session=s,
-        host_name=names.get(s.host_id or 0, "a former member"),
-        role="host" if user.id == s.host_id else "player",
-        my_table_id=me.table_id if me else None,
-        captain=any(t.captain_id == user.id for t in tables),
-        players=[(p.user_id, names.get(p.user_id, ""), p.table_id) for p in players.values()],
-        tables=table_views,
+    answers: dict[int, dict[int, Sent]] = defaultdict(dict)
+    for a in db.execute(
+        select(
+            LiveAnswer.position,
+            LiveAnswer.table_id,
+            LiveAnswer.answer,
+            LiveAnswer.correct,
+            LiveAnswer.passed,
+            LiveAnswer.points,
+        ).where(LiveAnswer.session_id == s.id, LiveAnswer.position <= s.position)
+    ):
+        answers[a.position][a.table_id] = Sent(a.table_id, a.answer, a.correct, a.passed, a.points)
+    room = Room(
+        code=s.code,
+        version=s.version,
+        built=time.monotonic(),
+        host_name=host or "a former member",
+        players=players,
+        tables=[
+            TableView(
+                t.id,
+                t.name,
+                t.captain_id,
+                list(t.topics),
+                t.catch_all,
+                seated[t.id],
+                t.id in answers[s.position],
+            )
+            for t in _tables(db, s)
+        ],
         total=len(questions),
     )
     if s.config["questions"] == "quiz":
         quiz = db.get(Quiz, s.config["quiz_id"])
-        out.bar_to_beat = mock_rules.bar_to_beat(quiz.last_qualifier) if quiz else None
+        room.bar_to_beat = mock_rules.bar_to_beat(quiz.last_qualifier) if quiz else None
+    lq = questions.get(s.position)
     if lq is not None and s.state in ("open", "closed"):
         q = db.get_one(Question, lq.question_id)
-        out.current, out.current_table_id, out.budget_s = show(db, [q])[0], lq.table_id, lq.budget_s
-        target = lq.table_id or out.my_table_id
-        mine = answers.get(s.position, {}).get(target) if target else None
-        out.my_answer = mine.answer if mine else None
-        if me is not None and target is not None:
-            rows = db.execute(
-                select(LiveProposal.user_id, LiveProposal.table_id, LiveProposal.answer).where(
-                    LiveProposal.session_id == s.id, LiveProposal.position == s.position
-                )
-            )
-            out.proposals = [
-                (uid, names.get(uid, ""), ans)
-                for uid, tid, ans in rows
-                if tid == target and (me.table_id == target or uid == user.id)
-            ]
-    closed = [p for p in sorted(questions) if p < s.position or (p == s.position and s.state != "open")]
+        room.current, room.current_table_id, room.budget_s = show(db, [q])[0], lq.table_id, lq.budget_s
+        room.sent = {tid: a.answer for tid, a in answers[s.position].items()}
     if _revealed(s):
-        _score(db, s, questions, answers, closed, out, running(db, user.id, now))
-    db.commit()  # read-only by now: give the connection back before the route serialises
-    return out
+        closed = [p for p in sorted(questions) if p < s.position or (p == s.position and s.state != "open")]
+        _score(db, s, questions, answers, closed, room)
+    return room
 
 
 def _score(
     db: DB,
     s: LiveSession,
     questions: dict[int, LiveQuestion],
-    answers: dict[int, dict[int, LiveAnswer]],
+    answers: dict[int, dict[int, Sent]],
     closed: list[int],
-    out: View,
-    busy: set[int],
+    room: Room,
 ) -> None:
     """Right answers per table and for the room: the owning table's answer, or the best table's tally."""
-    by_id = {t.id: t for t in out.tables}
+    by_id = {t.id: t for t in room.tables}
     right = 0
     for p in closed:
         lq = questions[p]
-        for tid, a in answers.get(p, {}).items():
+        for tid, a in answers[p].items():
             if tid in by_id:
                 by_id[tid].right += bool(a.correct)
                 by_id[tid].points += a.points
-        owner = answers.get(p, {}).get(lq.table_id) if lq.table_id else None
+        owner = answers[p].get(lq.table_id) if lq.table_id else None
         right += bool(owner and owner.correct)
     specialists = s.config["routing"] == "owners"
-    out.room_asked = len(closed)
-    out.room_right = right if specialists else max((t.right for t in out.tables), default=0)
+    room.room_asked = len(closed)
+    room.room_right = right if specialists else max((t.right for t in room.tables), default=0)
     positions = closed if s.state == "finished" else [s.position]
     ids = [questions[p].question_id for p in positions]
     found = {q.id: q for q in db.scalars(select(Question).where(Question.id.in_(ids)))}
     qs = [found[i] for i in ids]
-    picked = [
-        o for p in positions for a in answers.get(p, {}).values() for o in a.answer.get("options") or []
-    ]
+    picked = [o for p in positions for a in answers[p].values() for o in a.answer.get("options") or []]
     for p, q, shown in zip(positions, qs, show(db, qs, picked), strict=True):
-        checked = explain(db, q, None)
-        if q.id in busy:
-            checked.official, checked.correct_options, checked.solutions = None, [], []
-        out.reveals.append(Reveal(p, shown, questions[p].table_id, checked, answers.get(p, {}), q.id in busy))
+        room.reveals.append(Reveal(p, shown, questions[p].table_id, explain(db, q, None), answers[p]))
 
 
 def _cell(value: object) -> str:

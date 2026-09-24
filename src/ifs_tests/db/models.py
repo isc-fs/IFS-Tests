@@ -406,7 +406,8 @@ LIVE_STATES = ("lobby", "open", "closed", "finished")
 
 
 class LiveSession(Base):
-    """A hosted live quiz (ADR 0005). `version` goes up on every change, so screens know to refresh."""
+    """A hosted live quiz (ADR 0005). `version` goes up on every change but a proposal (see
+    `LiveTable.proposals`), so screens know to refresh."""
 
     __tablename__ = "live_sessions"
     __table_args__ = (CheckConstraint(_in("state", LIVE_STATES), name="state"),)
@@ -434,6 +435,8 @@ class LiveTable(Base):
     captain_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     topics: Mapped[list[str]] = mapped_column(ARRAY(String(16)), server_default="{}")
     catch_all: Mapped[bool] = mapped_column(server_default="false")
+    # Goes up on every proposal to this table: the event stream wakes only the screens of the people sitting here.
+    proposals: Mapped[int] = mapped_column(server_default="0")
 
 
 class LivePlayer(Base):

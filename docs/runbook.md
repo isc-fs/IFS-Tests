@@ -249,6 +249,41 @@ Runs the whole nightly job now and prints the counts. It is idempotent and safe 
 - **Someone asks for their data or to be deleted and can't sign in** (alumni and disabled accounts can't): Admin → their row → *Download their data* (a JSON file; send it privately) or *Delete account* and type their name. Deletion is immediate; backups drop it within 14 days. Members who can sign in do both from Profile → *Your data*.
 - After a restore, delete again the accounts deleted since the dump ([section 4](#4-backups-and-restore)).
 
+### 5.5 Live quiz capacity
+
+A live quiz with the whole team is the heaviest thing the api does: every screen holds an event stream and fetches
+the state after each change. Measured on 2026-09-25 on a local stack with the `deploy/compose.yaml` limits (api 1 CPU,
+512 MiB, 2 workers, pool 5 + 5; db 1 CPU, 768 MiB), no Nginx, the sample bank: 80 players seated by sub-department at
+21 tables plus host and projector, 30-second questions, everyone but the captains proposing 1 to 3 times, captains
+answering 20 to 27 seconds in. The probe fetches like the old web client (a 5-second poll on top of the stream), so it
+overstates the load a little. The same script ran against the previous release and this one back to back, twice each;
+other heavy jobs shared the machine, so compare the two columns rather than the absolute numbers, and expect the
+server's vCPUs to be somewhat slower.
+
+| | Previous release | This release |
+|---|---|---|
+| State fetch p50 / p95 / max | 1.4–1.5 s / 2.5–2.8 s / 4.3–6.3 s | 7 ms / 18–19 ms / 0.5–0.6 s |
+| Captain's answer p95 / max | 3.0–3.3 s / 9.3–11.0 s | 20 ms / 32–45 ms |
+| Proposal p95 | 2.2–2.4 s | 20 ms |
+| api CPU, median of the run | 101 % (saturated) | 23–24 % |
+| 81 open streams, nothing else happening | 25–32 % CPU | 2–3 % CPU |
+| The answer that closes a question and shares a room's XP | 0.2 s idle (4–13 s under load) | 8 ms (XP shared after the response) |
+| 82 state fetches at once (one per screen) | 1.4 s | 0.5–0.6 s |
+| 200 state fetches at once | 3.3 s | 1.1–1.4 s |
+
+XP was granted exactly once in every run. What changed: a proposal wakes only its table's screens, each worker reads a
+session once for all its streams, the state every screen shares is built once per change, and XP is shared after
+responding ([architecture](architecture.md#live-quiz-at-the-system-level)). The first requests after a start also no
+longer open more database connections than the pool allows (they used to fail with "too many clients" when a room
+arrived at a freshly started api).
+
+**Headroom:** a full meeting leaves the api at about a quarter of its CPU, so `cpus: 1.0` is enough and the limits stay
+as they are. If meetings grow or the server's vCPUs turn out much slower, raise the api to `cpus: 2.0` in
+`deploy/compose.yaml`: before these changes the red team measured that this roughly halves latency under saturation.
+The server is a Hetzner CX33 shared with the team's other apps ([handover](handover.md)), so agree it with the server
+consultant first. Nginx's per-address caps (160 streams, 160 requests in flight) fit 80 people; for more people behind
+one campus address raise both in `deploy/nginx/quiz.conf`.
+
 ---
 
 ## 6. Incidents

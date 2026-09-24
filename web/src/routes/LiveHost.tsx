@@ -10,12 +10,12 @@ import {
   seatBySubdepartmentMutation,
   seatTablesMutation,
 } from '../api/@tanstack/react-query.gen'
-import type { AdvanceIn, LiveState, TableIn } from '../api/types.gen'
+import type { AdvanceIn, LiveConfig, LiveState, TableIn } from '../api/types.gen'
 import { Countdown } from '../components/Countdown'
 import { ErrorNotice, Notice } from '../components/Form'
 import { Answered, Reveal, Results, RoomScore, ScreenOptions, Tables } from '../components/LiveParts'
 import { Qr } from '../components/Qr'
-import { TOPICS } from '../lib/areas'
+import { AREA_TOPICS, TOPICS } from '../lib/areas'
 import { joinUrl, refresh, tableName, toggle } from '../lib/live'
 import { ConfigForm } from './Live'
 
@@ -241,7 +241,7 @@ function Lobby({ s, dirty, onDirty }: { s: LiveState; dirty: boolean; onDirty: (
             </button>
           </fieldset>
         ))}
-        {s.config.routing === 'owners' && <Routing draft={draft} />}
+        {s.config.routing === 'owners' && <Routing draft={draft} config={s.config} />}
         <h3>Players</h3>
         <ul className="seat-list">
           {s.players.map((p) => (
@@ -346,17 +346,42 @@ function Seating({ s }: { s: LiveState }) {
   )
 }
 
-/** Where each question goes in specialists mode, so gaps show before the start. */
-function Routing({ draft }: { draft: Draft[] }) {
+/** Where each question goes in specialists mode, so gaps show before the start: topics of this quiz nobody owns,
+ * and tables that will get no question at all. A topic several tables own is shared out among them. */
+function Routing({ draft, config }: { draft: Draft[]; config: LiveConfig }) {
+  if (draft.length === 0) return null
+  const filtered = config.questions === 'areas' && ((config.areas?.length ?? 0) > 0 || (config.topics?.length ?? 0) > 0)
+  const asked = new Set(
+    filtered
+      ? [...(config.areas ?? []).flatMap((a) => AREA_TOPICS[a] ?? []), ...(config.topics ?? [])]
+      : Object.keys(TOPICS),
+  )
   const owned = new Set(draft.flatMap((t) => t.topics))
-  const loose = Object.entries(TOPICS).filter(([topic]) => !owned.has(topic))
-  if (loose.length === 0 || draft.length === 0) return null
+  const loose = [...asked].filter((topic) => !owned.has(topic))
   const fallback =
     draft.find((t) => t.catch_all) ?? [...draft].sort((a, b) => b.member_ids.length - a.member_ids.length)[0]
+  const seated = draft.filter((t) => t.member_ids.length > 0)
+  const idle = seated.filter((t) => t !== fallback && !t.topics.some((topic) => asked.has(topic)))
   return (
-    <p className="muted">
-      No table owns {loose.map(([, label]) => label).join(', ')}: those questions go to {fallback.name}.
-    </p>
+    <>
+      {loose.length > 0 && (
+        <p className="muted">
+          No table owns {loose.map((topic) => TOPICS[topic]).join(', ')}: those questions go to {fallback.name}.
+        </p>
+      )}
+      {idle.length > 0 && (
+        <Notice tone="info">
+          {idle.map((t) => t.name).join(', ')} {idle.length === 1 ? 'owns' : 'own'} no topic in this quiz, so{' '}
+          {idle.length === 1 ? 'it gets' : 'they get'} no questions and earn no XP. Tick a topic for{' '}
+          {idle.length === 1 ? 'it' : 'them'}, or seat those people at another table.
+        </Notice>
+      )}
+      {config.questions === 'areas' && (config.count ?? 10) < seated.length && (
+        <p className="muted">
+          {config.count ?? 10} questions for {seated.length} tables: some tables won't get a question.
+        </p>
+      )}
+    </>
   )
 }
 

@@ -1198,8 +1198,9 @@ export const eventsQueryKey = (options: Options<EventsData>) => createQueryKey('
 /**
  * Events
  *
- * A version number whenever the session changes (and when a question's time runs out), so screens know
- * to fetch the state again. No state travels here, so nobody sees more than their own GET shows them.
+ * `<version>.<proposals>` whenever the session changes (and when a question's time runs out), or a proposal
+ * reaches the viewer's table, so screens know to fetch the state again. No state travels here, so nobody sees
+ * more than their own GET shows them.
  */
 export const eventsOptions = (options: Options<EventsData>) => queryOptions<unknown, EventsError, unknown, ReturnType<typeof eventsQueryKey>>({
     queryFn: async ({ queryKey, signal }) => {

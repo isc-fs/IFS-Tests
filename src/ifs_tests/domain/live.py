@@ -4,6 +4,7 @@ points. Pure: no I/O."""
 from __future__ import annotations
 
 import random
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import timedelta
 
@@ -82,9 +83,21 @@ def captain(ranks: dict[int, float]) -> int | None:
     return max(ranks, key=lambda uid: (ranks[uid], -uid), default=None)
 
 
-def owner(topic: str | None, tables: list[tuple[int, list[str]]], catch_all: int | None) -> int | None:
-    """The table that answers a question on `topic`: the first that owns it, else the catch-all table."""
-    return next((tid for tid, topics in tables if topic and topic in topics), catch_all)
+def route(
+    topics: Sequence[str | None], tables: Sequence[tuple[int, Sequence[str]]], catch_all: int | None
+) -> list[int | None]:
+    """The table that answers each question, in order: one that owns its topic, else the catch-all table. A
+    topic several tables own goes to whichever of them has had the fewest questions so far (the earlier table on
+    a tie), so every owner gets its share instead of the first one getting them all."""
+    load = dict.fromkeys((tid for tid, _ in tables), 0)
+    out: list[int | None] = []
+    for topic in topics:
+        owners = [tid for tid, owned in tables if topic and topic in owned]
+        tid = min(owners, key=lambda t: load[t]) if owners else catch_all
+        if tid in load:
+            load[tid] += 1
+        out.append(tid)
+    return out
 
 
 def speed_points(correct: bool | None, elapsed_s: float, budget_s: int | None) -> int:

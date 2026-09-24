@@ -284,6 +284,75 @@ test('specialists mode says where the questions no table owns go', async () => {
   expect(await screen.findByText(/those questions go to Aerodynamics\./)).toBeInTheDocument()
 })
 
+test('specialists mode warns about tables that would get no question', async () => {
+  const seat = (id: number, name: string, topics: string[], member_ids: number[]) => ({
+    ...table,
+    id,
+    name,
+    topics,
+    member_ids,
+    captain_id: member_ids[0],
+  })
+  const lobby = {
+    ...base,
+    role: 'host',
+    config: { ...base.config, routing: 'owners', areas: ['mech'], count: 2 },
+    players: [2, 3, 4, 5].map((id) => ({ user_id: id, name: `P${id}`, table_id: null })),
+    tables: [
+      seat(5, 'Aerodynamics', ['aero'], [2, 3]),
+      seat(6, 'Sponsorship', [], [4]),
+      seat(7, 'Batteries', ['hv'], [5]),
+    ],
+  }
+  at('/live/ABC234', HOST, lobby)
+  expect(
+    await screen.findByText(
+      'No table owns Vehicle dynamics, Structures, Powertrain: those questions go to Aerodynamics.',
+    ),
+  ).toBeInTheDocument()
+  expect(
+    screen.getByText(/^Sponsorship, Batteries own no topic in this quiz, so they get no questions/),
+  ).toBeInTheDocument()
+  expect(screen.getByText("2 questions for 3 tables: some tables won't get a question.")).toBeInTheDocument()
+  const batteries = screen.getByRole('group', { name: 'Batteries' })
+  await userEvent.click(within(batteries).getByLabelText('Powertrain'))
+  expect(screen.getByText(/^Sponsorship owns no topic in this quiz, so it gets no questions/)).toBeInTheDocument()
+})
+
+test('the stream wakes the screen; polling and the stream stop once the quiz is over', async () => {
+  const streams: { onopen?: () => void; onmessage?: () => void; closed: boolean }[] = []
+  vi.stubGlobal(
+    'EventSource',
+    class {
+      onopen?: () => void
+      onmessage?: () => void
+      closed = false
+      constructor() {
+        streams.push(this)
+      }
+      close() {
+        this.closed = true
+      }
+    },
+  )
+  let over = false
+  const { sent } = at('/live/ABC234', { ...MEMBER, id: 3 }, open, {
+    'GET /api/live/sessions/ABC234': () => ({
+      body: over ? { ...open, state: 'finished', reveals: [], room_right: 0, room_asked: 2 } : open,
+    }),
+  })
+  expect(await screen.findByText('Which flag means rain?')).toBeInTheDocument()
+  expect(streams).toHaveLength(1)
+  streams[0].onopen?.()
+  over = true
+  const before = sent('GET /api/live/sessions/ABC234').length
+  streams[0].onmessage?.()
+  await waitFor(() => expect(sent('GET /api/live/sessions/ABC234').length).toBeGreaterThan(before))
+  await waitFor(() => expect(streams[0].closed).toBe(true))
+  expect(streams).toHaveLength(1)
+  vi.unstubAllGlobals()
+})
+
 test('a failed refresh keeps the question and the answer being picked', async () => {
   let fail = false
   at('/live/ABC234', { ...MEMBER, id: 3 }, open, {

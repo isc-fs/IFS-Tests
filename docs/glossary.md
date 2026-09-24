@@ -62,7 +62,7 @@ Terms you'll meet in MingoQuiz and its docs, in alphabetical order. Each links t
 | **Rules** | The Formula Student Rules, the rulebook most European events share, defining the car and the competition. Questions show the editions their quiz was based on, and flag later ones. Also the `rules` area |
 | **Season** | 1 September to 31 August, Madrid time, named by the year it starts in. Ranks reset softly on 1 September. [Game rules 2.5](game-rules.md#25-seasons-and-the-reset) |
 | **Smoke test** | The quick checks `deploy/deploy.sh` runs against a new release before accepting it; failure rolls back. [Runbook 2](runbook.md#2-deploy) |
-| **Specialists** | Live quiz routing where each question goes to the table that owns its topic (aero questions to the Aerodynamics table), whose answer is the room's |
+| **Specialists** | Live quiz routing where each question goes to a table that owns its topic (aero questions to the Aerodynamics table), whose answer is the room's; tables owning the same topic take turns |
 | **Speed points** | An optional live quiz scoring: a right answer earns 1,000 points if instant, down to 500 at the buzzer. Ranks tables in the session; not XP |
 | **SSE** | Server-Sent Events: one long-lived HTTP response per live quiz screen, carrying only a version number so the screen knows when to refetch. [ADR 0005](adr/0005-live-quiz.md) |
 | **Stakes** | How hard a wrong answer bites at your division, from 0.80 at Mingo I to 1.25 at the top |

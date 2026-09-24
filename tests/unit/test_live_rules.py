@@ -10,7 +10,7 @@ from ifs_tests.domain.live import (
     Player,
     captain,
     new_code,
-    owner,
+    route,
     seat_by_subdepartment,
     speed_points,
 )
@@ -47,15 +47,43 @@ def test_tables_follow_each_players_first_subdepartment_never_balanced() -> None
     ]
 
 
+TABLES = [(10, ["aero"]), (11, ["hv", "powertrain"]), (12, ["hv"]), (13, ["powertrain"]), (14, [])]
+
+
 @pytest.mark.parametrize(
-    ("topic", "expected"),
-    [("aero", 10), ("hv", 11), ("dv", 99), (None, 99)],
+    ("topics", "expected"),
+    [
+        (["aero", "dv", None], [10, 99, 99]),  # nobody owns dv; a question without a topic: the catch-all
+        (["hv", "hv", "hv", "hv"], [11, 12, 11, 12]),  # shared topics take turns
+        (["hv", "powertrain", "powertrain", "hv"], [11, 13, 11, 12]),  # by questions had so far, on any topic
+        (["powertrain", "hv", "powertrain", "hv"], [11, 12, 13, 11]),
+        (["aero", "aero"], [10, 10]),
+        ([], []),
+    ],
 )
-def test_a_question_goes_to_the_table_owning_its_topic_or_the_catch_all(
-    topic: str | None, expected: int
+def test_a_question_goes_to_a_table_owning_its_topic_spread_fairly_or_the_catch_all(
+    topics: list[str | None], expected: list[int | None]
 ) -> None:
-    tables = [(10, ["aero"]), (11, ["hv", "powertrain"]), (12, ["hv"])]
-    assert owner(topic, tables, catch_all=99) == expected
+    assert route(topics, TABLES, catch_all=99) == expected
+
+
+def test_the_catch_all_counts_its_questions_when_it_also_owns_a_topic() -> None:
+    assert route([None, "hv", "hv"], [(1, ["hv"]), (2, ["hv"])], catch_all=1) == [1, 2, 1]
+
+
+def test_after_seating_by_subdepartment_every_table_owning_a_topic_gets_questions() -> None:
+    """The red team's meeting: 22 sub-department tables, many sharing a topic; none may be starved."""
+    players = [Player(i, (code,), 0.0) for i, code in enumerate(SUBDEPARTMENTS)]
+    tables = [(i, t.topics) for i, t in enumerate(seat_by_subdepartment(players))]
+    topics = ["dynamics", "aero", "structures", "powertrain", "hv", "dv", "electronics", "scoring"] * 6
+    got = route(topics, tables, catch_all=None)
+    assert {tid for tid, owned in tables if owned} == set(got)
+    same: dict[
+        tuple[str, ...], list[int]
+    ] = {}  # tables owning the same topics are interchangeable: their shares differ by one at most
+    for tid, owned in tables:
+        same.setdefault(tuple(owned), []).append(got.count(tid))
+    assert all(max(n) - min(n) <= 1 for n in same.values()), same
 
 
 @pytest.mark.parametrize(
