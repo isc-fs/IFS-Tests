@@ -131,6 +131,8 @@ Coverage gates (`thresholds` in `web/vite.config.ts`), measured over `web/src` e
 
 `web/playwright.config.ts`: specs in `web/e2e/`, run against `E2E_BASE_URL` (default `http://localhost:8000`), in two projects, **desktop** (Desktop Chrome) and **mobile** (Pixel 7). No retries (`retries: 0`), so a flaky test fails the run. Tests within a file run in order; files run in parallel workers. A trace is kept for every failure.
 
+Before any spec, `web/e2e/global-setup.ts` signs in as the e2e admin and opens today's daily questions, as the 00:01 job does on the server. Without it, the first visit to the daily page could pick a question another spec was practising at that moment, and practice would then refuse to score it (it has just become that player's running daily question).
+
 | Spec | Journey |
 |---|---|
 | `accounts.spec.ts` | Admin invites; the invitee joins (a common password is refused), can't open Admin, hides from the leaderboard; the used link is refused; a reset link changes the password and ends the old session. Also: no page scrolls sideways on a phone, security headers and CSRF, every nav link on screen, the selected filter chip stands out |

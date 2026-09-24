@@ -3,6 +3,7 @@ import { defineConfig, devices } from '@playwright/test'
 // Runs against the full local stack: `docker compose up -d --build` (see docs/testing.md).
 export default defineConfig({
   testDir: 'e2e',
+  globalSetup: './e2e/global-setup.ts',
   fullyParallel: false,
   retries: 0,
   failOnFlakyTests: !!process.env.CI,
