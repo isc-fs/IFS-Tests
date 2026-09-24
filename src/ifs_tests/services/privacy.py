@@ -140,6 +140,7 @@ def export(db: DB, user: User, now: datetime) -> dict[str, Any]:
             "rank_points": user.rank_points,
             "rank_season": user.rank_season,
             "best_division": rank_rules.title(user.rank_best, user.vertical),
+            "position_lifts": user.position_lifts,
             "right_in_a_row": user.combo,
             "wrong_in_a_row": user.miss_streak,
             "rested_xp": user.rested_xp,

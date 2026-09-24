@@ -14,6 +14,7 @@ from ifs_tests.domain.rank import (
     next_miss_streak,
     placement,
     rank_of,
+    reposition,
     season_reset,
     swing,
     title,
@@ -134,6 +135,37 @@ def test_placement_and_the_season_reset() -> None:
     assert season_reset(1200, "technical_director") == 1050  # never below your position's placement
     assert season_reset(700, "technical_director") == 700  # nor above where you finished
     assert season_reset(100, "mingo") == 50
+
+
+M, R, D, T = "mingo", "member", "department_head", "technical_director"
+
+
+@pytest.mark.parametrize(
+    ("points", "old", "new", "lifts", "after", "lifts_after"),
+    [
+        (130, M, R, {}, 350, {R: 220}),  # lifted to the placement; the lift is recorded
+        (130, M, D, {}, 550, {R: 220, D: 200}),  # per position crossed
+        (1234.5, M, T, {}, 1234.5, {R: 0, D: 0, T: 0}),  # already above: nothing given
+        (350, R, M, {R: 220}, 130, {}),  # undoing the raise gives back what was earned
+        (550, D, R, {R: 220, D: 200}, 350, {R: 220}),  # the same as a raise straight to member
+        (420, R, M, {R: 220}, 200, {}),  # LP won since stays
+        (100, R, M, {R: 220}, 0, {}),  # floor 0
+        (1100, T, D, {}, 600, {}),  # held since sign-up: the whole head start (the gap)
+        (630, D, M, {}, 130, {}),
+        (1050, T, M, {T: 420}, 130, {}),  # a raise from 630 to 1050, then the head starts held since sign-up
+        (1234.5, T, M, {R: 0, D: 0, T: 0}, 1234.5, {}),  # all of it earned
+        (600, D, T, {}, 1050, {T: 450}),  # a lower then a raise lifts to the placement (ADR 0007)
+    ],
+)
+def test_a_new_position_takes_back_only_the_lifts_it_gave(
+    points: float,
+    old: str,
+    new: str,
+    lifts: dict[str, float],
+    after: float,
+    lifts_after: dict[str, float],
+) -> None:
+    assert reposition(points, old, new, lifts) == (after, lifts_after)
 
 
 # The graded bank's mix, in twentieths: about a sixth rules; mostly single choice, a sixth typed.

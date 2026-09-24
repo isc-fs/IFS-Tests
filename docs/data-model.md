@@ -70,6 +70,7 @@ One row per member. **Personal data.**
 | `rank_points` | Rank, `numeric(8,2)`: 100 points per division, 0 = Mingo I, 1500+ = the top title; floor 0 |
 | `rank_season` | Season (start year) the rank belongs to; 0 = placed by the migration, no reset due |
 | `rank_best` | Highest division reached this season (only a new one plays the promotion) |
+| `position_lifts` | `jsonb`, null until an admin changes their position: `{"season": 2026, "member": 220.0, …}`, the LP each raise gave per position crossed that season, which a lower position takes back ([game rules](game-rules.md#24-placement-by-position)); ignored once the season is over |
 | `combo`, `miss_streak` | Right answers in a row (XP combo) and wrong ones in a row (LP cushion); capped at 99 |
 | `rested_xp`, `rested_on` | Banked rested XP and the Madrid day it was last topped up |
 | `streak_freezes`, `freeze_earned_on` | Streak freezes held (0–2) and the streak day that last earned one |
@@ -376,6 +377,7 @@ Retention: alumni and disabled accounts are deleted 365 days after `left_at`; th
 | 0016 | The function `purge_audit_log(before)` for the nightly audit purge, executable by `app_rt` ([`audit_log`](#audit_log)) |
 | 0017 | Stable options: `answer_options.fsquiz_id` and `retired`; `questions.upstream_note`. Expand only: the previous release ignores the new columns, and the next `ifs-tests push` fills `fsquiz_id` |
 | 0018 | `live_tables.proposals`, a counter per table so a proposal wakes only that table's screens. Expand only |
+| 0022 | `users.position_lifts`, so a correction of position takes back only what a raise gave. Expand only: the previous release ignores it |
 
 ### Expand/contract
 

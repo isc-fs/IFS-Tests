@@ -358,22 +358,35 @@ def _active_admin_ids(db: DB, lock: bool = True) -> list[int]:
 UNKNOWN_POSITION = "Unknown position on the team."
 
 
+def _repositioned(user: User, position: str, now: datetime) -> tuple[float, dict[str, float]]:
+    """Their rank points and position lifts at `position`, a season reset still pending applied first."""
+    season = rank_rules.season_of(now)
+    points = rank_rules.current_points(user.rank_points, user.rank_season, user.position, now)
+    stored = dict(user.position_lifts or {})
+    lifts = stored if stored.pop("season", None) == season else {}
+    return rank_rules.reposition(points, user.position, position, lifts)
+
+
+def rank_by_position(user: User, now: datetime) -> dict[str, float]:
+    """What their rank points would become at each position: the admin sees it before changing it."""
+    return {p: round(_repositioned(user, p, now)[0], 2) for p in POSITIONS}
+
+
 def _set_position(db: DB, user: User, position: str, now: datetime) -> None:
     """A new position places them again: a higher one lifts the rank to meet it; a lower one (a correction)
-    takes back the head start the old one gave, keeping what they earned (ADR 0007). A season reset still
-    pending applies first. The caller holds the row lock, so no answer is scored meanwhile."""
+    takes back the head start the raise gave, keeping what they earned (ADR 0007, rank.reposition). The caller
+    holds the row lock, so no answer is scored meanwhile."""
     if position not in POSITIONS:
         raise AccountError(UNKNOWN_POSITION, fields={"position": "Pick where they are on the team."})
     season = rank_rules.season_of(now)
     points = rank_rules.current_points(user.rank_points, user.rank_season, user.position, now)
     best = user.rank_best if user.rank_season == season else rank_rules.division_of(points)
-    head_start = rank_rules.placement(user.position) - rank_rules.placement(position)
-    placed = rank_rules.placement(position)
+    user.rank_points, lifts = _repositioned(user, position, now)
+    user.position_lifts = {"season": season, **lifts}
     user.position = position
-    user.rank_points = max(points - head_start, 0.0) if head_start > 0 else max(points, placed)
     user.rank_season = season
     # Placed there, not promoted: their next answer mustn't play the fanfare.
-    user.rank_best = max(best, rank_rules.division_of(placed))
+    user.rank_best = max(best, rank_rules.division_of(rank_rules.placement(position)))
 
 
 def _set_email(db: DB, actor: User, user: User, email: str) -> None:

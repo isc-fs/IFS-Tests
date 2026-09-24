@@ -85,6 +85,7 @@ ACCOUNT = {
     "rank_points": "rank_points",
     "rank_season": "rank_season",
     "rank_best": "best_division",
+    "position_lifts": "position_lifts",
     "combo": "right_in_a_row",
     "miss_streak": "wrong_in_a_row",
     "rested_xp": "rested_xp",

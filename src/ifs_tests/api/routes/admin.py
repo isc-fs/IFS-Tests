@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Path, Query, Response
 
+from ...db.models import User
 from ...services import accounts, bank, privacy
 from ..deps import Admin, AppSettings, Db, Now
 from ..schemas import (
@@ -23,25 +25,29 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 Id = Annotated[int, Path(ge=1, le=2**31 - 1)]
 
 
+def _admin_user(user: User, now: datetime) -> AdminUser:
+    fields = {f: getattr(user, f) for f in AdminUser.model_fields if f != "rank_by_position"}
+    return AdminUser.model_validate({**fields, "rank_by_position": accounts.rank_by_position(user, now)})
+
+
 @router.get("/users")
-def users(_: Admin, db: Db) -> list[AdminUser]:
-    return [AdminUser.model_validate(u) for u in accounts.list_users(db)]
+def users(_: Admin, db: Db, now: Now) -> list[AdminUser]:
+    return [_admin_user(u, now) for u in accounts.list_users(db)]
 
 
 @router.patch("/users/{user_id}")
 def update_user(user_id: Id, body: UserPatch, admin: Admin, db: Db, now: Now) -> AdminUser:
-    return AdminUser.model_validate(
-        accounts.update_user(
-            db,
-            admin,
-            user_id,
-            role=body.role,
-            status=body.status,
-            position=body.position,
-            now=now,
-            email=body.email,
-        )
+    user = accounts.update_user(
+        db,
+        admin,
+        user_id,
+        role=body.role,
+        status=body.status,
+        position=body.position,
+        now=now,
+        email=body.email,
     )
+    return _admin_user(user, now)
 
 
 @router.get("/users/{user_id}/export")

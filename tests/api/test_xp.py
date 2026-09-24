@@ -199,6 +199,45 @@ def test_a_new_position_moves_the_rank_by_the_difference_in_placements(
     assert (raised["position"], raised["rank_points"]) == ("technical_director", 1234.5)  # already above
 
 
+@pytest.mark.parametrize(
+    ("start", "earned", "steps", "back"),
+    [
+        ("mingo", 80, ["member", "mingo"], 130),  # the red team's 130 → 350 → 50
+        ("department_head", 80, ["technical_director", "department_head"], 630),
+        ("mingo", 80, ["department_head", "member", "mingo"], 130),  # via member: 350 on the way
+        ("department_head", 80, ["technical_director", "mingo"], 130),  # both head starts go
+    ],
+)
+def test_undoing_a_mistaken_raise_keeps_what_was_earned(
+    signed_in: TestClient,
+    new_client: NewClient,
+    db: Session,
+    start: str,
+    earned: float,
+    steps: list[str],
+    back: float,
+) -> None:
+    ana = join(signed_in, new_client(), "Ana", start)
+    set_rank(db, ana["id"], rank_rules.placement(start) + earned)
+    for position in steps:
+        r = signed_in.patch(f"/api/admin/users/{ana['id']}", json={"position": position})
+        assert r.status_code == 200, r.text
+    assert r.json()["rank_points"] == back
+    # The admin sees the effect of each position before picking it.
+    listed = next(u for u in signed_in.get("/api/admin/users").json() if u["id"] == ana["id"])
+    assert listed["rank_by_position"][steps[-1]] == back
+    assert listed["rank_by_position"]["technical_director"] >= 1050
+
+
+def test_a_raise_from_an_earlier_season_is_taken_back_whole(
+    signed_in: TestClient, new_client: NewClient, db: Session
+) -> None:
+    ana = join(signed_in, new_client(), "Ana", "member")
+    set_rank(db, ana["id"], 400, position_lifts={"season": 2025, "member": 220})
+    lowered = signed_in.patch(f"/api/admin/users/{ana['id']}", json={"position": "mingo"}).json()
+    assert lowered["rank_points"] == 100  # the season's reset placed them anew: the whole head start goes
+
+
 def test_a_new_position_applies_a_pending_season_reset_first(
     signed_in: TestClient, new_client: NewClient, db: Session
 ) -> None:
