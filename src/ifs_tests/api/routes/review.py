@@ -60,6 +60,7 @@ def _detail(db: Db, reviewer: User, question_id: int, now: datetime) -> ReviewQu
         answered=d.answered,
         right=d.right,
         answer_hidden=d.answer_hidden,
+        quiz_notes=d.quiz_notes,
     )
 
 

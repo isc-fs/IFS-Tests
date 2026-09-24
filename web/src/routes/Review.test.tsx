@@ -45,6 +45,7 @@ const DETAIL = {
   reports: [{ id: 5, by: 'Marta', message: 'The answer is the precharge relay', at: '2026-09-21T09:00:00Z' }],
   answered: 8,
   right: 2,
+  quiz_notes: [],
 }
 
 test('members are told the review area is for reviewers', async () => {
@@ -370,4 +371,26 @@ test('hiding a question keeps the reason, and focus stays on the button', async 
   await waitFor(() => expect(button).toHaveAccessibleName('Hide from players'))
   expect(sent('PATCH /api/review/questions/7')[1].body).toEqual({ excluded: false })
   expect(button).toHaveFocus()
+})
+
+test("FS-Quiz's quiz notes are shown with the question", async () => {
+  const note = 'FSA 2021 EV: Question 15 was later deleted because no answer was correct'
+  renderApp('/review/7', {
+    'GET /api/me': { body: REVIEWER },
+    'GET /api/review/questions/7': {
+      body: {
+        ...DETAIL,
+        reports: [],
+        key_changed_at: null,
+        excluded: true,
+        playable: false,
+        exclusion_note: 'FS-Quiz: Question 15 was later deleted because no answer was correct',
+        quiz_notes: [note],
+      },
+    },
+  })
+  const shown = await screen.findByRole('article', { name: 'Question' })
+  expect(within(shown).getByText("FS-Quiz's notes on its quizzes")).toBeInTheDocument()
+  expect(within(shown).getByText(note)).toBeInTheDocument()
+  expect(screen.getByText(/^Hidden from players: FS-Quiz: Question 15/)).toBeInTheDocument()
 })

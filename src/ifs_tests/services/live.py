@@ -34,7 +34,7 @@ from ..domain import live as rules
 from ..domain import mock as mock_rules
 from . import xp
 from .errors import UserError
-from .questions import Checked, Shown, check, running, show
+from .questions import Checked, Shown, check, explain, running, show
 
 
 def can_host(user: User) -> bool:
@@ -734,8 +734,11 @@ def _score(
     ids = [questions[p].question_id for p in positions]
     found = {q.id: q for q in db.scalars(select(Question).where(Question.id.in_(ids)))}
     qs = [found[i] for i in ids]
-    for p, q, shown in zip(positions, qs, show(db, qs), strict=True):
-        checked = check(db, q, None, None)
+    picked = [
+        o for p in positions for a in answers.get(p, {}).values() for o in a.answer.get("options") or []
+    ]
+    for p, q, shown in zip(positions, qs, show(db, qs, picked), strict=True):
+        checked = explain(db, q, None)
         if q.id in busy:
             checked.official, checked.correct_options, checked.solutions = None, [], []
         out.reveals.append(Reveal(p, shown, questions[p].table_id, checked, answers.get(p, {}), q.id in busy))
@@ -771,7 +774,7 @@ def results_csv(db: DB, user: User, code: str) -> str:
         .tuples()
         .all()
     )
-    official = {q.id: check(db, q, None, None).official or "" for q in {row[1] for row in rows}}
+    official = {q.id: explain(db, q, None).official or "" for q in {row[1] for row in rows}}
     out = io.StringIO()
     w = csv.writer(out)
     w.writerow(

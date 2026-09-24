@@ -41,7 +41,11 @@ def _hint(db: DB, user: User, q: Question, now: datetime) -> rules.Hint:
         raise UserError("Hints end at DT I: from there it's the quiz as it is on the day.", 403)
     key = db.get(AnswerKey, q.id)
     options = list(
-        db.scalars(select(AnswerOption.id).where(AnswerOption.question_id == q.id).order_by("position"))
+        db.scalars(
+            select(AnswerOption.id)
+            .where(AnswerOption.question_id == q.id, AnswerOption.retired.is_(False))
+            .order_by("position")
+        )
     )
     h = rules.hint(key.effective if key and q.graded else None, options, seed=_seed(db, q.id))
     if h is None:

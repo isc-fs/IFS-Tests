@@ -260,9 +260,9 @@ Worked values (computed): a single choice with no time budget and 17 of 20 right
 ## 5. The daily question
 
 - One question per area (mech, elec, rules) per Madrid day, the same for everyone. It is chosen once, under an advisory lock, by the scheduler at 00:01 or by the first visitor of the day, whichever comes first (`ensure_daily` in `src/ifs_tests/services/daily.py`).
-- **Candidates:** graded, playable questions of the area.
+- **Candidates:** graded, playable questions of the area. That leaves out a choice question with a single option (it can't be got wrong, so it isn't graded) and a question FS-Quiz says it removed from its quiz (hidden on import until a reviewer brings it back; see the [reviewers' guide](guides/reviewers.md#when-the-bank-is-reloaded)).
 - **The draw:** sort by least recently used as a daily, then least practised (by anyone, in any mode); keep the first 20, or a quarter of the candidates if that is fewer (at least 1); pick the one with the lowest HMAC of `day:area:question` under the server secret. Nobody can work out tomorrow's question from the public bank.
-- If a reviewer hides today's question (or it stops being gradable), it is replaced for everyone who hasn't started it; people who did keep theirs.
+- If a reviewer or a bank reload hides today's question (or it stops being gradable), it is replaced for everyone who hasn't started it; people who did keep theirs.
 - **Clock:** the real quiz's time budget, otherwise 120 s for single choice, 150 s for multiple choice, 240 s for typed answers; always clamped to 60–600 s. Three seconds of grace. A late answer counts as wrong.
 - **One try.** A daily left to run out is closed as late when the player next opens the daily page, or by the nightly job: 0 XP, and LP as a wrong answer.
 

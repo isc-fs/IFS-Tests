@@ -35,7 +35,7 @@ The sample bank is twelve made-up questions and three quizzes (`src/ifs_tests/ba
    docker compose run --rm api alembic upgrade head
    docker compose run --rm api ifs-tests push --sample
    ```
-   The push prints `ImportReport(added=12, updated=0, unchanged=0, key_changed=0, ungraded=2, missing_images=0)`.
+   The push prints `ImportReport(added=12, updated=0, unchanged=0, key_changed=0, ungraded=2, missing_images=0, rekeyed=0, hidden=0)`.
 4. Create the first admin. It prompts for the password twice (at least 10 characters, not a common one, not containing your email or name):
    ```bash
    docker compose exec api ifs-tests create-admin --email admin@example.com --name "Local Admin"
@@ -76,7 +76,7 @@ The real bank is about 1,070 questions from 120 past quizzes (`uv run ifs-tests 
    ```bash
    docker compose run --rm api ifs-tests push
    ```
-   Re-running `push` is safe: unchanged questions are skipped, and a question whose official answer changed upstream is flagged for review.
+   Re-running `push` is safe: unchanged questions are skipped (their answers are parsed again, in case the parser changed), options keep their IDs, a question whose official answer changed upstream is flagged for review, and one FS-Quiz says it removed is hidden.
 
 The data is licensed under the ODbL. `data/` is in `.gitignore`: never commit it, and keep the FS-Quiz attribution wherever questions are shown (see the [README](../README.md#data-source-and-licence)).
 

@@ -134,7 +134,8 @@ daily questions, a mock run or a live quiz, and refuses to open one by its link 
 ### Answer formats
 
 - Single or multiple choice: tick the options ("select all that apply" when several can be right).
-- Numbers: a decimal point or a comma both work.
+- Numbers: a decimal point or a comma both work (`3.5` or `3,5`, no space after the comma: `3, 5` reads as two
+  values).
 - Several values: separate them with semicolons, in the order the question asks, e.g. `12.5; 40`.
 - Text: capital letters and spaces don't matter.
 - Some questions aren't graded automatically: press **Show the official answer** and compare it yourself.
