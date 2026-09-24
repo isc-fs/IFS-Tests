@@ -32,7 +32,14 @@ def users(_: Admin, db: Db) -> list[AdminUser]:
 def update_user(user_id: Id, body: UserPatch, admin: Admin, db: Db, now: Now) -> AdminUser:
     return AdminUser.model_validate(
         accounts.update_user(
-            db, admin, user_id, role=body.role, status=body.status, position=body.position, now=now
+            db,
+            admin,
+            user_id,
+            role=body.role,
+            status=body.status,
+            position=body.position,
+            now=now,
+            email=body.email,
         )
     )
 

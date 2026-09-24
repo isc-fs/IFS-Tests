@@ -158,6 +158,7 @@ test('review actions in the audit trail say what changed', async () => {
         entry(6, 'report.resolve', { message: 'The figure is missing' }),
         { ...entry(7, 'user.update', { role: ['member', 'reviewer'] }), target: 'Marta' },
         { ...entry(8, 'user.update', { position: ['member', 'department_head'] }), target: 'Marta' },
+        { ...entry(11, 'user.email', {}), target: 'Marta' },
         { ...entry(9, 'report.resolve', {}), actor: null },
         { ...entry(10, 'bank.import', {}), actor: null, target: 'fsquiz' },
       ],
@@ -175,6 +176,7 @@ test('review actions in the audit trail say what changed', async () => {
     'Chief handled a report on question 12',
     'Chief changed Marta (role → reviewer)',
     'Chief changed Marta (position → Department Head)',
+    'Chief changed the email of Marta',
     'A deleted account handled a report on',
     'The system loaded the question bank',
   ])
@@ -254,4 +256,46 @@ test('the season rollover marks the people ticked as alumni, least recently seen
   expect(await within(season).findByText('1 marked as alumni.')).toBeInTheDocument()
   expect(sent('POST /api/admin/alumni')[0].body).toEqual({ user_ids: [3] })
   expect(await screen.findByText(/Alumni since 1 Sept 2026; deleted on 1 Sept 2027/)).toBeInTheDocument()
+})
+
+test("an admin changes a member's email; problems show on the field", async () => {
+  let attempt = 0
+  const { sent } = renderApp('/admin', {
+    ...base,
+    'PATCH /api/admin/users/2': (body) =>
+      ++attempt === 1
+        ? { status: 409, body: { detail: 'x', fields: { email: 'An account with this email already exists.' } } }
+        : { body: { ...USERS[1], ...(body as object) } },
+  })
+  const marta = await row('Marta')
+  await userEvent.click(within(marta).getByRole('button', { name: 'Change the email of Marta' }))
+  const field = within(marta).getByLabelText('New email for Marta')
+  expect(field).toHaveFocus()
+  expect(field).toHaveValue('marta@alu.comillas.edu')
+  const save = within(marta).getByRole('button', { name: 'Save email' })
+  expect(save).toBeDisabled()
+  await userEvent.clear(field)
+  await userEvent.type(field, 'leo@alu.comillas.edu{Enter}')
+  expect(await within(marta).findByText('An account with this email already exists.')).toBeInTheDocument()
+  await userEvent.clear(field)
+  await userEvent.type(field, 'marta.ruiz@alu.comillas.edu')
+  await userEvent.click(save)
+  expect(await screen.findByText(/Marta's email is now marta.ruiz@alu.comillas.edu/)).toBeInTheDocument()
+  expect(sent('PATCH /api/admin/users/2')[1].body).toEqual({ email: 'marta.ruiz@alu.comillas.edu' })
+  expect(within(marta).queryByLabelText('New email for Marta')).toBeNull()
+})
+
+test('disabled accounts show when they will be deleted, and disabling says so first', async () => {
+  const confirm = vi.fn(() => false)
+  vi.stubGlobal('confirm', confirm)
+  const leo = { ...USERS[1], id: 3, display_name: 'Leo', status: 'disabled', left_at: '2026-09-01T00:00:00Z' }
+  renderApp('/admin', { ...base, 'GET /api/admin/users': { body: [...USERS, leo] } })
+  expect(await within(await row('Leo')).findByText(/Disabled since 1 Sept 2026/)).toHaveTextContent(
+    'Disabled since 1 Sept 2026; deleted on 1 Sept 2027 unless re-enabled.',
+  )
+  await userEvent.selectOptions(within(await row('Marta')).getByLabelText('Status'), 'disabled')
+  const year = new Date(Date.now() + 365 * 24 * 3600 * 1000).getFullYear()
+  expect(confirm).toHaveBeenCalledWith(
+    expect.stringMatching(new RegExp(`^Disable Marta\\?.*deleted on \\d+ \\w+ ${year} unless re-enabled\\.$`)),
+  )
 })

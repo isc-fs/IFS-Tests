@@ -297,8 +297,10 @@ test("a reviewer's own live question keeps its answer hidden", async () => {
       body: { ...DETAIL, reports: [], key_changed_at: null, answer_hidden: true },
     },
   })
-  expect(await screen.findByText(/This is one of your live questions/)).toHaveTextContent(
-    "Its answer stays hidden until you've answered it.",
+  expect(await screen.findByText(/still running for you/)).toHaveTextContent(
+    "This question is still running for you: today's daily question, a mock quiz you're running, or a live quiz " +
+      "you're playing in. Its answer stays hidden until you've answered it (in a live quiz, until the results " +
+      'are shown).',
   )
   const shown = screen.getByRole('article', { name: 'Question' })
   expect(within(shown).queryByText(/FS-Quiz's answer/)).toBeNull()
@@ -314,7 +316,7 @@ test('a typed answer stays hidden too', async () => {
       body: { ...DETAIL, options: [], reports: [], key_changed_at: null, answer_hidden: true, correction: '0.5' },
     },
   })
-  expect(await screen.findByText(/This is one of your live questions/)).toBeInTheDocument()
+  expect(await screen.findByText(/still running for you/)).toBeInTheDocument()
   expect(screen.queryByText('AIR')).toBeNull()
   expect(screen.queryByText('0.5')).toBeNull()
 })

@@ -45,15 +45,23 @@ def _name_taken(db: DB, name: str, exclude_user: int | None = None) -> bool:
     )
 
 
+EMAIL_INVALID = "Enter a valid email address."
+EMAIL_TAKEN = "An account with this email already exists."
+
+
+def _email_taken(db: DB, email: str) -> bool:
+    return db.scalar(select(User.id).where(User.email == email)) is not None
+
+
 def _check_new_user(db: DB, email: str, display_name: str, password: str) -> tuple[str, str]:
     """Validate a whole registration at once, so the form can show every problem together."""
     errors: dict[str, str] = {}
     clean_email = rules.clean_email(email)
     name = rules.clean_display_name(display_name)
     if clean_email is None:
-        errors["email"] = "Enter a valid email address."
-    elif db.scalar(select(User.id).where(User.email == clean_email)) is not None:
-        errors["email"] = "An account with this email already exists. Sign in instead."
+        errors["email"] = EMAIL_INVALID
+    elif _email_taken(db, clean_email):
+        errors["email"] = f"{EMAIL_TAKEN} Sign in instead."
     if name is None:
         errors["display_name"] = NAME_RULE
     elif _name_taken(db, name):
@@ -350,31 +358,35 @@ def _active_admin_ids(db: DB, lock: bool = True) -> list[int]:
 UNKNOWN_POSITION = "Unknown position on the team."
 
 
-def _set_position(db: DB, user: User, position: str) -> None:
+def _set_position(db: DB, user: User, position: str, now: datetime) -> None:
     """A new position places them again: a higher one lifts the rank to meet it; a lower one (a correction)
-    takes back the head start the old one gave, keeping what they earned (ADR 0007). Done in SQL so LP from an
-    answer at the same moment isn't overwritten."""
+    takes back the head start the old one gave, keeping what they earned (ADR 0007). A season reset still
+    pending applies first. The caller holds the row lock, so no answer is scored meanwhile."""
     if position not in POSITIONS:
         raise AccountError(UNKNOWN_POSITION, fields={"position": "Pick where they are on the team."})
+    season = rank_rules.season_of(now)
+    points = rank_rules.current_points(user.rank_points, user.rank_season, user.position, now)
+    best = user.rank_best if user.rank_season == season else rank_rules.division_of(points)
     head_start = rank_rules.placement(user.position) - rank_rules.placement(position)
-    user.position = position
     placed = rank_rules.placement(position)
-    points = (
-        func.greatest(User.rank_points - head_start, 0)
-        if head_start > 0
-        else func.greatest(User.rank_points, placed)
-    )
-    user.rank_points = db.execute(
-        update(User)
-        .where(User.id == user.id)
-        .values(
-            position=position,
-            rank_points=points,
-            # Placed there, not promoted: their next answer mustn't play the fanfare.
-            rank_best=func.greatest(User.rank_best, rank_rules.division_of(placed)),
-        )
-        .returning(User.rank_points)
-    ).scalar_one()
+    user.position = position
+    user.rank_points = max(points - head_start, 0.0) if head_start > 0 else max(points, placed)
+    user.rank_season = season
+    # Placed there, not promoted: their next answer mustn't play the fanfare.
+    user.rank_best = max(best, rank_rules.division_of(placed))
+
+
+def _set_email(db: DB, actor: User, user: User, email: str) -> None:
+    """Validated as at sign-up. The audit entry doesn't keep either address."""
+    clean = rules.clean_email(email)
+    if clean is None:
+        raise AccountError(EMAIL_INVALID, fields={"email": EMAIL_INVALID})
+    if clean == user.email:
+        return
+    if _email_taken(db, clean):
+        raise AccountError(EMAIL_TAKEN, 409, {"email": EMAIL_TAKEN})
+    user.email = clean
+    audit(db, actor, "user.email", f"user:{user.id}")
 
 
 def update_user(
@@ -385,6 +397,7 @@ def update_user(
     status: str | None = None,
     position: str | None = None,
     now: datetime | None = None,
+    email: str | None = None,
 ) -> User:
     if user_id == actor.id and (role is not None or status is not None):
         raise AccountError("You can't change your own role or status.", 403)
@@ -392,29 +405,33 @@ def update_user(
         raise AccountError("Unknown role.")
     if status is not None and status not in STATUSES:
         raise AccountError("Unknown status.")
+    now = now or datetime.now(UTC)
     # Lock every active admin row first, so two admins demoting each other can't both succeed.
     admins = _active_admin_ids(db)
-    user = db.get(User, user_id, with_for_update=True)
+    user = db.get(User, user_id, with_for_update=True, populate_existing=True)
     if user is None:
         raise AccountError("No such user.", 404)
     if rules.loses_admin(user.role, user.status, role, status) and len(admins) <= 1:
         raise AccountError("There must always be at least one active admin.", 409)
+    if email is not None:
+        _set_email(db, actor, user, email)
     changes: dict[str, Any] = {}
     if role is not None and role != user.role:
         changes["role"] = [user.role, role]
         user.role = role
     if position is not None and position != user.position:
         changes["position"] = [user.position, position]
-        _set_position(db, user, position)
+        _set_position(db, user, position, now)
     if status is not None and status != user.status:
         changes["status"] = [user.status, status]
         user.status = status
-        user.left_at = None if status == "active" else (user.left_at or now or datetime.now(UTC))
+        user.left_at = None if status == "active" else (user.left_at or now)
         if status != "active":
             end_all_sessions(db, user.id)
     if changes:
         audit(db, actor, "user.update", f"user:{user.id}", **changes)
-    db.commit()
+    with _unique(db):
+        db.commit()
     return user
 
 

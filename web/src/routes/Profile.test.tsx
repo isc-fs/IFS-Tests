@@ -59,6 +59,27 @@ test('a wrong current password is flagged on that field; success empties the for
   expect(current).toHaveValue('')
 })
 
+test('the sub-department that seats you in live quizzes is the first one ticked, not the first listed', async () => {
+  const departments = [
+    { code: 'AE', name: 'Aerodynamics', vertical: 'Mechanical' },
+    { code: 'SP', name: 'Suspension and Dynamics', vertical: 'Mechanical' },
+    { code: 'CE', name: 'Control Electronics', vertical: 'Electronics' },
+  ]
+  const { sent } = renderApp('/profile', {
+    'GET /api/me': { body: { ...MEMBER, subdepartments: ['SP', 'AE'] } },
+    'GET /api/live/subdepartments': { body: departments },
+    'PATCH /api/me': (body) => ({ body: { ...MEMBER, ...(body as object) } }),
+  })
+  expect(await screen.findByText(/Live quizzes seat you with the first one you tick/)).toBeInTheDocument()
+  expect(screen.getByLabelText(/Suspension and Dynamics/)).toHaveAccessibleName('Suspension and Dynamics (seats you)')
+  expect(screen.getByLabelText(/Aerodynamics/)).toHaveAccessibleName('Aerodynamics')
+  await userEvent.click(screen.getByLabelText(/Suspension and Dynamics/))
+  expect(screen.getByLabelText(/Aerodynamics/)).toHaveAccessibleName('Aerodynamics (seats you)')
+  await userEvent.click(screen.getByLabelText(/Suspension and Dynamics/))
+  await userEvent.click(screen.getByRole('button', { name: 'Save profile' }))
+  await waitFor(() => expect(sent('PATCH /api/me')[0].body).toMatchObject({ subdepartments: ['AE', 'SP'] }))
+})
+
 test('sign out clears the session and goes to the login page', async () => {
   const { router, sent } = renderApp('/profile', { ...me, 'POST /auth/logout': { status: 204 } })
   await userEvent.click(await screen.findByRole('button', { name: 'Sign out' }))

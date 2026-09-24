@@ -93,7 +93,10 @@ function ProfileForm({ user }: { user: Me }) {
       {departments.data && (
         <fieldset className="subdepartments">
           <legend>Sub-departments</legend>
-          <p className="hint">Live quizzes seat you with your first one. The Team Directory's departments.</p>
+          <p className="hint">
+            The Team Directory&apos;s departments. Live quizzes seat you with the first one you tick, not the first in
+            the list; to be seated with another, untick the one that seats you and tick it again.
+          </p>
           {[...new Set(departments.data.map((d) => d.vertical))].map((vertical) => (
             <fieldset key={vertical} className="checks">
               <legend>{vertical}</legend>
@@ -107,6 +110,12 @@ function ProfileForm({ user }: { user: Me }) {
                       onChange={() => edit({ subdepartments: toggle(form.subdepartments, d.code) })}
                     />
                     {d.name}
+                    {form.subdepartments[0] === d.code && (
+                      <>
+                        {' '}
+                        <span className="muted">(seats you)</span>
+                      </>
+                    )}
                   </label>
                 ))}
             </fieldset>

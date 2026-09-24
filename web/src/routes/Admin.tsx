@@ -18,7 +18,7 @@ import {
 } from '../api/@tanstack/react-query.gen'
 import { exportUser } from '../api/sdk.gen'
 import { type AdminUser, type InviteIn, type Position, Role, Status, Vertical } from '../api/types.gen'
-import { ErrorNotice, Field, Form, Notice, SelectField } from '../components/Form'
+import { ErrorNotice, Field, Form, Notice, SelectField, useFieldErrors } from '../components/Form'
 import { Page } from '../components/Page'
 import { queryClient, saveJson, useMe } from '../lib/api'
 import { AREAS } from '../lib/areas'
@@ -173,10 +173,16 @@ function InvitePanel() {
   )
 }
 
-const CONFIRM: Partial<Record<string, (name: string) => string>> = {
-  disabled: (n) => `Disable ${n}? They'll be signed out and can't sign in until re-enabled.`,
-  alumni: (n) => `Mark ${n} as alumni? They'll be signed out and leave the leaderboards.`,
-  admin: (n) => `Make ${n} an admin? Admins can invite people and change anyone's role.`,
+/** Inactive accounts are deleted a year after they stopped being active (ADR 0006). */
+const deletedOn = (leftAt: string | null | undefined) =>
+  day(new Date((leftAt ? new Date(leftAt).getTime() : Date.now()) + YEAR).toISOString())
+
+const CONFIRM: Partial<Record<string, (u: AdminUser) => string>> = {
+  disabled: (u) =>
+    `Disable ${u.display_name}? They'll be signed out and can't sign in; the account is deleted on ${deletedOn(u.left_at)} unless re-enabled.`,
+  alumni: (u) =>
+    `Mark ${u.display_name} as alumni? They'll be signed out and leave the leaderboards; the account is deleted on ${deletedOn(u.left_at)} unless they come back.`,
+  admin: (u) => `Make ${u.display_name} an admin? Admins can invite people and change anyone's role.`,
 }
 
 const matches = (u: AdminUser, q: string) =>
@@ -207,7 +213,7 @@ function Members({ selfId }: { selfId: number }) {
 
   const change = (u: AdminUser, body: { role?: Role; status?: Status; position?: Position }) => {
     const ask = CONFIRM[body.role ?? body.status ?? '']
-    if (ask && !window.confirm(ask(u.display_name))) return
+    if (ask && !window.confirm(ask(u))) return
     setChanged('')
     update.mutate({ path: { user_id: u.id }, body })
   }
@@ -249,10 +255,10 @@ function Members({ selfId }: { selfId: number }) {
                   <span className="muted">
                     {u.email} · {u.vertical ?? 'no vertical'} · seen {when(u.last_seen)}
                   </span>
-                  {u.status === 'alumni' && u.left_at && (
+                  {u.status !== 'active' && u.left_at && (
                     <span className="muted">
-                      Alumni since {day(u.left_at)}; deleted on{' '}
-                      {day(new Date(new Date(u.left_at).getTime() + YEAR).toISOString())} unless they come back.
+                      {u.status === 'alumni' ? 'Alumni' : 'Disabled'} since {day(u.left_at)}; deleted on{' '}
+                      {deletedOn(u.left_at)} unless {u.status === 'alumni' ? 'they come back' : 're-enabled'}.
                     </span>
                   )}
                 </div>
@@ -295,6 +301,7 @@ function Members({ selfId }: { selfId: number }) {
                 >
                   Reset link
                 </button>
+                <ChangeEmail user={u} onChanged={setChanged} />
                 {!self && <ExportMember user={u} />}
                 {!self && <DeleteMember user={u} onDeleted={deleted} />}
                 {link?.userId === u.id && (
@@ -382,6 +389,76 @@ function DeleteMember({ user, onDeleted }: { user: AdminUser; onDeleted: (messag
         </button>
       </div>
     </form>
+  )
+}
+
+/** Members can't change their own email: they ask an admin. Their sign-ins stay open. */
+function ChangeEmail({ user, onChanged }: { user: AdminUser; onChanged: (message: string) => void }) {
+  const [email, setEmail] = useState<string | null>(null)
+  const open = useRef<HTMLButtonElement>(null)
+  const box = useRef<HTMLDivElement>(null)
+  const editing = email !== null
+  const save = useMutation({
+    ...updateUserMutation(),
+    onSuccess: (u) => {
+      setEmail(null)
+      onChanged(`${u.display_name}'s email is now ${u.email}. They sign in with it from now on.`)
+      refresh(usersQueryKey())
+    },
+  })
+  const { errors, touch } = useFieldErrors(save.error)
+  useEffect(() => {
+    if (editing) box.current?.querySelector('input')?.focus()
+  }, [editing])
+  const keep = () => {
+    setEmail(null)
+    save.reset()
+    requestAnimationFrame(() => open.current?.focus())
+  }
+  if (!editing) {
+    return (
+      <button
+        ref={open}
+        type="button"
+        className="link-button"
+        aria-label={`Change the email of ${user.display_name}`}
+        onClick={() => setEmail(user.email)}
+      >
+        Change email
+      </button>
+    )
+  }
+  const changed = email.trim().toLowerCase() !== user.email
+  return (
+    <div ref={box} className="full">
+      <Form
+        error={save.error}
+        className="stack"
+        onSubmit={() => changed && !save.isPending && save.mutate({ path: { user_id: user.id }, body: { email } })}
+      >
+        <Field
+          label={`New email for ${user.display_name}`}
+          type="email"
+          maxLength={254}
+          autoComplete="off"
+          value={email}
+          onChange={(e) => {
+            setEmail(e.target.value)
+            touch('email')
+          }}
+          error={errors.email}
+        />
+        <ErrorNotice error={save.error} />
+        <div className="answer-actions">
+          <button type="submit" disabled={!changed || save.isPending}>
+            Save email
+          </button>
+          <button type="button" className="link-button" onClick={keep}>
+            Keep
+          </button>
+        </div>
+      </Form>
+    </div>
   )
 }
 
@@ -547,6 +624,7 @@ const ACTIONS: Record<string, string> = {
   'user.register': 'joined',
   'user.bootstrap_admin': 'set up the first admin account',
   'user.update': 'changed',
+  'user.email': 'changed the email of',
   'user.revoke_sessions': 'signed out',
   'reset.create': 'created a reset link for',
   'password.reset': 'reset their password',

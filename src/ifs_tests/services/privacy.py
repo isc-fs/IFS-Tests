@@ -21,14 +21,17 @@ from ..db.models import (
     LiveSession,
     LiveTable,
     MockSession,
+    PasswordReset,
     PracticeHint,
     Question,
     Report,
     Session,
+    StreakFreeze,
     User,
 )
 from ..db.session import rowcount
 from ..domain import accounts as rules
+from ..domain import rank as rank_rules
 from . import live
 from .accounts import AccountError, _active_admin_ids, _record_failure, audit
 
@@ -134,7 +137,16 @@ def export(db: DB, user: User, now: datetime) -> dict[str, Any]:
             "role": user.role,
             "status": user.status,
             "xp": user.xp,
+            "xp_before_ranked": user.legacy_xp,
             "rank_points": user.rank_points,
+            "rank_season": user.rank_season,
+            "best_division": rank_rules.title(user.rank_best, user.vertical),
+            "right_in_a_row": user.combo,
+            "wrong_in_a_row": user.miss_streak,
+            "rested_xp": user.rested_xp,
+            "rested_on": user.rested_on,
+            "streak_freezes": user.streak_freezes,
+            "streak_freeze_earned_on": user.freeze_earned_on,
             "hidden_from_leaderboard": user.leaderboard_opt_out,
             "joined_at": user.created_at,
             "last_seen": user.last_seen,
@@ -182,6 +194,18 @@ def export(db: DB, user: User, now: datetime) -> dict[str, Any]:
                 "handled_at": r.resolved_at,
             }
             for r in db.scalars(select(Report).where(Report.user_id == user.id).order_by(Report.id))
+        ],
+        "streak_freezes_used": list(
+            db.scalars(
+                select(StreakFreeze.day).where(StreakFreeze.user_id == user.id).order_by(StreakFreeze.day)
+            )
+        ),
+        # Reset links an admin made for them, without the token hash.
+        "password_resets": [
+            {"created_at": r.created_at, "expires_at": r.expires_at, "used_at": r.used_at}
+            for r in db.scalars(
+                select(PasswordReset).where(PasswordReset.user_id == user.id).order_by(PasswordReset.id)
+            )
         ],
         "sign_ins": [
             {"started_at": s.created_at, "last_seen": s.last_seen, "expires_at": s.expires_at}
