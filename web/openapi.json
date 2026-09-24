@@ -856,6 +856,50 @@
     }
    }
   },
+  "/api/practice/questions/{question_id}/hint": {
+   "post": {
+    "tags": [
+     "practice"
+    ],
+    "summary": "Practice Hint",
+    "operationId": "practice_hint",
+    "parameters": [
+     {
+      "name": "question_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "maximum": 2147483647,
+       "minimum": 1,
+       "title": "Question Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HintOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/api/daily": {
    "get": {
     "tags": [
@@ -1025,6 +1069,50 @@
     }
    }
   },
+  "/api/daily/attempts/{attempt_id}/hint": {
+   "post": {
+    "tags": [
+     "daily"
+    ],
+    "summary": "Daily Hint",
+    "operationId": "daily_hint",
+    "parameters": [
+     {
+      "name": "attempt_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "maximum": 9223372036854775807,
+       "minimum": 1,
+       "title": "Attempt Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HintOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/api/mock/quizzes": {
    "get": {
     "tags": [
@@ -1175,6 +1263,61 @@
        "application/json": {
         "schema": {
          "$ref": "#/components/schemas/MockState"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/mock/sessions/{session_id}/attempts/{attempt_id}/hint": {
+   "post": {
+    "tags": [
+     "mock"
+    ],
+    "summary": "Mock Hint",
+    "operationId": "mock_hint",
+    "parameters": [
+     {
+      "name": "session_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "maximum": 2147483647,
+       "minimum": 1,
+       "title": "Session Id"
+      }
+     },
+     {
+      "name": "attempt_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "maximum": 9223372036854775807,
+       "minimum": 1,
+       "title": "Attempt Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HintOut"
         }
        }
       }
@@ -1698,6 +1841,49 @@
      }
     }
    }
+  },
+  "/api/learning/{topic}": {
+   "get": {
+    "tags": [
+     "learning"
+    ],
+    "summary": "Topic Aids",
+    "operationId": "topic_aids",
+    "parameters": [
+     {
+      "name": "topic",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "maxLength": 32,
+       "title": "Topic"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Learning"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
   }
  },
  "components": {
@@ -2142,6 +2328,36 @@
     ],
     "title": "DailyStatus"
    },
+   "DocLink": {
+    "properties": {
+     "title": {
+      "type": "string",
+      "title": "Title"
+     },
+     "type": {
+      "type": "string",
+      "title": "Type",
+      "description": "As FS-Quiz names it: Rulebook, Handbook, Additional Rules..."
+     },
+     "year": {
+      "type": "integer",
+      "title": "Year"
+     },
+     "url": {
+      "type": "string",
+      "title": "Url",
+      "description": "The PDF on doc.fs-quiz.eu"
+     }
+    },
+    "type": "object",
+    "required": [
+     "title",
+     "type",
+     "year",
+     "url"
+    ],
+    "title": "DocLink"
+   },
    "Feedback": {
     "properties": {
      "correct": {
@@ -2221,6 +2437,46 @@
     "title": "Feedback",
     "description": "What the player sees after answering: the official answer and any worked solution."
    },
+   "Formula": {
+    "properties": {
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "formula": {
+      "type": "string",
+      "title": "Formula"
+     },
+     "where": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Where"
+     },
+     "tip": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Tip"
+     }
+    },
+    "type": "object",
+    "required": [
+     "name",
+     "formula"
+    ],
+    "title": "Formula"
+   },
    "HTTPValidationError": {
     "properties": {
      "detail": {
@@ -2233,6 +2489,29 @@
     },
     "type": "object",
     "title": "HTTPValidationError"
+   },
+   "HintOut": {
+    "properties": {
+     "text": {
+      "type": "string",
+      "title": "Text"
+     },
+     "removed_options": {
+      "items": {
+       "type": "integer"
+      },
+      "type": "array",
+      "title": "Removed Options",
+      "description": "Options the hint rules out"
+     }
+    },
+    "type": "object",
+    "required": [
+     "text",
+     "removed_options"
+    ],
+    "title": "HintOut",
+    "description": "A nudge, never the answer: taking it halves the XP for the question."
    },
    "InviteIn": {
     "properties": {
@@ -2436,6 +2715,36 @@
      "players"
     ],
     "title": "Leaderboard"
+   },
+   "Learning": {
+    "properties": {
+     "title": {
+      "type": "string",
+      "title": "Title"
+     },
+     "formulas": {
+      "items": {
+       "$ref": "#/components/schemas/Formula"
+      },
+      "type": "array",
+      "title": "Formulas"
+     },
+     "learn_more": {
+      "items": {
+       "$ref": "#/components/schemas/Reading"
+      },
+      "type": "array",
+      "title": "Learn More"
+     }
+    },
+    "type": "object",
+    "required": [
+     "title",
+     "formulas",
+     "learn_more"
+    ],
+    "title": "Learning",
+    "description": "A topic's panels; empty lists where the player's level has taken them away."
    },
    "Link": {
     "properties": {
@@ -3007,6 +3316,9 @@
       },
       "type": "array",
       "title": "Quizzes"
+     },
+     "documents": {
+      "$ref": "#/components/schemas/QuestionDocs"
      }
     },
     "type": "object",
@@ -3021,7 +3333,8 @@
      "topic",
      "images",
      "options",
-     "quizzes"
+     "quizzes",
+     "documents"
     ],
     "title": "PlayQuestion",
     "description": "A question before it is answered: nothing here may reveal the answer."
@@ -3154,6 +3467,68 @@
     ],
     "title": "Progress",
     "description": "Level, title and what help the player still gets. XP always refers to lifetime XP."
+   },
+   "QuestionDocs": {
+    "properties": {
+     "year": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Year",
+      "description": "Year of the newest of them"
+     },
+     "used": {
+      "items": {
+       "$ref": "#/components/schemas/DocLink"
+      },
+      "type": "array",
+      "title": "Used"
+     },
+     "newer": {
+      "items": {
+       "$ref": "#/components/schemas/DocLink"
+      },
+      "type": "array",
+      "title": "Newer",
+      "description": "Later editions of those rulebooks and handbooks: rules may have changed"
+     }
+    },
+    "type": "object",
+    "required": [
+     "year",
+     "used",
+     "newer"
+    ],
+    "title": "QuestionDocs",
+    "description": "The rulebook, handbook and other documents the question's quizzes were based on."
+   },
+   "Reading": {
+    "properties": {
+     "title": {
+      "type": "string",
+      "title": "Title"
+     },
+     "url": {
+      "type": "string",
+      "title": "Url"
+     },
+     "note": {
+      "type": "string",
+      "title": "Note"
+     }
+    },
+    "type": "object",
+    "required": [
+     "title",
+     "url",
+     "note"
+    ],
+    "title": "Reading"
    },
    "RegisterIn": {
     "properties": {

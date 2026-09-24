@@ -38,7 +38,11 @@
     90009,
     90010
    ],
-   "document_ids": [],
+   "document_ids": [
+    9101,
+    9102,
+    9103
+   ],
    "last_qualifier": {
     "method": "score",
     "time_s": null,
@@ -63,7 +67,10 @@
     90008,
     90012
    ],
-   "document_ids": [],
+   "document_ids": [
+    9101,
+    9102
+   ],
    "last_qualifier": null
   },
   {
@@ -81,7 +88,11 @@
     90003,
     90010
    ],
-   "document_ids": [],
+   "document_ids": [
+    9104,
+    9105,
+    9106
+   ],
    "last_qualifier": null
   }
  ],
@@ -454,5 +465,60 @@
    ]
   }
  ],
- "documents": []
+ "documents": [
+  {
+   "doc_id": 9101,
+   "type": "Rulebook",
+   "year": 2025,
+   "version": "1.0",
+   "path": "FS-Rules_2025_v1.0.pdf",
+   "event_ids": []
+  },
+  {
+   "doc_id": 9102,
+   "type": "Handbook",
+   "year": 2025,
+   "version": "1.1",
+   "path": "FS_Demo_2025_Competition_Handbook_v1.1.pdf",
+   "event_ids": [
+    9001
+   ]
+  },
+  {
+   "doc_id": 9103,
+   "type": "Additional Rules",
+   "year": 2025,
+   "version": "1.0",
+   "path": "Grey-Areas-2025-1.0.pdf",
+   "event_ids": []
+  },
+  {
+   "doc_id": 9104,
+   "type": "Rulebook",
+   "year": 2026,
+   "version": "1.1",
+   "path": "FS-Rules_2026_v1.1.pdf",
+   "event_ids": []
+  },
+  {
+   "doc_id": 9105,
+   "type": "Handbook",
+   "year": 2026,
+   "version": "1.0",
+   "path": "FS_Sample_2026_Handbook_v1.0.pdf",
+   "event_ids": [
+    9002
+   ]
+  },
+  {
+   "doc_id": 9106,
+   "type": "Handbook",
+   "year": 2025,
+   "version": null,
+   "path": "https://fsdemo.example/handbook-2025/",
+   "event_ids": [
+    9001
+   ]
+  }
+ ]
 }

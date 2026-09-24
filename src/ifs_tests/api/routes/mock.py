@@ -5,10 +5,10 @@ from typing import Annotated
 from fastapi import APIRouter, Path
 
 from ...domain.mock import bar_to_beat
-from ...services import mock, questions
+from ...services import hints, mock, questions
 from ..deps import Db, Member, Now
 from ..present import feedback, play_question
-from ..schemas import MockAnswerIn, MockItem, MockQuiz, MockState, MockSummary, TimedQuestion
+from ..schemas import HintOut, MockAnswerIn, MockItem, MockQuiz, MockState, MockSummary, TimedQuestion
 
 router = APIRouter(prefix="/api/mock", tags=["mock"])
 Id = Annotated[int, Path(ge=1, le=2**31 - 1)]
@@ -85,3 +85,11 @@ def mock_state(session_id: Id, user: Member, db: Db, now: Now) -> MockState:
 def answer_mock(session_id: Id, body: MockAnswerIn, user: Member, db: Db, now: Now) -> MockState:
     s = mock.answer(db, user, session_id, body.attempt_id, body.options, body.value, now, body.unsure)
     return _state(db, s, now)
+
+
+@router.post("/sessions/{session_id}/attempts/{attempt_id}/hint")
+def mock_hint(
+    session_id: Id, attempt_id: Annotated[int, Path(ge=1, le=2**63 - 1)], user: Member, db: Db, now: Now
+) -> HintOut:
+    h = hints.timed(db, user, attempt_id, now, session_id)
+    return HintOut(text=h.text, removed_options=h.removed_options)

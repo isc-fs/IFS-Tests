@@ -295,7 +295,16 @@ def answer(
                 not s.counted or xp.last_seen(db, user.id, q.id, s.started_at, other_than=a.id) is not None
             )
             granted = xp.grant(
-                db, user.id, q, "mock", checked.correct, now, repeat=repeat, late=late, passed=checked.passed
+                db,
+                user.id,
+                q,
+                "mock",
+                checked.correct,
+                now,
+                repeat=repeat,
+                late=late,
+                passed=checked.passed,
+                hint=a.hint_used,
             )
             db.execute(update(Attempt).where(Attempt.id == a.id).values(xp=granted.xp))
         db.commit()

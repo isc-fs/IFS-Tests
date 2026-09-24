@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from ..services.questions import Checked, Shown
-from .schemas import Feedback, Option, PlayQuestion, SolutionOut, media_url
+from ..bank.client import DOC_URL
+from ..services.questions import Checked, Doc, Shown
+from .schemas import DocLink, Feedback, Option, PlayQuestion, QuestionDocs, SolutionOut, media_url
 
 
 def play_question(shown: Shown) -> PlayQuestion:
@@ -20,7 +21,17 @@ def play_question(shown: Shown) -> PlayQuestion:
         images=[media_url(i) for i in q.images],
         options=[Option.model_validate(o) for o in shown.options],
         quizzes=shown.quizzes,
+        documents=QuestionDocs(
+            year=shown.documents.year,
+            used=[_link(d) for d in shown.documents.used],
+            newer=[_link(d) for d in shown.documents.newer],
+        ),
     )
+
+
+def _link(d: Doc) -> DocLink:
+    url = d.path if "://" in d.path else f"{DOC_URL}/{d.path}"
+    return DocLink(title=d.title, type=d.type, year=d.year, url=url)
 
 
 def feedback(checked: Checked) -> Feedback:

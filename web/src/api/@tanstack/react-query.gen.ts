@@ -3,8 +3,8 @@
 import { type DefaultError, type InfiniteData, infiniteQueryOptions, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { answerDaily, answerMock, answerPractice, auditLog, bankSummary, changePassword, correctAnswer, createInvite, dailyStatus, getLeaderboard, inviteInfo, login, logout, me, mockQuizzes, mockState, nextQuestion, openInvites, type Options, practiceAreas, practiceQuestion, register, removeCorrection, reportQuestion, reset, resetInfo, resetLink, resolveReport, reviewDaily, reviewQuestion, reviewQuestions, revokeInvite, revokeSessions, startDaily, startMock, updateMe, updateQuestion, updateUser, users, verticalLeaderboard } from '../sdk.gen';
-import type { AnswerDailyData, AnswerDailyError, AnswerDailyResponse, AnswerMockData, AnswerMockError, AnswerMockResponse, AnswerPracticeData, AnswerPracticeError, AnswerPracticeResponse, AuditLogData, AuditLogError, AuditLogResponse, BankSummaryData, BankSummaryResponse, ChangePasswordData, ChangePasswordError, ChangePasswordResponse, CorrectAnswerData, CorrectAnswerError, CorrectAnswerResponse, CreateInviteData, CreateInviteError, CreateInviteResponse, DailyStatusData, DailyStatusResponse, GetLeaderboardData, GetLeaderboardError, GetLeaderboardResponse, InviteInfoData, InviteInfoError, InviteInfoResponse, LoginData, LoginError, LoginResponse, LogoutData, LogoutResponse, MeData, MeResponse, MockQuizzesData, MockQuizzesResponse, MockStateData, MockStateError, MockStateResponse, NextQuestionData, NextQuestionError, NextQuestionResponse, OpenInvitesData, OpenInvitesResponse, PracticeAreasData, PracticeAreasResponse, PracticeQuestionData, PracticeQuestionError, PracticeQuestionResponse, RegisterData, RegisterError, RegisterResponse, RemoveCorrectionData, RemoveCorrectionError, RemoveCorrectionResponse, ReportQuestionData, ReportQuestionError, ReportQuestionResponse, ResetData, ResetError, ResetInfoData, ResetInfoError, ResetInfoResponse, ResetLinkData, ResetLinkError, ResetLinkResponse, ResetResponse, ResolveReportData, ResolveReportError, ResolveReportResponse, ReviewDailyData, ReviewDailyError, ReviewDailyResponse, ReviewQuestionData, ReviewQuestionError, ReviewQuestionResponse, ReviewQuestionsData, ReviewQuestionsError, ReviewQuestionsResponse, RevokeInviteData, RevokeInviteError, RevokeInviteResponse, RevokeSessionsData, RevokeSessionsError, RevokeSessionsResponse, StartDailyData, StartDailyError, StartDailyResponse, StartMockData, StartMockError, StartMockResponse, UpdateMeData, UpdateMeError, UpdateMeResponse, UpdateQuestionData, UpdateQuestionError, UpdateQuestionResponse, UpdateUserData, UpdateUserError, UpdateUserResponse, UsersData, UsersResponse, VerticalLeaderboardData, VerticalLeaderboardError, VerticalLeaderboardResponse } from '../types.gen';
+import { answerDaily, answerMock, answerPractice, auditLog, bankSummary, changePassword, correctAnswer, createInvite, dailyHint, dailyStatus, getLeaderboard, inviteInfo, login, logout, me, mockHint, mockQuizzes, mockState, nextQuestion, openInvites, type Options, practiceAreas, practiceHint, practiceQuestion, register, removeCorrection, reportQuestion, reset, resetInfo, resetLink, resolveReport, reviewDaily, reviewQuestion, reviewQuestions, revokeInvite, revokeSessions, startDaily, startMock, topicAids, updateMe, updateQuestion, updateUser, users, verticalLeaderboard } from '../sdk.gen';
+import type { AnswerDailyData, AnswerDailyError, AnswerDailyResponse, AnswerMockData, AnswerMockError, AnswerMockResponse, AnswerPracticeData, AnswerPracticeError, AnswerPracticeResponse, AuditLogData, AuditLogError, AuditLogResponse, BankSummaryData, BankSummaryResponse, ChangePasswordData, ChangePasswordError, ChangePasswordResponse, CorrectAnswerData, CorrectAnswerError, CorrectAnswerResponse, CreateInviteData, CreateInviteError, CreateInviteResponse, DailyHintData, DailyHintError, DailyHintResponse, DailyStatusData, DailyStatusResponse, GetLeaderboardData, GetLeaderboardError, GetLeaderboardResponse, InviteInfoData, InviteInfoError, InviteInfoResponse, LoginData, LoginError, LoginResponse, LogoutData, LogoutResponse, MeData, MeResponse, MockHintData, MockHintError, MockHintResponse, MockQuizzesData, MockQuizzesResponse, MockStateData, MockStateError, MockStateResponse, NextQuestionData, NextQuestionError, NextQuestionResponse, OpenInvitesData, OpenInvitesResponse, PracticeAreasData, PracticeAreasResponse, PracticeHintData, PracticeHintError, PracticeHintResponse, PracticeQuestionData, PracticeQuestionError, PracticeQuestionResponse, RegisterData, RegisterError, RegisterResponse, RemoveCorrectionData, RemoveCorrectionError, RemoveCorrectionResponse, ReportQuestionData, ReportQuestionError, ReportQuestionResponse, ResetData, ResetError, ResetInfoData, ResetInfoError, ResetInfoResponse, ResetLinkData, ResetLinkError, ResetLinkResponse, ResetResponse, ResolveReportData, ResolveReportError, ResolveReportResponse, ReviewDailyData, ReviewDailyError, ReviewDailyResponse, ReviewQuestionData, ReviewQuestionError, ReviewQuestionResponse, ReviewQuestionsData, ReviewQuestionsError, ReviewQuestionsResponse, RevokeInviteData, RevokeInviteError, RevokeInviteResponse, RevokeSessionsData, RevokeSessionsError, RevokeSessionsResponse, StartDailyData, StartDailyError, StartDailyResponse, StartMockData, StartMockError, StartMockResponse, TopicAidsData, TopicAidsError, TopicAidsResponse, UpdateMeData, UpdateMeError, UpdateMeResponse, UpdateQuestionData, UpdateQuestionError, UpdateQuestionResponse, UpdateUserData, UpdateUserError, UpdateUserResponse, UsersData, UsersResponse, VerticalLeaderboardData, VerticalLeaderboardError, VerticalLeaderboardResponse } from '../types.gen';
 
 /**
  * Login
@@ -421,6 +421,23 @@ export const answerPracticeMutation = (options?: Partial<Options<AnswerPracticeD
     return mutationOptions;
 };
 
+/**
+ * Practice Hint
+ */
+export const practiceHintMutation = (options?: Partial<Options<PracticeHintData>>): UseMutationOptions<PracticeHintResponse, PracticeHintError, Options<PracticeHintData>> => {
+    const mutationOptions: UseMutationOptions<PracticeHintResponse, PracticeHintError, Options<PracticeHintData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await practiceHint({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
 export const dailyStatusQueryKey = (options?: Options<DailyStatusData>) => createQueryKey('dailyStatus', options);
 
 /**
@@ -491,6 +508,23 @@ export const reviewDailyOptions = (options: Options<ReviewDailyData>) => queryOp
     queryKey: reviewDailyQueryKey(options)
 });
 
+/**
+ * Daily Hint
+ */
+export const dailyHintMutation = (options?: Partial<Options<DailyHintData>>): UseMutationOptions<DailyHintResponse, DailyHintError, Options<DailyHintData>> => {
+    const mutationOptions: UseMutationOptions<DailyHintResponse, DailyHintError, Options<DailyHintData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await dailyHint({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
 export const mockQuizzesQueryKey = (options?: Options<MockQuizzesData>) => createQueryKey('mockQuizzes', options);
 
 /**
@@ -551,6 +585,23 @@ export const answerMockMutation = (options?: Partial<Options<AnswerMockData>>): 
     const mutationOptions: UseMutationOptions<AnswerMockResponse, AnswerMockError, Options<AnswerMockData>> = {
         mutationFn: async (fnOptions) => {
             const { data } = await answerMock({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Mock Hint
+ */
+export const mockHintMutation = (options?: Partial<Options<MockHintData>>): UseMutationOptions<MockHintResponse, MockHintError, Options<MockHintData>> => {
+    const mutationOptions: UseMutationOptions<MockHintResponse, MockHintError, Options<MockHintData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await mockHint({
                 ...options,
                 ...fnOptions,
                 throwOnError: true
@@ -775,4 +826,22 @@ export const verticalLeaderboardOptions = (options?: Options<VerticalLeaderboard
         return data;
     },
     queryKey: verticalLeaderboardQueryKey(options)
+});
+
+export const topicAidsQueryKey = (options: Options<TopicAidsData>) => createQueryKey('topicAids', options);
+
+/**
+ * Topic Aids
+ */
+export const topicAidsOptions = (options: Options<TopicAidsData>) => queryOptions<TopicAidsResponse, TopicAidsError, TopicAidsResponse, ReturnType<typeof topicAidsQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await topicAids({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: topicAidsQueryKey(options)
 });

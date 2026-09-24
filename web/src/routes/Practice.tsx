@@ -2,9 +2,10 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { answerPracticeMutation, practiceAreasOptions, practiceAreasQueryKey } from '../api/@tanstack/react-query.gen'
-import { nextQuestion } from '../api/sdk.gen'
+import { nextQuestion, practiceHint } from '../api/sdk.gen'
 import type { Feedback, NextQuestionData } from '../api/types.gen'
 import { ErrorNotice, Notice } from '../components/Form'
+import { LearningAids } from '../components/LearningAids'
 import { Page } from '../components/Page'
 import { QuestionCard } from '../components/QuestionCard'
 import { errorMessage, queryClient } from '../lib/api'
@@ -118,19 +119,22 @@ function Session({ area, topic, onGraded }: Filter & { onGraded: (correct: boole
         </Notice>
       )}
       {question && (
-        <QuestionCard
-          key={question.id}
-          focusOnShow={round > 0}
-          question={question}
-          feedback={feedback}
-          pending={answer.isPending}
-          onAnswer={(body) => answer.mutate({ path: { question_id: question.id }, body })}
-          next={
-            <button type="button" onClick={next}>
-              Next question
-            </button>
-          }
-        />
+        <LearningAids question={question}>
+          <QuestionCard
+            key={question.id}
+            focusOnShow={round > 0}
+            question={question}
+            feedback={feedback}
+            pending={answer.isPending}
+            onAnswer={(body) => answer.mutate({ path: { question_id: question.id }, body })}
+            onHint={async () => (await practiceHint({ path: { question_id: question.id } })).data}
+            next={
+              <button type="button" onClick={next}>
+                Next question
+              </button>
+            }
+          />
+        </LearningAids>
       )}
       <ErrorNotice error={answer.error} />
       {question && !feedback && (

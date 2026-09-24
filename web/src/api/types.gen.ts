@@ -265,6 +265,32 @@ export type DailyStatus = {
 };
 
 /**
+ * DocLink
+ */
+export type DocLink = {
+    /**
+     * Title
+     */
+    title: string;
+    /**
+     * Type
+     *
+     * As FS-Quiz names it: Rulebook, Handbook, Additional Rules...
+     */
+    type: string;
+    /**
+     * Year
+     */
+    year: number;
+    /**
+     * Url
+     *
+     * The PDF on doc.fs-quiz.eu
+     */
+    url: string;
+};
+
+/**
  * Feedback
  *
  * What the player sees after answering: the official answer and any worked solution.
@@ -313,6 +339,28 @@ export type Feedback = {
 };
 
 /**
+ * Formula
+ */
+export type Formula = {
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Formula
+     */
+    formula: string;
+    /**
+     * Where
+     */
+    where?: string | null;
+    /**
+     * Tip
+     */
+    tip?: string | null;
+};
+
+/**
  * HTTPValidationError
  */
 export type HttpValidationError = {
@@ -320,6 +368,24 @@ export type HttpValidationError = {
      * Detail
      */
     detail?: Array<ValidationError>;
+};
+
+/**
+ * HintOut
+ *
+ * A nudge, never the answer: taking it halves the XP for the question.
+ */
+export type HintOut = {
+    /**
+     * Text
+     */
+    text: string;
+    /**
+     * Removed Options
+     *
+     * Options the hint rules out
+     */
+    removed_options: Array<number>;
 };
 
 /**
@@ -421,6 +487,26 @@ export type Leaderboard = {
      * People on this board, including any beyond the rows shown
      */
     players: number;
+};
+
+/**
+ * Learning
+ *
+ * A topic's panels; empty lists where the player's level has taken them away.
+ */
+export type Learning = {
+    /**
+     * Title
+     */
+    title: string;
+    /**
+     * Formulas
+     */
+    formulas: Array<Formula>;
+    /**
+     * Learn More
+     */
+    learn_more: Array<Reading>;
 };
 
 /**
@@ -755,6 +841,7 @@ export type PlayQuestion = {
      * Quizzes
      */
     quizzes: Array<string>;
+    documents: QuestionDocs;
 };
 
 /**
@@ -842,6 +929,48 @@ export type Progress = {
      * Ladder
      */
     ladder: Array<Step>;
+};
+
+/**
+ * QuestionDocs
+ *
+ * The rulebook, handbook and other documents the question's quizzes were based on.
+ */
+export type QuestionDocs = {
+    /**
+     * Year
+     *
+     * Year of the newest of them
+     */
+    year: number | null;
+    /**
+     * Used
+     */
+    used: Array<DocLink>;
+    /**
+     * Newer
+     *
+     * Later editions of those rulebooks and handbooks: rules may have changed
+     */
+    newer: Array<DocLink>;
+};
+
+/**
+ * Reading
+ */
+export type Reading = {
+    /**
+     * Title
+     */
+    title: string;
+    /**
+     * Url
+     */
+    url: string;
+    /**
+     * Note
+     */
+    note: string;
 };
 
 /**
@@ -1901,6 +2030,36 @@ export type AnswerPracticeResponses = {
 
 export type AnswerPracticeResponse = AnswerPracticeResponses[keyof AnswerPracticeResponses];
 
+export type PracticeHintData = {
+    body?: never;
+    path: {
+        /**
+         * Question Id
+         */
+        question_id: number;
+    };
+    query?: never;
+    url: '/api/practice/questions/{question_id}/hint';
+};
+
+export type PracticeHintErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type PracticeHintError = PracticeHintErrors[keyof PracticeHintErrors];
+
+export type PracticeHintResponses = {
+    /**
+     * Successful Response
+     */
+    200: HintOut;
+};
+
+export type PracticeHintResponse = PracticeHintResponses[keyof PracticeHintResponses];
+
 export type DailyStatusData = {
     body?: never;
     path?: never;
@@ -2006,6 +2165,36 @@ export type ReviewDailyResponses = {
 };
 
 export type ReviewDailyResponse = ReviewDailyResponses[keyof ReviewDailyResponses];
+
+export type DailyHintData = {
+    body?: never;
+    path: {
+        /**
+         * Attempt Id
+         */
+        attempt_id: number;
+    };
+    query?: never;
+    url: '/api/daily/attempts/{attempt_id}/hint';
+};
+
+export type DailyHintErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type DailyHintError = DailyHintErrors[keyof DailyHintErrors];
+
+export type DailyHintResponses = {
+    /**
+     * Successful Response
+     */
+    200: HintOut;
+};
+
+export type DailyHintResponse = DailyHintResponses[keyof DailyHintResponses];
 
 export type MockQuizzesData = {
     body?: never;
@@ -2114,6 +2303,40 @@ export type AnswerMockResponses = {
 };
 
 export type AnswerMockResponse = AnswerMockResponses[keyof AnswerMockResponses];
+
+export type MockHintData = {
+    body?: never;
+    path: {
+        /**
+         * Session Id
+         */
+        session_id: number;
+        /**
+         * Attempt Id
+         */
+        attempt_id: number;
+    };
+    query?: never;
+    url: '/api/mock/sessions/{session_id}/attempts/{attempt_id}/hint';
+};
+
+export type MockHintErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type MockHintError = MockHintErrors[keyof MockHintErrors];
+
+export type MockHintResponses = {
+    /**
+     * Successful Response
+     */
+    200: HintOut;
+};
+
+export type MockHintResponse = MockHintResponses[keyof MockHintResponses];
 
 export type ReviewQuestionsData = {
     body?: never;
@@ -2404,3 +2627,33 @@ export type VerticalLeaderboardResponses = {
 };
 
 export type VerticalLeaderboardResponse = VerticalLeaderboardResponses[keyof VerticalLeaderboardResponses];
+
+export type TopicAidsData = {
+    body?: never;
+    path: {
+        /**
+         * Topic
+         */
+        topic: string;
+    };
+    query?: never;
+    url: '/api/learning/{topic}';
+};
+
+export type TopicAidsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type TopicAidsError = TopicAidsErrors[keyof TopicAidsErrors];
+
+export type TopicAidsResponses = {
+    /**
+     * Successful Response
+     */
+    200: Learning;
+};
+
+export type TopicAidsResponse = TopicAidsResponses[keyof TopicAidsResponses];

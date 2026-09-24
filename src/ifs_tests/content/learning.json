@@ -1,0 +1,713 @@
+{
+  "dynamics": {
+    "title": "Vehicle dynamics",
+    "formulas": [
+      {
+        "name": "Static axle loads",
+        "formula": "F_f = m · g · b / L,  F_r = m · g · a / L",
+        "where": "F_f, F_r front and rear axle loads (N), m mass (kg), g = 9.81 m/s², a distance front axle to CoG (m), b distance CoG to rear axle (m), L = a + b wheelbase (m)",
+        "tip": "Front weight fraction = b / L."
+      },
+      {
+        "name": "Longitudinal weight transfer",
+        "formula": "ΔF_z = m · a_x · h / L",
+        "where": "ΔF_z load moved between axles (N), m mass (kg), a_x longitudinal acceleration (m/s²), h CoG height (m), L wheelbase (m)",
+        "tip": "Braking moves load to the front axle, accelerating to the rear. Divide by g to express it in kg."
+      },
+      {
+        "name": "Lateral weight transfer",
+        "formula": "ΔF_z = m · a_y · h / t",
+        "where": "ΔF_z load moved from inner to outer wheels (N), m mass (kg), a_y lateral acceleration (m/s²), h CoG height (m), t track width (m)",
+        "tip": "This is the total for the car; the front/rear split depends on roll stiffness distribution."
+      },
+      {
+        "name": "Lateral acceleration",
+        "formula": "a_y = v² / R",
+        "where": "a_y lateral acceleration (m/s²), v speed (m/s), R corner radius (m)",
+        "tip": "In g: a_y / 9.81."
+      },
+      {
+        "name": "Grip-limited cornering speed",
+        "formula": "v_max = √(μ · g · R)",
+        "where": "v_max maximum speed (m/s), μ tyre–road friction coefficient (–), g = 9.81 m/s², R corner radius (m)",
+        "tip": "Flat road and no downforce, so a_y,max = μ · g."
+      },
+      {
+        "name": "Skidpad lap time",
+        "formula": "t = 2π · √(R / a_y)",
+        "where": "t time for one lap (s), R radius of the driven line (m), a_y lateral acceleration (m/s²; for n g use n · 9.81)",
+        "tip": "FS skidpad: 15.25 m inner diameter and a 3 m wide lane, so the lane centreline radius is about 9.1 m. Check the current rules and which radius the question uses."
+      },
+      {
+        "name": "Friction force",
+        "formula": "F = μ · N",
+        "where": "F maximum friction force (N), μ friction coefficient (–), N normal load (N)"
+      },
+      {
+        "name": "Braking distance",
+        "formula": "s = v² / (2 · a),  a_max = μ · g",
+        "where": "s distance to stop (m), v initial speed (m/s), a constant deceleration (m/s²), μ friction coefficient (–), g = 9.81 m/s²",
+        "tip": "With a reaction time t_r, add v · t_r."
+      },
+      {
+        "name": "Understeer gradient",
+        "formula": "δ = L / R + K · a_y,  K = W_f / C_αf − W_r / C_αr",
+        "where": "δ front wheel steer angle (rad), L wheelbase (m), R corner radius (m), a_y lateral acceleration (g), K understeer gradient (rad/g), W_f, W_r front and rear axle loads (N), C_αf, C_αr front and rear axle cornering stiffness (N/rad)",
+        "tip": "K > 0 understeer, K = 0 neutral steer, K < 0 oversteer."
+      }
+    ],
+    "learn_more": [
+      {
+        "title": "Weight transfer (Wikipedia)",
+        "url": "https://en.wikipedia.org/wiki/Weight_transfer",
+        "note": "Longitudinal and lateral load transfer with the CoG height, wheelbase and track formulas."
+      },
+      {
+        "title": "Understeer and oversteer (Wikipedia)",
+        "url": "https://en.wikipedia.org/wiki/Understeer_and_oversteer",
+        "note": "Definitions and the understeer gradient."
+      },
+      {
+        "title": "Skidpad (Wikipedia)",
+        "url": "https://en.wikipedia.org/wiki/Skidpad",
+        "note": "What a skidpad test measures and how lateral grip is expressed in g."
+      },
+      {
+        "title": "Braking distance (Wikipedia)",
+        "url": "https://en.wikipedia.org/wiki/Braking_distance",
+        "note": "Stopping distance from speed, friction and reaction time."
+      },
+      {
+        "title": "Friction (Wikipedia)",
+        "url": "https://en.wikipedia.org/wiki/Friction",
+        "note": "Coulomb friction, static and kinetic coefficients."
+      }
+    ]
+  },
+  "aero": {
+    "title": "Aerodynamics",
+    "formulas": [
+      {
+        "name": "Drag force",
+        "formula": "F_D = ½ · ρ · v² · C_D · A",
+        "where": "F_D drag (N), ρ air density (kg/m³), v airspeed (m/s), C_D drag coefficient (–), A reference (frontal) area (m²)",
+        "tip": "Teams often quote the product C_D · A (m²) directly."
+      },
+      {
+        "name": "Downforce",
+        "formula": "F_L = ½ · ρ · v² · C_L · A",
+        "where": "F_L downforce (N), ρ air density (kg/m³), v airspeed (m/s), C_L downforce (negative lift) coefficient magnitude (–), A reference area (m²)",
+        "tip": "C_L · A is often given directly; then you do not need A separately."
+      },
+      {
+        "name": "Dynamic pressure",
+        "formula": "q = ½ · ρ · v²",
+        "where": "q dynamic pressure (Pa), ρ air density (kg/m³), v airspeed (m/s)",
+        "tip": "Any aero force is F = q · C · A."
+      },
+      {
+        "name": "Power to overcome drag",
+        "formula": "P = F_D · v = ½ · ρ · v³ · C_D · A",
+        "where": "P power (W), F_D drag (N), v speed (m/s), ρ air density (kg/m³), C_D drag coefficient (–), A reference area (m²)",
+        "tip": "Power grows with v³: twice the speed needs eight times the power."
+      },
+      {
+        "name": "Air density",
+        "formula": "ρ = p / (R_s · T)",
+        "where": "ρ density (kg/m³), p absolute pressure (Pa), R_s = 287.05 J/(kg·K) for dry air, T temperature (K = °C + 273.15)",
+        "tip": "Standard sea-level value: ρ ≈ 1.225 kg/m³ at 15 °C and 101 325 Pa."
+      },
+      {
+        "name": "Aero balance",
+        "formula": "Balance_front = F_L,f / (F_L,f + F_L,r) · 100 %",
+        "where": "F_L,f, F_L,r downforce acting on the front and rear axle (N)",
+        "tip": "Compare it with the static front weight fraction: a more forward aero balance tends towards oversteer at high speed."
+      },
+      {
+        "name": "Lift-to-drag ratio",
+        "formula": "L/D = C_L / C_D = F_L / F_D",
+        "where": "C_L downforce coefficient (–), C_D drag coefficient (–), F_L downforce (N), F_D drag (N)"
+      },
+      {
+        "name": "Cornering speed with downforce",
+        "formula": "v = √(μ · m · g / (m / R − ½ · ρ · μ · C_L · A))",
+        "where": "v maximum cornering speed (m/s), μ friction coefficient (–), m mass (kg), g = 9.81 m/s², R corner radius (m), ρ air density (kg/m³), C_L · A downforce area (m²)",
+        "tip": "From μ · (m · g + F_L) = m · v² / R. If the denominator is zero or negative, grip is not the limiting factor in this simple model."
+      }
+    ],
+    "learn_more": [
+      {
+        "title": "Drag equation (NASA Glenn)",
+        "url": "https://www1.grc.nasa.gov/beginners-guide-to-aeronautics/drag-equation/",
+        "note": "NASA's beginner's guide to the drag equation and what each term means."
+      },
+      {
+        "title": "Lift equation (NASA Glenn)",
+        "url": "https://www1.grc.nasa.gov/beginners-guide-to-aeronautics/lift-equation/",
+        "note": "The same approach for lift, which is downforce with the sign flipped."
+      },
+      {
+        "title": "Drag equation (Wikipedia)",
+        "url": "https://en.wikipedia.org/wiki/Drag_equation",
+        "note": "Derivation and range of validity of F = ½ρv²C_DA."
+      },
+      {
+        "title": "Downforce (Wikipedia)",
+        "url": "https://en.wikipedia.org/wiki/Downforce",
+        "note": "Wings, diffusers and ground effect on race cars."
+      },
+      {
+        "title": "Density of air (Wikipedia)",
+        "url": "https://en.wikipedia.org/wiki/Density_of_air",
+        "note": "How air density depends on pressure, temperature and humidity."
+      }
+    ]
+  },
+  "structures": {
+    "title": "Structures",
+    "formulas": [
+      {
+        "name": "Normal stress",
+        "formula": "σ = F / A",
+        "where": "σ stress (Pa), F axial force (N), A cross-section area (m²)",
+        "tip": "1 MPa = 1 N/mm², so working in N and mm gives MPa directly."
+      },
+      {
+        "name": "Hooke's law and elongation",
+        "formula": "σ = E · ε,  ε = ΔL / L₀,  ΔL = F · L₀ / (E · A)",
+        "where": "σ stress (Pa), E Young's modulus (Pa), ε strain (–), L₀ original length (m), ΔL elongation (m), F axial force (N), A area (m²)",
+        "tip": "Elastic range only. Steel E ≈ 200–210 GPa, aluminium ≈ 70 GPa."
+      },
+      {
+        "name": "Centre-loaded simply supported beam",
+        "formula": "M_max = F · L / 4,  δ_max = F · L³ / (48 · E · I)",
+        "where": "M_max bending moment at mid-span (N·m), F point load at mid-span (N), L span between supports (m), δ_max mid-span deflection (m), E Young's modulus (Pa), I second moment of area (m⁴)"
+      },
+      {
+        "name": "Bending stress",
+        "formula": "σ = M · y / I = M / W,  W = I / y_max",
+        "where": "σ bending stress (Pa), M bending moment (N·m), y distance from the neutral axis (m), I second moment of area (m⁴), W section modulus (m³), y_max distance to the outer fibre (m)",
+        "tip": "The maximum stress is at the outer fibre, y = y_max."
+      },
+      {
+        "name": "Round tube section",
+        "formula": "I = π · (D⁴ − d⁴) / 64,  W = π · (D⁴ − d⁴) / (32 · D)",
+        "where": "I second moment of area (m⁴), W section modulus (m³), D outer diameter (m), d inner diameter (m) = D − 2 · wall thickness",
+        "tip": "Solid bar: set d = 0."
+      },
+      {
+        "name": "Rectangular tube section",
+        "formula": "I = (B · H³ − b · h³) / 12,  W = (B · H³ − b · h³) / (6 · H)",
+        "where": "I second moment of area (m⁴), W section modulus (m³), B, H outer width and height (m), b, h inner width and height (m); H is measured in the bending direction",
+        "tip": "Height counts cubed, so turning a tube on its side changes its stiffness a lot."
+      },
+      {
+        "name": "Euler buckling load",
+        "formula": "F_cr = π² · E · I / (K · L)²",
+        "where": "F_cr critical load (N), E Young's modulus (Pa), I smallest second moment of area (m⁴), L column length (m), K effective length factor: 1 pinned–pinned, 0.5 fixed–fixed, ≈ 0.7 fixed–pinned, 2 fixed–free",
+        "tip": "Valid for slender columns that fail by buckling before yielding."
+      },
+      {
+        "name": "Impact energy and deceleration",
+        "formula": "E = ½ · m · v²,  a_avg = v² / (2 · s),  F_avg = E / s,  n = a_avg / g",
+        "where": "E kinetic energy (J), m mass (kg), v impact speed (m/s), s stopping (crush) distance (m), a_avg average deceleration (m/s²), F_avg average force (N), n deceleration in g, g = 9.81 m/s²",
+        "tip": "FS impact attenuator reference case: 300 kg at 7 m/s gives 7350 J, with at most 20 g average and 40 g peak. Check the current rules."
+      },
+      {
+        "name": "Safety factor",
+        "formula": "SF = σ_allow / σ_actual",
+        "where": "SF safety factor (–), σ_allow material strength used as the limit, usually yield (Pa), σ_actual calculated stress (Pa)",
+        "tip": "For buckling use F_cr / F. Check whether the question uses yield or ultimate strength."
+      }
+    ],
+    "learn_more": [
+      {
+        "title": "Euler–Bernoulli beam theory (Wikipedia)",
+        "url": "https://en.wikipedia.org/wiki/Euler%E2%80%93Bernoulli_beam_theory",
+        "note": "Bending moment, bending stress and deflection of beams."
+      },
+      {
+        "title": "List of second moments of area (Wikipedia)",
+        "url": "https://en.wikipedia.org/wiki/List_of_second_moments_of_area",
+        "note": "I for solid and hollow circular and rectangular sections."
+      },
+      {
+        "title": "Euler's critical load (Wikipedia)",
+        "url": "https://en.wikipedia.org/wiki/Euler%27s_critical_load",
+        "note": "Buckling formula and effective length factors for different end conditions."
+      },
+      {
+        "title": "Factor of safety (Wikipedia)",
+        "url": "https://en.wikipedia.org/wiki/Factor_of_safety",
+        "note": "Definitions of safety factor and margin of safety."
+      },
+      {
+        "title": "Mechanics & Materials I (MIT OpenCourseWare)",
+        "url": "https://ocw.mit.edu/courses/2-001-mechanics-materials-i-fall-2006/",
+        "note": "Free MIT course on stress, strain, beams and buckling."
+      }
+    ]
+  },
+  "powertrain": {
+    "title": "Powertrain",
+    "formulas": [
+      {
+        "name": "Power from torque",
+        "formula": "P = T · ω",
+        "where": "P power (W), T torque (N·m), ω angular speed (rad/s)"
+      },
+      {
+        "name": "rpm to rad/s",
+        "formula": "ω = 2π · n / 60",
+        "where": "ω angular speed (rad/s), n rotational speed (rpm)",
+        "tip": "Shortcut: P (kW) = T (N·m) · n (rpm) / 9549."
+      },
+      {
+        "name": "Gear ratio and wheel torque",
+        "formula": "i = n_in / n_out = z_out / z_in,  T_wheel = T_motor · i · η",
+        "where": "i gear ratio (–), n_in, n_out input and output speeds (rpm), z_in, z_out teeth on input and output gears (–), T_wheel, T_motor torques (N·m), η transmission efficiency (–)",
+        "tip": "Torque goes up by i and speed goes down by i; power stays the same apart from losses."
+      },
+      {
+        "name": "Tractive force",
+        "formula": "F_x = T_wheel / r",
+        "where": "F_x tractive force at the ground (N), T_wheel total torque at the driven wheels (N·m), r loaded tyre radius (m)",
+        "tip": "It cannot exceed μ times the load on the driven wheels."
+      },
+      {
+        "name": "Acceleration and 0–100 km/h",
+        "formula": "a = F_net / m,  t = Δv / a,  s = ½ · a · t²",
+        "where": "a acceleration (m/s²), F_net tractive force minus resistances (N), m mass including driver (kg), t time (s), Δv speed change (m/s; 100 km/h = 27.78 m/s), s distance from standstill (m)",
+        "tip": "Assumes constant acceleration. Time to cover a distance from rest: t = √(2 · s / a)."
+      },
+      {
+        "name": "Vehicle speed from motor speed",
+        "formula": "v = 2π · r · n_motor / (60 · i)",
+        "where": "v vehicle speed (m/s), r tyre radius (m), n_motor motor speed (rpm), i overall gear ratio (–)"
+      },
+      {
+        "name": "Efficiency and energy",
+        "formula": "η = P_out / P_in,  η_total = η₁ · η₂ · …,  E = P · t",
+        "where": "η efficiency (–), P_out, P_in output and input power (W), η₁, η₂ efficiencies of each stage (–), E energy (J), P average power (W), t time (s)",
+        "tip": "1 kWh = 3.6 MJ."
+      },
+      {
+        "name": "Rolling resistance and road load",
+        "formula": "F_rr = C_rr · m · g,  P = (F_rr + F_D) · v",
+        "where": "F_rr rolling resistance (N), C_rr rolling resistance coefficient (–), m mass (kg), g = 9.81 m/s², P power needed at constant speed (W), F_D aerodynamic drag (N), v speed (m/s)",
+        "tip": "C_rr is roughly 0.01–0.015 for car tyres on asphalt or concrete."
+      },
+      {
+        "name": "Compression ratio",
+        "formula": "CR = (V_d + V_c) / V_c,  V_d = π · B² · S / 4",
+        "where": "CR compression ratio (–), V_d swept volume of one cylinder (m³), V_c clearance volume (m³), B bore (m), S stroke (m)"
+      }
+    ],
+    "learn_more": [
+      {
+        "title": "Torque (Wikipedia)",
+        "url": "https://en.wikipedia.org/wiki/Torque",
+        "note": "Torque, its units and the relation P = T · ω."
+      },
+      {
+        "title": "Gear train (Wikipedia)",
+        "url": "https://en.wikipedia.org/wiki/Gear_train",
+        "note": "Gear ratios from tooth counts and the torque–speed trade-off."
+      },
+      {
+        "title": "Rolling resistance (Wikipedia)",
+        "url": "https://en.wikipedia.org/wiki/Rolling_resistance",
+        "note": "The rolling resistance coefficient and typical values for tyres."
+      },
+      {
+        "title": "Traction (Wikipedia)",
+        "url": "https://en.wikipedia.org/wiki/Traction_(mechanics)",
+        "note": "Why tractive force is limited by the tyre–road friction coefficient."
+      },
+      {
+        "title": "Compression ratio (Wikipedia)",
+        "url": "https://en.wikipedia.org/wiki/Compression_ratio",
+        "note": "Swept and clearance volume and how the ratio is calculated."
+      }
+    ]
+  },
+  "hv": {
+    "title": "High voltage and accumulator",
+    "formulas": [
+      {
+        "name": "Pack voltage (cells in series)",
+        "formula": "V_pack = n_s · V_cell",
+        "where": "V_pack pack voltage (V), n_s number of cells in series (–), V_cell cell voltage (V)",
+        "tip": "Use the maximum cell voltage (often 4.2 V for Li-ion) for maximum TS voltage and the nominal voltage (≈ 3.6–3.7 V) for energy."
+      },
+      {
+        "name": "Pack capacity and energy",
+        "formula": "C_pack = n_p · C_cell,  E = n_s · n_p · V_cell,nom · C_cell",
+        "where": "C_pack, C_cell pack and cell capacity (Ah), n_p cells in parallel (–), n_s cells in series (–), V_cell,nom nominal cell voltage (V), E energy (Wh)",
+        "tip": "A 140s4p pack has n_s = 140 and n_p = 4. Divide Wh by 1000 for kWh, multiply by 3600 for J."
+      },
+      {
+        "name": "Current from power",
+        "formula": "I = P / V",
+        "where": "I current (A), P power (W), V voltage (V)",
+        "tip": "80 kW at 400 V is 200 A. The 80 kW limit at the accumulator outlet comes from recent FS rules; check the current rules."
+      },
+      {
+        "name": "Resistive losses and voltage sag",
+        "formula": "P_loss = I² · R,  V_term = V_oc − I · R,  R_pack = n_s · R_cell / n_p",
+        "where": "P_loss heat generated (W), I current (A), R resistance (Ω), V_term terminal voltage under load (V), V_oc open-circuit voltage (V), R_cell internal resistance of one cell (Ω)",
+        "tip": "R_pack ignores busbars and connectors; add them in series if given."
+      },
+      {
+        "name": "Precharge (RC charging)",
+        "formula": "V_C(t) = V_TS · (1 − e^(−t/τ)),  τ = R · C,  t_x = −τ · ln(1 − x)",
+        "where": "V_C voltage on the vehicle side (V), V_TS accumulator voltage (V), t time (s), τ time constant (s), R precharge resistance (Ω), C DC-link capacitance (F), x target fraction (e.g. 0.95)",
+        "tip": "90 % takes ≈ 2.3 τ and 95 % ≈ 3 τ. FS Rules 2026 ask for at least 95 % before the second AIR closes (older rulebooks said 90 %); check the current rules."
+      },
+      {
+        "name": "Discharge (RC decay)",
+        "formula": "V(t) = V₀ · e^(−t/τ),  t = τ · ln(V₀ / V_safe)",
+        "where": "V voltage (V), V₀ starting voltage (V), τ = R · C discharge time constant (s), V_safe target voltage (V)",
+        "tip": "Recent FS rules require the TS to fall below 60 V DC within 5 s after shutdown; check the current rules."
+      },
+      {
+        "name": "IMD response value",
+        "formula": "R_min = 500 Ω/V · V_TS,max",
+        "where": "R_min insulation resistance at which the IMD must trip (Ω), V_TS,max maximum TS voltage (V)",
+        "tip": "Example: 600 V gives 300 kΩ. The 500 Ω/V value is from recent FS rules; check the current rules."
+      },
+      {
+        "name": "Fuse sizing basics",
+        "formula": "I_load ≤ I_rated ≤ I_conductor,  I_interrupt > I_sc ≈ V_pack / R_loop",
+        "where": "I_load continuous load current (A), I_rated fuse continuous rating (A), I_conductor current rating of the protected wire or busbar (A), I_interrupt fuse breaking capacity (A), I_sc short-circuit current (A), R_loop total resistance of the fault loop, including cell internal resistance (Ω)",
+        "tip": "The fuse voltage rating must also be at least the maximum TS voltage."
+      },
+      {
+        "name": "Energy meter",
+        "formula": "P = V · I,  E = Σ V · I · Δt",
+        "where": "P instantaneous power (W), V TS voltage (V), I TS current (A), E energy (J), Δt sample interval (s)",
+        "tip": "The officials' meter (called data logger in recent FS rules) records TS voltage and current to check the power limit and score efficiency; check the current rules."
+      }
+    ],
+    "learn_more": [
+      {
+        "title": "Pre-charge (Wikipedia)",
+        "url": "https://en.wikipedia.org/wiki/Pre-charge",
+        "note": "Why high-voltage systems limit inrush current before closing the main contactors."
+      },
+      {
+        "title": "Insulation monitoring device (Wikipedia)",
+        "url": "https://en.wikipedia.org/wiki/Insulation_monitoring_device",
+        "note": "How an IMD measures insulation resistance in an ungrounded (IT) system."
+      },
+      {
+        "title": "Battery pack (Wikipedia)",
+        "url": "https://en.wikipedia.org/wiki/Battery_pack",
+        "note": "Series and parallel cell configurations and pack design."
+      },
+      {
+        "title": "Joule heating (Wikipedia)",
+        "url": "https://en.wikipedia.org/wiki/Joule_heating",
+        "note": "Resistive losses, P = I² · R."
+      },
+      {
+        "title": "Fuse (electrical) (Wikipedia)",
+        "url": "https://en.wikipedia.org/wiki/Fuse_(electrical)",
+        "note": "Current rating, breaking capacity, voltage rating and I²t."
+      }
+    ]
+  },
+  "electronics": {
+    "title": "Electronics and low voltage",
+    "formulas": [
+      {
+        "name": "Ohm's law and power",
+        "formula": "V = I · R,  P = V · I = I² · R = V² / R",
+        "where": "V voltage (V), I current (A), R resistance (Ω), P power dissipated (W)",
+        "tip": "Check that each resistor's power rating exceeds P."
+      },
+      {
+        "name": "Series and parallel resistors",
+        "formula": "R_s = R₁ + R₂ + …,  1 / R_p = 1 / R₁ + 1 / R₂ + …",
+        "where": "R_s series equivalent (Ω), R_p parallel equivalent (Ω), R₁, R₂ individual resistors (Ω)",
+        "tip": "Two in parallel: R₁ · R₂ / (R₁ + R₂). Capacitors combine the other way round."
+      },
+      {
+        "name": "Voltage divider",
+        "formula": "V_out = V_in · R₂ / (R₁ + R₂)",
+        "where": "V_out output across R₂ (V), V_in input voltage (V), R₁ top resistor (Ω), R₂ bottom resistor (Ω)",
+        "tip": "Valid without load; a load in parallel with R₂ lowers V_out."
+      },
+      {
+        "name": "RC and RL time constants",
+        "formula": "τ_RC = R · C,  τ_RL = L / R,  v(t) = V · (1 − e^(−t/τ))",
+        "where": "τ time constant (s), R resistance (Ω), C capacitance (F), L inductance (H), v(t) capacitor voltage while charging (V), V final voltage (V)",
+        "tip": "After 1 τ ≈ 63 %, 3 τ ≈ 95 %, 5 τ ≈ 99 %."
+      },
+      {
+        "name": "Rise time (10–90 %)",
+        "formula": "t_r = τ · ln 9 ≈ 2.2 · τ ≈ 0.35 / f_c,  f_c = 1 / (2π · R · C)",
+        "where": "t_r rise time (s), τ = R · C (s), f_c −3 dB cut-off frequency (Hz)"
+      },
+      {
+        "name": "Capacitor energy and charge",
+        "formula": "E = ½ · C · V²,  Q = C · V",
+        "where": "E stored energy (J), C capacitance (F), V voltage (V), Q charge (C)"
+      },
+      {
+        "name": "ADC resolution",
+        "formula": "LSB = V_ref / 2ⁿ,  code ≈ V_in / LSB",
+        "where": "LSB voltage step (V), V_ref reference voltage (V), n number of bits (–), code output value (rounded down, at most 2ⁿ − 1), V_in input voltage (V)",
+        "tip": "Some sources use V_ref / (2ⁿ − 1); check which convention the question expects."
+      },
+      {
+        "name": "CAN bit timing",
+        "formula": "t_bit = 1 / bitrate = (1 + TSEG1 + TSEG2) · t_q,  t_q = BRP / f_clk,  SP = (1 + TSEG1) / (1 + TSEG1 + TSEG2)",
+        "where": "t_bit bit time (s), t_q time quantum (s), TSEG1 propagation plus phase segment 1 (in t_q), TSEG2 phase segment 2 (in t_q), BRP baud-rate prescaler (–), f_clk CAN clock (Hz), SP sample point (fraction of the bit)",
+        "tip": "The 1 is the sync segment. Sample points around 75–87.5 % are common for classic CAN."
+      },
+      {
+        "name": "Plausibility checks (rules of thumb)",
+        "formula": "APPS: |p₁ − p₂| > 10 %-points for > 100 ms → cut motor power;  BSPD: hard braking while P ≥ 5 kW for > 500 ms → open the SDC",
+        "where": "p₁, p₂ pedal travel read by the two APPS (%), P power delivered to the motors (W), SDC shutdown circuit",
+        "tip": "The SDC is a series loop of safety switches; opening any one opens the AIRs. Thresholds are from recent FS rules; check the current rules."
+      }
+    ],
+    "learn_more": [
+      {
+        "title": "RC time constant (Wikipedia)",
+        "url": "https://en.wikipedia.org/wiki/RC_time_constant",
+        "note": "Charging and discharging curves and the link to cut-off frequency."
+      },
+      {
+        "title": "Rise time (Wikipedia)",
+        "url": "https://en.wikipedia.org/wiki/Rise_time",
+        "note": "10–90 % rise time and the 2.2 · RC result for first-order systems."
+      },
+      {
+        "title": "Analog-to-digital converter (Wikipedia)",
+        "url": "https://en.wikipedia.org/wiki/Analog-to-digital_converter",
+        "note": "Resolution, quantisation error and sampling."
+      },
+      {
+        "title": "CAN bus (Wikipedia)",
+        "url": "https://en.wikipedia.org/wiki/CAN_bus",
+        "note": "Frames, arbitration and bit timing."
+      },
+      {
+        "title": "Circuits and Electronics (MIT OpenCourseWare)",
+        "url": "https://ocw.mit.edu/courses/6-002-circuits-and-electronics-spring-2007/",
+        "note": "Free MIT course covering circuit laws, dividers and first-order RC/RL circuits."
+      }
+    ]
+  },
+  "dv": {
+    "title": "Driverless",
+    "formulas": [
+      {
+        "name": "AS states",
+        "formula": "AS Off → AS Ready → AS Driving → AS Finished;  EBS activated unexpectedly → AS Emergency",
+        "where": "Off: default state. Ready: mission selected, ASMS on, brake checks passed, TS active and brakes engaged. Driving: ready-to-drive after the RES Go signal (at least 5 s in Ready). Finished: EBS activated after the mission is completed and the car is at standstill. Emergency: EBS activated in any other case, or the RES opened the SDC.",
+        "tip": "ASSI lights: Off none, Ready yellow steady, Driving yellow flashing, Emergency blue flashing, Finished blue steady. Check the current rules."
+      },
+      {
+        "name": "Stopping distance",
+        "formula": "s = v · t_d + v² / (2 · a)",
+        "where": "s total stopping distance (m), v initial speed (m/s), t_d delay before deceleration starts (s), a average deceleration (m/s²)",
+        "tip": "The EBS must be passive (stored mechanical energy), so losing power brakes the car. Recent FS rules: ≤ 200 ms reaction and > 10 m/s² average deceleration in the dry; check the current rules."
+      },
+      {
+        "name": "Stopping time",
+        "formula": "t_stop = t_d + v / a",
+        "where": "t_stop time to standstill (s), t_d delay (s), v initial speed (m/s), a average deceleration (m/s²)"
+      },
+      {
+        "name": "Required deceleration",
+        "formula": "a = v² / (2 · (s − v · t_d))",
+        "where": "a deceleration needed (m/s²), v initial speed (m/s), s available distance (m), t_d delay (s)"
+      },
+      {
+        "name": "Lidar range (time of flight)",
+        "formula": "d = c · Δt / 2",
+        "where": "d distance to target (m), c = 3.0 · 10⁸ m/s speed of light, Δt round-trip time (s)"
+      },
+      {
+        "name": "Lidar point spacing",
+        "formula": "Δs ≈ d · Δθ,  n ≈ w / (d · Δθ)",
+        "where": "Δs gap between neighbouring points (m), d range (m), Δθ angular resolution (rad; deg · π / 180), n points across an object, w object width or height (m)",
+        "tip": "Vertical resolution usually limits how many rings hit a small cone far away."
+      },
+      {
+        "name": "Pinhole camera size",
+        "formula": "w_px = f_px · W / Z",
+        "where": "w_px object size in the image (px), f_px focal length in pixels (px), W real object size (m), Z distance along the optical axis (m)"
+      },
+      {
+        "name": "DV missions",
+        "formula": "Acceleration: 75 m straight · Skidpad: figure of eight · Autocross: one lap, track unknown · Trackdrive: 10 laps, then stop",
+        "where": "The mission is selected on the car before staging; each run must end with the car stopped in AS Finished.",
+        "tip": "Distances and lap counts are from recent FS rules; check the current rules and the event handbook."
+      }
+    ],
+    "learn_more": [
+      {
+        "title": "About Formula Student Germany (FSG)",
+        "url": "https://www.formulastudent.de/fsg/about",
+        "note": "Overview of the disciplines and the Driverless Cup, with the points per event."
+      },
+      {
+        "title": "AMZ Driverless: The Full Autonomous Racing System (arXiv)",
+        "url": "https://arxiv.org/abs/1905.05150",
+        "note": "Free paper describing a complete FS driverless pipeline: perception, SLAM, planning and control."
+      },
+      {
+        "title": "Lidar (Wikipedia)",
+        "url": "https://en.wikipedia.org/wiki/Lidar",
+        "note": "Time-of-flight ranging, scanning and resolution."
+      },
+      {
+        "title": "Simultaneous localization and mapping (Wikipedia)",
+        "url": "https://en.wikipedia.org/wiki/Simultaneous_localization_and_mapping",
+        "note": "How a car builds a cone map while locating itself in it."
+      },
+      {
+        "title": "FS-Quiz",
+        "url": "https://fs-quiz.eu",
+        "note": "Links the current FS Rules, whose AS and EBS chapters define the states and brake tests."
+      }
+    ]
+  },
+  "scoring": {
+    "title": "Scoring and events",
+    "formulas": [
+      {
+        "name": "Dynamic score (FS Rules 2026)",
+        "formula": "Score = (P_max − P_min) · ((T_max − T_team) / (T_max − T_min))² + P_min",
+        "where": "P_max maximum points for the discipline, P_min minimum points for a valid run, T_team team's best time including penalties (capped at T_max) (s), T_min fastest time including penalties (s), T_max time limit for the discipline (s)",
+        "tip": "Rulebooks before 2026 used ratio forms such as (T_max / T_team − 1) / (T_max / T_min − 1). Answer old quiz questions with that year's rules."
+      },
+      {
+        "name": "T_max and P_min per discipline",
+        "formula": "Skidpad 1.35 · T_min, 0.05 · P_max;  Acceleration 1.7 · T_min, 0.05 · P_max;  Autocross 1.4 · T_min, 0.1 · P_max;  Endurance 1.5 · T_min, 0.1 · P_max",
+        "where": "T_min fastest time including penalties (s), P_max maximum points for the discipline",
+        "tip": "Values from FS Rules 2026; check the current rules."
+      },
+      {
+        "name": "DV skidpad and acceleration (ranking)",
+        "formula": "Score = P_max · (N_all + 1 − R) / N_all",
+        "where": "P_max maximum points, R the team's rank on best autonomous time including penalties, N_all number of teams with at least one valid manual or autonomous run",
+        "tip": "Only the ranking matters, not the time gap. FS Rules 2026; check the current rules."
+      },
+      {
+        "name": "Trackdrive (Driverless Cup)",
+        "formula": "Score = 0.75 · P_max · (T_max / T_team − 1) + 0.025 · P_max · laps",
+        "where": "P_max maximum points, T_team corrected elapsed time (s, capped at T_max), T_max = 2 · fastest corrected time (s), laps completed laps",
+        "tip": "Ten laps give the full 25 % lap bonus. FS Rules 2026; check the current rules."
+      },
+      {
+        "name": "Efficiency",
+        "formula": "EF = T² · E,  Score = P_max · ((EF_max − EF_team) / (EF_max − EF_min))²,  EF_max = 2 · EF_min",
+        "where": "EF efficiency factor, T uncorrected endurance driving time (s), E energy used (EV) or corrected fuel mass (CV), EF_min lowest EF of all eligible teams",
+        "tip": "Use consistent units for all teams. FS Rules 2026; check the current rules."
+      },
+      {
+        "name": "Skidpad run time",
+        "formula": "T = (T_left + T_right) / 2 + penalties",
+        "where": "T run time (s), T_left, T_right timed lap on the left and right circle (s)"
+      },
+      {
+        "name": "Corrected time with penalties",
+        "formula": "T_corr = T_raw + n_DOO · t_DOO + n_OC · t_OC",
+        "where": "T_raw measured time (s), n_DOO cones down or out, t_DOO penalty per cone (s), n_OC off-course events, t_OC penalty per off-course (s)",
+        "tip": "FS Rules 2026: DOO 2 s (0.2 s in skidpad), OC 10 s in autocross, endurance and trackdrive, disqualification in acceleration and skidpad. Check the current rules and event handbook."
+      },
+      {
+        "name": "Points split",
+        "formula": "Statics 325 + Dynamics 675 = 1000;  Driverless Cup 600",
+        "where": "Statics: Business Plan 75, Cost and Manufacturing 100, Engineering Design 150. Dynamics: Acceleration 50, DV Acceleration 75, Skidpad 50, DV Skidpad 75, Autocross 100, Endurance 250, Efficiency 75. Driverless Cup: Engineering Design 150, DV Acceleration 75, DV Skidpad 75, DV Autocross 100, Trackdrive 200.",
+        "tip": "FS Rules 2026 split; events can change it, so check the current rules and event handbook."
+      }
+    ],
+    "learn_more": [
+      {
+        "title": "FSG Rules & Documents",
+        "url": "https://www.formulastudent.de/fsg/rules/",
+        "note": "Official page where FSG publishes the rules and event handbook for each season."
+      },
+      {
+        "title": "About Formula Student Germany (FSG)",
+        "url": "https://www.formulastudent.de/fsg/about",
+        "note": "Description of every static and dynamic discipline with the maximum points."
+      },
+      {
+        "title": "FSG results",
+        "url": "https://www.formulastudent.de/fsg/results/",
+        "note": "Official results, useful to see how times turn into points."
+      },
+      {
+        "title": "FS-Quiz",
+        "url": "https://fs-quiz.eu",
+        "note": "Past registration quizzes plus links to the current FS Rules and each event's handbook."
+      }
+    ]
+  },
+  "general": {
+    "title": "General",
+    "formulas": [
+      {
+        "name": "Speed units",
+        "formula": "v (m/s) = v (km/h) / 3.6",
+        "where": "v speed; multiply m/s by 3.6 to get km/h"
+      },
+      {
+        "name": "Acceleration in g",
+        "formula": "n = a / g,  g = 9.81 m/s²",
+        "where": "n acceleration in g (–), a acceleration (m/s²), g standard gravity (9.80665 m/s² exactly)",
+        "tip": "Use the value of g the question gives; answers can differ slightly between 9.81 and 9.8."
+      },
+      {
+        "name": "Energy units",
+        "formula": "1 kWh = 3.6 · 10⁶ J,  1 Wh = 3600 J,  E (Wh) = V · C (Ah)",
+        "where": "E energy, V voltage (V), C charge capacity (Ah)"
+      },
+      {
+        "name": "Angles and rotation",
+        "formula": "θ (rad) = θ (°) · π / 180,  ω (rad/s) = 2π · n (rpm) / 60",
+        "where": "θ angle, ω angular speed, n rotational speed (rpm)"
+      },
+      {
+        "name": "Rounding and units",
+        "formula": "Keep ≥ 4 significant figures while calculating; round only the final answer",
+        "where": "Answer in the unit and precision the question asks for (e.g. kW, not W; two decimals if requested)",
+        "tip": "Read the question for the unit asked and whether it wants a rounded or truncated value."
+      }
+    ],
+    "learn_more": [
+      {
+        "title": "International System of Units (Wikipedia)",
+        "url": "https://en.wikipedia.org/wiki/International_System_of_Units",
+        "note": "SI base and derived units and prefixes."
+      },
+      {
+        "title": "The SI (BIPM)",
+        "url": "https://www.bipm.org/en/measurement-units",
+        "note": "Official reference for SI units from the body that maintains them."
+      },
+      {
+        "title": "Significant figures (Wikipedia)",
+        "url": "https://en.wikipedia.org/wiki/Significant_figures",
+        "note": "Rules for significant figures and rounding."
+      },
+      {
+        "title": "Standard gravity (Wikipedia)",
+        "url": "https://en.wikipedia.org/wiki/Standard_gravity",
+        "note": "Where 9.80665 m/s² comes from."
+      },
+      {
+        "title": "Kilowatt-hour (Wikipedia)",
+        "url": "https://en.wikipedia.org/wiki/Kilowatt-hour",
+        "note": "Conversions between kWh, J and other energy units."
+      }
+    ]
+  }
+}

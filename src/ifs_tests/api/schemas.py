@@ -174,6 +174,23 @@ class Option(Out):
     text: str
 
 
+class DocLink(BaseModel):
+    title: str
+    type: str = Field(description="As FS-Quiz names it: Rulebook, Handbook, Additional Rules...")
+    year: int
+    url: str = Field(description="The PDF on doc.fs-quiz.eu")
+
+
+class QuestionDocs(BaseModel):
+    """The rulebook, handbook and other documents the question's quizzes were based on."""
+
+    year: int | None = Field(description="Year of the newest of them")
+    used: list[DocLink]
+    newer: list[DocLink] = Field(
+        description="Later editions of those rulebooks and handbooks: rules may have changed"
+    )
+
+
 class PlayQuestion(BaseModel):
     """A question before it is answered: nothing here may reveal the answer."""
 
@@ -188,6 +205,35 @@ class PlayQuestion(BaseModel):
     images: list[str]
     options: list[Option]
     quizzes: list[str]
+    documents: QuestionDocs
+
+
+class HintOut(BaseModel):
+    """A nudge, never the answer: taking it halves the XP for the question."""
+
+    text: str
+    removed_options: list[int] = Field(description="Options the hint rules out")
+
+
+class Formula(BaseModel):
+    name: str
+    formula: str
+    where: str | None = None
+    tip: str | None = None
+
+
+class Reading(BaseModel):
+    title: str
+    url: str
+    note: str
+
+
+class Learning(BaseModel):
+    """A topic's panels; empty lists where the player's level has taken them away."""
+
+    title: str
+    formulas: list[Formula]
+    learn_more: list[Reading]
 
 
 class KeyIn(In):

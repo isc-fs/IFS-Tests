@@ -6,10 +6,11 @@ import {
   dailyStatusQueryKey,
   startDailyMutation,
 } from '../api/@tanstack/react-query.gen'
-import { reviewDaily } from '../api/sdk.gen'
+import { dailyHint, reviewDaily } from '../api/sdk.gen'
 import type { DailyArea, DailyResult, TimedQuestion } from '../api/types.gen'
 import { Countdown } from '../components/Countdown'
 import { ErrorNotice, Notice } from '../components/Form'
+import { LearningAids } from '../components/LearningAids'
 import { Page } from '../components/Page'
 import { QuestionCard } from '../components/QuestionCard'
 import { queryClient } from '../lib/api'
@@ -82,15 +83,18 @@ function Play({ play, onDone }: { play: TimedQuestion; onDone: () => void }) {
   const expire = useCallback(() => setExpired(true), [])
   return (
     <>
-      <QuestionCard
-        question={play.question}
-        feedback={result?.feedback}
-        pending={send.isPending}
-        expired={expired}
-        clock={<Countdown deadline={play.deadline_at} serverNow={play.server_now} onExpire={expire} />}
-        onAnswer={(body) => send.mutate({ path: { attempt_id: play.attempt_id }, body })}
-        next={<Summary result={result} onDone={onDone} />}
-      />
+      <LearningAids question={play.question}>
+        <QuestionCard
+          question={play.question}
+          feedback={result?.feedback}
+          pending={send.isPending}
+          expired={expired}
+          clock={<Countdown deadline={play.deadline_at} serverNow={play.server_now} onExpire={expire} />}
+          onAnswer={(body) => send.mutate({ path: { attempt_id: play.attempt_id }, body })}
+          onHint={async () => (await dailyHint({ path: { attempt_id: play.attempt_id } })).data}
+          next={<Summary result={result} onDone={onDone} />}
+        />
+      </LearningAids>
       <ErrorNotice error={send.error} />
     </>
   )

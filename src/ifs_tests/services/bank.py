@@ -23,11 +23,13 @@ from ..db.models import (
     AnswerKey,
     AnswerOption,
     AuditLog,
+    Document,
     Event,
     Question,
     Quiz,
     QuizQuestion,
     Solution,
+    quiz_documents,
     quiz_events,
 )
 from ..domain import keys
@@ -88,6 +90,26 @@ def _upsert_events_and_quizzes(db: DB, bank: dict[str, Any]) -> None:
     links = [{"quiz_id": q["quiz_id"], "event_id": e} for q in bank["quizzes"] for e in q["event_ids"]]
     if links:
         db.execute(insert(quiz_events), links)
+    for d in bank.get("documents", []):
+        doc = {
+            "id": d["doc_id"],
+            "type": d["type"],
+            "year": d["year"],
+            "version": d.get("version"),
+            "path": d["path"],
+            "event_ids": d.get("event_ids") or [],
+        }
+        db.execute(upsert(Document).values(doc).on_conflict_do_update(index_elements=["id"], set_=doc))
+    known = {d["doc_id"] for d in bank.get("documents", [])}
+    db.execute(delete(quiz_documents).where(quiz_documents.c.quiz_id.in_(ids)))
+    used = [
+        {"quiz_id": q["quiz_id"], "document_id": d}
+        for q in bank["quizzes"]
+        for d in dict.fromkeys(q.get("document_ids") or [])
+        if d in known
+    ]
+    if used:
+        db.execute(insert(quiz_documents), used)
 
 
 def _write_solutions(db: DB, q: Question, raw: dict[str, Any], media: _Media) -> None:
