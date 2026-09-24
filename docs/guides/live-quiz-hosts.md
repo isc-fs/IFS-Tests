@@ -160,7 +160,7 @@ Open **Seating** (under the tables) between or during questions:
 - pick a table next to the person's name and press **Move** (or pick **Not seated**);
 - **Make captain** hands the captaincy of their current table to them;
 - **Remove** takes them out, after "Remove *name*? They can't rejoin." (**Remove them** or **Keep**). A removed
-  person can't join this session again with the code.
+  person can't join this session again with the code; their screen tells them they were removed.
 
 Moving or removing a captain hands their old table to its best-ranked remaining member, so it can still answer;
 press **Make captain** on someone else there if you prefer. Someone seated at an empty table becomes its captain.

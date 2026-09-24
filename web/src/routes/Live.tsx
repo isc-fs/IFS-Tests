@@ -16,7 +16,7 @@ import { Answered, answerText, Reveal, Results, RoomScore, ScreenOptions, Tables
 import { APP_NAME, Page } from '../components/Page'
 import { Qr } from '../components/Qr'
 import { QuestionCard } from '../components/QuestionCard'
-import { errorMessage, ME_KEY, queryClient, resend, useMe } from '../lib/api'
+import { errorMessage, ME_KEY, queryClient, resend, transient, useMe } from '../lib/api'
 import { AREAS, TOPICS } from '../lib/areas'
 import { joinUrl, refresh, tableName, toggle, useLive } from '../lib/live'
 import { HostControls } from './LiveHost'
@@ -235,17 +235,30 @@ function HostForm() {
 
 export function LiveSession() {
   const { code = '' } = useParams()
-  const live = useLive(code)
   const join = useMutation({ ...joinSessionMutation(), onSuccess: () => refresh(code) })
-  // Opened from the QR code or a link: join straight away instead of showing an error first.
+  // The server turned the player away (the host removed them, the quiz is over): final, so stop asking.
+  const refused = join.isError && !transient(join.error)
+  const live = useLive(code, !refused)
+  // Opened from the QR code or a link, or no longer in the room: join straight away instead of showing an error.
+  // Once per state seen, so a player dropped mid-quiz tries again, but a refusal isn't asked twice.
   const notJoined = errorMessage(live.error) === 'Join the live quiz first.'
-  const tried = useRef(false)
+  const tried = useRef<number>(undefined)
   useEffect(() => {
-    if (notJoined && !tried.current) {
-      tried.current = true
+    if (notJoined && tried.current !== live.dataUpdatedAt) {
+      tried.current = live.dataUpdatedAt
       join.mutate({ path: { code } })
     }
-  }, [notJoined, code, join])
+  }, [notJoined, code, join, live.dataUpdatedAt])
+  if (refused) {
+    return (
+      <Page title="Live quiz">
+        <Notice tone="error">{errorMessage(join.error)}</Notice>
+        <p>
+          <Link to="/live">Back to live quizzes</Link>
+        </p>
+      </Page>
+    )
+  }
   if (live.isError && !live.data) {
     return (
       <Page title="Live quiz">

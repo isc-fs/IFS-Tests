@@ -2,19 +2,20 @@ import { useQuery } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { sessionStateOptions, sessionStateQueryKey } from '../api/@tanstack/react-query.gen'
 import type { LiveState } from '../api/types.gen'
-import { queryClient } from './api'
+import { queryClient, transient } from './api'
 
 /** The session as this person sees it. The server announces every change on an event stream, and the state
  * is fetched again then; a poll covers a stream that is down (every 5 s) or silently stuck (every 15 s). Once
- * the quiz is over nothing changes, so both stop. */
-export function useLive(code: string) {
+ * the quiz is over nothing changes, so both stop; `active: false` (the player was turned away) stops them too. */
+export function useLive(code: string, active = true) {
   const options = { path: { code } }
   const [streaming, setStreaming] = useState(false)
   const query = useQuery({
     ...sessionStateOptions(options),
+    enabled: active,
     refetchInterval: (q) => (q.state.data?.state === 'finished' ? false : streaming ? 15000 : 5000),
     // The server's refusals (not joined, no such code) are final; a dropped connection or a proxy error isn't.
-    retry: (count, error) => count < 3 && !(error as { detail?: unknown } | null)?.detail,
+    retry: (count, error) => count < 3 && transient(error),
     retryDelay: 500,
   })
   // Open the stream only once the state loads: before joining it is refused, and a refused EventSource stays shut.

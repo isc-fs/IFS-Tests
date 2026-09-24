@@ -362,7 +362,8 @@ profile marks "(seats you)".
 **I joined a live quiz late.** Wait for the host to seat you; until then you can't answer or propose. You share XP
 only for the questions your table answers after you sit down.
 
-**The host removed me and I can't rejoin.** Removal is final for that session; ask the host.
+**The host removed me and I can't rejoin.** Your screen says **The host removed you from this live quiz.** within a few
+seconds, with **Back to live quizzes**. Removal is final for that session; ask the host.
 
 **My proposal wasn't used.** Only the captain's answer counts. Proposals are suggestions.
 
