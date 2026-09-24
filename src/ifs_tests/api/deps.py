@@ -33,7 +33,10 @@ AppSettings = Annotated[Settings, Depends(get_app_settings)]
 
 def current_user(request: Request, db: Db, now: Now) -> User | None:
     token = request.cookies.get(get_app_settings(request).session_cookie)
-    return resolve_session(db, token, now) if token else None
+    user = resolve_session(db, token, now) if token else None
+    # Hand the connection back before the route waits for a thread: holding it there starved the pool.
+    db.commit()
+    return user
 
 
 def current_member(user: Annotated[User | None, Depends(current_user)]) -> User:

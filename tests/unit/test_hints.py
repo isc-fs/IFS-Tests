@@ -4,6 +4,7 @@ import re
 
 import pytest
 
+from ifs_tests.domain.grading import grade
 from ifs_tests.domain.hints import hint
 
 
@@ -52,3 +53,28 @@ def test_ranges_lists_and_text() -> None:
 @pytest.mark.parametrize("key", [None, {"kind": "self"}])
 def test_nothing_to_hint_without_a_gradable_key(key: dict[str, object] | None) -> None:
     assert hint(key, [1, 2, 3], 1) is None
+
+
+@pytest.mark.parametrize(
+    ("key", "options"),
+    [
+        ({"kind": "number", "accept": [{"v": 1.0, "d": 0}]}, []),  # any number in the range would round to 1
+        ({"kind": "number", "accept": [{"v": 0.0, "d": 0}]}, []),
+        ({"kind": "text", "accept": ["c"]}, []),  # the first letter is the answer
+        ({"kind": "text", "accept": ["ab"]}, []),
+        ({"kind": "choice", "mode": "one", "options": [11, 12]}, [10, 11, 12, 13]),  # both options left right
+        ({"kind": "choice", "mode": "one", "options": [11, 12, 13]}, [10, 11, 12, 13]),
+    ],
+)
+def test_no_hint_when_it_would_give_the_answer_away(key: dict[str, object], options: list[int]) -> None:
+    for seed in range(20):
+        assert hint(key, options, seed) is None
+
+
+def test_a_small_number_still_gets_a_range_wider_than_the_grading_tolerance() -> None:
+    key = {"kind": "number", "accept": [{"v": 0.1, "d": 1}]}  # right means within 0.05 of 0.1
+    for seed in range(20):
+        h = hint(key, [], seed)
+        assert h is not None
+        lo, hi = (float(x) for x in re.findall(r"-?\d[\d,]*(?:\.\d+)?", h.text)[:2])
+        assert not (grade(key, value=str(lo)) and grade(key, value=str(hi)))

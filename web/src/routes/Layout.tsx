@@ -44,6 +44,7 @@ export default function Layout() {
           <NavLink to="/daily">Daily</NavLink>
           <NavLink to="/practice">Practice</NavLink>
           <NavLink to="/mock">Mock</NavLink>
+          <NavLink to="/live">Live</NavLink>
           <NavLink to="/leaderboard">Leaderboard</NavLink>
           <NavLink to="/profile">Profile</NavLink>
           {user.role !== 'member' && <NavLink to="/review">Review</NavLink>}

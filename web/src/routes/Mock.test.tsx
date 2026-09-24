@@ -126,7 +126,7 @@ test('a run: one question at a time, then the results', async () => {
   expect(within(review).getByText('Spring rate?')).toBeVisible()
 })
 
-test('a replay says it does not score', async () => {
+test('a replay shows the reduced XP it earned', async () => {
   renderApp('/mock/44', {
     'GET /api/me': { body: MEMBER },
     'GET /api/mock/sessions/44': { body: { ...FINISHED, summary: { ...FINISHED.summary, counted: false, xp: 8 } } },

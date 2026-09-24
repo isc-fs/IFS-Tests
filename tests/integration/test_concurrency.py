@@ -19,7 +19,7 @@ from ifs_tests.bank.sample import SAMPLE_DIR
 from ifs_tests.db.models import AnswerOption, Attempt, DailyQuestion, MockSession, Question, User
 from ifs_tests.domain.daily import madrid_day
 from ifs_tests.domain.xp import award, floor_for, level_for
-from ifs_tests.services import accounts, daily, mock, practice, review
+from ifs_tests.services import accounts, daily, live, mock, practice, review
 from ifs_tests.services import bank as bank_service
 from ifs_tests.services import xp as xp_service
 from ifs_tests.services.bank import import_bank
@@ -299,3 +299,69 @@ def test_closing_abandoned_dailies_never_deadlocks_with_a_late_answer(
         select(Attempt).where(Attempt.id.in_(started)).execution_options(populate_existing=True)
     )
     assert all(a.submitted_at == later and a.late for a in rows)
+
+
+def _live_room(db: Session, daily_player: User) -> tuple[str, User, list[User]]:
+    """A TD host, and daily_player captaining a table of three."""
+    host = User(email="td@x.com", password_hash="x", display_name="Host", position="technical_director")
+    mates = [User(email=f"m{i}@x.com", password_hash="x", display_name=f"Mate {i}") for i in range(2)]
+    db.add_all([host, *mates])
+    db.commit()
+    s = live.create(
+        db,
+        host,
+        {
+            "questions": "areas",
+            "areas": ["rules"],
+            "count": 1,
+            "timing": "fixed",
+            "seconds": 60,
+            "feedback": "each",
+            "routing": "all",
+            "speed_points": False,
+        },
+        NOW,
+    )
+    for u in (daily_player, *mates):
+        live.join(db, u, s.code, NOW)
+    live.seat(
+        db,
+        host,
+        s.code,
+        [
+            {
+                "name": "T",
+                "member_ids": [daily_player.id, *(m.id for m in mates)],
+                "captain_id": daily_player.id,
+            }
+        ],
+    )
+    live.advance(db, host, s.code, NOW)
+    return s.code, host, [daily_player, *mates]
+
+
+def test_a_captain_double_submitting_sends_one_answer_and_shares_xp_once(
+    db: Session, app_engine: Engine, daily_player: User
+) -> None:
+    code, _, table = _live_room(db, daily_player)
+    results = race(
+        app_engine,
+        *[lambda s: live.answer(s, s.get_one(User, daily_player.id), code, [], None, False, NOW)] * 4,
+    )
+    assert sum(r is None for r in results) == 1, results  # the rest are "already answered"
+    rows = db.scalars(select(Attempt).where(Attempt.mode == "live")).all()
+    assert sorted(a.user_id for a in rows) == sorted(u.id for u in table)
+
+
+def test_closing_a_question_while_the_captain_answers_never_loses_or_doubles_it(
+    db: Session, app_engine: Engine, daily_player: User
+) -> None:
+    code, host, table = _live_room(db, daily_player)
+    results = race(
+        app_engine,
+        lambda s: live.advance(s, s.get_one(User, host.id), code, NOW),
+        lambda s: live.answer(s, s.get_one(User, daily_player.id), code, [], None, False, NOW),
+    )
+    answered = results[1] is None
+    rows = db.scalars(select(Attempt).where(Attempt.mode == "live")).all()
+    assert len(rows) == (len(table) if answered else 0), results

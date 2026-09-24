@@ -16,6 +16,10 @@ import Reset from './Reset'
 const Admin = lazy(() => import('./Admin'))
 const Review = lazy(() => import('./Review'))
 const ReviewDetail = lazy(() => import('./Review').then((m) => ({ default: m.ReviewDetail })))
+// Live sessions: their own bundle, with the QR encoder.
+const Live = lazy(() => import('./Live'))
+const LiveSession = lazy(() => import('./Live').then((m) => ({ default: m.LiveSession })))
+const LiveScreen = lazy(() => import('./Live').then((m) => ({ default: m.LiveScreen })))
 
 function Crashed() {
   return (
@@ -56,6 +60,9 @@ export const routes: RouteObject[] = [
       { path: 'admin', element: <Admin /> },
       { path: 'review', element: <Review /> },
       { path: 'review/:questionId', element: <ReviewDetail /> },
+      { path: 'live', element: <Live /> },
+      { path: 'live/:code', element: <LiveSession /> },
+      { path: 'live/:code/screen', element: <LiveScreen /> },
     ],
   },
   { path: '*', element: <NotFound /> },

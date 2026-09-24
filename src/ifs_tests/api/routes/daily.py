@@ -60,5 +60,4 @@ def review_daily(area: Area, user: Member, db: Db, now: Now) -> DailyResult:
 
 @router.post("/attempts/{attempt_id}/hint")
 def daily_hint(attempt_id: Id, user: Member, db: Db, now: Now) -> HintOut:
-    h = hints.timed(db, user, attempt_id, now)
-    return HintOut(text=h.text, removed_options=h.removed_options)
+    return HintOut.model_validate(hints.timed(db, user, attempt_id, now))

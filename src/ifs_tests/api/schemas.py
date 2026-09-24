@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from ..db.models import Position, Role, Status, Vertical
 
@@ -57,7 +57,10 @@ class ResetInfo(Out):
     expires_at: datetime
 
 
-class Aids(BaseModel):
+Tier = Literal["Mingo", "Jefe", "DT", "Top"]
+
+
+class Aids(Out):
     formulas: bool
     learn_more: bool
     hint: bool
@@ -67,7 +70,7 @@ class Step(BaseModel):
     """One level of the ladder and what it changes."""
 
     level: int
-    tier: Literal["Mingo", "Jefe", "DT", "Top"]
+    tier: Tier
     title: str | None = Field(description="Null for the top until the player reaches DT V: a surprise")
     xp: int = Field(description="Lifetime XP that reaches it")
     aids: Aids
@@ -79,7 +82,7 @@ class Progress(BaseModel):
 
     level: int
     title: str
-    tier: Literal["Mingo", "Jefe", "DT", "Top"]
+    tier: Tier
     level_xp: int = Field(description="Lifetime XP at which the current level started")
     next_level_xp: int | None = Field(description="Null at the top")
     penalty: int = Field(description="Percentage of a right answer's XP a wrong answer costs")
@@ -98,13 +101,19 @@ class Me(Out):
     leaderboard_opt_out: bool
     position: Position
     xp: int
+    subdepartments: list[str]
+    can_host: bool = Field(default=False, description="May host a live quiz: TDs by position, and admins")
     progress: Progress | None = None
+
+
+SubdepartmentCode = Annotated[str, Field(max_length=8)]
 
 
 class ProfileIn(In):
     display_name: str | None = Field(default=None, max_length=64)
     vertical: Vertical | None = None
     leaderboard_opt_out: bool | None = None
+    subdepartments: list[SubdepartmentCode] | None = Field(default=None, max_length=6)
 
 
 class PasswordChangeIn(In):
@@ -208,7 +217,7 @@ class PlayQuestion(BaseModel):
     documents: QuestionDocs
 
 
-class HintOut(BaseModel):
+class HintOut(Out):
     """A nudge, never the answer: taking it halves the XP for the question."""
 
     text: str
@@ -442,7 +451,7 @@ class LeaderRow(BaseModel):
     vertical: Vertical | None
     xp: int
     me: bool
-    level: int = Field(description="Lifetime level, for the rank emblem")
+    level: int = Field(description="Lifetime level, for the level emblem")
     title: str
 
 
@@ -474,3 +483,148 @@ class VerticalRow(BaseModel):
 class VerticalBoard(BaseModel):
     period: Literal["season", "week"]
     rows: list[VerticalRow]
+
+
+# Live quiz
+
+
+LiveCode = Annotated[str, Field(pattern=r"^[A-Za-z0-9]{6}$")]
+TopicName = Annotated[str, Field(max_length=16)]
+
+
+class LiveConfig(In):
+    """How the host wants the quiz to go (ADR 0005)."""
+
+    questions: Literal["areas", "quiz"] = "areas"
+    areas: list[Literal["mech", "elec", "rules"]] = Field(default=[], max_length=3)
+    topics: list[TopicName] = Field(default=[], max_length=12)
+    quiz_id: int | None = Field(default=None, ge=1, le=2**31 - 1)
+    count: int = Field(default=10, ge=1, le=60)
+    timing: Literal["real", "fixed", "host"] = "real"
+    seconds: int = Field(default=60, ge=10, le=900)
+    feedback: Literal["each", "end"] = "each"
+    speed_points: bool = False
+    routing: Literal["all", "owners"] = Field(
+        default="all",
+        description="all: every table answers every question; owners: each goes to the table owning its topic",
+    )
+
+    @model_validator(mode="after")
+    def _quiz_named(self) -> LiveConfig:
+        if self.questions == "quiz" and self.quiz_id is None:
+            raise ValueError("Pick the quiz to replay.")
+        return self
+
+
+class AdvanceIn(In):
+    """The step the host's screen showed, so a double tap can't skip one."""
+
+    state: Literal["lobby", "open", "closed"]
+    position: int = Field(ge=-1, le=10_000)
+
+
+class LiveCreated(BaseModel):
+    code: str
+
+
+class TableIn(In):
+    name: str = Field(min_length=1, max_length=40)
+    captain_id: int | None = Field(default=None, ge=1, le=2**31 - 1)
+    member_ids: list[Annotated[int, Field(ge=1, le=2**31 - 1)]] = Field(max_length=100)
+    topics: list[TopicName] = Field(default=[], max_length=12)
+    catch_all: bool = False
+
+
+class SeatIn(In):
+    tables: list[TableIn] = Field(max_length=30)
+
+
+class MoveIn(In):
+    table_id: int | None = Field(ge=1, le=2**31 - 1)
+
+
+class TableEditIn(In):
+    name: str | None = Field(default=None, min_length=1, max_length=40)
+    captain_id: int | None = Field(default=None, ge=1, le=2**31 - 1)
+
+
+class LivePlayerOut(BaseModel):
+    user_id: int
+    name: str
+    table_id: int | None
+
+
+class LiveTableOut(BaseModel):
+    id: int
+    name: str
+    captain_id: int | None
+    topics: list[str]
+    catch_all: bool
+    member_ids: list[int]
+    answered: bool = Field(description="Has sent its answer to the current question")
+    right: int = Field(description="Right answers so far, once they may be shown")
+    points: int
+
+
+class Proposal(BaseModel):
+    user_id: int
+    name: str
+    options: list[int] | None = None
+    value: str | None = None
+
+
+class TableAnswer(BaseModel):
+    table_id: int
+    correct: bool | None
+    passed: bool
+    points: int
+    options: list[int] | None = None
+    value: str | None = None
+
+
+class LiveReveal(BaseModel):
+    position: int
+    question: PlayQuestion
+    table_id: int | None = Field(
+        description="The table that answered for the room; null when every table did"
+    )
+    feedback: Feedback
+    answers: list[TableAnswer]
+
+
+class LiveState(BaseModel):
+    """What one person sees of a live quiz. Right and wrong appear only once a question closes (or at the end
+    of a rehearsal)."""
+
+    code: str
+    state: Literal["lobby", "open", "closed", "finished"]
+    host_name: str
+    config: LiveConfig
+    role: Literal["host", "player"]
+    my_table_id: int | None
+    captain: bool
+    position: int
+    total: int
+    deadline_at: datetime | None
+    server_now: datetime
+    version: int
+    players: list[LivePlayerOut]
+    tables: list[LiveTableOut]
+    question: PlayQuestion | None = None
+    question_table_id: int | None = None
+    budget_s: int | None = None
+    my_answer: KeyIn | None = Field(
+        default=None, description="What the table answering sent, while it is open"
+    )
+    proposals: list[Proposal] = []
+    reveals: list[LiveReveal] = []
+    room_right: int | None = None
+    room_asked: int = 0
+    bar_to_beat: str | None = None
+
+
+class Subdepartment(BaseModel):
+    code: str
+    name: str
+    vertical: str
+    topics: list[str]

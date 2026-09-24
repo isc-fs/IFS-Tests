@@ -3,8 +3,8 @@
 import { type DefaultError, type InfiniteData, infiniteQueryOptions, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { answerDaily, answerMock, answerPractice, auditLog, bankSummary, changePassword, correctAnswer, createInvite, dailyHint, dailyStatus, getLeaderboard, inviteInfo, login, logout, me, mockHint, mockQuizzes, mockState, nextQuestion, openInvites, type Options, practiceAreas, practiceHint, practiceQuestion, register, removeCorrection, reportQuestion, reset, resetInfo, resetLink, resolveReport, reviewDaily, reviewQuestion, reviewQuestions, revokeInvite, revokeSessions, startDaily, startMock, topicAids, updateMe, updateQuestion, updateUser, users, verticalLeaderboard } from '../sdk.gen';
-import type { AnswerDailyData, AnswerDailyError, AnswerDailyResponse, AnswerMockData, AnswerMockError, AnswerMockResponse, AnswerPracticeData, AnswerPracticeError, AnswerPracticeResponse, AuditLogData, AuditLogError, AuditLogResponse, BankSummaryData, BankSummaryResponse, ChangePasswordData, ChangePasswordError, ChangePasswordResponse, CorrectAnswerData, CorrectAnswerError, CorrectAnswerResponse, CreateInviteData, CreateInviteError, CreateInviteResponse, DailyHintData, DailyHintError, DailyHintResponse, DailyStatusData, DailyStatusResponse, GetLeaderboardData, GetLeaderboardError, GetLeaderboardResponse, InviteInfoData, InviteInfoError, InviteInfoResponse, LoginData, LoginError, LoginResponse, LogoutData, LogoutResponse, MeData, MeResponse, MockHintData, MockHintError, MockHintResponse, MockQuizzesData, MockQuizzesResponse, MockStateData, MockStateError, MockStateResponse, NextQuestionData, NextQuestionError, NextQuestionResponse, OpenInvitesData, OpenInvitesResponse, PracticeAreasData, PracticeAreasResponse, PracticeHintData, PracticeHintError, PracticeHintResponse, PracticeQuestionData, PracticeQuestionError, PracticeQuestionResponse, RegisterData, RegisterError, RegisterResponse, RemoveCorrectionData, RemoveCorrectionError, RemoveCorrectionResponse, ReportQuestionData, ReportQuestionError, ReportQuestionResponse, ResetData, ResetError, ResetInfoData, ResetInfoError, ResetInfoResponse, ResetLinkData, ResetLinkError, ResetLinkResponse, ResetResponse, ResolveReportData, ResolveReportError, ResolveReportResponse, ReviewDailyData, ReviewDailyError, ReviewDailyResponse, ReviewQuestionData, ReviewQuestionError, ReviewQuestionResponse, ReviewQuestionsData, ReviewQuestionsError, ReviewQuestionsResponse, RevokeInviteData, RevokeInviteError, RevokeInviteResponse, RevokeSessionsData, RevokeSessionsError, RevokeSessionsResponse, StartDailyData, StartDailyError, StartDailyResponse, StartMockData, StartMockError, StartMockResponse, TopicAidsData, TopicAidsError, TopicAidsResponse, UpdateMeData, UpdateMeError, UpdateMeResponse, UpdateQuestionData, UpdateQuestionError, UpdateQuestionResponse, UpdateUserData, UpdateUserError, UpdateUserResponse, UsersData, UsersResponse, VerticalLeaderboardData, VerticalLeaderboardError, VerticalLeaderboardResponse } from '../types.gen';
+import { advanceSession, answer, answerDaily, answerMock, answerPractice, auditLog, bankSummary, changePassword, configureSession, correctAnswer, createInvite, createSession, dailyHint, dailyStatus, editTable, endSession, events, getLeaderboard, inviteInfo, joinSession, login, logout, me, mockHint, mockQuizzes, mockState, movePlayer, nextQuestion, openInvites, type Options, practiceAreas, practiceHint, practiceQuestion, propose, register, removeCorrection, removePlayer, reportQuestion, reset, resetInfo, resetLink, resolveReport, results, reviewDaily, reviewQuestion, reviewQuestions, revokeInvite, revokeSessions, seatBySubdepartment, seatTables, sessionState, startDaily, startMock, subdepartments, topicAids, updateMe, updateQuestion, updateUser, users, verticalLeaderboard } from '../sdk.gen';
+import type { AdvanceSessionData, AdvanceSessionError, AdvanceSessionResponse, AnswerDailyData, AnswerDailyError, AnswerDailyResponse, AnswerData, AnswerError, AnswerMockData, AnswerMockError, AnswerMockResponse, AnswerPracticeData, AnswerPracticeError, AnswerPracticeResponse, AnswerResponse, AuditLogData, AuditLogError, AuditLogResponse, BankSummaryData, BankSummaryResponse, ChangePasswordData, ChangePasswordError, ChangePasswordResponse, ConfigureSessionData, ConfigureSessionError, ConfigureSessionResponse, CorrectAnswerData, CorrectAnswerError, CorrectAnswerResponse, CreateInviteData, CreateInviteError, CreateInviteResponse, CreateSessionData, CreateSessionError, CreateSessionResponse, DailyHintData, DailyHintError, DailyHintResponse, DailyStatusData, DailyStatusResponse, EditTableData, EditTableError, EditTableResponse, EndSessionData, EndSessionError, EndSessionResponse, EventsData, EventsError, GetLeaderboardData, GetLeaderboardError, GetLeaderboardResponse, InviteInfoData, InviteInfoError, InviteInfoResponse, JoinSessionData, JoinSessionError, JoinSessionResponse, LoginData, LoginError, LoginResponse, LogoutData, LogoutResponse, MeData, MeResponse, MockHintData, MockHintError, MockHintResponse, MockQuizzesData, MockQuizzesResponse, MockStateData, MockStateError, MockStateResponse, MovePlayerData, MovePlayerError, MovePlayerResponse, NextQuestionData, NextQuestionError, NextQuestionResponse, OpenInvitesData, OpenInvitesResponse, PracticeAreasData, PracticeAreasResponse, PracticeHintData, PracticeHintError, PracticeHintResponse, PracticeQuestionData, PracticeQuestionError, PracticeQuestionResponse, ProposeData, ProposeError, ProposeResponse, RegisterData, RegisterError, RegisterResponse, RemoveCorrectionData, RemoveCorrectionError, RemoveCorrectionResponse, RemovePlayerData, RemovePlayerError, RemovePlayerResponse, ReportQuestionData, ReportQuestionError, ReportQuestionResponse, ResetData, ResetError, ResetInfoData, ResetInfoError, ResetInfoResponse, ResetLinkData, ResetLinkError, ResetLinkResponse, ResetResponse, ResolveReportData, ResolveReportError, ResolveReportResponse, ResultsData, ResultsError, ReviewDailyData, ReviewDailyError, ReviewDailyResponse, ReviewQuestionData, ReviewQuestionError, ReviewQuestionResponse, ReviewQuestionsData, ReviewQuestionsError, ReviewQuestionsResponse, RevokeInviteData, RevokeInviteError, RevokeInviteResponse, RevokeSessionsData, RevokeSessionsError, RevokeSessionsResponse, SeatBySubdepartmentData, SeatBySubdepartmentError, SeatBySubdepartmentResponse, SeatTablesData, SeatTablesError, SeatTablesResponse, SessionStateData, SessionStateError, SessionStateResponse, StartDailyData, StartDailyError, StartDailyResponse, StartMockData, StartMockError, StartMockResponse, SubdepartmentsData, SubdepartmentsResponse, TopicAidsData, TopicAidsError, TopicAidsResponse, UpdateMeData, UpdateMeError, UpdateMeResponse, UpdateQuestionData, UpdateQuestionError, UpdateQuestionResponse, UpdateUserData, UpdateUserError, UpdateUserResponse, UsersData, UsersResponse, VerticalLeaderboardData, VerticalLeaderboardError, VerticalLeaderboardResponse } from '../types.gen';
 
 /**
  * Login
@@ -844,4 +844,283 @@ export const topicAidsOptions = (options: Options<TopicAidsData>) => queryOption
         return data;
     },
     queryKey: topicAidsQueryKey(options)
+});
+
+export const subdepartmentsQueryKey = (options?: Options<SubdepartmentsData>) => createQueryKey('subdepartments', options);
+
+/**
+ * Subdepartments
+ */
+export const subdepartmentsOptions = (options?: Options<SubdepartmentsData>) => queryOptions<SubdepartmentsResponse, DefaultError, SubdepartmentsResponse, ReturnType<typeof subdepartmentsQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await subdepartments({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: subdepartmentsQueryKey(options)
+});
+
+/**
+ * Create Session
+ */
+export const createSessionMutation = (options?: Partial<Options<CreateSessionData>>): UseMutationOptions<CreateSessionResponse, CreateSessionError, Options<CreateSessionData>> => {
+    const mutationOptions: UseMutationOptions<CreateSessionResponse, CreateSessionError, Options<CreateSessionData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await createSession({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+export const sessionStateQueryKey = (options: Options<SessionStateData>) => createQueryKey('sessionState', options);
+
+/**
+ * Session State
+ */
+export const sessionStateOptions = (options: Options<SessionStateData>) => queryOptions<SessionStateResponse, SessionStateError, SessionStateResponse, ReturnType<typeof sessionStateQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await sessionState({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: sessionStateQueryKey(options)
+});
+
+/**
+ * Join Session
+ */
+export const joinSessionMutation = (options?: Partial<Options<JoinSessionData>>): UseMutationOptions<JoinSessionResponse, JoinSessionError, Options<JoinSessionData>> => {
+    const mutationOptions: UseMutationOptions<JoinSessionResponse, JoinSessionError, Options<JoinSessionData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await joinSession({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Configure Session
+ */
+export const configureSessionMutation = (options?: Partial<Options<ConfigureSessionData>>): UseMutationOptions<ConfigureSessionResponse, ConfigureSessionError, Options<ConfigureSessionData>> => {
+    const mutationOptions: UseMutationOptions<ConfigureSessionResponse, ConfigureSessionError, Options<ConfigureSessionData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await configureSession({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Seat Tables
+ */
+export const seatTablesMutation = (options?: Partial<Options<SeatTablesData>>): UseMutationOptions<SeatTablesResponse, SeatTablesError, Options<SeatTablesData>> => {
+    const mutationOptions: UseMutationOptions<SeatTablesResponse, SeatTablesError, Options<SeatTablesData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await seatTables({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Seat By Subdepartment
+ */
+export const seatBySubdepartmentMutation = (options?: Partial<Options<SeatBySubdepartmentData>>): UseMutationOptions<SeatBySubdepartmentResponse, SeatBySubdepartmentError, Options<SeatBySubdepartmentData>> => {
+    const mutationOptions: UseMutationOptions<SeatBySubdepartmentResponse, SeatBySubdepartmentError, Options<SeatBySubdepartmentData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await seatBySubdepartment({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Edit Table
+ */
+export const editTableMutation = (options?: Partial<Options<EditTableData>>): UseMutationOptions<EditTableResponse, EditTableError, Options<EditTableData>> => {
+    const mutationOptions: UseMutationOptions<EditTableResponse, EditTableError, Options<EditTableData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await editTable({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Remove Player
+ */
+export const removePlayerMutation = (options?: Partial<Options<RemovePlayerData>>): UseMutationOptions<RemovePlayerResponse, RemovePlayerError, Options<RemovePlayerData>> => {
+    const mutationOptions: UseMutationOptions<RemovePlayerResponse, RemovePlayerError, Options<RemovePlayerData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await removePlayer({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Move Player
+ */
+export const movePlayerMutation = (options?: Partial<Options<MovePlayerData>>): UseMutationOptions<MovePlayerResponse, MovePlayerError, Options<MovePlayerData>> => {
+    const mutationOptions: UseMutationOptions<MovePlayerResponse, MovePlayerError, Options<MovePlayerData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await movePlayer({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Advance Session
+ */
+export const advanceSessionMutation = (options?: Partial<Options<AdvanceSessionData>>): UseMutationOptions<AdvanceSessionResponse, AdvanceSessionError, Options<AdvanceSessionData>> => {
+    const mutationOptions: UseMutationOptions<AdvanceSessionResponse, AdvanceSessionError, Options<AdvanceSessionData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await advanceSession({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * End Session
+ */
+export const endSessionMutation = (options?: Partial<Options<EndSessionData>>): UseMutationOptions<EndSessionResponse, EndSessionError, Options<EndSessionData>> => {
+    const mutationOptions: UseMutationOptions<EndSessionResponse, EndSessionError, Options<EndSessionData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await endSession({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Propose
+ */
+export const proposeMutation = (options?: Partial<Options<ProposeData>>): UseMutationOptions<ProposeResponse, ProposeError, Options<ProposeData>> => {
+    const mutationOptions: UseMutationOptions<ProposeResponse, ProposeError, Options<ProposeData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await propose({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Answer
+ */
+export const answerMutation = (options?: Partial<Options<AnswerData>>): UseMutationOptions<AnswerResponse, AnswerError, Options<AnswerData>> => {
+    const mutationOptions: UseMutationOptions<AnswerResponse, AnswerError, Options<AnswerData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await answer({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+export const resultsQueryKey = (options: Options<ResultsData>) => createQueryKey('results', options);
+
+/**
+ * Results
+ */
+export const resultsOptions = (options: Options<ResultsData>) => queryOptions<unknown, ResultsError, unknown, ReturnType<typeof resultsQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await results({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: resultsQueryKey(options)
+});
+
+export const eventsQueryKey = (options: Options<EventsData>) => createQueryKey('events', options);
+
+/**
+ * Events
+ *
+ * A version number whenever the session changes (and when a question's time runs out), so screens know
+ * to fetch the state again. No state travels here, so nobody sees more than their own GET shows them.
+ */
+export const eventsOptions = (options: Options<EventsData>) => queryOptions<unknown, EventsError, unknown, ReturnType<typeof eventsQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await events({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: eventsQueryKey(options)
 });

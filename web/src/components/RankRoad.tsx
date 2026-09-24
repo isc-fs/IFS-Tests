@@ -13,6 +13,7 @@ const TIERS = [
 export function RankRoad({ me }: { me: Me }) {
   const p = me.progress
   if (!p) return null
+  const span = (p.next_level_xp ?? me.xp) - p.level_xp
   return (
     <section className="panel stack rank-road" id="road" aria-labelledby="road-title">
       <h2 id="road-title">Your road to the top</h2>
@@ -34,7 +35,6 @@ export function RankRoad({ me }: { me: Me }) {
               {steps.map((s) => {
                 const state = s.level < p.level ? 'done' : s.level === p.level ? 'current' : 'locked'
                 const what = changes(s, p.ladder[s.level - 1])
-                const span = (p.next_level_xp ?? me.xp) - p.level_xp
                 return (
                   <li
                     key={s.level}

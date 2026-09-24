@@ -80,24 +80,17 @@ function Earned({ feedback }: { feedback: Feedback }) {
 }
 
 function Result({ feedback }: { feedback: Feedback }) {
-  if (feedback.passed)
+  const verdict = feedback.passed ? (
+    <Notice tone="ok">You weren't sure, so here is the answer. Nothing gained or lost.</Notice>
+  ) : feedback.correct === true ? (
+    <Notice tone="ok">Correct.</Notice>
+  ) : feedback.correct === false ? (
+    <Notice tone="error">Not quite.</Notice>
+  ) : null
+  if (verdict)
     return (
       <>
-        <Notice tone="ok">You weren't sure, so here is the answer. Nothing gained or lost.</Notice>
-        <Earned feedback={feedback} />
-      </>
-    )
-  if (feedback.correct === true)
-    return (
-      <>
-        <Notice tone="ok">Correct.</Notice>
-        <Earned feedback={feedback} />
-      </>
-    )
-  if (feedback.correct === false)
-    return (
-      <>
-        <Notice tone="error">Not quite.</Notice>
+        {verdict}
         <Earned feedback={feedback} />
       </>
     )
@@ -121,6 +114,11 @@ export function QuestionCard({
   expired,
   focusOnShow,
   onHint,
+  submitLabel = 'Check answer',
+  preset,
+  allowUnsure = true,
+  answerLabel = 'Your answer',
+  optionNotes,
 }: {
   question: PlayQuestion
   feedback?: Feedback
@@ -135,14 +133,32 @@ export function QuestionCard({
   focusOnShow?: boolean
   /** Ask for a hint; offered only to the levels that still get them. */
   onHint?: () => Promise<HintOut | undefined>
+  /** What the answer button says (live quizzes: "Propose to the captain"). */
+  submitLabel?: string
+  /** An answer to start from, e.g. a teammate's proposal. */
+  preset?: AnswerIn
+  /** Offer "I'm not sure" (not for proposals, which are only suggestions). */
+  allowUnsure?: boolean
+  /** What the player is giving: "Your answer", or "Your proposal" to a live quiz captain. */
+  answerLabel?: string
+  /** A short note after an option, e.g. who proposed it. */
+  optionNotes?: Record<number, string>
 }) {
-  const [chosen, setChosen] = useState<number[]>([])
-  const [value, setValue] = useState('')
+  const [chosen, setChosen] = useState<number[]>(preset?.options ?? [])
+  const [value, setValue] = useState(preset?.value ?? '')
+  const [appliedPreset, setAppliedPreset] = useState(preset)
+  if (preset !== appliedPreset) {
+    setAppliedPreset(preset)
+    setChosen(preset?.options ?? [])
+    setValue(preset?.value ?? '')
+  }
   const [missing, setMissing] = useState<string>()
   const [hint, setHint] = useState<HintOut>()
   const [hintError, setHintError] = useState<string>()
   const { data: me } = useMe()
-  const hintable = !!onHint && !!me?.progress?.aids.hint && question.graded && question.answer_kind !== 'self'
+  const gradable = question.graded && question.answer_kind !== 'self'
+  const hintable = !!onHint && !!me?.progress?.aids.hint && gradable
+  const unsure = allowUnsure && gradable
   const askHint = () => onHint?.().then(setHint, (e: unknown) => setHintError(errorMessage(e)))
   const after = useRef<HTMLDivElement>(null)
   const text = useRef<HTMLParagraphElement>(null)
@@ -198,7 +214,7 @@ export function QuestionCard({
       <Form onSubmit={submit} error={missing} className="stack">
         {choice && (
           <fieldset className="choices" aria-describedby={missing ? `${legend}-missing` : undefined}>
-            <legend>{kind === 'choice-many' ? 'Your answer: select all that apply' : 'Your answer'}</legend>
+            <legend>{kind === 'choice-many' ? `${answerLabel}: select all that apply` : answerLabel}</legend>
             {question.options.map((o) => {
               const right = feedback?.correct_options.includes(o.id)
               const picked = chosen.includes(o.id)
@@ -214,7 +230,13 @@ export function QuestionCard({
                     aria-invalid={!!missing}
                     onChange={() => toggle(o.id)}
                   />
-                  <span>{o.text}</span>
+                  <span>
+                    <span className="choice-letter" aria-hidden="true">
+                      {String.fromCharCode(65 + question.options.indexOf(o))}
+                    </span>
+                    {o.text}
+                  </span>
+                  {optionNotes?.[o.id] && <span className="choice-note">{optionNotes[o.id]}</span>}
                   {state === 'right' && <span className="choice-note">Correct answer</span>}
                   {state === 'wrong' && <span className="choice-note">Your pick</span>}
                 </label>
@@ -229,7 +251,7 @@ export function QuestionCard({
         )}
         {!choice && kind !== 'self' && (
           <Field
-            label="Your answer"
+            label={answerLabel}
             inputMode={kind === 'text' ? 'text' : 'decimal'}
             autoComplete="off"
             value={value}
@@ -247,14 +269,14 @@ export function QuestionCard({
         {!answered && !expired && (
           <div className="answer-actions">
             <button type="submit" disabled={pending}>
-              {kind === 'self' ? 'Show the official answer' : 'Check answer'}
+              {kind === 'self' ? 'Show the official answer' : submitLabel}
             </button>
             {hintable && !hint && (
               <button type="button" className="secondary" disabled={pending} onClick={askHint}>
                 Hint (halves the XP)
               </button>
             )}
-            {question.graded && kind !== 'self' && (
+            {unsure && (
               <button
                 type="button"
                 className="secondary"
@@ -273,7 +295,7 @@ export function QuestionCard({
           </Notice>
         )}
         {hintError && <Notice tone="error">{hintError}</Notice>}
-        {!answered && !expired && question.graded && kind !== 'self' && (
+        {unsure && !answered && !expired && (
           <p className="muted answer-note" id={`${legend}-unsure`}>
             Not sure? You see the answer and nothing is gained or lost. A wrong answer can cost XP.
           </p>

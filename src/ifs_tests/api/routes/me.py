@@ -6,7 +6,7 @@ from fastapi import APIRouter, Request
 
 from ...db.models import User
 from ...domain import xp as rules
-from ...services import accounts, xp
+from ...services import accounts, live, xp
 from ..deps import AppSettings, Db, Member, Now
 from ..schemas import Aids, Me, PasswordChangeIn, ProfileIn, Progress, Step
 
@@ -19,7 +19,7 @@ def _step(lv: rules.Level, title: str | None) -> Step:
         tier=lv.tier,
         title=title,
         xp=rules.xp_for_level(lv.number),
-        aids=Aids(formulas=lv.formulas, learn_more=lv.learn_more, hint=lv.hint),
+        aids=Aids.model_validate(lv),
         penalty=round(lv.penalty * 100),
     )
 
@@ -30,6 +30,7 @@ def _me(db: Db, user: User, now: datetime) -> Me:
     streak = xp.streak_days(db, user.id, now)
     seen_top = level >= rules.TOP - 1
     out = Me.model_validate(user)
+    out.can_host = live.can_host(user)
     out.progress = Progress(
         level=level,
         title=rules.title(level, user.vertical),
@@ -39,7 +40,7 @@ def _me(db: Db, user: User, now: datetime) -> Me:
         penalty=round(lv.penalty * 100),
         streak=streak,
         streak_bonus=round((rules.streak_multiplier(streak) - 1) * 100),
-        aids=Aids(formulas=lv.formulas, learn_more=lv.learn_more, hint=lv.hint),
+        aids=Aids.model_validate(lv),
         ladder=[
             _step(s, rules.title(s.number, user.vertical) if s.number < rules.TOP or seen_top else None)
             for s in rules.LEVELS

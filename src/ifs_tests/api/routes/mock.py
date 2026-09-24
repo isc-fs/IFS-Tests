@@ -91,5 +91,4 @@ def answer_mock(session_id: Id, body: MockAnswerIn, user: Member, db: Db, now: N
 def mock_hint(
     session_id: Id, attempt_id: Annotated[int, Path(ge=1, le=2**63 - 1)], user: Member, db: Db, now: Now
 ) -> HintOut:
-    h = hints.timed(db, user, attempt_id, now, session_id)
-    return HintOut(text=h.text, removed_options=h.removed_options)
+    return HintOut.model_validate(hints.timed(db, user, attempt_id, now, session_id))

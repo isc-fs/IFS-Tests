@@ -2,18 +2,34 @@
 
 from __future__ import annotations
 
+import hashlib
+import hmac
+import secrets
 from datetime import datetime
 
 from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session as DB
 
-from ..db.models import AnswerKey, AnswerOption, Attempt, MockSession, PracticeHint, Question, User
+from ..db.models import AnswerKey, AnswerOption, Attempt, MockSession, PracticeHint, Question, Setting, User
 from ..domain import daily as timing
 from ..domain import hints as rules
 from ..domain import xp as xp_rules
 from .errors import UserError
-from .questions import playable
+from .questions import not_running, playable
+
+
+def _seed(db: DB, question_id: int) -> int:
+    """The same seed for a question every time, but not one anyone can recompute: a hint drawn from the public
+    question id alone could be run backwards to the answer."""
+    db.execute(
+        insert(Setting)
+        .values(key="hint_salt", value={"salt": secrets.token_hex(32)})
+        .on_conflict_do_nothing()
+    )
+    salt = db.get_one(Setting, "hint_salt").value["salt"]
+    digest = hmac.new(bytes.fromhex(salt), str(question_id).encode(), hashlib.sha256).digest()
+    return int.from_bytes(digest[:8], "big")
 
 
 def _hint(db: DB, user: User, q: Question) -> rules.Hint:
@@ -23,13 +39,14 @@ def _hint(db: DB, user: User, q: Question) -> rules.Hint:
     options = list(
         db.scalars(select(AnswerOption.id).where(AnswerOption.question_id == q.id).order_by("position"))
     )
-    h = rules.hint(key.effective if key and q.graded else None, options, seed=q.id)
+    h = rules.hint(key.effective if key and q.graded else None, options, seed=_seed(db, q.id))
     if h is None:
         raise UserError("There's no hint for this question.", 404)
     return h
 
 
 def practice(db: DB, user: User, question_id: int, now: datetime) -> rules.Hint:
+    not_running(db, user.id, question_id, now)
     h = _hint(db, user, playable(db, question_id))
     db.execute(
         insert(PracticeHint)

@@ -1129,3 +1129,230 @@ details[open] > summary::before {
   opacity: 0.45;
   text-decoration: line-through;
 }
+
+/* Live quiz */
+.host-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+}
+.host-bar p {
+  margin: 0;
+}
+.qr {
+  flex: none;
+  border-radius: 6px;
+}
+.screen-code {
+  font-family: var(--isc-font-mono);
+  font-size: clamp(48px, 9vw, 120px);
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  color: var(--isc-green);
+}
+.screen-code.small {
+  font-size: var(--isc-fs-h3);
+  letter-spacing: 0.08em;
+}
+.checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+.live-config fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+.table-edit {
+  border: 1px solid var(--isc-c-border);
+  border-radius: var(--radius);
+  padding: 12px;
+}
+.table-edit label,
+.seat-list label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.seat-list,
+.live-tables,
+.live-answers,
+.proposals {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.seat-list li,
+.proposals li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.live-tables li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--isc-c-border);
+  border-radius: var(--radius);
+}
+.live-tables li.answered {
+  border-color: var(--isc-green);
+}
+.live-tables .muted {
+  grid-column: 1;
+  overflow-wrap: anywhere;
+}
+.live-tables .badge {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+}
+.live-answers li.right {
+  color: var(--isc-green);
+}
+.live-answers li.wrong {
+  color: var(--isc-c-error);
+}
+.room-score {
+  display: grid;
+  gap: 4px;
+  padding: 16px;
+  border-radius: var(--radius);
+  background: var(--isc-green);
+  color: var(--isc-white);
+}
+.room-score strong {
+  font-family: var(--isc-font-display);
+  font-size: clamp(32px, 6vw, 56px);
+  line-height: 1;
+  color: var(--isc-gold);
+}
+.room-score .muted {
+  color: var(--isc-d-text-mut);
+}
+.reveal .choices {
+  list-style: none;
+  padding: 0;
+}
+.content:has(.live-screen) {
+  max-width: 1400px;
+}
+.live-screen {
+  font-size: clamp(18px, 2.2vw, 28px);
+}
+.screen-join {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 32px;
+}
+.screen-question {
+  white-space: pre-line;
+  font-family: var(--isc-font-display);
+  font-size: clamp(24px, 3.4vw, 44px);
+  line-height: var(--isc-lh-heading);
+  color: var(--isc-green);
+}
+.screen-options {
+  display: grid;
+  gap: 12px;
+  font-size: clamp(20px, 2.6vw, 34px);
+  list-style: upper-alpha;
+  padding-left: 1.6em;
+}
+.screen-question.long {
+  font-family: var(--isc-font-body);
+  font-size: clamp(18px, 1.9vw, 28px);
+  color: var(--isc-c-text);
+}
+.table-edit .link-button {
+  align-self: flex-start;
+}
+.screen-image {
+  max-height: 50vh;
+  width: auto;
+}
+.shell:has(.live-screen) .topbar {
+  display: none;
+}
+.live-screen .countdown {
+  font-size: clamp(32px, 4vw, 72px);
+}
+.live-screen .muted,
+.live-screen .badge {
+  font-size: inherit;
+}
+.subdepartments {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.subdepartments legend {
+  font-weight: 600;
+}
+.subdepartments .checks legend {
+  font-weight: 600;
+  font-size: var(--isc-fs-body-s);
+  color: var(--isc-c-text-mut);
+  width: 100%;
+}
+.choice-letter {
+  display: inline-block;
+  min-width: 1.6em;
+  font-family: var(--isc-font-mono);
+  font-weight: 600;
+  color: var(--isc-c-text-mut);
+}
+.reveal .choice {
+  grid-template-columns: 1fr;
+  cursor: default;
+}
+.screen-options li {
+  padding: 4px 12px;
+  border-radius: var(--radius);
+}
+.screen-options li.right {
+  background: color-mix(in srgb, var(--isc-green) 14%, transparent);
+  font-weight: 600;
+}
+.screen-options .choice-note {
+  margin-left: 12px;
+  font-size: 0.7em;
+  color: var(--isc-c-text-mut);
+}
+.screen-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 24px;
+}
+.shell:has(.live-screen) .footer {
+  display: none;
+}
+.live-tables li.mine,
+.live-answers li.mine {
+  font-weight: 600;
+}
+.live-tables li.mine {
+  box-shadow: inset 4px 0 0 var(--isc-gold);
+}
+.host-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  padding: 12px 0 calc(12px + env(safe-area-inset-bottom, 0px));
+  background: var(--isc-c-bg);
+}

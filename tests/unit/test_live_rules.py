@@ -1,0 +1,72 @@
+from __future__ import annotations
+
+import random
+
+import pytest
+
+from ifs_tests.domain.live import (
+    CODE_ALPHABET,
+    SUBDEPARTMENTS,
+    Player,
+    new_code,
+    owner,
+    seat_by_subdepartment,
+    speed_points,
+)
+
+
+def test_codes_are_six_characters_without_look_alikes() -> None:
+    codes = {new_code(random.Random(i)) for i in range(200)}
+    assert all(len(c) == 6 and set(c) <= set(CODE_ALPHABET) for c in codes)
+    assert not set("01OIL") & set(CODE_ALPHABET)
+    assert len(codes) == 200
+
+
+def test_every_subdepartment_has_a_vertical_and_known_topics() -> None:
+    topics = {"dynamics", "aero", "structures", "powertrain", "hv", "electronics", "dv", "scoring"}
+    for code, (name, vertical, owns) in SUBDEPARTMENTS.items():
+        assert name and vertical and set(owns) <= topics, code
+
+
+def test_tables_follow_each_players_first_subdepartment_never_balanced() -> None:
+    players = [
+        Player(1, ("AE",), 3),
+        Player(2, ("AE", "CH"), 9),  # the first sub-department seats them
+        Player(3, ("BT",), 1),
+        Player(4, (), 12),
+        Player(5, ("??",), 0),  # unknown codes are ignored
+        Player(6, ("AE",), 9),  # ties go to the earlier member
+    ]
+    tables = seat_by_subdepartment(players)
+    assert [(t.name, sorted(t.member_ids), t.captain_id, t.topics) for t in tables] == [
+        ("Aerodynamics", [1, 2, 6], 2, ["aero"]),
+        ("Batteries", [3], 3, ["hv"]),
+        ("Everyone else", [4, 5], 4, []),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("topic", "expected"),
+    [("aero", 10), ("hv", 11), ("dv", 99), (None, 99)],
+)
+def test_a_question_goes_to_the_table_owning_its_topic_or_the_catch_all(
+    topic: str | None, expected: int
+) -> None:
+    tables = [(10, ["aero"]), (11, ["hv", "powertrain"]), (12, ["hv"])]
+    assert owner(topic, tables, catch_all=99) == expected
+
+
+@pytest.mark.parametrize(
+    ("correct", "elapsed", "budget", "points"),
+    [
+        (True, 0, 60, 1000),
+        (True, 30, 60, 750),
+        (True, 60, 60, 500),
+        (True, 90, 60, 500),
+        (True, 5, None, 1000),
+        (False, 0, 60, 0),
+        (None, 0, 60, 0),
+    ],
+)
+def test_speed_points(correct: bool | None, elapsed: float, budget: int | None, points: int) -> None:
+    assert speed_points(correct, elapsed, budget) == points

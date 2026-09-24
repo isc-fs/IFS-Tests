@@ -125,6 +125,8 @@ class User(Base):
     # Where the person started (Mingo, member, Department Head, Technical Director) and their lifetime XP.
     position: Mapped[str] = mapped_column(String(24), server_default="mingo")
     xp: Mapped[int] = mapped_column(server_default="0")
+    # Team Directory department codes (domain/live.py); the first one seats them in live quizzes.
+    subdepartments: Mapped[list[str]] = mapped_column(ARRAY(String(8)), server_default="{}")
 
 
 Index("uq_users_display_name_lower", func.lower(User.display_name), unique=True)
@@ -315,7 +317,7 @@ class QuizQuestion(Base):
     position: Mapped[int]
 
 
-MODES = ("practice", "daily", "mock")
+MODES = ("practice", "daily", "mock", "live")
 
 
 class Attempt(Base):
@@ -349,6 +351,9 @@ class Attempt(Base):
     hint_used: Mapped[bool] = mapped_column(server_default="false")
     # "I'm not sure": no answer given, the official one shown. Stored as not right.
     passed: Mapped[bool] = mapped_column(server_default="false")
+    live_session_id: Mapped[int | None] = mapped_column(
+        ForeignKey("live_sessions.id", ondelete="CASCADE"), index=True
+    )
 
 
 class PracticeHint(Base):
@@ -359,6 +364,102 @@ class PracticeHint(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
     question_id: Mapped[int] = mapped_column(ForeignKey("questions.id", ondelete="CASCADE"), primary_key=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+LIVE_STATES = ("lobby", "open", "closed", "finished")
+
+
+class LiveSession(Base):
+    """A hosted live quiz (ADR 0005). `version` goes up on every change, so screens know to refresh."""
+
+    __tablename__ = "live_sessions"
+    __table_args__ = (CheckConstraint(_in("state", LIVE_STATES), name="state"),)
+
+    id: Mapped[int] = mapped_column(Identity(), primary_key=True)
+    code: Mapped[str] = mapped_column(String(6), unique=True)
+    host_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    config: Mapped[dict[str, Any]]
+    state: Mapped[str] = mapped_column(String(16), server_default="lobby")
+    position: Mapped[int] = mapped_column(server_default="-1")
+    opened_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    deadline_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    version: Mapped[int] = mapped_column(server_default="0")
+
+
+class LiveTable(Base):
+    __tablename__ = "live_tables"
+
+    id: Mapped[int] = mapped_column(Identity(), primary_key=True)
+    session_id: Mapped[int] = mapped_column(ForeignKey("live_sessions.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(40))
+    captain_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    topics: Mapped[list[str]] = mapped_column(ARRAY(String(16)), server_default="{}")
+    catch_all: Mapped[bool] = mapped_column(server_default="false")
+
+
+class LivePlayer(Base):
+    __tablename__ = "live_players"
+
+    session_id: Mapped[int] = mapped_column(
+        ForeignKey("live_sessions.id", ondelete="CASCADE"), primary_key=True
+    )
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    table_id: Mapped[int | None] = mapped_column(ForeignKey("live_tables.id", ondelete="SET NULL"))
+    joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # Removed by the host: kept so that joining again is refused.
+    removed: Mapped[bool] = mapped_column(server_default="false")
+
+
+class LiveQuestion(Base):
+    """The session's questions in order, and the table that answers each (None: every table)."""
+
+    __tablename__ = "live_questions"
+
+    session_id: Mapped[int] = mapped_column(
+        ForeignKey("live_sessions.id", ondelete="CASCADE"), primary_key=True
+    )
+    position: Mapped[int] = mapped_column(primary_key=True)
+    question_id: Mapped[int] = mapped_column(ForeignKey("questions.id", ondelete="CASCADE"))
+    table_id: Mapped[int | None] = mapped_column(ForeignKey("live_tables.id", ondelete="SET NULL"))
+    budget_s: Mapped[int | None]
+
+
+class LiveAnswer(Base):
+    """A table's one answer to a question, sent by its captain."""
+
+    __tablename__ = "live_answers"
+
+    session_id: Mapped[int] = mapped_column(
+        ForeignKey("live_sessions.id", ondelete="CASCADE"), primary_key=True
+    )
+    position: Mapped[int] = mapped_column(primary_key=True)
+    table_id: Mapped[int] = mapped_column(ForeignKey("live_tables.id", ondelete="CASCADE"), primary_key=True)
+    answer: Mapped[dict[str, Any]]
+    correct: Mapped[bool | None]
+    passed: Mapped[bool] = mapped_column(server_default="false")
+    points: Mapped[int] = mapped_column(server_default="0")
+    by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    submitted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # Who sat at the table when it answered; they share the XP, at once or (in a rehearsal) at the end.
+    member_ids: Mapped[list[int]] = mapped_column(ARRAY(Integer), server_default="{}")
+    granted: Mapped[bool] = mapped_column(server_default="false")
+
+
+class LiveProposal(Base):
+    """What a player suggests to the captain of the table answering the question; never sent on its own."""
+
+    __tablename__ = "live_proposals"
+
+    session_id: Mapped[int] = mapped_column(
+        ForeignKey("live_sessions.id", ondelete="CASCADE"), primary_key=True
+    )
+    position: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    table_id: Mapped[int] = mapped_column(ForeignKey("live_tables.id", ondelete="CASCADE"))
+    answer: Mapped[dict[str, Any]]
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
 Index(

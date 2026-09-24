@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { AnswerDailyData, AnswerDailyErrors, AnswerDailyResponses, AnswerMockData, AnswerMockErrors, AnswerMockResponses, AnswerPracticeData, AnswerPracticeErrors, AnswerPracticeResponses, AuditLogData, AuditLogErrors, AuditLogResponses, BankSummaryData, BankSummaryResponses, ChangePasswordData, ChangePasswordErrors, ChangePasswordResponses, CorrectAnswerData, CorrectAnswerErrors, CorrectAnswerResponses, CreateInviteData, CreateInviteErrors, CreateInviteResponses, DailyHintData, DailyHintErrors, DailyHintResponses, DailyStatusData, DailyStatusResponses, GetLeaderboardData, GetLeaderboardErrors, GetLeaderboardResponses, InviteInfoData, InviteInfoErrors, InviteInfoResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutResponses, MeData, MeResponses, MockHintData, MockHintErrors, MockHintResponses, MockQuizzesData, MockQuizzesResponses, MockStateData, MockStateErrors, MockStateResponses, NextQuestionData, NextQuestionErrors, NextQuestionResponses, OpenInvitesData, OpenInvitesResponses, PracticeAreasData, PracticeAreasResponses, PracticeHintData, PracticeHintErrors, PracticeHintResponses, PracticeQuestionData, PracticeQuestionErrors, PracticeQuestionResponses, RegisterData, RegisterErrors, RegisterResponses, RemoveCorrectionData, RemoveCorrectionErrors, RemoveCorrectionResponses, ReportQuestionData, ReportQuestionErrors, ReportQuestionResponses, ResetData, ResetErrors, ResetInfoData, ResetInfoErrors, ResetInfoResponses, ResetLinkData, ResetLinkErrors, ResetLinkResponses, ResetResponses, ResolveReportData, ResolveReportErrors, ResolveReportResponses, ReviewDailyData, ReviewDailyErrors, ReviewDailyResponses, ReviewQuestionData, ReviewQuestionErrors, ReviewQuestionResponses, ReviewQuestionsData, ReviewQuestionsErrors, ReviewQuestionsResponses, RevokeInviteData, RevokeInviteErrors, RevokeInviteResponses, RevokeSessionsData, RevokeSessionsErrors, RevokeSessionsResponses, StartDailyData, StartDailyErrors, StartDailyResponses, StartMockData, StartMockErrors, StartMockResponses, TopicAidsData, TopicAidsErrors, TopicAidsResponses, UpdateMeData, UpdateMeErrors, UpdateMeResponses, UpdateQuestionData, UpdateQuestionErrors, UpdateQuestionResponses, UpdateUserData, UpdateUserErrors, UpdateUserResponses, UsersData, UsersResponses, VerticalLeaderboardData, VerticalLeaderboardErrors, VerticalLeaderboardResponses } from './types.gen';
+import type { AdvanceSessionData, AdvanceSessionErrors, AdvanceSessionResponses, AnswerDailyData, AnswerDailyErrors, AnswerDailyResponses, AnswerData, AnswerErrors, AnswerMockData, AnswerMockErrors, AnswerMockResponses, AnswerPracticeData, AnswerPracticeErrors, AnswerPracticeResponses, AnswerResponses, AuditLogData, AuditLogErrors, AuditLogResponses, BankSummaryData, BankSummaryResponses, ChangePasswordData, ChangePasswordErrors, ChangePasswordResponses, ConfigureSessionData, ConfigureSessionErrors, ConfigureSessionResponses, CorrectAnswerData, CorrectAnswerErrors, CorrectAnswerResponses, CreateInviteData, CreateInviteErrors, CreateInviteResponses, CreateSessionData, CreateSessionErrors, CreateSessionResponses, DailyHintData, DailyHintErrors, DailyHintResponses, DailyStatusData, DailyStatusResponses, EditTableData, EditTableErrors, EditTableResponses, EndSessionData, EndSessionErrors, EndSessionResponses, EventsData, EventsErrors, EventsResponses, GetLeaderboardData, GetLeaderboardErrors, GetLeaderboardResponses, InviteInfoData, InviteInfoErrors, InviteInfoResponses, JoinSessionData, JoinSessionErrors, JoinSessionResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutResponses, MeData, MeResponses, MockHintData, MockHintErrors, MockHintResponses, MockQuizzesData, MockQuizzesResponses, MockStateData, MockStateErrors, MockStateResponses, MovePlayerData, MovePlayerErrors, MovePlayerResponses, NextQuestionData, NextQuestionErrors, NextQuestionResponses, OpenInvitesData, OpenInvitesResponses, PracticeAreasData, PracticeAreasResponses, PracticeHintData, PracticeHintErrors, PracticeHintResponses, PracticeQuestionData, PracticeQuestionErrors, PracticeQuestionResponses, ProposeData, ProposeErrors, ProposeResponses, RegisterData, RegisterErrors, RegisterResponses, RemoveCorrectionData, RemoveCorrectionErrors, RemoveCorrectionResponses, RemovePlayerData, RemovePlayerErrors, RemovePlayerResponses, ReportQuestionData, ReportQuestionErrors, ReportQuestionResponses, ResetData, ResetErrors, ResetInfoData, ResetInfoErrors, ResetInfoResponses, ResetLinkData, ResetLinkErrors, ResetLinkResponses, ResetResponses, ResolveReportData, ResolveReportErrors, ResolveReportResponses, ResultsData, ResultsErrors, ResultsResponses, ReviewDailyData, ReviewDailyErrors, ReviewDailyResponses, ReviewQuestionData, ReviewQuestionErrors, ReviewQuestionResponses, ReviewQuestionsData, ReviewQuestionsErrors, ReviewQuestionsResponses, RevokeInviteData, RevokeInviteErrors, RevokeInviteResponses, RevokeSessionsData, RevokeSessionsErrors, RevokeSessionsResponses, SeatBySubdepartmentData, SeatBySubdepartmentErrors, SeatBySubdepartmentResponses, SeatTablesData, SeatTablesErrors, SeatTablesResponses, SessionStateData, SessionStateErrors, SessionStateResponses, StartDailyData, StartDailyErrors, StartDailyResponses, StartMockData, StartMockErrors, StartMockResponses, SubdepartmentsData, SubdepartmentsResponses, TopicAidsData, TopicAidsErrors, TopicAidsResponses, UpdateMeData, UpdateMeErrors, UpdateMeResponses, UpdateQuestionData, UpdateQuestionErrors, UpdateQuestionResponses, UpdateUserData, UpdateUserErrors, UpdateUserResponses, UsersData, UsersResponses, VerticalLeaderboardData, VerticalLeaderboardErrors, VerticalLeaderboardResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -337,3 +337,142 @@ export const verticalLeaderboard = <ThrowOnError extends boolean = false>(option
  * Topic Aids
  */
 export const topicAids = <ThrowOnError extends boolean = false>(options: Options<TopicAidsData, ThrowOnError>): RequestResult<TopicAidsResponses, TopicAidsErrors, ThrowOnError> => (options.client ?? client).get<TopicAidsResponses, TopicAidsErrors, ThrowOnError>({ url: '/api/learning/{topic}', ...options });
+
+/**
+ * Subdepartments
+ */
+export const subdepartments = <ThrowOnError extends boolean = false>(options?: Options<SubdepartmentsData, ThrowOnError>): RequestResult<SubdepartmentsResponses, unknown, ThrowOnError> => (options?.client ?? client).get<SubdepartmentsResponses, unknown, ThrowOnError>({ url: '/api/live/subdepartments', ...options });
+
+/**
+ * Create Session
+ */
+export const createSession = <ThrowOnError extends boolean = false>(options: Options<CreateSessionData, ThrowOnError>): RequestResult<CreateSessionResponses, CreateSessionErrors, ThrowOnError> => (options.client ?? client).post<CreateSessionResponses, CreateSessionErrors, ThrowOnError>({
+    url: '/api/live/sessions',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Session State
+ */
+export const sessionState = <ThrowOnError extends boolean = false>(options: Options<SessionStateData, ThrowOnError>): RequestResult<SessionStateResponses, SessionStateErrors, ThrowOnError> => (options.client ?? client).get<SessionStateResponses, SessionStateErrors, ThrowOnError>({ url: '/api/live/sessions/{code}', ...options });
+
+/**
+ * Join Session
+ */
+export const joinSession = <ThrowOnError extends boolean = false>(options: Options<JoinSessionData, ThrowOnError>): RequestResult<JoinSessionResponses, JoinSessionErrors, ThrowOnError> => (options.client ?? client).post<JoinSessionResponses, JoinSessionErrors, ThrowOnError>({ url: '/api/live/sessions/{code}/join', ...options });
+
+/**
+ * Configure Session
+ */
+export const configureSession = <ThrowOnError extends boolean = false>(options: Options<ConfigureSessionData, ThrowOnError>): RequestResult<ConfigureSessionResponses, ConfigureSessionErrors, ThrowOnError> => (options.client ?? client).put<ConfigureSessionResponses, ConfigureSessionErrors, ThrowOnError>({
+    url: '/api/live/sessions/{code}/config',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Seat Tables
+ */
+export const seatTables = <ThrowOnError extends boolean = false>(options: Options<SeatTablesData, ThrowOnError>): RequestResult<SeatTablesResponses, SeatTablesErrors, ThrowOnError> => (options.client ?? client).put<SeatTablesResponses, SeatTablesErrors, ThrowOnError>({
+    url: '/api/live/sessions/{code}/tables',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Seat By Subdepartment
+ */
+export const seatBySubdepartment = <ThrowOnError extends boolean = false>(options: Options<SeatBySubdepartmentData, ThrowOnError>): RequestResult<SeatBySubdepartmentResponses, SeatBySubdepartmentErrors, ThrowOnError> => (options.client ?? client).post<SeatBySubdepartmentResponses, SeatBySubdepartmentErrors, ThrowOnError>({ url: '/api/live/sessions/{code}/tables/auto', ...options });
+
+/**
+ * Edit Table
+ */
+export const editTable = <ThrowOnError extends boolean = false>(options: Options<EditTableData, ThrowOnError>): RequestResult<EditTableResponses, EditTableErrors, ThrowOnError> => (options.client ?? client).patch<EditTableResponses, EditTableErrors, ThrowOnError>({
+    url: '/api/live/sessions/{code}/tables/{table_id}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Remove Player
+ */
+export const removePlayer = <ThrowOnError extends boolean = false>(options: Options<RemovePlayerData, ThrowOnError>): RequestResult<RemovePlayerResponses, RemovePlayerErrors, ThrowOnError> => (options.client ?? client).delete<RemovePlayerResponses, RemovePlayerErrors, ThrowOnError>({ url: '/api/live/sessions/{code}/players/{user_id}', ...options });
+
+/**
+ * Move Player
+ */
+export const movePlayer = <ThrowOnError extends boolean = false>(options: Options<MovePlayerData, ThrowOnError>): RequestResult<MovePlayerResponses, MovePlayerErrors, ThrowOnError> => (options.client ?? client).put<MovePlayerResponses, MovePlayerErrors, ThrowOnError>({
+    url: '/api/live/sessions/{code}/players/{user_id}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Advance Session
+ */
+export const advanceSession = <ThrowOnError extends boolean = false>(options: Options<AdvanceSessionData, ThrowOnError>): RequestResult<AdvanceSessionResponses, AdvanceSessionErrors, ThrowOnError> => (options.client ?? client).post<AdvanceSessionResponses, AdvanceSessionErrors, ThrowOnError>({
+    url: '/api/live/sessions/{code}/advance',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * End Session
+ */
+export const endSession = <ThrowOnError extends boolean = false>(options: Options<EndSessionData, ThrowOnError>): RequestResult<EndSessionResponses, EndSessionErrors, ThrowOnError> => (options.client ?? client).post<EndSessionResponses, EndSessionErrors, ThrowOnError>({ url: '/api/live/sessions/{code}/end', ...options });
+
+/**
+ * Propose
+ */
+export const propose = <ThrowOnError extends boolean = false>(options: Options<ProposeData, ThrowOnError>): RequestResult<ProposeResponses, ProposeErrors, ThrowOnError> => (options.client ?? client).put<ProposeResponses, ProposeErrors, ThrowOnError>({
+    url: '/api/live/sessions/{code}/proposal',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Answer
+ */
+export const answer = <ThrowOnError extends boolean = false>(options: Options<AnswerData, ThrowOnError>): RequestResult<AnswerResponses, AnswerErrors, ThrowOnError> => (options.client ?? client).post<AnswerResponses, AnswerErrors, ThrowOnError>({
+    url: '/api/live/sessions/{code}/answer',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Results
+ */
+export const results = <ThrowOnError extends boolean = false>(options: Options<ResultsData, ThrowOnError>): RequestResult<ResultsResponses, ResultsErrors, ThrowOnError> => (options.client ?? client).get<ResultsResponses, ResultsErrors, ThrowOnError>({ url: '/api/live/sessions/{code}/results.csv', ...options });
+
+/**
+ * Events
+ *
+ * A version number whenever the session changes (and when a question's time runs out), so screens know
+ * to fetch the state again. No state travels here, so nobody sees more than their own GET shows them.
+ */
+export const events = <ThrowOnError extends boolean = false>(options: Options<EventsData, ThrowOnError>): RequestResult<EventsResponses, EventsErrors, ThrowOnError> => (options.client ?? client).get<EventsResponses, EventsErrors, ThrowOnError>({ url: '/api/live/sessions/{code}/events', ...options });

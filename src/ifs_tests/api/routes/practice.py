@@ -28,11 +28,12 @@ def practice_areas(user: Member, db: Db) -> list[AreaProgress]:
 def next_question(
     user: Member,
     db: Db,
+    now: Now,
     area: Area | None = None,
     topic: Annotated[str | None, Query(max_length=16, pattern="^[a-z]+$")] = None,
     skip: Annotated[int | None, Query(ge=1, le=2**31 - 1)] = None,
 ) -> PlayQuestion:
-    return _one(db, practice.next_question(db, user, area, topic, skip))
+    return _one(db, practice.next_question(db, user, now, area, topic, skip))
 
 
 @router.get("/questions/{question_id}")
@@ -47,5 +48,4 @@ def answer_practice(question_id: Id, body: AnswerIn, user: Member, db: Db, now: 
 
 @router.post("/questions/{question_id}/hint")
 def practice_hint(question_id: Id, user: Member, db: Db, now: Now) -> HintOut:
-    h = hints.practice(db, user, question_id, now)
-    return HintOut(text=h.text, removed_options=h.removed_options)
+    return HintOut.model_validate(hints.practice(db, user, question_id, now))

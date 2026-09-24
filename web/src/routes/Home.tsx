@@ -44,6 +44,17 @@ export default function Home() {
           </Link>
         </p>
       </section>
+      <section className="panel stack" aria-labelledby="live-title">
+        <h2 id="live-title">Live quiz</h2>
+        <p>
+          Quiz-day training with your table: one captain answers for everyone, the room's score shows on the projector.
+        </p>
+        <p>
+          <Link to="/live" className="button">
+            {user?.can_host ? 'Join or host a session' : 'Join with a code'}
+          </Link>
+        </p>
+      </section>
       <p className="home-board">
         Every answer earns XP, and harder questions earn more. <Link to="/leaderboard">See the leaderboard</Link>
       </p>

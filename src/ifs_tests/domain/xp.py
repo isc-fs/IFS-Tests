@@ -12,7 +12,7 @@ from dataclasses import dataclass
 
 STEP = 250  # level n needs STEP * n * (n + 1) lifetime XP: each level asks 500 XP more than the one before
 BASE_XP = {1: 10, 2: 15, 3: 25, 4: 40, 5: 60}
-MODE = {"practice": 0.5, "daily": 2.0, "mock": 1.5}
+MODE = {"practice": 0.5, "daily": 2.0, "mock": 1.5, "live": 1.5}
 REPEAT = 0.1  # a question you already had graded this season, or a mock replay
 HINT = 0.5
 STREAK_STEP, STREAK_CAP = 0.05, 10  # +5 % per day of streak after the first, up to +50 %

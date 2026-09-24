@@ -3,9 +3,10 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ifs_tests.db.models import AnswerKey
+from ifs_tests.db.models import AnswerKey, AnswerOption
 
 ADMIN = {"email": "admin@alu.comillas.edu", "password": "pit lane boss 2026"}
 PASSWORD = "tractive system 900V!"
@@ -54,3 +55,9 @@ def right_answer(db: Session, question_id: int) -> dict[str, Any]:
     if key["kind"] == "range":
         return {"value": str(alt["lo"])}
     return {"value": alt}
+
+
+def options(db: Session, qid: int) -> list[int]:
+    return list(
+        db.scalars(select(AnswerOption.id).where(AnswerOption.question_id == qid).order_by("position"))
+    )
