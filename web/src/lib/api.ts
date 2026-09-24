@@ -71,3 +71,11 @@ export function errorMessage(error: unknown): string {
 export function fieldErrors(error: unknown): Record<string, string> {
   return (error as ApiError | null)?.fields ?? {}
 }
+
+/** Hands the browser a JSON file to save. The download link itself would hide a 401 or 500 from the member. */
+export function saveJson(data: unknown, name: string) {
+  const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }))
+  const link = Object.assign(document.createElement('a'), { href: url, download: name })
+  link.click()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}

@@ -316,8 +316,8 @@
     "tags": [
      "me"
     ],
-    "summary": "Export",
-    "operationId": "export",
+    "summary": "Export My Data",
+    "operationId": "export_my_data",
     "responses": {
      "200": {
       "description": "Successful Response",
@@ -466,6 +466,51 @@
     "responses": {
      "204": {
       "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/admin/users/{user_id}/export": {
+   "get": {
+    "tags": [
+     "admin"
+    ],
+    "summary": "Export User",
+    "description": "For someone who can't sign in (alumni, disabled) and asks for their data.",
+    "operationId": "export_user",
+    "parameters": [
+     {
+      "name": "user_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "maximum": 2147483647,
+       "minimum": 1,
+       "title": "User Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Export"
+        }
+       }
+      }
      },
      "422": {
       "description": "Validation Error",
@@ -2793,7 +2838,7 @@
        }
       ],
       "title": "Left At",
-      "description": "Alumni since; the account is deleted a year later"
+      "description": "Alumni or disabled since; the account is deleted a year later"
      }
     },
     "type": "object",
@@ -3281,6 +3326,23 @@
      "account": {
       "$ref": "#/components/schemas/ExportAccount"
      },
+     "invite": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/ExportInvite"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "pending_hints": {
+      "items": {
+       "type": "integer"
+      },
+      "type": "array",
+      "title": "Pending Hints"
+     },
      "answers": {
       "items": {
        "$ref": "#/components/schemas/ExportAnswer"
@@ -3318,18 +3380,28 @@
       },
       "type": "array",
       "title": "Account History"
+     },
+     "actions": {
+      "items": {
+       "$ref": "#/components/schemas/ExportAction"
+      },
+      "type": "array",
+      "title": "Actions"
      }
     },
     "type": "object",
     "required": [
      "exported_at",
      "account",
+     "invite",
+     "pending_hints",
      "answers",
      "mock_runs",
      "live",
      "reports",
      "sign_ins",
-     "account_history"
+     "account_history",
+     "actions"
     ],
     "title": "Export",
     "description": "Everything MingoQuiz stores about the member who asks (GET /api/me/export)."
@@ -3398,6 +3470,48 @@
        }
       ],
       "title": "Last Seen"
+     },
+     "failed_sign_ins": {
+      "type": "integer",
+      "title": "Failed Sign Ins"
+     },
+     "locked_until": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Locked Until"
+     },
+     "inactive_since": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Inactive Since",
+      "description": "Alumni or disabled since"
+     },
+     "deleted_on": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Deleted On",
+      "description": "When the account will be deleted, if inactive"
      }
     },
     "type": "object",
@@ -3412,9 +3526,37 @@
      "xp",
      "hidden_from_leaderboard",
      "joined_at",
-     "last_seen"
+     "last_seen",
+     "failed_sign_ins",
+     "locked_until",
+     "inactive_since",
+     "deleted_on"
     ],
     "title": "ExportAccount"
+   },
+   "ExportAction": {
+    "properties": {
+     "at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "At"
+     },
+     "action": {
+      "type": "string",
+      "title": "Action"
+     },
+     "on": {
+      "type": "string",
+      "title": "On"
+     }
+    },
+    "type": "object",
+    "required": [
+     "at",
+     "action",
+     "on"
+    ],
+    "title": "ExportAction"
    },
    "ExportAnswer": {
     "properties": {
@@ -3481,6 +3623,18 @@
       ],
       "title": "Late"
      },
+     "day": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Day"
+     },
      "started_at": {
       "type": "string",
       "format": "date-time",
@@ -3511,6 +3665,7 @@
      "hint_used",
      "xp",
      "late",
+     "day",
      "started_at",
      "submitted_at"
     ],
@@ -3541,6 +3696,88 @@
     ],
     "title": "ExportHistory"
    },
+   "ExportHosted": {
+    "properties": {
+     "code": {
+      "type": "string",
+      "title": "Code"
+     },
+     "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Created At"
+     },
+     "finished_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Finished At"
+     }
+    },
+    "type": "object",
+    "required": [
+     "code",
+     "created_at",
+     "finished_at"
+    ],
+    "title": "ExportHosted"
+   },
+   "ExportInvite": {
+    "properties": {
+     "role": {
+      "type": "string",
+      "title": "Role"
+     },
+     "vertical": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Vertical"
+     },
+     "note": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Note"
+     },
+     "used_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Used At"
+     }
+    },
+    "type": "object",
+    "required": [
+     "role",
+     "vertical",
+     "note",
+     "used_at"
+    ],
+    "title": "ExportInvite"
+   },
    "ExportLive": {
     "properties": {
      "joined": {
@@ -3552,7 +3789,7 @@
      },
      "hosted": {
       "items": {
-       "type": "string"
+       "$ref": "#/components/schemas/ExportHosted"
       },
       "type": "array",
       "title": "Hosted"
@@ -3639,6 +3876,10 @@
       "format": "date-time",
       "title": "Joined At"
      },
+     "removed_by_host": {
+      "type": "boolean",
+      "title": "Removed By Host"
+     },
      "table": {
       "anyOf": [
        {
@@ -3649,6 +3890,10 @@
        }
       ],
       "title": "Table"
+     },
+     "captain": {
+      "type": "boolean",
+      "title": "Captain"
      }
     },
     "type": "object",
@@ -3656,7 +3901,9 @@
      "code",
      "created_at",
      "joined_at",
-     "table"
+     "removed_by_host",
+     "table",
+     "captain"
     ],
     "title": "ExportLiveJoin"
    },
@@ -3669,6 +3916,10 @@
      "season": {
       "type": "integer",
       "title": "Season"
+     },
+     "counted": {
+      "type": "boolean",
+      "title": "Counted"
      },
      "started_at": {
       "type": "string",
@@ -3692,6 +3943,7 @@
     "required": [
      "quiz_id",
      "season",
+     "counted",
      "started_at",
      "finished_at"
     ],

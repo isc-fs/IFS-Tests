@@ -1,17 +1,20 @@
 from __future__ import annotations
 
+import threading
+import time
 from collections.abc import Callable
 from datetime import timedelta
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import func, select, update
-from sqlalchemy.orm import Session
+from sqlalchemy import Engine, func, select, update
+from sqlalchemy.orm import Session, sessionmaker
 
 from ifs_tests.db.models import Attempt, AuditLog, Invite, LiveAnswer, LiveSession, User
 from ifs_tests.db.models import Session as LoginSession
-from ifs_tests.services import maintenance
+from ifs_tests.services import maintenance, privacy
+from ifs_tests.services.accounts import AccountError
 
 from ..conftest import Clock
 from .helpers import ADMIN, PASSWORD, invite, login, member, register, right_answer
@@ -88,7 +91,7 @@ def test_the_export_keeps_live_results_secret_until_the_session_ends(
     assert export(room["Leo"])["live"]["answers_sent_as_captain"][0]["correct"] is None
     assert room["Tere"].post(f"/api/live/sessions/{code}/end").status_code == 204
     assert [a["correct"] for a in export(room["Ana"])["answers"]] == [True]
-    assert export(room["Tere"])["live"]["hosted"] == [code]
+    assert [h["code"] for h in export(room["Tere"])["live"]["hosted"]] == [code]
 
 
 def test_deleting_my_account_takes_my_password_and_removes_everything(
@@ -203,3 +206,153 @@ def test_the_audit_log_keeps_two_years(signed_in: TestClient, db: Session, clock
     before = count(db, AuditLog)
     assert maintenance.run(db, clock.now + timedelta(days=729))["audit_purged"] == 0
     assert maintenance.run(db, clock.now + timedelta(days=740))["audit_purged"] == before
+
+
+def test_any_latin_name_downloads_its_data(
+    app_client: TestClient, admin: User, new_client: NewClient, clock: Clock
+) -> None:
+    login(app_client)
+    c = new_client()
+    member(app_client, c, "lukasz@alu.comillas.edu", "Łukasz Dvořák")
+    r = c.get("/api/me/export")
+    assert r.status_code == 200 and r.json()["account"]["display_name"] == "Łukasz Dvořák"
+    assert r.headers["content-disposition"] == 'attachment; filename="mingoquiz-export-2026-10-01.json"'
+
+
+def test_disabled_accounts_are_deleted_a_year_later_too(
+    app_client: TestClient, admin: User, new_client: NewClient, db: Session, clock: Clock
+) -> None:
+    login(app_client)
+    uid = member(app_client, new_client(), "marta@alu.comillas.edu", "Marta")["id"]
+    app_client.post("/api/admin/alumni", json={"user_ids": [uid]})
+    disabled = app_client.patch(f"/api/admin/users/{uid}", json={"status": "disabled"}).json()
+    assert disabled["left_at"] == "2026-10-01T10:00:00Z"  # the year still runs from when she left
+    assert maintenance.run(db, clock.now + timedelta(days=366))["alumni_deleted"] == 1
+
+
+def test_accounts_made_inactive_without_a_date_get_one_at_night(
+    app_client: TestClient, admin: User, new_client: NewClient, db: Session, clock: Clock
+) -> None:
+    login(app_client)
+    uid = member(app_client, new_client(), "marta@alu.comillas.edu", "Marta")["id"]
+    db.execute(update(User).where(User.id == uid).values(status="alumni", left_at=None))  # an older release
+    db.commit()
+    maintenance.run(db, clock.now)
+    assert maintenance.run(db, clock.now + timedelta(days=364))["alumni_deleted"] == 0
+    assert maintenance.run(db, clock.now + timedelta(days=366))["alumni_deleted"] == 1
+
+
+def test_admins_fetch_the_data_of_someone_who_cannot_sign_in(
+    app_client: TestClient, admin: User, new_client: NewClient, db: Session
+) -> None:
+    login(app_client)
+    marta = new_client()
+    uid = register(marta, invite(app_client, note="Marta, aero"), "marta@alu.comillas.edu", "Marta").json()[
+        "id"
+    ]
+    app_client.post("/api/admin/alumni", json={"user_ids": [uid]})
+    data = app_client.get(f"/api/admin/users/{uid}/export").json()
+    assert data["account"]["status"] == "alumni" and data["account"]["deleted_on"]
+    assert data["invite"]["note"] == "Marta, aero"
+    assert [e["action"] for e in export(app_client)["actions"]][-1] == "user.export"
+    assert {e["on"] for e in export(app_client)["actions"]} >= {"invite", "user"}
+
+
+# Races (found by review): each runs the conflicting work for real against Postgres.
+
+
+def test_two_admins_marking_each_other_alumni_leave_an_admin(
+    db: Session, app_engine: Engine, admin: User, clock: Clock
+) -> None:
+    b = User(email="b@x.com", password_hash="x", display_name="Bravo", role="admin")
+    db.add(b)
+    db.commit()
+    pairs = [(admin.id, b.id), (b.id, admin.id)]
+    barrier = threading.Barrier(2)
+    out: list[Any] = [None, None]
+
+    def job(i: int) -> None:
+        actor, target = pairs[i]
+        with sessionmaker(app_engine, expire_on_commit=False)() as s:
+            me = s.get_one(User, actor)
+            s.commit()
+            barrier.wait()
+            try:
+                out[i] = privacy.mark_alumni(s, me, [target], clock.now)
+            except AccountError as e:
+                out[i] = e.status
+
+    threads = [threading.Thread(target=job, args=(i,)) for i in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert sorted(out) == [1, 403]
+    assert db.scalar(select(func.count()).where(User.role == "admin", User.status == "active")) == 1
+
+
+def test_a_player_deleted_while_their_captain_answers_does_not_block_the_end(
+    room: dict[str, Any],  # noqa: F811
+    db: Session,
+    app_engine: Engine,
+    clock: Clock,
+) -> None:
+    code = lobby(room, areas=["rules"], count=2, feedback="end")
+    advance(room, code)
+    qid = state(room["Leo"], code)["question"]["id"]
+    with sessionmaker(app_engine, expire_on_commit=False)() as d:
+        locked = privacy._lock(d, room["Ana_id"])
+        assert locked.user is not None
+        privacy._delete(d, locked.user, locked.sessions, clock.now)  # not committed yet
+        assert send(room["Leo"], code, right_answer(db, qid)) == 204  # still sees Ana at the table
+        d.commit()
+    assert room["Tere"].post(f"/api/live/sessions/{code}/end").status_code == 204
+    assert [a.user_id for a in db.scalars(select(Attempt).where(Attempt.mode == "live"))] == [room["Leo_id"]]
+
+
+def test_deleting_a_host_waits_for_a_captain_answering_and_screens_see_the_end(
+    room: dict[str, Any],  # noqa: F811
+    db: Session,
+    app_engine: Engine,
+    clock: Clock,
+) -> None:
+    code = lobby(room, areas=["rules"], count=2)
+    advance(room, code)
+    answering = sessionmaker(app_engine, expire_on_commit=False)()
+    s = answering.scalars(select(LiveSession).with_for_update()).one()  # a captain's answer in progress
+    before = s.version
+
+    def delete_host() -> None:
+        with sessionmaker(app_engine, expire_on_commit=False)() as d:
+            locked = privacy._lock(d, room["Tere_id"])
+            assert locked.user is not None
+            privacy._delete(d, locked.user, locked.sessions, clock.now)
+            d.commit()
+
+    thread = threading.Thread(target=delete_host)
+    thread.start()
+    time.sleep(0.5)
+    s.version += 1
+    answering.commit()
+    answering.close()
+    thread.join(timeout=15)
+    db.expire_all()
+    ended = db.scalars(select(LiveSession)).one()
+    assert (ended.state, ended.host_id) == ("finished", None) and ended.version == before + 2
+
+
+def test_deleting_an_account_locked_meanwhile_is_refused(
+    app_client: TestClient, admin: User, new_client: NewClient, db: Session, app_engine: Engine, clock: Clock
+) -> None:
+    login(app_client)
+    uid = member(app_client, new_client(), "marta@alu.comillas.edu", "Marta")["id"]
+    with sessionmaker(app_engine, expire_on_commit=False)() as s:
+        stale = s.get_one(User, uid)  # loaded before parallel wrong guesses locked the account
+        s.commit()
+        db.execute(update(User).where(User.id == uid).values(locked_until=clock.now + timedelta(minutes=15)))
+        db.commit()
+        with pytest.raises(AccountError) as refused:
+            privacy.delete_self(s, stale, PASSWORD, clock.now)
+    assert refused.value.status == 429
+    db.expire_all()
+    assert db.get(User, uid) is not None

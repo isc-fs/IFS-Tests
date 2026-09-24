@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Path, Query
+from fastapi import APIRouter, Path, Query, Response
 
 from ...services import accounts, bank, privacy
 from ..deps import Admin, AppSettings, Db, Now
@@ -12,6 +12,7 @@ from ..schemas import (
     AlumniOut,
     AuditEntry,
     BankSummary,
+    Export,
     InviteIn,
     Link,
     OpenInvite,
@@ -34,6 +35,15 @@ def update_user(user_id: Id, body: UserPatch, admin: Admin, db: Db, now: Now) ->
             db, admin, user_id, role=body.role, status=body.status, position=body.position, now=now
         )
     )
+
+
+@router.get("/users/{user_id}/export")
+def export_user(user_id: Id, admin: Admin, db: Db, now: Now, response: Response) -> Export:
+    """For someone who can't sign in (alumni, disabled) and asks for their data."""
+    response.headers["Content-Disposition"] = (
+        f'attachment; filename="mingoquiz-export-{user_id}-{now.date()}.json"'
+    )
+    return Export.model_validate(privacy.export_for(db, admin, user_id, now))
 
 
 @router.delete("/users/{user_id}", status_code=204)

@@ -114,7 +114,8 @@ def create_invite(
     )
     db.add(invite)
     db.flush()
-    audit(db, actor, "invite.create", f"invite:{invite.id}", role=role, vertical=vertical, note=invite.note)
+    # The note names someone who may never join: it stays on the invite (gone 30 days after it closes), not here.
+    audit(db, actor, "invite.create", f"invite:{invite.id}", role=role, vertical=vertical)
     db.commit()
     return token, invite
 
@@ -378,7 +379,7 @@ def update_user(
     if status is not None and status != user.status:
         changes["status"] = [user.status, status]
         user.status = status
-        user.left_at = (now or datetime.now(UTC)) if status == "alumni" else None
+        user.left_at = None if status == "active" else (user.left_at or now or datetime.now(UTC))
         if status != "active":
             end_all_sessions(db, user.id)
     if changes:

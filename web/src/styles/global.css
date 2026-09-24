@@ -1379,6 +1379,9 @@ details[open] > summary::before {
   gap: 12px;
   max-width: 68ch;
 }
+.prose > * {
+  margin: 0;
+}
 .prose h2 {
   margin-top: 16px;
 }
@@ -1391,4 +1394,14 @@ details[open] > summary::before {
 .danger-zone {
   padding-top: 16px;
   border-top: 1px solid var(--isc-c-border);
+}
+.list.season {
+  max-height: 60vh;
+  overflow-y: auto;
+}
+.season-actions {
+  position: sticky;
+  bottom: 0;
+  padding-block: 8px;
+  background: var(--isc-c-surface);
 }

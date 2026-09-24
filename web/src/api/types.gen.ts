@@ -47,7 +47,7 @@ export type AdminUser = {
     /**
      * Left At
      *
-     * Alumni since; the account is deleted a year later
+     * Alumni or disabled since; the account is deleted a year later
      */
     left_at: string | null;
 };
@@ -353,6 +353,11 @@ export type Export = {
      */
     exported_at: string;
     account: ExportAccount;
+    invite: ExportInvite | null;
+    /**
+     * Pending Hints
+     */
+    pending_hints: Array<number>;
     /**
      * Answers
      */
@@ -374,6 +379,10 @@ export type Export = {
      * Account History
      */
     account_history: Array<ExportHistory>;
+    /**
+     * Actions
+     */
+    actions: Array<ExportAction>;
 };
 
 /**
@@ -424,6 +433,44 @@ export type ExportAccount = {
      * Last Seen
      */
     last_seen: string | null;
+    /**
+     * Failed Sign Ins
+     */
+    failed_sign_ins: number;
+    /**
+     * Locked Until
+     */
+    locked_until: string | null;
+    /**
+     * Inactive Since
+     *
+     * Alumni or disabled since
+     */
+    inactive_since: string | null;
+    /**
+     * Deleted On
+     *
+     * When the account will be deleted, if inactive
+     */
+    deleted_on: string | null;
+};
+
+/**
+ * ExportAction
+ */
+export type ExportAction = {
+    /**
+     * At
+     */
+    at: string;
+    /**
+     * Action
+     */
+    action: string;
+    /**
+     * On
+     */
+    on: string;
 };
 
 /**
@@ -475,6 +522,10 @@ export type ExportAnswer = {
      */
     late: boolean | null;
     /**
+     * Day
+     */
+    day: string | null;
+    /**
      * Started At
      */
     started_at: string;
@@ -505,6 +556,46 @@ export type ExportHistory = {
 };
 
 /**
+ * ExportHosted
+ */
+export type ExportHosted = {
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Created At
+     */
+    created_at: string;
+    /**
+     * Finished At
+     */
+    finished_at: string | null;
+};
+
+/**
+ * ExportInvite
+ */
+export type ExportInvite = {
+    /**
+     * Role
+     */
+    role: string;
+    /**
+     * Vertical
+     */
+    vertical: string | null;
+    /**
+     * Note
+     */
+    note: string | null;
+    /**
+     * Used At
+     */
+    used_at: string | null;
+};
+
+/**
  * ExportLive
  */
 export type ExportLive = {
@@ -515,7 +606,7 @@ export type ExportLive = {
     /**
      * Hosted
      */
-    hosted: Array<string>;
+    hosted: Array<ExportHosted>;
     /**
      * Answers Sent As Captain
      */
@@ -571,9 +662,17 @@ export type ExportLiveJoin = {
      */
     joined_at: string;
     /**
+     * Removed By Host
+     */
+    removed_by_host: boolean;
+    /**
      * Table
      */
     table: string | null;
+    /**
+     * Captain
+     */
+    captain: boolean;
 };
 
 /**
@@ -588,6 +687,10 @@ export type ExportMockRun = {
      * Season
      */
     season: number;
+    /**
+     * Counted
+     */
+    counted: boolean;
     /**
      * Started At
      */
@@ -2446,21 +2549,21 @@ export type ChangePasswordResponses = {
 
 export type ChangePasswordResponse = ChangePasswordResponses[keyof ChangePasswordResponses];
 
-export type ExportData = {
+export type ExportMyDataData = {
     body?: never;
     path?: never;
     query?: never;
     url: '/api/me/export';
 };
 
-export type ExportResponses = {
+export type ExportMyDataResponses = {
     /**
      * Successful Response
      */
     200: Export;
 };
 
-export type ExportResponse = ExportResponses[keyof ExportResponses];
+export type ExportMyDataResponse = ExportMyDataResponses[keyof ExportMyDataResponses];
 
 export type DeleteAccountData = {
     body: DeleteAccountIn;
@@ -2564,6 +2667,36 @@ export type UpdateUserResponses = {
 };
 
 export type UpdateUserResponse = UpdateUserResponses[keyof UpdateUserResponses];
+
+export type ExportUserData = {
+    body?: never;
+    path: {
+        /**
+         * User Id
+         */
+        user_id: number;
+    };
+    query?: never;
+    url: '/api/admin/users/{user_id}/export';
+};
+
+export type ExportUserErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ExportUserError = ExportUserErrors[keyof ExportUserErrors];
+
+export type ExportUserResponses = {
+    /**
+     * Successful Response
+     */
+    200: Export;
+};
+
+export type ExportUserResponse = ExportUserResponses[keyof ExportUserResponses];
 
 export type MarkAlumniData = {
     body: AlumniIn;

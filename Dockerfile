@@ -31,5 +31,6 @@ ENV PATH="/app/.venv/bin:$PATH" PYTHONUNBUFFERED=1 IFS_WEB_DIST=/app/web/dist IF
 USER 10001
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=3s --retries=3 CMD ["python", "-c", "import urllib.request,sys; sys.exit(urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=2).status != 200)"]
+# No access log: Nginx keeps one (with IPs) and rotates it; this one would never expire (ADR 0006).
 # uvicorn trusts X-Forwarded-For only from FORWARDED_ALLOW_IPS (set it to the Nginx container on the server).
-CMD ["uvicorn", "ifs_tests.api.app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2", "--proxy-headers"]
+CMD ["uvicorn", "ifs_tests.api.app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2", "--proxy-headers", "--no-access-log"]

@@ -50,6 +50,7 @@ export const routes: RouteObject[] = [
   { path: '/reset', element: <Reset /> },
   {
     path: '/about',
+    errorElement: <Crashed />,
     element: (
       <Suspense fallback={null}>
         <About />
@@ -58,6 +59,7 @@ export const routes: RouteObject[] = [
   },
   {
     path: '/privacy',
+    errorElement: <Crashed />,
     element: (
       <Suspense fallback={null}>
         <Privacy />

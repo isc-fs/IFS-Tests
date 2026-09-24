@@ -1,5 +1,5 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router'
+import { Link, NavLink } from 'react-router'
 
 export const APP_NAME = 'MingoQuiz'
 
@@ -18,7 +18,8 @@ export function Page({
   const h1 = useRef<HTMLHeadingElement>(null)
   useEffect(() => {
     document.title = `${title} · ${APP_NAME}`
-    h1.current?.focus()
+    // A link to a section (/profile#your-data) lands there; the section takes focus itself.
+    if (!document.getElementById(window.location.hash.slice(1))) h1.current?.focus()
   }, [title])
   return (
     <>
@@ -41,8 +42,8 @@ export function Shell({ children }: { children: ReactNode }) {
           <a href="https://opendatacommons.org/licenses/odbl/">ODbL</a>.
         </p>
         <nav aria-label="About this site">
-          <Link to="/about">About</Link>
-          <Link to="/privacy">Privacy</Link>
+          <NavLink to="/about">About</NavLink>
+          <NavLink to="/privacy">Privacy</NavLink>
         </nav>
       </footer>
     </div>
@@ -57,14 +58,24 @@ export function Brand() {
   )
 }
 
-/** Pages shown to signed-out visitors: sign-in, invite, reset, not found. */
-export function PublicPage({ title, heading, children }: { title: string; heading?: string; children: ReactNode }) {
+/** Pages shown to signed-out visitors: sign-in, invite, reset, not found; `wide` for reading (privacy, about). */
+export function PublicPage({
+  title,
+  heading,
+  wide,
+  children,
+}: {
+  title: string
+  heading?: string
+  wide?: boolean
+  children: ReactNode
+}) {
   return (
     <Shell>
       <header className="topbar">
         <Brand />
       </header>
-      <main className="content narrow stack">
+      <main className={`content stack${wide ? '' : ' narrow'}`}>
         <Page title={title} heading={heading}>
           {children}
         </Page>

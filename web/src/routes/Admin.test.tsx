@@ -216,11 +216,12 @@ test("deleting someone's account takes typing their name", async () => {
   expect(within(await row('Chief')).queryByRole('button', { name: /Delete the account/ })).toBeNull()
   await userEvent.click(within(marta).getByRole('button', { name: 'Delete the account of Marta' }))
   const confirm = within(marta).getByRole('button', { name: 'Delete for good' })
-  await userEvent.type(within(marta).getByLabelText('Type Marta to confirm'), 'Mart')
+  expect(within(marta).getByLabelText('Type Marta to confirm')).toHaveFocus()
+  await userEvent.keyboard('mart')
   expect(confirm).toBeDisabled()
-  await userEvent.type(within(marta).getByLabelText('Type Marta to confirm'), 'a')
-  await userEvent.click(confirm)
+  await userEvent.keyboard('á{Enter}')
   await waitFor(() => expect(sent('DELETE /api/admin/users/2')).toHaveLength(1))
+  expect(await screen.findByText("Deleted Marta's account.")).toBeInTheDocument()
 })
 
 test('the season rollover marks the people ticked as alumni, least recently seen first', async () => {
@@ -236,11 +237,12 @@ test('the season rollover marks the people ticked as alumni, least recently seen
   })
   await userEvent.click(await screen.findByText('New season: who left the team?'))
   const season = screen.getByText('New season: who left the team?').closest('details') as HTMLElement
-  expect(
-    within(season)
-      .getAllByRole('checkbox')
-      .map((c) => c.closest('label')?.textContent),
-  ).toEqual(['Leo · seen 1 Mar, 09:00', 'Marta · seen 30 Sept, 10:00'])
+  const rows = within(season)
+    .getAllByRole('checkbox')
+    .map((c) => c.closest('label')?.textContent)
+  expect(rows).toHaveLength(2)
+  expect(rows[0]).toMatch(/^Leo · .* · seen 1 Mar 2026$/)
+  expect(rows[1]).toMatch(/^Marta · .* · seen 30 Sept 2026$/)
   await userEvent.click(within(season).getByLabelText(/Leo/))
   await userEvent.click(within(season).getByRole('button', { name: 'Mark 1 as alumni' }))
   expect(await within(season).findByText('1 marked as alumni.')).toBeInTheDocument()

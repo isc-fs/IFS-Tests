@@ -18,21 +18,27 @@ live quiz still going), and deleting one person must not break anyone else's res
   sees what, where, for how long, and how to use each right.
 - **Export** (`GET /api/me/export`, Profile → Download my data): one JSON file with the account, every answer,
   mock runs, live quizzes joined or hosted, answers sent as captain, proposals, reports, sign-ins and what happened
-  to the account. Right and wrong (and XP) stay hidden for a mock run or live quiz that hasn't ended, as everywhere
-  else. What the member did to other people's accounts (an admin's actions) is left out: it is about them.
+  to the account, and what they did as an admin or reviewer with other people shown only as "user". Right and wrong
+  (and XP) stay hidden for a mock run or live quiz that hasn't ended, as everywhere else. File names carry the date
+  only (names can hold letters a header can't). Admins can download it for someone who can't sign in.
 - **Deletion** is real deletion, not anonymisation. The member confirms with their password (wrong tries count
   towards the usual lock); an admin can delete someone who can't sign in, after typing their name. The row goes and
   the database cascades: answers, runs, sign-ins, hints, proposals. Other people's results stay: sessions they
   hosted are finished and keep their results with no host (`host_id` is now `SET NULL`), their tables lose a
-  captain, and they are removed from the lists of who shared a table's XP. The invite that named them loses its
-  note, here and in the audit entry. The last active admin can't delete themselves.
-- **Alumni.** At the start of each season an admin ticks who left (Admin → New season). They are signed out, leave
-  the boards and get `left_at`; the nightly job deletes them **365 days** later, the same way, unless an admin sets
-  them back to active (which clears `left_at`). Accounts that were alumni before this change start their year at
-  the migration.
+  captain, and they are removed from the lists of who shared a table's XP (and skipped if a race puts them back).
+  The invite that named them loses its note; the audit log never records invite notes. Problems they reported stay
+  without their name, so reviewers can still act on them. The last active admin can't delete themselves. Deleting
+  locks the sessions they host, then the admin rows, then the account: the order answering and admin changes use.
+- **Alumni and disabled accounts.** At the start of each season an admin ticks who left (Admin → New season). They
+  are signed out, leave the boards and get `left_at`; the nightly job deletes any account that isn't active **365
+  days** after `left_at`, the same way, unless an admin sets it back to active (which clears `left_at`). Moving
+  between alumni and disabled keeps the date. Inactive accounts without a date (from before this change, or set by
+  the previous release mid-deploy) get one at the migration or the next night.
 - **Retention.** The audit log keeps **two years**; closed invite and reset links 30 days (unchanged); backups 14
-  days, so deleted data leaves them within two weeks. The audit log keeps "an account was deleted" with its number,
-  not the name.
+  days, pruned even when a nightly dump fails, so deleted data leaves them within two weeks. The audit log keeps "an
+  account was deleted" with its number, not the name. The app writes no access log (uvicorn `--no-access-log`); the
+  shared Nginx keeps IP addresses, rotated within 14 days. Restoring a backup means deleting again the accounts
+  deleted since (runbook).
 
 ## Consequences
 

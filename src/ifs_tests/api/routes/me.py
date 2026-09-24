@@ -69,9 +69,9 @@ def change_password(
 
 
 @router.get("/export")
-def export(user: Member, db: Db, now: Now, response: Response) -> Export:
-    name = f"mingoquiz-{user.display_name.replace(' ', '-').lower()}-{now.date().isoformat()}.json"
-    response.headers["Content-Disposition"] = f'attachment; filename="{name}"'
+def export_my_data(user: Member, db: Db, now: Now, response: Response) -> Export:
+    # Names can hold any Latin letter; headers only Latin-1, so the file name carries the date alone.
+    response.headers["Content-Disposition"] = f'attachment; filename="mingoquiz-export-{now.date()}.json"'
     return Export.model_validate(privacy.export(db, user, now))
 
 

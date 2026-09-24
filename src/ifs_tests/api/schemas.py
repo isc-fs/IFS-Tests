@@ -154,7 +154,9 @@ class AdminUser(Out):
     last_seen: datetime | None
     created_at: datetime
     locked_until: datetime | None
-    left_at: datetime | None = Field(description="Alumni since; the account is deleted a year later")
+    left_at: datetime | None = Field(
+        description="Alumni or disabled since; the account is deleted a year later"
+    )
 
 
 class AlumniIn(In):
@@ -181,6 +183,17 @@ class ExportAccount(BaseModel):
     hidden_from_leaderboard: bool
     joined_at: datetime
     last_seen: datetime | None
+    failed_sign_ins: int
+    locked_until: datetime | None
+    inactive_since: datetime | None = Field(description="Alumni or disabled since")
+    deleted_on: datetime | None = Field(description="When the account will be deleted, if inactive")
+
+
+class ExportInvite(BaseModel):
+    role: str
+    vertical: str | None
+    note: str | None
+    used_at: datetime | None
 
 
 class ExportAnswer(BaseModel):
@@ -194,6 +207,7 @@ class ExportAnswer(BaseModel):
     hint_used: bool
     xp: int
     late: bool | None
+    day: date | None
     started_at: datetime
     submitted_at: datetime | None
 
@@ -201,6 +215,7 @@ class ExportAnswer(BaseModel):
 class ExportMockRun(BaseModel):
     quiz_id: int
     season: int
+    counted: bool
     started_at: datetime
     finished_at: datetime | None
 
@@ -209,7 +224,15 @@ class ExportLiveJoin(BaseModel):
     code: str
     created_at: datetime
     joined_at: datetime
+    removed_by_host: bool
     table: str | None
+    captain: bool
+
+
+class ExportHosted(BaseModel):
+    code: str
+    created_at: datetime
+    finished_at: datetime | None
 
 
 class ExportLiveAnswer(BaseModel):
@@ -229,7 +252,7 @@ class ExportProposal(BaseModel):
 
 class ExportLive(BaseModel):
     joined: list[ExportLiveJoin]
-    hosted: list[str]
+    hosted: list[ExportHosted]
     answers_sent_as_captain: list[ExportLiveAnswer]
     proposals: list[ExportProposal]
 
@@ -253,17 +276,26 @@ class ExportHistory(BaseModel):
     details: dict[str, Any]
 
 
+class ExportAction(BaseModel):
+    at: datetime
+    action: str
+    on: str
+
+
 class Export(BaseModel):
     """Everything MingoQuiz stores about the member who asks (GET /api/me/export)."""
 
     exported_at: datetime
     account: ExportAccount
+    invite: ExportInvite | None
+    pending_hints: list[int]
     answers: list[ExportAnswer]
     mock_runs: list[ExportMockRun]
     live: ExportLive
     reports: list[ExportReport]
     sign_ins: list[ExportSignIn]
     account_history: list[ExportHistory]
+    actions: list[ExportAction]
 
 
 class UserPatch(In):

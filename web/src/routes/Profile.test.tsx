@@ -1,6 +1,6 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import { MEMBER, renderApp } from '../test/render'
 
 const me = { 'GET /api/me': { body: MEMBER } }
@@ -68,14 +68,19 @@ test('sign out clears the session and goes to the login page', async () => {
 
 test('members download their data and delete their account with their password', async () => {
   let attempt = 0
+  const saved = vi.fn(() => 'blob:export')
+  vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: saved, revokeObjectURL: () => {} }))
   const { sent } = renderApp('/profile', {
     'GET /api/me': () => (attempt < 2 ? { body: MEMBER } : { status: 401, body: { detail: 'Sign in first.' } }),
+    'GET /api/me/export': { body: { account: { email: MEMBER.email } } },
     'POST /api/me/delete': () =>
       ++attempt === 1
         ? { status: 403, body: { detail: 'x', fields: { password: 'Your password is wrong.' } } }
         : { status: 204 },
   })
-  expect(await screen.findByRole('link', { name: 'Download my data (JSON)' })).toHaveAttribute('href', '/api/me/export')
+  await userEvent.click(await screen.findByRole('button', { name: 'Download my data (JSON)' }))
+  await waitFor(() => expect(saved).toHaveBeenCalledOnce())
+  await userEvent.click(screen.getByText('Delete my account', { selector: 'summary' }))
   const remove = screen.getByRole('button', { name: 'Delete my account' })
   await userEvent.type(screen.getByLabelText('Your password'), 'tractive system 900V!')
   expect(remove).toBeDisabled()
@@ -83,8 +88,14 @@ test('members download their data and delete their account with their password',
   await userEvent.click(remove)
   expect(await screen.findByText('Your password is wrong.')).toBeInTheDocument()
   await userEvent.click(remove)
-  expect(await screen.findByText('Your account and everything in it were deleted.')).toBeInTheDocument()
+  expect(await screen.findByRole('heading', { name: 'Account deleted' })).toBeInTheDocument()
   expect(sent('POST /api/me/delete')[1].body).toEqual({ password: 'tractive system 900V!' })
+  vi.unstubAllGlobals()
+})
+
+test('a link to your data lands on it', async () => {
+  renderApp('/profile#your-data', me)
+  expect(await screen.findByRole('heading', { name: 'Your data' })).toHaveFocus()
 })
 
 test('the privacy notice is public and linked from every page', async () => {

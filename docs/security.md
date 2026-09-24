@@ -27,7 +27,7 @@ Details and reasons in [ADR 0006](adr/0006-personal-data.md); the notice members
 - Stored: email (admins only), display name, vertical, sub-departments, position, answers and XP, live quiz participation, reports, sign-in times, and an audit log of account changes. No analytics, trackers or third-party scripts; one strictly necessary session cookie.
 - Hosted in the EU (Hetzner). Backups kept 14 days.
 - Members can hide themselves from the leaderboard, download everything as JSON (Profile → Download my data) and delete their account with their password. Deletion is real: the row and everything cascading from it go; other people's live results stay without them.
-- Alumni: marked at each season's start, signed out and off the boards, deleted 365 days later by the nightly job unless reactivated. The audit log keeps two years.
+- Alumni and disabled accounts: signed out and off the boards, deleted 365 days after they stopped being active unless reactivated; admins can download or delete their data meanwhile. The audit log keeps two years, with invite notes never recorded. No app access log; Nginx logs rotate within 14 days.
 - FS-Quiz content is ODbL: attributed in the footer and on `/about`; not republished outside the team.
 
 Common-password list: NCSC top 100k via SecLists (MIT licence), filtered to 10+ characters.

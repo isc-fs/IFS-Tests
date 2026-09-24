@@ -33,8 +33,9 @@ def upgrade() -> None:
     )
     op.add_column("users", sa.Column("left_at", sa.DateTime(timezone=True), nullable=True))
     # ### end Alembic commands ###
-    # Existing alumni start their year before deletion now.
-    op.execute("UPDATE users SET left_at = now() WHERE status = 'alumni'")
+    # Accounts already inactive start their year before deletion now; invite notes leave the audit log.
+    op.execute("UPDATE users SET left_at = now() WHERE status <> 'active'")
+    op.execute("UPDATE audit_log SET details = details - 'note' WHERE action = 'invite.create'")
 
 
 def downgrade() -> None:
