@@ -26,7 +26,7 @@ _DASHES = {0x2212: "-", 0x2013: "-", 0x2014: "-"}
 _NUMBER = re.compile(r"^[+-]?\d+(?:[.,]\d+)?$")
 _RANGE = re.compile(r"^([+-]?\d+(?:[.,]\d+)?)\s*-\s*([+-]?\d+(?:[.,]\d+)?)$")
 _SEQUENCE = re.compile(r"^\d+(?:-\d+){2,}$")
-_OR = re.compile(r"\s+or\s+", re.IGNORECASE)
+_OR = re.compile(r"\sor\s", re.IGNORECASE)  # no quantifiers: linear on long runs of spaces
 MAX_TEXT = 24
 
 
@@ -119,7 +119,7 @@ def build_key(qtype: str, answers: list[dict[str, Any]], option_ids: list[int] |
             "options": [ids[i] for i in correct],
         }
     if qtype in ("input", "input-range"):
-        texts = [t for i in correct for t in _OR.split(answers[i]["text"] or "")]
+        texts = [t.strip() for i in correct for t in _OR.split(answers[i]["text"] or "")]
         alternatives = [_alternative(qtype, t) for t in texts]
         kinds = {a[0] for a in alternatives if a}
         if None not in alternatives and len(kinds) == 1:
