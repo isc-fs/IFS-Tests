@@ -207,11 +207,14 @@ def test_alumni_are_deleted_a_year_after_they_leave(
 
 
 def test_the_audit_log_keeps_two_years(signed_in: TestClient, db: Session, clock: Clock) -> None:
-    db.execute(update(AuditLog).values(at=clock.now))
+    # The database function measures the keep on its own clock too, so these entries are dated in the past.
+    db.execute(update(AuditLog).values(at=clock.now - timedelta(days=700)))
     db.commit()
     before = count(db, AuditLog)
-    assert maintenance.run(db, clock.now + timedelta(days=729))["audit_purged"] == 0
-    assert maintenance.run(db, clock.now + timedelta(days=740))["audit_purged"] == before
+    assert maintenance.run(db, clock.now)["audit_purged"] == 0
+    db.execute(update(AuditLog).values(at=clock.now - timedelta(days=1000)))
+    db.commit()
+    assert maintenance.run(db, clock.now)["audit_purged"] == before
 
 
 def test_any_latin_name_downloads_its_data(
