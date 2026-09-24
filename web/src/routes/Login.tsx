@@ -47,6 +47,7 @@ export default function Login() {
   return (
     <PublicPage title="Sign in">
       {params.get('expired') && <Notice tone="ok">Your session ended. Sign in to continue.</Notice>}
+      {params.get('deleted') && <Notice tone="ok">Your account and everything in it were deleted.</Notice>}
       <Form onSubmit={submit} error={missing.email || missing.password ? missing : signIn.error} className="stack">
         <Field
           label="Email"

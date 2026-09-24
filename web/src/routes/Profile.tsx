@@ -1,8 +1,9 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { useState } from 'react'
-import { useNavigate } from 'react-router'
+import { useEffect, useRef, useState } from 'react'
+import { Link, useLocation, useNavigate } from 'react-router'
 import {
   changePasswordMutation,
+  deleteAccountMutation,
   logoutMutation,
   subdepartmentsOptions,
   updateMeMutation,
@@ -11,7 +12,7 @@ import { type Me, Vertical } from '../api/types.gen'
 import { ErrorNotice, Field, Form, Notice, PASSWORD_HINT, SelectField, useFieldErrors } from '../components/Form'
 import { LevelCard } from '../components/LevelCard'
 import { RankRoad } from '../components/RankRoad'
-import { Page } from '../components/Page'
+import { APP_NAME, Page } from '../components/Page'
 import { ME_KEY, queryClient, useMe } from '../lib/api'
 import { toggle } from '../lib/live'
 import { POSITION_NAMES } from '../lib/xp'
@@ -34,6 +35,7 @@ export default function Profile() {
       <RankRoad me={user} />
       <ProfileForm user={user} />
       <PasswordForm />
+      <YourData />
       <section className="panel" aria-label="Session">
         <button type="button" className="secondary" onClick={() => signOut.mutate({})}>
           Sign out
@@ -174,5 +176,68 @@ function PasswordForm() {
         Change password
       </button>
     </Form>
+  )
+}
+
+/** Download everything, or delete the account for good (ADR 0006). */
+function YourData() {
+  const navigate = useNavigate()
+  const { hash } = useLocation()
+  const section = useRef<HTMLElement>(null)
+  const [password, setPassword] = useState('')
+  const [sure, setSure] = useState(false)
+  const remove = useMutation({
+    ...deleteAccountMutation(),
+    onSuccess: () => {
+      queryClient.clear()
+      navigate('/login?deleted=1')
+    },
+  })
+  const { errors, touch } = useFieldErrors(remove.error)
+  useEffect(() => {
+    if (hash === '#your-data') section.current?.scrollIntoView()
+  }, [hash])
+  return (
+    <section ref={section} id="your-data" className="panel stack" aria-labelledby="data-title">
+      <h2 id="data-title">Your data</h2>
+      <p>
+        Everything {APP_NAME} keeps about you: your account, every answer, mock and live quizzes, reports and sign-ins.{' '}
+        <Link to="/privacy">How we handle it</Link>
+      </p>
+      <p>
+        <a className="button secondary" href="/api/me/export" download>
+          Download my data (JSON)
+        </a>
+      </p>
+      <Form
+        onSubmit={() => remove.mutate({ body: { password } })}
+        error={remove.error}
+        className="stack danger-zone"
+        aria-labelledby="delete-title"
+      >
+        <h3 id="delete-title">Delete my account</h3>
+        <p className="muted">
+          Your account, answers, XP and rank go for good, and you leave the leaderboards. Tables you sat at in live
+          quizzes keep their results. This can&apos;t be undone.
+        </p>
+        <Field
+          label="Your password"
+          type="password"
+          autoComplete="current-password"
+          required
+          value={password}
+          onChange={(e) => (setPassword(e.target.value), touch('password'))}
+          error={errors.password}
+        />
+        <label className="check">
+          <input type="checkbox" checked={sure} onChange={(e) => setSure(e.target.checked)} />I understand everything is
+          deleted and can&apos;t be recovered
+        </label>
+        <ErrorNotice error={remove.error} />
+        <button type="submit" className="danger" disabled={!sure || !password || remove.isPending}>
+          Delete my account
+        </button>
+      </Form>
+    </section>
   )
 }

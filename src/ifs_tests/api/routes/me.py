@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, Response
 
 from ...db.models import User
 from ...domain import xp as rules
-from ...services import accounts, live, xp
+from ...services import accounts, live, privacy, xp
 from ..deps import AppSettings, Db, Member, Now
-from ..schemas import Aids, Me, PasswordChangeIn, ProfileIn, Progress, Step
+from ..schemas import Aids, DeleteAccountIn, Export, Me, PasswordChangeIn, ProfileIn, Progress, Step
+from .auth import clear_cookie
 
 router = APIRouter(prefix="/api/me", tags=["me"])
 
@@ -65,3 +66,18 @@ def change_password(
 ) -> None:
     keep = request.cookies[settings.session_cookie]
     accounts.change_password(db, user, body.current_password, body.new_password, keep, now)
+
+
+@router.get("/export")
+def export(user: Member, db: Db, now: Now, response: Response) -> Export:
+    name = f"mingoquiz-{user.display_name.replace(' ', '-').lower()}-{now.date().isoformat()}.json"
+    response.headers["Content-Disposition"] = f'attachment; filename="{name}"'
+    return Export.model_validate(privacy.export(db, user, now))
+
+
+@router.post("/delete", status_code=204)
+def delete_account(
+    body: DeleteAccountIn, response: Response, user: Member, db: Db, now: Now, settings: AppSettings
+) -> None:
+    privacy.delete_self(db, user, body.password, now)
+    clear_cookie(response, settings)

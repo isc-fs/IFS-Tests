@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session as DB
 
 from ..auth.sessions import purge_expired
 from ..db.models import Invite, PasswordReset
-from . import daily, xp
+from . import daily, privacy, xp
 
 KEEP_CLOSED_LINKS = timedelta(days=30)
 
@@ -26,6 +26,7 @@ def run(db: DB, now: datetime) -> dict[str, int]:
         "resets": cast(CursorResult[Any], resets).rowcount,
         "dailies_closed": daily.close_expired(db, now),
         "difficulty_changed": xp.recalibrate(db),
+        **privacy.purge(db, now),
     }
     db.commit()
     return counts

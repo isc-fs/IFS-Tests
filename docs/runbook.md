@@ -105,6 +105,9 @@ Staging then holds real member data: restore a staging dump again afterwards, or
 
 - The server reboots itself at 04:00 when security updates need it. Containers restart on their own; nightly jobs run earlier (daily questions 00:01, clean-up 03:00, backup 03:30).
 - Logs rotate automatically (3 × 10 MB per container).
+- **Season rollover (September):** Admin → *New season: who left the team?*, tick the leavers, *Mark as alumni*. They are deleted a year later unless set back to active.
+- **Someone asks to be deleted and can't sign in:** Admin → their row → *Delete account*, type their name. It's immediate; backups drop it within 14 days. For a copy of their data, have them sign in (a reset link if needed) and use Profile → *Download my data*.
+- The nightly clean-up prints what it removed, including `alumni_deleted` and `audit_purged`.
 
 ## 6. Secrets rotation
 

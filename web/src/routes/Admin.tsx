@@ -6,6 +6,8 @@ import {
   auditLogQueryKey,
   bankSummaryOptions,
   createInviteMutation,
+  deleteUserMutation,
+  markAlumniMutation,
   openInvitesOptions,
   openInvitesQueryKey,
   resetLinkMutation,
@@ -20,6 +22,10 @@ import { Page } from '../components/Page'
 import { queryClient, useMe } from '../lib/api'
 import { AREAS } from '../lib/areas'
 import { POSITION_NAMES } from '../lib/xp'
+
+const day = (iso: string) =>
+  new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+const YEAR = 365 * 24 * 3600 * 1000
 
 const when = (iso: string | null | undefined) =>
   iso
@@ -44,6 +50,7 @@ export default function Admin() {
     <Page title="Admin" eyebrow="Team">
       <InvitePanel />
       <Members selfId={me.id} />
+      <SeasonPanel selfId={me.id} />
       <BankPanel />
       <AuditTrail />
     </Page>
@@ -234,6 +241,12 @@ function Members({ selfId }: { selfId: number }) {
                   <span className="muted">
                     {u.email} · {u.vertical ?? 'no vertical'} · seen {when(u.last_seen)}
                   </span>
+                  {u.status === 'alumni' && u.left_at && (
+                    <span className="muted">
+                      Alumni since {day(u.left_at)}; deleted on{' '}
+                      {day(new Date(new Date(u.left_at).getTime() + YEAR).toISOString())} unless they come back.
+                    </span>
+                  )}
                 </div>
                 <SelectField
                   label="Role"
@@ -274,6 +287,7 @@ function Members({ selfId }: { selfId: number }) {
                 >
                   Reset link
                 </button>
+                {!self && <DeleteMember user={u} />}
                 {link?.userId === u.id && (
                   <div className="full">
                     <OneTimeLink
@@ -289,6 +303,107 @@ function Members({ selfId }: { selfId: number }) {
         })}
       </ul>
     </section>
+  )
+}
+
+/** Deleting someone else's account: typed confirmation, since there's no undo. */
+function DeleteMember({ user }: { user: AdminUser }) {
+  const [asking, setAsking] = useState(false)
+  const [typed, setTyped] = useState('')
+  const remove = useMutation({ ...deleteUserMutation(), onSuccess: () => refresh(usersQueryKey()) })
+  if (!asking) {
+    return (
+      <button
+        type="button"
+        className="link-button"
+        aria-label={`Delete the account of ${user.display_name}`}
+        onClick={() => setAsking(true)}
+      >
+        Delete account
+      </button>
+    )
+  }
+  return (
+    <div className="full stack danger-zone">
+      <p>
+        Delete {user.display_name}&apos;s account, answers and XP for good? Members can do this themselves from their
+        profile; do it here when someone asks and can&apos;t sign in.
+      </p>
+      <Field
+        label={`Type ${user.display_name} to confirm`}
+        value={typed}
+        onChange={(e) => setTyped(e.target.value)}
+        autoComplete="off"
+      />
+      <ErrorNotice error={remove.error} />
+      <div className="answer-actions">
+        <button
+          type="button"
+          className="danger"
+          disabled={typed.trim() !== user.display_name || remove.isPending}
+          onClick={() => remove.mutate({ path: { user_id: user.id } })}
+        >
+          Delete for good
+        </button>
+        <button type="button" className="link-button" onClick={() => (setAsking(false), setTyped(''))}>
+          Keep
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/** The start of a season: mark who left the team. They leave the boards and are deleted a year later. */
+function SeasonPanel({ selfId }: { selfId: number }) {
+  const users = useQuery(usersOptions())
+  const [picked, setPicked] = useState<number[]>([])
+  const [done, setDone] = useState('')
+  const mark = useMutation({
+    ...markAlumniMutation(),
+    onSuccess: ({ marked }) => {
+      setDone(`${marked} marked as alumni.`)
+      setPicked([])
+      refresh(usersQueryKey())
+    },
+  })
+  const active = (users.data ?? [])
+    .filter((u) => u.status === 'active' && u.id !== selfId)
+    .sort((a, b) => (a.last_seen ?? '').localeCompare(b.last_seen ?? ''))
+  const submit = () => {
+    if (window.confirm(`Mark ${picked.length} as alumni? They'll be signed out and leave the leaderboards.`))
+      mark.mutate({ body: { user_ids: picked } })
+  }
+  return (
+    <details className="panel">
+      <summary>New season: who left the team?</summary>
+      <div className="stack">
+        <p className="muted">
+          At the start of each season, tick the people who left. They&apos;re signed out and leave the boards, and their
+          accounts are deleted a year later unless you set them back to active. Least recently seen first.
+        </p>
+        <ul className="list season">
+          {active.map((u) => (
+            <li key={u.id}>
+              <label className="check">
+                <input
+                  type="checkbox"
+                  checked={picked.includes(u.id)}
+                  onChange={() =>
+                    setPicked(picked.includes(u.id) ? picked.filter((id) => id !== u.id) : [...picked, u.id])
+                  }
+                />
+                {u.display_name} <span className="muted">· seen {when(u.last_seen)}</span>
+              </label>
+            </li>
+          ))}
+        </ul>
+        <ErrorNotice error={mark.error} />
+        {done && <Notice tone="ok">{done}</Notice>}
+        <button type="button" onClick={submit} disabled={!picked.length || mark.isPending}>
+          {picked.length ? `Mark ${picked.length} as alumni` : 'Tick who left'}
+        </button>
+      </div>
+    </details>
   )
 }
 
@@ -353,6 +468,12 @@ const ACTIONS: Record<string, string> = {
   'report.resolve': 'handled a report on',
 }
 
+const DELETED: Record<string, string> = {
+  self: 'A member deleted their account',
+  admin: 'deleted an account',
+  retention: 'An alumni account was deleted, a year after they left',
+}
+
 const shown = (v: unknown) =>
   v === null || v === undefined || v === '' ? 'none' : Array.isArray(v) ? v.join(', ') : String(v)
 
@@ -385,6 +506,15 @@ function AuditTrail() {
       <ul className="audit">
         {log.data?.map((a) => {
           const self = a.actor === a.target
+          if (a.action === 'user.delete') {
+            const by = String(a.details.by)
+            return (
+              <li key={a.id}>
+                <time dateTime={a.at}>{when(a.at)}</time> {by === 'admin' ? `${a.actor ?? 'An admin'} ` : ''}
+                {DELETED[by] ?? 'deleted an account'}
+              </li>
+            )
+          }
           if (a.action === 'user.locked') {
             return (
               <li key={a.id}>

@@ -4,9 +4,19 @@ from typing import Annotated
 
 from fastapi import APIRouter, Path, Query
 
-from ...services import accounts, bank
+from ...services import accounts, bank, privacy
 from ..deps import Admin, AppSettings, Db, Now
-from ..schemas import AdminUser, AuditEntry, BankSummary, InviteIn, Link, OpenInvite, UserPatch
+from ..schemas import (
+    AdminUser,
+    AlumniIn,
+    AlumniOut,
+    AuditEntry,
+    BankSummary,
+    InviteIn,
+    Link,
+    OpenInvite,
+    UserPatch,
+)
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 Id = Annotated[int, Path(ge=1, le=2**31 - 1)]
@@ -18,10 +28,22 @@ def users(_: Admin, db: Db) -> list[AdminUser]:
 
 
 @router.patch("/users/{user_id}")
-def update_user(user_id: Id, body: UserPatch, admin: Admin, db: Db) -> AdminUser:
+def update_user(user_id: Id, body: UserPatch, admin: Admin, db: Db, now: Now) -> AdminUser:
     return AdminUser.model_validate(
-        accounts.update_user(db, admin, user_id, role=body.role, status=body.status, position=body.position)
+        accounts.update_user(
+            db, admin, user_id, role=body.role, status=body.status, position=body.position, now=now
+        )
     )
+
+
+@router.delete("/users/{user_id}", status_code=204)
+def delete_user(user_id: Id, admin: Admin, db: Db, now: Now) -> None:
+    privacy.delete_user(db, admin, user_id, now)
+
+
+@router.post("/alumni")
+def mark_alumni(body: AlumniIn, admin: Admin, db: Db, now: Now) -> AlumniOut:
+    return AlumniOut(marked=privacy.mark_alumni(db, admin, body.user_ids, now))
 
 
 @router.post("/users/{user_id}/reset-link", status_code=201)

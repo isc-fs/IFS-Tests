@@ -3,8 +3,8 @@
 import { type DefaultError, type InfiniteData, infiniteQueryOptions, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { advanceSession, answer, answerDaily, answerMock, answerPractice, auditLog, bankSummary, changePassword, configureSession, correctAnswer, createInvite, createSession, dailyHint, dailyStatus, editTable, endSession, events, getLeaderboard, inviteInfo, joinSession, login, logout, me, mockHint, mockQuizzes, mockState, movePlayer, nextQuestion, openInvites, type Options, practiceAreas, practiceHint, practiceQuestion, propose, register, removeCorrection, removePlayer, reportQuestion, reset, resetInfo, resetLink, resolveReport, results, reviewDaily, reviewQuestion, reviewQuestions, revokeInvite, revokeSessions, seatBySubdepartment, seatTables, sessionState, startDaily, startMock, subdepartments, topicAids, updateMe, updateQuestion, updateUser, users, verticalLeaderboard } from '../sdk.gen';
-import type { AdvanceSessionData, AdvanceSessionError, AdvanceSessionResponse, AnswerDailyData, AnswerDailyError, AnswerDailyResponse, AnswerData, AnswerError, AnswerMockData, AnswerMockError, AnswerMockResponse, AnswerPracticeData, AnswerPracticeError, AnswerPracticeResponse, AnswerResponse, AuditLogData, AuditLogError, AuditLogResponse, BankSummaryData, BankSummaryResponse, ChangePasswordData, ChangePasswordError, ChangePasswordResponse, ConfigureSessionData, ConfigureSessionError, ConfigureSessionResponse, CorrectAnswerData, CorrectAnswerError, CorrectAnswerResponse, CreateInviteData, CreateInviteError, CreateInviteResponse, CreateSessionData, CreateSessionError, CreateSessionResponse, DailyHintData, DailyHintError, DailyHintResponse, DailyStatusData, DailyStatusResponse, EditTableData, EditTableError, EditTableResponse, EndSessionData, EndSessionError, EndSessionResponse, EventsData, EventsError, GetLeaderboardData, GetLeaderboardError, GetLeaderboardResponse, InviteInfoData, InviteInfoError, InviteInfoResponse, JoinSessionData, JoinSessionError, JoinSessionResponse, LoginData, LoginError, LoginResponse, LogoutData, LogoutResponse, MeData, MeResponse, MockHintData, MockHintError, MockHintResponse, MockQuizzesData, MockQuizzesResponse, MockStateData, MockStateError, MockStateResponse, MovePlayerData, MovePlayerError, MovePlayerResponse, NextQuestionData, NextQuestionError, NextQuestionResponse, OpenInvitesData, OpenInvitesResponse, PracticeAreasData, PracticeAreasResponse, PracticeHintData, PracticeHintError, PracticeHintResponse, PracticeQuestionData, PracticeQuestionError, PracticeQuestionResponse, ProposeData, ProposeError, ProposeResponse, RegisterData, RegisterError, RegisterResponse, RemoveCorrectionData, RemoveCorrectionError, RemoveCorrectionResponse, RemovePlayerData, RemovePlayerError, RemovePlayerResponse, ReportQuestionData, ReportQuestionError, ReportQuestionResponse, ResetData, ResetError, ResetInfoData, ResetInfoError, ResetInfoResponse, ResetLinkData, ResetLinkError, ResetLinkResponse, ResetResponse, ResolveReportData, ResolveReportError, ResolveReportResponse, ResultsData, ResultsError, ReviewDailyData, ReviewDailyError, ReviewDailyResponse, ReviewQuestionData, ReviewQuestionError, ReviewQuestionResponse, ReviewQuestionsData, ReviewQuestionsError, ReviewQuestionsResponse, RevokeInviteData, RevokeInviteError, RevokeInviteResponse, RevokeSessionsData, RevokeSessionsError, RevokeSessionsResponse, SeatBySubdepartmentData, SeatBySubdepartmentError, SeatBySubdepartmentResponse, SeatTablesData, SeatTablesError, SeatTablesResponse, SessionStateData, SessionStateError, SessionStateResponse, StartDailyData, StartDailyError, StartDailyResponse, StartMockData, StartMockError, StartMockResponse, SubdepartmentsData, SubdepartmentsResponse, TopicAidsData, TopicAidsError, TopicAidsResponse, UpdateMeData, UpdateMeError, UpdateMeResponse, UpdateQuestionData, UpdateQuestionError, UpdateQuestionResponse, UpdateUserData, UpdateUserError, UpdateUserResponse, UsersData, UsersResponse, VerticalLeaderboardData, VerticalLeaderboardError, VerticalLeaderboardResponse } from '../types.gen';
+import { advanceSession, answer, answerDaily, answerMock, answerPractice, auditLog, bankSummary, changePassword, configureSession, correctAnswer, createInvite, createSession, dailyHint, dailyStatus, deleteAccount, deleteUser, editTable, endSession, events, export_, getLeaderboard, inviteInfo, joinSession, login, logout, markAlumni, me, mockHint, mockQuizzes, mockState, movePlayer, nextQuestion, openInvites, type Options, practiceAreas, practiceHint, practiceQuestion, propose, register, removeCorrection, removePlayer, reportQuestion, reset, resetInfo, resetLink, resolveReport, results, reviewDaily, reviewQuestion, reviewQuestions, revokeInvite, revokeSessions, seatBySubdepartment, seatTables, sessionState, startDaily, startMock, subdepartments, topicAids, updateMe, updateQuestion, updateUser, users, verticalLeaderboard } from '../sdk.gen';
+import type { AdvanceSessionData, AdvanceSessionError, AdvanceSessionResponse, AnswerDailyData, AnswerDailyError, AnswerDailyResponse, AnswerData, AnswerError, AnswerMockData, AnswerMockError, AnswerMockResponse, AnswerPracticeData, AnswerPracticeError, AnswerPracticeResponse, AnswerResponse, AuditLogData, AuditLogError, AuditLogResponse, BankSummaryData, BankSummaryResponse, ChangePasswordData, ChangePasswordError, ChangePasswordResponse, ConfigureSessionData, ConfigureSessionError, ConfigureSessionResponse, CorrectAnswerData, CorrectAnswerError, CorrectAnswerResponse, CreateInviteData, CreateInviteError, CreateInviteResponse, CreateSessionData, CreateSessionError, CreateSessionResponse, DailyHintData, DailyHintError, DailyHintResponse, DailyStatusData, DailyStatusResponse, DeleteAccountData, DeleteAccountError, DeleteAccountResponse, DeleteUserData, DeleteUserError, DeleteUserResponse, EditTableData, EditTableError, EditTableResponse, EndSessionData, EndSessionError, EndSessionResponse, EventsData, EventsError, ExportData, ExportResponse, GetLeaderboardData, GetLeaderboardError, GetLeaderboardResponse, InviteInfoData, InviteInfoError, InviteInfoResponse, JoinSessionData, JoinSessionError, JoinSessionResponse, LoginData, LoginError, LoginResponse, LogoutData, LogoutResponse, MarkAlumniData, MarkAlumniError, MarkAlumniResponse, MeData, MeResponse, MockHintData, MockHintError, MockHintResponse, MockQuizzesData, MockQuizzesResponse, MockStateData, MockStateError, MockStateResponse, MovePlayerData, MovePlayerError, MovePlayerResponse, NextQuestionData, NextQuestionError, NextQuestionResponse, OpenInvitesData, OpenInvitesResponse, PracticeAreasData, PracticeAreasResponse, PracticeHintData, PracticeHintError, PracticeHintResponse, PracticeQuestionData, PracticeQuestionError, PracticeQuestionResponse, ProposeData, ProposeError, ProposeResponse, RegisterData, RegisterError, RegisterResponse, RemoveCorrectionData, RemoveCorrectionError, RemoveCorrectionResponse, RemovePlayerData, RemovePlayerError, RemovePlayerResponse, ReportQuestionData, ReportQuestionError, ReportQuestionResponse, ResetData, ResetError, ResetInfoData, ResetInfoError, ResetInfoResponse, ResetLinkData, ResetLinkError, ResetLinkResponse, ResetResponse, ResolveReportData, ResolveReportError, ResolveReportResponse, ResultsData, ResultsError, ReviewDailyData, ReviewDailyError, ReviewDailyResponse, ReviewQuestionData, ReviewQuestionError, ReviewQuestionResponse, ReviewQuestionsData, ReviewQuestionsError, ReviewQuestionsResponse, RevokeInviteData, RevokeInviteError, RevokeInviteResponse, RevokeSessionsData, RevokeSessionsError, RevokeSessionsResponse, SeatBySubdepartmentData, SeatBySubdepartmentError, SeatBySubdepartmentResponse, SeatTablesData, SeatTablesError, SeatTablesResponse, SessionStateData, SessionStateError, SessionStateResponse, StartDailyData, StartDailyError, StartDailyResponse, StartMockData, StartMockError, StartMockResponse, SubdepartmentsData, SubdepartmentsResponse, TopicAidsData, TopicAidsError, TopicAidsResponse, UpdateMeData, UpdateMeError, UpdateMeResponse, UpdateQuestionData, UpdateQuestionError, UpdateQuestionResponse, UpdateUserData, UpdateUserError, UpdateUserResponse, UsersData, UsersResponse, VerticalLeaderboardData, VerticalLeaderboardError, VerticalLeaderboardResponse } from '../types.gen';
 
 /**
  * Login
@@ -193,6 +193,41 @@ export const changePasswordMutation = (options?: Partial<Options<ChangePasswordD
     return mutationOptions;
 };
 
+export const exportQueryKey = (options?: Options<ExportData>) => createQueryKey('export', options);
+
+/**
+ * Export
+ */
+export const exportOptions = (options?: Options<ExportData>) => queryOptions<ExportResponse, DefaultError, ExportResponse, ReturnType<typeof exportQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await export_({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: exportQueryKey(options)
+});
+
+/**
+ * Delete Account
+ */
+export const deleteAccountMutation = (options?: Partial<Options<DeleteAccountData>>): UseMutationOptions<DeleteAccountResponse, DeleteAccountError, Options<DeleteAccountData>> => {
+    const mutationOptions: UseMutationOptions<DeleteAccountResponse, DeleteAccountError, Options<DeleteAccountData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await deleteAccount({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
 export const usersQueryKey = (options?: Options<UsersData>) => createQueryKey('users', options);
 
 /**
@@ -212,12 +247,46 @@ export const usersOptions = (options?: Options<UsersData>) => queryOptions<Users
 });
 
 /**
+ * Delete User
+ */
+export const deleteUserMutation = (options?: Partial<Options<DeleteUserData>>): UseMutationOptions<DeleteUserResponse, DeleteUserError, Options<DeleteUserData>> => {
+    const mutationOptions: UseMutationOptions<DeleteUserResponse, DeleteUserError, Options<DeleteUserData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await deleteUser({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
  * Update User
  */
 export const updateUserMutation = (options?: Partial<Options<UpdateUserData>>): UseMutationOptions<UpdateUserResponse, UpdateUserError, Options<UpdateUserData>> => {
     const mutationOptions: UseMutationOptions<UpdateUserResponse, UpdateUserError, Options<UpdateUserData>> = {
         mutationFn: async (fnOptions) => {
             const { data } = await updateUser({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Mark Alumni
+ */
+export const markAlumniMutation = (options?: Partial<Options<MarkAlumniData>>): UseMutationOptions<MarkAlumniResponse, MarkAlumniError, Options<MarkAlumniData>> => {
+    const mutationOptions: UseMutationOptions<MarkAlumniResponse, MarkAlumniError, Options<MarkAlumniData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await markAlumni({
                 ...options,
                 ...fnOptions,
                 throwOnError: true

@@ -29,6 +29,10 @@ def _set_cookie(
     )
 
 
+def clear_cookie(response: Response, settings: Settings) -> None:
+    _set_cookie(response, settings, "", max_age=0)
+
+
 @router.post("/login")
 def login(body: LoginIn, request: Request, response: Response, db: Db, now: Now, settings: AppSettings) -> Me:
     old = request.cookies.get(settings.session_cookie)
@@ -42,7 +46,7 @@ def logout(request: Request, response: Response, db: Db, settings: AppSettings) 
     if token := request.cookies.get(settings.session_cookie):
         end_session(db, token)
         db.commit()
-    _set_cookie(response, settings, "", max_age=0)
+    clear_cookie(response, settings)
 
 
 @router.post("/invites/lookup")

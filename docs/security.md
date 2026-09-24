@@ -22,10 +22,13 @@ Proportionate to a team quiz site: solid defaults, nothing exotic. Report proble
 
 ## Personal data (GDPR)
 
-- Stored: email (admins only), display name, vertical, answers and scores. Nothing else; no analytics or trackers.
+Details and reasons in [ADR 0006](adr/0006-personal-data.md); the notice members read is `/privacy`.
+
+- Stored: email (admins only), display name, vertical, sub-departments, position, answers and XP, live quiz participation, reports, sign-in times, and an audit log of account changes. No analytics, trackers or third-party scripts; one strictly necessary session cookie.
 - Hosted in the EU (Hetzner). Backups kept 14 days.
-- Members can hide themselves from the leaderboard. Planned before launch (feat/13): data export, account deletion, alumni anonymisation at season rollover.
-- FS-Quiz content is ODbL: attributed in the footer; not republished outside the team.
+- Members can hide themselves from the leaderboard, download everything as JSON (Profile → Download my data) and delete their account with their password. Deletion is real: the row and everything cascading from it go; other people's live results stay without them.
+- Alumni: marked at each season's start, signed out and off the boards, deleted 365 days later by the nightly job unless reactivated. The audit log keeps two years.
+- FS-Quiz content is ODbL: attributed in the footer and on `/about`; not republished outside the team.
 
 Common-password list: NCSC top 100k via SecLists (MIT licence), filtered to 10+ characters.
 

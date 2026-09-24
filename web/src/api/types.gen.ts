@@ -44,6 +44,12 @@ export type AdminUser = {
      * Locked Until
      */
     locked_until: string | null;
+    /**
+     * Left At
+     *
+     * Alumni since; the account is deleted a year later
+     */
+    left_at: string | null;
 };
 
 /**
@@ -78,6 +84,26 @@ export type Aids = {
      * Hint
      */
     hint: boolean;
+};
+
+/**
+ * AlumniIn
+ */
+export type AlumniIn = {
+    /**
+     * User Ids
+     */
+    user_ids: Array<number>;
+};
+
+/**
+ * AlumniOut
+ */
+export type AlumniOut = {
+    /**
+     * Marked
+     */
+    marked: number;
 };
 
 /**
@@ -281,6 +307,16 @@ export type DailyStatus = {
 };
 
 /**
+ * DeleteAccountIn
+ */
+export type DeleteAccountIn = {
+    /**
+     * Password
+     */
+    password: string;
+};
+
+/**
  * DocLink
  */
 export type DocLink = {
@@ -304,6 +340,326 @@ export type DocLink = {
      * The PDF on doc.fs-quiz.eu
      */
     url: string;
+};
+
+/**
+ * Export
+ *
+ * Everything MingoQuiz stores about the member who asks (GET /api/me/export).
+ */
+export type Export = {
+    /**
+     * Exported At
+     */
+    exported_at: string;
+    account: ExportAccount;
+    /**
+     * Answers
+     */
+    answers: Array<ExportAnswer>;
+    /**
+     * Mock Runs
+     */
+    mock_runs: Array<ExportMockRun>;
+    live: ExportLive;
+    /**
+     * Reports
+     */
+    reports: Array<ExportReport>;
+    /**
+     * Sign Ins
+     */
+    sign_ins: Array<ExportSignIn>;
+    /**
+     * Account History
+     */
+    account_history: Array<ExportHistory>;
+};
+
+/**
+ * ExportAccount
+ */
+export type ExportAccount = {
+    /**
+     * Email
+     */
+    email: string;
+    /**
+     * Display Name
+     */
+    display_name: string;
+    /**
+     * Vertical
+     */
+    vertical: string | null;
+    /**
+     * Subdepartments
+     */
+    subdepartments: Array<string>;
+    /**
+     * Position
+     */
+    position: string;
+    /**
+     * Role
+     */
+    role: string;
+    /**
+     * Status
+     */
+    status: string;
+    /**
+     * Xp
+     */
+    xp: number;
+    /**
+     * Hidden From Leaderboard
+     */
+    hidden_from_leaderboard: boolean;
+    /**
+     * Joined At
+     */
+    joined_at: string;
+    /**
+     * Last Seen
+     */
+    last_seen: string | null;
+};
+
+/**
+ * ExportAnswer
+ */
+export type ExportAnswer = {
+    /**
+     * Question Id
+     */
+    question_id: number;
+    /**
+     * Question
+     */
+    question: string;
+    /**
+     * Mode
+     */
+    mode: string;
+    /**
+     * Area
+     */
+    area: string | null;
+    /**
+     * Answer
+     */
+    answer: {
+        [key: string]: unknown;
+    };
+    /**
+     * Correct
+     *
+     * Hidden (null) while a mock run or live quiz is still going
+     */
+    correct: boolean | null;
+    /**
+     * Passed
+     */
+    passed: boolean;
+    /**
+     * Hint Used
+     */
+    hint_used: boolean;
+    /**
+     * Xp
+     */
+    xp: number;
+    /**
+     * Late
+     */
+    late: boolean | null;
+    /**
+     * Started At
+     */
+    started_at: string;
+    /**
+     * Submitted At
+     */
+    submitted_at: string | null;
+};
+
+/**
+ * ExportHistory
+ */
+export type ExportHistory = {
+    /**
+     * At
+     */
+    at: string;
+    /**
+     * Action
+     */
+    action: string;
+    /**
+     * Details
+     */
+    details: {
+        [key: string]: unknown;
+    };
+};
+
+/**
+ * ExportLive
+ */
+export type ExportLive = {
+    /**
+     * Joined
+     */
+    joined: Array<ExportLiveJoin>;
+    /**
+     * Hosted
+     */
+    hosted: Array<string>;
+    /**
+     * Answers Sent As Captain
+     */
+    answers_sent_as_captain: Array<ExportLiveAnswer>;
+    /**
+     * Proposals
+     */
+    proposals: Array<ExportProposal>;
+};
+
+/**
+ * ExportLiveAnswer
+ */
+export type ExportLiveAnswer = {
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Question
+     */
+    question: number;
+    /**
+     * Answer
+     */
+    answer: {
+        [key: string]: unknown;
+    };
+    /**
+     * Correct
+     */
+    correct: boolean | null;
+    /**
+     * Submitted At
+     */
+    submitted_at: string;
+};
+
+/**
+ * ExportLiveJoin
+ */
+export type ExportLiveJoin = {
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Created At
+     */
+    created_at: string;
+    /**
+     * Joined At
+     */
+    joined_at: string;
+    /**
+     * Table
+     */
+    table: string | null;
+};
+
+/**
+ * ExportMockRun
+ */
+export type ExportMockRun = {
+    /**
+     * Quiz Id
+     */
+    quiz_id: number;
+    /**
+     * Season
+     */
+    season: number;
+    /**
+     * Started At
+     */
+    started_at: string;
+    /**
+     * Finished At
+     */
+    finished_at: string | null;
+};
+
+/**
+ * ExportProposal
+ */
+export type ExportProposal = {
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Question
+     */
+    question: number;
+    /**
+     * Answer
+     */
+    answer: {
+        [key: string]: unknown;
+    };
+    /**
+     * At
+     */
+    at: string;
+};
+
+/**
+ * ExportReport
+ */
+export type ExportReport = {
+    /**
+     * Question Id
+     */
+    question_id: number;
+    /**
+     * Message
+     */
+    message: string;
+    /**
+     * At
+     */
+    at: string;
+    /**
+     * Handled At
+     */
+    handled_at: string | null;
+};
+
+/**
+ * ExportSignIn
+ */
+export type ExportSignIn = {
+    /**
+     * Started At
+     */
+    started_at: string;
+    /**
+     * Last Seen
+     */
+    last_seen: string;
+    /**
+     * Expires At
+     */
+    expires_at: string;
 };
 
 /**
@@ -2090,6 +2446,47 @@ export type ChangePasswordResponses = {
 
 export type ChangePasswordResponse = ChangePasswordResponses[keyof ChangePasswordResponses];
 
+export type ExportData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/me/export';
+};
+
+export type ExportResponses = {
+    /**
+     * Successful Response
+     */
+    200: Export;
+};
+
+export type ExportResponse = ExportResponses[keyof ExportResponses];
+
+export type DeleteAccountData = {
+    body: DeleteAccountIn;
+    path?: never;
+    query?: never;
+    url: '/api/me/delete';
+};
+
+export type DeleteAccountErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type DeleteAccountError = DeleteAccountErrors[keyof DeleteAccountErrors];
+
+export type DeleteAccountResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type DeleteAccountResponse = DeleteAccountResponses[keyof DeleteAccountResponses];
+
 export type UsersData = {
     body?: never;
     path?: never;
@@ -2107,6 +2504,36 @@ export type UsersResponses = {
 };
 
 export type UsersResponse = UsersResponses[keyof UsersResponses];
+
+export type DeleteUserData = {
+    body?: never;
+    path: {
+        /**
+         * User Id
+         */
+        user_id: number;
+    };
+    query?: never;
+    url: '/api/admin/users/{user_id}';
+};
+
+export type DeleteUserErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type DeleteUserError = DeleteUserErrors[keyof DeleteUserErrors];
+
+export type DeleteUserResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type DeleteUserResponse = DeleteUserResponses[keyof DeleteUserResponses];
 
 export type UpdateUserData = {
     body: UserPatch;
@@ -2137,6 +2564,31 @@ export type UpdateUserResponses = {
 };
 
 export type UpdateUserResponse = UpdateUserResponses[keyof UpdateUserResponses];
+
+export type MarkAlumniData = {
+    body: AlumniIn;
+    path?: never;
+    query?: never;
+    url: '/api/admin/alumni';
+};
+
+export type MarkAlumniErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type MarkAlumniError = MarkAlumniErrors[keyof MarkAlumniErrors];
+
+export type MarkAlumniResponses = {
+    /**
+     * Successful Response
+     */
+    200: AlumniOut;
+};
+
+export type MarkAlumniResponse = MarkAlumniResponses[keyof MarkAlumniResponses];
 
 export type ResetLinkData = {
     body?: never;

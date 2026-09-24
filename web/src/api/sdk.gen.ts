@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { AdvanceSessionData, AdvanceSessionErrors, AdvanceSessionResponses, AnswerDailyData, AnswerDailyErrors, AnswerDailyResponses, AnswerData, AnswerErrors, AnswerMockData, AnswerMockErrors, AnswerMockResponses, AnswerPracticeData, AnswerPracticeErrors, AnswerPracticeResponses, AnswerResponses, AuditLogData, AuditLogErrors, AuditLogResponses, BankSummaryData, BankSummaryResponses, ChangePasswordData, ChangePasswordErrors, ChangePasswordResponses, ConfigureSessionData, ConfigureSessionErrors, ConfigureSessionResponses, CorrectAnswerData, CorrectAnswerErrors, CorrectAnswerResponses, CreateInviteData, CreateInviteErrors, CreateInviteResponses, CreateSessionData, CreateSessionErrors, CreateSessionResponses, DailyHintData, DailyHintErrors, DailyHintResponses, DailyStatusData, DailyStatusResponses, EditTableData, EditTableErrors, EditTableResponses, EndSessionData, EndSessionErrors, EndSessionResponses, EventsData, EventsErrors, EventsResponses, GetLeaderboardData, GetLeaderboardErrors, GetLeaderboardResponses, InviteInfoData, InviteInfoErrors, InviteInfoResponses, JoinSessionData, JoinSessionErrors, JoinSessionResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutResponses, MeData, MeResponses, MockHintData, MockHintErrors, MockHintResponses, MockQuizzesData, MockQuizzesResponses, MockStateData, MockStateErrors, MockStateResponses, MovePlayerData, MovePlayerErrors, MovePlayerResponses, NextQuestionData, NextQuestionErrors, NextQuestionResponses, OpenInvitesData, OpenInvitesResponses, PracticeAreasData, PracticeAreasResponses, PracticeHintData, PracticeHintErrors, PracticeHintResponses, PracticeQuestionData, PracticeQuestionErrors, PracticeQuestionResponses, ProposeData, ProposeErrors, ProposeResponses, RegisterData, RegisterErrors, RegisterResponses, RemoveCorrectionData, RemoveCorrectionErrors, RemoveCorrectionResponses, RemovePlayerData, RemovePlayerErrors, RemovePlayerResponses, ReportQuestionData, ReportQuestionErrors, ReportQuestionResponses, ResetData, ResetErrors, ResetInfoData, ResetInfoErrors, ResetInfoResponses, ResetLinkData, ResetLinkErrors, ResetLinkResponses, ResetResponses, ResolveReportData, ResolveReportErrors, ResolveReportResponses, ResultsData, ResultsErrors, ResultsResponses, ReviewDailyData, ReviewDailyErrors, ReviewDailyResponses, ReviewQuestionData, ReviewQuestionErrors, ReviewQuestionResponses, ReviewQuestionsData, ReviewQuestionsErrors, ReviewQuestionsResponses, RevokeInviteData, RevokeInviteErrors, RevokeInviteResponses, RevokeSessionsData, RevokeSessionsErrors, RevokeSessionsResponses, SeatBySubdepartmentData, SeatBySubdepartmentErrors, SeatBySubdepartmentResponses, SeatTablesData, SeatTablesErrors, SeatTablesResponses, SessionStateData, SessionStateErrors, SessionStateResponses, StartDailyData, StartDailyErrors, StartDailyResponses, StartMockData, StartMockErrors, StartMockResponses, SubdepartmentsData, SubdepartmentsResponses, TopicAidsData, TopicAidsErrors, TopicAidsResponses, UpdateMeData, UpdateMeErrors, UpdateMeResponses, UpdateQuestionData, UpdateQuestionErrors, UpdateQuestionResponses, UpdateUserData, UpdateUserErrors, UpdateUserResponses, UsersData, UsersResponses, VerticalLeaderboardData, VerticalLeaderboardErrors, VerticalLeaderboardResponses } from './types.gen';
+import type { AdvanceSessionData, AdvanceSessionErrors, AdvanceSessionResponses, AnswerDailyData, AnswerDailyErrors, AnswerDailyResponses, AnswerData, AnswerErrors, AnswerMockData, AnswerMockErrors, AnswerMockResponses, AnswerPracticeData, AnswerPracticeErrors, AnswerPracticeResponses, AnswerResponses, AuditLogData, AuditLogErrors, AuditLogResponses, BankSummaryData, BankSummaryResponses, ChangePasswordData, ChangePasswordErrors, ChangePasswordResponses, ConfigureSessionData, ConfigureSessionErrors, ConfigureSessionResponses, CorrectAnswerData, CorrectAnswerErrors, CorrectAnswerResponses, CreateInviteData, CreateInviteErrors, CreateInviteResponses, CreateSessionData, CreateSessionErrors, CreateSessionResponses, DailyHintData, DailyHintErrors, DailyHintResponses, DailyStatusData, DailyStatusResponses, DeleteAccountData, DeleteAccountErrors, DeleteAccountResponses, DeleteUserData, DeleteUserErrors, DeleteUserResponses, EditTableData, EditTableErrors, EditTableResponses, EndSessionData, EndSessionErrors, EndSessionResponses, EventsData, EventsErrors, EventsResponses, ExportData, ExportResponses, GetLeaderboardData, GetLeaderboardErrors, GetLeaderboardResponses, InviteInfoData, InviteInfoErrors, InviteInfoResponses, JoinSessionData, JoinSessionErrors, JoinSessionResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutResponses, MarkAlumniData, MarkAlumniErrors, MarkAlumniResponses, MeData, MeResponses, MockHintData, MockHintErrors, MockHintResponses, MockQuizzesData, MockQuizzesResponses, MockStateData, MockStateErrors, MockStateResponses, MovePlayerData, MovePlayerErrors, MovePlayerResponses, NextQuestionData, NextQuestionErrors, NextQuestionResponses, OpenInvitesData, OpenInvitesResponses, PracticeAreasData, PracticeAreasResponses, PracticeHintData, PracticeHintErrors, PracticeHintResponses, PracticeQuestionData, PracticeQuestionErrors, PracticeQuestionResponses, ProposeData, ProposeErrors, ProposeResponses, RegisterData, RegisterErrors, RegisterResponses, RemoveCorrectionData, RemoveCorrectionErrors, RemoveCorrectionResponses, RemovePlayerData, RemovePlayerErrors, RemovePlayerResponses, ReportQuestionData, ReportQuestionErrors, ReportQuestionResponses, ResetData, ResetErrors, ResetInfoData, ResetInfoErrors, ResetInfoResponses, ResetLinkData, ResetLinkErrors, ResetLinkResponses, ResetResponses, ResolveReportData, ResolveReportErrors, ResolveReportResponses, ResultsData, ResultsErrors, ResultsResponses, ReviewDailyData, ReviewDailyErrors, ReviewDailyResponses, ReviewQuestionData, ReviewQuestionErrors, ReviewQuestionResponses, ReviewQuestionsData, ReviewQuestionsErrors, ReviewQuestionsResponses, RevokeInviteData, RevokeInviteErrors, RevokeInviteResponses, RevokeSessionsData, RevokeSessionsErrors, RevokeSessionsResponses, SeatBySubdepartmentData, SeatBySubdepartmentErrors, SeatBySubdepartmentResponses, SeatTablesData, SeatTablesErrors, SeatTablesResponses, SessionStateData, SessionStateErrors, SessionStateResponses, StartDailyData, StartDailyErrors, StartDailyResponses, StartMockData, StartMockErrors, StartMockResponses, SubdepartmentsData, SubdepartmentsResponses, TopicAidsData, TopicAidsErrors, TopicAidsResponses, UpdateMeData, UpdateMeErrors, UpdateMeResponses, UpdateQuestionData, UpdateQuestionErrors, UpdateQuestionResponses, UpdateUserData, UpdateUserErrors, UpdateUserResponses, UsersData, UsersResponses, VerticalLeaderboardData, VerticalLeaderboardErrors, VerticalLeaderboardResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -113,15 +113,49 @@ export const changePassword = <ThrowOnError extends boolean = false>(options: Op
 });
 
 /**
+ * Export
+ */
+export const export_ = <ThrowOnError extends boolean = false>(options?: Options<ExportData, ThrowOnError>): RequestResult<ExportResponses, unknown, ThrowOnError> => (options?.client ?? client).get<ExportResponses, unknown, ThrowOnError>({ url: '/api/me/export', ...options });
+
+/**
+ * Delete Account
+ */
+export const deleteAccount = <ThrowOnError extends boolean = false>(options: Options<DeleteAccountData, ThrowOnError>): RequestResult<DeleteAccountResponses, DeleteAccountErrors, ThrowOnError> => (options.client ?? client).post<DeleteAccountResponses, DeleteAccountErrors, ThrowOnError>({
+    url: '/api/me/delete',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
  * Users
  */
 export const users = <ThrowOnError extends boolean = false>(options?: Options<UsersData, ThrowOnError>): RequestResult<UsersResponses, unknown, ThrowOnError> => (options?.client ?? client).get<UsersResponses, unknown, ThrowOnError>({ url: '/api/admin/users', ...options });
+
+/**
+ * Delete User
+ */
+export const deleteUser = <ThrowOnError extends boolean = false>(options: Options<DeleteUserData, ThrowOnError>): RequestResult<DeleteUserResponses, DeleteUserErrors, ThrowOnError> => (options.client ?? client).delete<DeleteUserResponses, DeleteUserErrors, ThrowOnError>({ url: '/api/admin/users/{user_id}', ...options });
 
 /**
  * Update User
  */
 export const updateUser = <ThrowOnError extends boolean = false>(options: Options<UpdateUserData, ThrowOnError>): RequestResult<UpdateUserResponses, UpdateUserErrors, ThrowOnError> => (options.client ?? client).patch<UpdateUserResponses, UpdateUserErrors, ThrowOnError>({
     url: '/api/admin/users/{user_id}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Mark Alumni
+ */
+export const markAlumni = <ThrowOnError extends boolean = false>(options: Options<MarkAlumniData, ThrowOnError>): RequestResult<MarkAlumniResponses, MarkAlumniErrors, ThrowOnError> => (options.client ?? client).post<MarkAlumniResponses, MarkAlumniErrors, ThrowOnError>({
+    url: '/api/admin/alumni',
     ...options,
     headers: {
         'Content-Type': 'application/json',

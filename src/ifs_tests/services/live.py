@@ -101,6 +101,14 @@ def _finish(db: DB, s: LiveSession, now: datetime) -> None:
         _share(db, s, a, now)  # a rehearsal's XP, held back so it couldn't give answers away
 
 
+def finish_hosted(db: DB, host_id: int, now: datetime) -> None:
+    """End the sessions someone still hosts, before their account goes."""
+    for s in db.scalars(
+        select(LiveSession).where(LiveSession.host_id == host_id, LiveSession.state != "finished")
+    ):
+        _finish(db, s, now)
+
+
 def _expired(s: LiveSession, now: datetime) -> bool:
     return s.state == "open" and s.deadline_at is not None and timing.is_late(now, s.deadline_at)
 
@@ -526,7 +534,7 @@ def view(db: DB, user: User, code: str, now: datetime) -> View:
     if user.id != s.host_id and user.id not in players:  # admins too: they join like anyone else
         raise UserError("Join the live quiz first.", 403)
     names = dict(
-        db.execute(select(User.id, User.display_name).where(User.id.in_([*players, s.host_id])))
+        db.execute(select(User.id, User.display_name).where(User.id.in_([*players, s.host_id or 0])))
         .tuples()
         .all()
     )
@@ -553,7 +561,7 @@ def view(db: DB, user: User, code: str, now: datetime) -> View:
     ]
     out = View(
         session=s,
-        host_name=names.get(s.host_id, ""),
+        host_name=names.get(s.host_id or 0, "a former member"),
         role="host" if user.id == s.host_id else "player",
         my_table_id=me.table_id if me else None,
         captain=any(t.captain_id == user.id for t in tables),

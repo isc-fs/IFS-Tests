@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { expect, test } from 'vitest'
 import { MEMBER, renderApp } from '../test/render'
@@ -64,4 +64,35 @@ test('sign out clears the session and goes to the login page', async () => {
   await userEvent.click(await screen.findByRole('button', { name: 'Sign out' }))
   await waitFor(() => expect(router.state.location.pathname).toBe('/login'))
   expect(sent('POST /auth/logout')).toHaveLength(1)
+})
+
+test('members download their data and delete their account with their password', async () => {
+  let attempt = 0
+  const { sent } = renderApp('/profile', {
+    'GET /api/me': () => (attempt < 2 ? { body: MEMBER } : { status: 401, body: { detail: 'Sign in first.' } }),
+    'POST /api/me/delete': () =>
+      ++attempt === 1
+        ? { status: 403, body: { detail: 'x', fields: { password: 'Your password is wrong.' } } }
+        : { status: 204 },
+  })
+  expect(await screen.findByRole('link', { name: 'Download my data (JSON)' })).toHaveAttribute('href', '/api/me/export')
+  const remove = screen.getByRole('button', { name: 'Delete my account' })
+  await userEvent.type(screen.getByLabelText('Your password'), 'tractive system 900V!')
+  expect(remove).toBeDisabled()
+  await userEvent.click(screen.getByLabelText(/I understand everything is deleted/))
+  await userEvent.click(remove)
+  expect(await screen.findByText('Your password is wrong.')).toBeInTheDocument()
+  await userEvent.click(remove)
+  expect(await screen.findByText('Your account and everything in it were deleted.')).toBeInTheDocument()
+  expect(sent('POST /api/me/delete')[1].body).toEqual({ password: 'tractive system 900V!' })
+})
+
+test('the privacy notice is public and linked from every page', async () => {
+  renderApp('/privacy', {})
+  expect(await screen.findByRole('heading', { level: 1, name: 'Privacy' })).toBeInTheDocument()
+  expect(screen.getByText(/deleted a year later/)).toBeInTheDocument()
+  const footer = screen.getByRole('navigation', { name: 'About this site' })
+  await userEvent.click(within(footer).getByRole('link', { name: 'About' }))
+  expect(await screen.findByRole('heading', { name: 'About MingoQuiz' })).toBeInTheDocument()
+  expect(screen.getByRole('link', { name: 'Open Database License (ODbL)' })).toBeInTheDocument()
 })

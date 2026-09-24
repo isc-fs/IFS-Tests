@@ -36,8 +36,14 @@ export function Shell({ children }: { children: ReactNode }) {
     <div className="shell isc-light">
       {children}
       <footer className="footer">
-        Questions from <a href="https://fs-quiz.eu">FS-Quiz</a> (Yannik Ottens), licensed under the{' '}
-        <a href="https://opendatacommons.org/licenses/odbl/">ODbL</a>.
+        <p>
+          Questions from <a href="https://fs-quiz.eu">FS-Quiz</a> (Yannik Ottens), licensed under the{' '}
+          <a href="https://opendatacommons.org/licenses/odbl/">ODbL</a>.
+        </p>
+        <nav aria-label="About this site">
+          <Link to="/about">About</Link>
+          <Link to="/privacy">Privacy</Link>
+        </nav>
       </footer>
     </div>
   )
