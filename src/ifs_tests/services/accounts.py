@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import func, select, update
@@ -114,7 +114,8 @@ def create_invite(
     )
     db.add(invite)
     db.flush()
-    audit(db, actor, "invite.create", f"invite:{invite.id}", role=role, vertical=vertical, note=invite.note)
+    # The note names someone who may never join: it stays on the invite (gone 30 days after it closes), not here.
+    audit(db, actor, "invite.create", f"invite:{invite.id}", role=role, vertical=vertical)
     db.commit()
     return token, invite
 
@@ -353,6 +354,7 @@ def update_user(
     role: str | None = None,
     status: str | None = None,
     position: str | None = None,
+    now: datetime | None = None,
 ) -> User:
     if user_id == actor.id and (role is not None or status is not None):
         raise AccountError("You can't change your own role or status.", 403)
@@ -377,6 +379,7 @@ def update_user(
     if status is not None and status != user.status:
         changes["status"] = [user.status, status]
         user.status = status
+        user.left_at = None if status == "active" else (user.left_at or now or datetime.now(UTC))
         if status != "active":
             end_all_sessions(db, user.id)
     if changes:
@@ -427,7 +430,7 @@ def recent_audit(db: DB, limit: int) -> list[dict[str, Any]]:
             "at": e.at,
             "action": e.action,
             "actor": names.get(e.actor_id) if e.actor_id else None,
-            "target": names.get(targets[e.id], e.target) if e.id in targets else e.target,
+            "target": names.get(targets[e.id], "a deleted account") if e.id in targets else e.target,
             "details": e.details,
         }
         for e in entries

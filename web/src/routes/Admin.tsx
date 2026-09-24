@@ -6,6 +6,8 @@ import {
   auditLogQueryKey,
   bankSummaryOptions,
   createInviteMutation,
+  deleteUserMutation,
+  markAlumniMutation,
   openInvitesOptions,
   openInvitesQueryKey,
   resetLinkMutation,
@@ -14,12 +16,17 @@ import {
   usersOptions,
   usersQueryKey,
 } from '../api/@tanstack/react-query.gen'
+import { exportUser } from '../api/sdk.gen'
 import { type AdminUser, type InviteIn, type Position, Role, Status, Vertical } from '../api/types.gen'
 import { ErrorNotice, Field, Form, Notice, SelectField } from '../components/Form'
 import { Page } from '../components/Page'
-import { queryClient, useMe } from '../lib/api'
+import { queryClient, saveJson, useMe } from '../lib/api'
 import { AREAS } from '../lib/areas'
 import { POSITION_NAMES } from '../lib/xp'
+
+const day = (iso: string) =>
+  new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+const YEAR = 365 * 24 * 3600 * 1000
 
 const when = (iso: string | null | undefined) =>
   iso
@@ -44,6 +51,7 @@ export default function Admin() {
     <Page title="Admin" eyebrow="Team">
       <InvitePanel />
       <Members selfId={me.id} />
+      <SeasonPanel selfId={me.id} />
       <BankPanel />
       <AuditTrail />
     </Page>
@@ -178,6 +186,11 @@ function Members({ selfId }: { selfId: number }) {
   const users = useQuery(usersOptions())
   const [query, setQuery] = useState('')
   const [changed, setChanged] = useState('')
+  const heading = useRef<HTMLHeadingElement>(null)
+  const deleted = (message: string) => {
+    setChanged(message)
+    heading.current?.focus()
+  }
   const [link, setLink] = useState<{ userId: number; url: string; expires: string } | null>(null)
   const update = useMutation({
     ...updateUserMutation(),
@@ -203,7 +216,9 @@ function Members({ selfId }: { selfId: number }) {
 
   return (
     <section className="panel stack" aria-labelledby="members-title">
-      <h2 id="members-title">Members ({users.data?.length ?? '…'})</h2>
+      <h2 id="members-title" ref={heading} tabIndex={-1}>
+        Members ({users.data?.length ?? '…'})
+      </h2>
       {(users.data?.length ?? 0) > 5 && (
         <Field
           label="Find a member"
@@ -234,6 +249,12 @@ function Members({ selfId }: { selfId: number }) {
                   <span className="muted">
                     {u.email} · {u.vertical ?? 'no vertical'} · seen {when(u.last_seen)}
                   </span>
+                  {u.status === 'alumni' && u.left_at && (
+                    <span className="muted">
+                      Alumni since {day(u.left_at)}; deleted on{' '}
+                      {day(new Date(new Date(u.left_at).getTime() + YEAR).toISOString())} unless they come back.
+                    </span>
+                  )}
                 </div>
                 <SelectField
                   label="Role"
@@ -274,6 +295,8 @@ function Members({ selfId }: { selfId: number }) {
                 >
                   Reset link
                 </button>
+                {!self && <ExportMember user={u} />}
+                {!self && <DeleteMember user={u} onDeleted={deleted} />}
                 {link?.userId === u.id && (
                   <div className="full">
                     <OneTimeLink
@@ -289,6 +312,188 @@ function Members({ selfId }: { selfId: number }) {
         })}
       </ul>
     </section>
+  )
+}
+
+/** Accents and case don't have to match: some names can't be typed on every keyboard. */
+const loose = (name: string) => name.normalize('NFKD').replace(/\p{M}/gu, '').replace(/ı/g, 'i').toLowerCase().trim()
+
+/** Deleting someone else's account: typed confirmation, since there's no undo. */
+function DeleteMember({ user, onDeleted }: { user: AdminUser; onDeleted: (message: string) => void }) {
+  const [asking, setAsking] = useState(false)
+  const [typed, setTyped] = useState('')
+  const open = useRef<HTMLButtonElement>(null)
+  const box = useRef<HTMLFormElement>(null)
+  const remove = useMutation({
+    ...deleteUserMutation(),
+    onSuccess: () => {
+      onDeleted(`Deleted ${user.display_name}'s account.`)
+      refresh(usersQueryKey())
+    },
+  })
+  useEffect(() => {
+    if (asking) box.current?.querySelector('input')?.focus()
+  }, [asking])
+  const keep = () => {
+    setAsking(false)
+    setTyped('')
+    requestAnimationFrame(() => open.current?.focus())
+  }
+  if (!asking) {
+    return (
+      <button
+        ref={open}
+        type="button"
+        className="link-button"
+        aria-label={`Delete the account of ${user.display_name}`}
+        onClick={() => setAsking(true)}
+      >
+        Delete account
+      </button>
+    )
+  }
+  const matches = loose(typed) === loose(user.display_name)
+  return (
+    <form
+      ref={box}
+      className="full stack danger-zone"
+      onSubmit={(e) => {
+        e.preventDefault()
+        if (matches && !remove.isPending) remove.mutate({ path: { user_id: user.id } })
+      }}
+    >
+      <p>
+        Delete {user.display_name}&apos;s account, answers and XP for good? Members can do this themselves from their
+        profile; do it here when someone asks and can&apos;t sign in.
+      </p>
+      <Field
+        label={`Type ${user.display_name} to confirm`}
+        value={typed}
+        onChange={(e) => setTyped(e.target.value)}
+        autoComplete="off"
+      />
+      <ErrorNotice error={remove.error} />
+      <div className="answer-actions">
+        <button type="submit" className="danger" disabled={!matches || remove.isPending}>
+          Delete for good
+        </button>
+        <button type="button" className="link-button" onClick={keep}>
+          Keep
+        </button>
+      </div>
+    </form>
+  )
+}
+
+/** For someone who can't sign in (alumni, disabled) and asks for a copy of their data. */
+function ExportMember({ user }: { user: AdminUser }) {
+  const download = useMutation({
+    mutationFn: async () => (await exportUser({ path: { user_id: user.id }, throwOnError: true })).data,
+    onSuccess: (data) => {
+      saveJson(data, `mingoquiz-export-${user.id}-${new Date().toISOString().slice(0, 10)}.json`)
+      refresh()
+    },
+  })
+  return (
+    <>
+      <button
+        type="button"
+        className="link-button"
+        aria-label={`Download the data of ${user.display_name}`}
+        disabled={download.isPending}
+        onClick={() => download.mutate()}
+      >
+        Download their data
+      </button>
+      <ErrorNotice error={download.error} />
+    </>
+  )
+}
+
+const seen = (iso: string | null | undefined) =>
+  iso ? new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : 'never'
+
+const MONTH = 30 * 24 * 3600 * 1000
+
+/** The start of a season: mark who left the team. They leave the boards and are deleted a year later. */
+function SeasonPanel({ selfId }: { selfId: number }) {
+  const users = useQuery(usersOptions())
+  const [picked, setPicked] = useState<number[]>([])
+  const [query, setQuery] = useState('')
+  const [months, setMonths] = useState(6)
+  const [now] = useState(() => Date.now())
+  const [done, setDone] = useState('')
+  const mark = useMutation({
+    ...markAlumniMutation(),
+    onSuccess: ({ marked }) => {
+      setDone(`${marked} marked as alumni.`)
+      setPicked([])
+      refresh(usersQueryKey())
+    },
+  })
+  const active = (users.data ?? [])
+    .filter((u) => u.status === 'active' && u.id !== selfId)
+    .sort((a, b) => (a.last_seen ?? '').localeCompare(b.last_seen ?? ''))
+  const q = query.trim().toLowerCase()
+  const shown = active.filter((u) => matches(u, q))
+  const quiet = active.filter((u) => !u.last_seen || now - new Date(u.last_seen).getTime() > months * MONTH)
+  const flip = (id: number) => setPicked(picked.includes(id) ? picked.filter((p) => p !== id) : [...picked, id])
+  const submit = () => {
+    if (window.confirm(`Mark ${picked.length} as alumni? They'll be signed out and leave the leaderboards.`))
+      mark.mutate({ body: { user_ids: picked } })
+  }
+  return (
+    <details className="panel">
+      <summary>New season: who left the team?</summary>
+      <div className="stack">
+        <p className="muted">
+          At the start of each season, tick the people who left. They&apos;re signed out and leave the boards, and their
+          accounts are deleted a year later unless you set them back to active. Least recently seen first.
+        </p>
+        <div className="row">
+          <div className="grow">
+            <Field label="Find someone" type="search" value={query} onChange={(e) => setQuery(e.target.value)} />
+          </div>
+          <SelectField label="Not seen for" value={months} onChange={(e) => setMonths(Number(e.target.value))}>
+            {[3, 6, 12].map((m) => (
+              <option key={m} value={m}>
+                {m} months
+              </option>
+            ))}
+          </SelectField>
+          <button
+            type="button"
+            className="secondary"
+            disabled={!quiet.length}
+            onClick={() => setPicked([...new Set([...picked, ...quiet.map((u) => u.id)])])}
+          >
+            Tick those {quiet.length}
+          </button>
+        </div>
+        <ul className="list season">
+          {shown.map((u) => (
+            <li key={u.id}>
+              <label className="check">
+                <input type="checkbox" checked={picked.includes(u.id)} onChange={() => flip(u.id)} />
+                <span>
+                  {u.display_name}{' '}
+                  <span className="muted">
+                    · {u.vertical ?? 'no vertical'} · seen {seen(u.last_seen)}
+                  </span>
+                </span>
+              </label>
+            </li>
+          ))}
+        </ul>
+        <ErrorNotice error={mark.error} />
+        {done && <Notice tone="ok">{done}</Notice>}
+        <div className="season-actions">
+          <button type="button" onClick={submit} disabled={!picked.length || mark.isPending}>
+            Mark {picked.length} as alumni
+          </button>
+        </div>
+      </div>
+    </details>
   )
 }
 
@@ -351,6 +556,13 @@ const ACTIONS: Record<string, string> = {
   'question.answer': 'corrected the answer of',
   'question.answer_cleared': 'removed the correction of',
   'report.resolve': 'handled a report on',
+  'user.export': 'downloaded the data of',
+}
+
+const DELETED: Record<string, string> = {
+  self: 'A member deleted their account',
+  admin: 'deleted an account',
+  retention: 'An alumni account was deleted, a year after they left',
 }
 
 const shown = (v: unknown) =>
@@ -385,6 +597,15 @@ function AuditTrail() {
       <ul className="audit">
         {log.data?.map((a) => {
           const self = a.actor === a.target
+          if (a.action === 'user.delete') {
+            const by = String(a.details.by)
+            return (
+              <li key={a.id}>
+                <time dateTime={a.at}>{when(a.at)}</time> {by === 'admin' ? `${a.actor ?? 'An admin'} ` : ''}
+                {DELETED[by] ?? 'deleted an account'}
+              </li>
+            )
+          }
           if (a.action === 'user.locked') {
             return (
               <li key={a.id}>

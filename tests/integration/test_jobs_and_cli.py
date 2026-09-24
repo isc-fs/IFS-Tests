@@ -33,7 +33,7 @@ def test_maintenance_removes_only_stale_rows_and_is_idempotent(db: Session, cloc
     accounts.create_reset(db, admin, admin.id, clock.now - timedelta(days=40))
     accounts.create_reset(db, admin, admin.id, clock.now)
 
-    quiet = {"dailies_closed": 0, "difficulty_changed": 0}
+    quiet = {"dailies_closed": 0, "difficulty_changed": 0, "alumni_deleted": 0, "audit_purged": 0}
     assert maintenance.run(db, clock.now) == {"sessions": 2, "invites": 1, "resets": 1, **quiet}
     assert maintenance.run(db, clock.now) == {"sessions": 0, "invites": 0, "resets": 0, **quiet}
     for model in (LoginSession, Invite, PasswordReset):

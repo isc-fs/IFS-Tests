@@ -13,13 +13,14 @@ import pytest
 from sqlalchemy import Engine, func, select, update
 from sqlalchemy.orm import Session, sessionmaker
 
+from ifs_tests.auth.passwords import hash_password
 from ifs_tests.bank import images
 from ifs_tests.bank.mirror import load_bank
 from ifs_tests.bank.sample import SAMPLE_DIR
 from ifs_tests.db.models import AnswerOption, Attempt, DailyQuestion, MockSession, Question, User
 from ifs_tests.domain.daily import madrid_day
 from ifs_tests.domain.xp import award, floor_for, level_for
-from ifs_tests.services import accounts, daily, live, mock, practice, review
+from ifs_tests.services import accounts, daily, live, mock, practice, privacy, review
 from ifs_tests.services import bank as bank_service
 from ifs_tests.services import xp as xp_service
 from ifs_tests.services.bank import import_bank
@@ -62,6 +63,25 @@ def test_two_admins_demoting_each_other_leave_one_admin(db: Session, app_engine:
     assert sum(isinstance(r, accounts.AccountError) and r.status == 409 for r in results) == 1
     admins = db.scalar(select(func.count()).where(User.role == "admin", User.status == "active"))
     assert admins == 1
+
+
+def test_two_admins_deleting_their_accounts_at_once_leave_one_admin(db: Session, app_engine: Engine) -> None:
+    a = accounts.create_first_admin(db, "a@x.com", "Alpha", "pit lane boss 2026", NOW)
+    b = User(
+        email="b@x.com", password_hash=hash_password("pit lane boss 2026"), display_name="Bravo", role="admin"
+    )
+    db.add(b)
+    db.commit()
+    results = race(
+        app_engine,
+        *[
+            (lambda s, u=u: privacy.delete_self(s, s.get_one(User, u), "pit lane boss 2026", NOW))
+            for u in (a.id, b.id)
+        ],
+    )
+    assert sum(isinstance(r, accounts.AccountError) and r.status == 409 for r in results) == 1
+    assert sum(r is None for r in results) == 1
+    assert db.scalar(select(func.count()).where(User.role == "admin")) == 1
 
 
 def test_simultaneous_registrations_with_the_same_email_give_one_account_and_one_409(

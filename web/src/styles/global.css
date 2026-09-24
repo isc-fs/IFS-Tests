@@ -135,6 +135,10 @@ h3 {
   max-width: 440px;
 }
 .footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px 24px;
   padding: 16px var(--gutter);
   font-size: var(--isc-fs-caption);
   color: var(--isc-c-text-mut);
@@ -262,13 +266,20 @@ button[aria-disabled='true'] {
   opacity: 0.6;
   cursor: not-allowed;
 }
-button.secondary {
+button.secondary,
+.button.secondary {
   background: var(--isc-white);
   color: var(--isc-green);
   border: 1px solid var(--isc-green);
 }
-button.secondary:hover {
+button.secondary:hover,
+.button.secondary:hover {
   background: var(--isc-cream);
+}
+button.danger,
+button.danger:hover {
+  background: var(--isc-c-error);
+  color: var(--isc-white);
 }
 .link-button,
 .link-button:hover {
@@ -1355,4 +1366,42 @@ details[open] > summary::before {
   z-index: 1;
   padding: 12px 0 calc(12px + env(safe-area-inset-bottom, 0px));
   background: var(--isc-c-bg);
+}
+.footer p {
+  margin: 0;
+}
+.footer nav {
+  display: flex;
+  gap: 16px;
+}
+.prose {
+  display: grid;
+  gap: 12px;
+  max-width: 68ch;
+}
+.prose > * {
+  margin: 0;
+}
+.prose h2 {
+  margin-top: 16px;
+}
+.prose ul {
+  margin: 0;
+  padding-left: 1.2em;
+  display: grid;
+  gap: 6px;
+}
+.danger-zone {
+  padding-top: 16px;
+  border-top: 1px solid var(--isc-c-border);
+}
+.list.season {
+  max-height: 60vh;
+  overflow-y: auto;
+}
+.season-actions {
+  position: sticky;
+  bottom: 0;
+  padding-block: 8px;
+  background: var(--isc-c-surface);
 }

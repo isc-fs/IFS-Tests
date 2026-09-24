@@ -209,3 +209,43 @@ test('an empty bank says how to load one', async () => {
   const panel = await screen.findByRole('region', { name: 'Question bank' })
   expect(panel).toHaveTextContent('No questions yet')
 })
+
+test("deleting someone's account takes typing their name", async () => {
+  const { sent } = renderApp('/admin', { ...base, 'DELETE /api/admin/users/2': { status: 204 } })
+  const marta = await row('Marta')
+  expect(within(await row('Chief')).queryByRole('button', { name: /Delete the account/ })).toBeNull()
+  await userEvent.click(within(marta).getByRole('button', { name: 'Delete the account of Marta' }))
+  const confirm = within(marta).getByRole('button', { name: 'Delete for good' })
+  expect(within(marta).getByLabelText('Type Marta to confirm')).toHaveFocus()
+  await userEvent.keyboard('mart')
+  expect(confirm).toBeDisabled()
+  await userEvent.keyboard('á{Enter}')
+  await waitFor(() => expect(sent('DELETE /api/admin/users/2')).toHaveLength(1))
+  expect(await screen.findByText("Deleted Marta's account.")).toBeInTheDocument()
+})
+
+test('the season rollover marks the people ticked as alumni, least recently seen first', async () => {
+  vi.stubGlobal('confirm', () => true)
+  const others = [
+    { ...USERS[1], id: 3, display_name: 'Leo', last_seen: '2026-03-01T08:00:00Z' },
+    { ...USERS[1], id: 4, display_name: 'Pau', status: 'alumni', left_at: '2026-09-01T00:00:00Z' },
+  ]
+  const { sent } = renderApp('/admin', {
+    ...base,
+    'GET /api/admin/users': { body: [...USERS, ...others] },
+    'POST /api/admin/alumni': { body: { marked: 1 } },
+  })
+  await userEvent.click(await screen.findByText('New season: who left the team?'))
+  const season = screen.getByText('New season: who left the team?').closest('details') as HTMLElement
+  const rows = within(season)
+    .getAllByRole('checkbox')
+    .map((c) => c.closest('label')?.textContent)
+  expect(rows).toHaveLength(2)
+  expect(rows[0]).toMatch(/^Leo · .* · seen 1 Mar 2026$/)
+  expect(rows[1]).toMatch(/^Marta · .* · seen 30 Sept 2026$/)
+  await userEvent.click(within(season).getByLabelText(/Leo/))
+  await userEvent.click(within(season).getByRole('button', { name: 'Mark 1 as alumni' }))
+  expect(await within(season).findByText('1 marked as alumni.')).toBeInTheDocument()
+  expect(sent('POST /api/admin/alumni')[0].body).toEqual({ user_ids: [3] })
+  expect(await screen.findByText(/Alumni since 1 Sept 2026; deleted on 1 Sept 2027/)).toBeInTheDocument()
+})

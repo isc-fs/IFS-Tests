@@ -1,18 +1,20 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { useState } from 'react'
-import { useNavigate } from 'react-router'
+import { useEffect, useRef, useState } from 'react'
+import { Link, useLocation, useNavigate } from 'react-router'
 import {
   changePasswordMutation,
+  deleteAccountMutation,
   logoutMutation,
   subdepartmentsOptions,
   updateMeMutation,
 } from '../api/@tanstack/react-query.gen'
+import { exportMyData } from '../api/sdk.gen'
 import { type Me, Vertical } from '../api/types.gen'
 import { ErrorNotice, Field, Form, Notice, PASSWORD_HINT, SelectField, useFieldErrors } from '../components/Form'
 import { LevelCard } from '../components/LevelCard'
 import { RankRoad } from '../components/RankRoad'
-import { Page } from '../components/Page'
-import { ME_KEY, queryClient, useMe } from '../lib/api'
+import { APP_NAME, Page } from '../components/Page'
+import { ME_KEY, queryClient, saveJson, useMe } from '../lib/api'
 import { toggle } from '../lib/live'
 import { POSITION_NAMES } from '../lib/xp'
 
@@ -39,6 +41,7 @@ export default function Profile() {
           Sign out
         </button>
       </section>
+      <YourData />
     </Page>
   )
 }
@@ -174,5 +177,79 @@ function PasswordForm() {
         Change password
       </button>
     </Form>
+  )
+}
+
+/** Download everything, or delete the account for good (ADR 0006). */
+function YourData() {
+  const navigate = useNavigate()
+  const { hash } = useLocation()
+  const title = useRef<HTMLHeadingElement>(null)
+  const [password, setPassword] = useState('')
+  const [sure, setSure] = useState(false)
+  const download = useMutation({
+    mutationFn: async () => (await exportMyData({ throwOnError: true })).data,
+    onSuccess: (data) => saveJson(data, `mingoquiz-export-${new Date().toISOString().slice(0, 10)}.json`),
+  })
+  const remove = useMutation({
+    ...deleteAccountMutation(),
+    onSuccess: () => {
+      queryClient.clear()
+      navigate('/login?deleted=1')
+    },
+  })
+  const { errors, touch } = useFieldErrors(remove.error)
+  useEffect(() => {
+    if (window.location.hash === '#your-data') title.current?.focus()
+  }, [hash])
+  return (
+    <section id="your-data" className="panel stack" aria-labelledby="data-title">
+      <h2 id="data-title" ref={title} tabIndex={-1}>
+        Your data
+      </h2>
+      <p>
+        Everything {APP_NAME} keeps about you: your account, every answer, mock and live quizzes, reports and sign-ins.{' '}
+        <Link to="/privacy">How we handle it</Link>
+      </p>
+      <p>
+        <button type="button" className="secondary" onClick={() => download.mutate()} disabled={download.isPending}>
+          Download my data (JSON)
+        </button>
+      </p>
+      <ErrorNotice error={download.error} />
+      <details className="danger-zone">
+        <summary>Delete my account</summary>
+        <Form
+          onSubmit={() => remove.mutate({ body: { password } })}
+          error={remove.error}
+          className="stack"
+          aria-label="Delete my account"
+        >
+          <p>
+            Your account, answers, XP and rank go for good, and you leave the leaderboards. Tables you sat at in live
+            quizzes keep their results, and problems you reported stay without your name. This can&apos;t be undone.
+          </p>
+          <Field
+            label="Your password"
+            type="password"
+            autoComplete="current-password"
+            required
+            value={password}
+            onChange={(e) => (setPassword(e.target.value), touch('password'))}
+            error={errors.password}
+          />
+          <label className="check">
+            <input type="checkbox" checked={sure} onChange={(e) => setSure(e.target.checked)} />I understand everything
+            is deleted and can&apos;t be recovered
+          </label>
+          <ErrorNotice error={remove.error} />
+          <div>
+            <button type="submit" className="danger" disabled={!sure || !password || remove.isPending}>
+              Delete my account
+            </button>
+          </div>
+        </Form>
+      </details>
+    </section>
   )
 }

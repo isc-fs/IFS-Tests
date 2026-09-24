@@ -30,7 +30,7 @@ export default function Layout() {
   }
   if (!user) {
     const expired = consumeSessionEnded() ? '&expired=1' : ''
-    return <Navigate to={`/login?next=${encodeURIComponent(location.pathname)}${expired}`} replace />
+    return <Navigate to={`/login?next=${encodeURIComponent(location.pathname + location.hash)}${expired}`} replace />
   }
 
   return (

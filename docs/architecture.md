@@ -17,6 +17,7 @@ Internet ──443──> Nginx (shared on the team server, TLS, rate limit on /
 
 - **One service, one origin.** FastAPI serves `/api/*` (JSON, OpenAPI), `/auth/*`, `/media/*` (mirrored FS-Quiz images), `/healthz` and the React SPA. No CORS, simple cookies. ([ADR 0001](adr/0001-fastapi-modular-monolith.md))
 - **Accounts:** invite link + password (Argon2id), opaque server-side sessions. ([ADR 0002](adr/0002-invite-and-password-auth.md))
+- **Personal data:** export, real deletion, alumni deleted a year after leaving, two-year audit log (`services/privacy.py`). ([ADR 0006](adr/0006-personal-data.md))
 - **Hosting:** Docker Compose on the team's Hetzner server, deployed by a maintainer with `deploy/deploy.sh`. ([ADR 0003](adr/0003-self-hosted-on-team-server.md))
 
 ## Code layout

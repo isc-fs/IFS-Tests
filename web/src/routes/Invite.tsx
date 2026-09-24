@@ -110,6 +110,10 @@ export default function Invite() {
               hint={PASSWORD_HINT}
               error={errors.password}
             />
+            <p className="muted">
+              Your answers and XP are kept while you&apos;re on the team; you can download or delete them any time.{' '}
+              <Link to="/privacy">How we handle your data</Link>
+            </p>
             <ErrorNotice error={join.error} />
             {refused && <Notice tone="error">{COOKIE_REFUSED}</Notice>}
             <button type="submit" disabled={join.isPending}>

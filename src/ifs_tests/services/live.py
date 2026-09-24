@@ -101,6 +101,24 @@ def _finish(db: DB, s: LiveSession, now: datetime) -> None:
         _share(db, s, a, now)  # a rehearsal's XP, held back so it couldn't give answers away
 
 
+def lock_hosted(db: DB, host_id: int) -> list[LiveSession]:
+    """The sessions someone still hosts, locked before their account is: the order answering takes (the
+    session, then the players' rows), so deleting a host can't deadlock with a captain's answer."""
+    stmt = (
+        select(LiveSession)
+        .where(LiveSession.host_id == host_id, LiveSession.state != "finished")
+        .order_by(LiveSession.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    return list(db.scalars(stmt))
+
+
+def finish(db: DB, sessions: list[LiveSession], now: datetime) -> None:
+    for s in sessions:
+        _finish(db, s, now)
+
+
 def _expired(s: LiveSession, now: datetime) -> bool:
     return s.state == "open" and s.deadline_at is not None and timing.is_late(now, s.deadline_at)
 
@@ -446,6 +464,8 @@ def _share(db: DB, s: LiveSession, a: LiveAnswer, now: datetime) -> None:
     for uid in a.member_ids:  # in id order, so tables answering at once lock players in the same order
         if uid in scored:  # moved to another table mid-question: their first table's answer counted
             continue
+        if db.scalar(select(User.id).where(User.id == uid).with_for_update(key_share=True)) is None:
+            continue  # deleted their account after sitting down
         xp.lock(db, uid)  # before checking what they've seen, so a first answer can't count twice
         repeat = xp.last_seen(db, uid, q.id, now) is not None
         granted = xp.grant(db, uid, q, "live", a.correct, now, repeat=repeat, passed=a.passed)
@@ -526,7 +546,7 @@ def view(db: DB, user: User, code: str, now: datetime) -> View:
     if user.id != s.host_id and user.id not in players:  # admins too: they join like anyone else
         raise UserError("Join the live quiz first.", 403)
     names = dict(
-        db.execute(select(User.id, User.display_name).where(User.id.in_([*players, s.host_id])))
+        db.execute(select(User.id, User.display_name).where(User.id.in_([*players, s.host_id or 0])))
         .tuples()
         .all()
     )
@@ -553,7 +573,7 @@ def view(db: DB, user: User, code: str, now: datetime) -> View:
     ]
     out = View(
         session=s,
-        host_name=names.get(s.host_id, ""),
+        host_name=names.get(s.host_id or 0, "a former member"),
         role="host" if user.id == s.host_id else "player",
         my_table_id=me.table_id if me else None,
         captain=any(t.captain_id == user.id for t in tables),

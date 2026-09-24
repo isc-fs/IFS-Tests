@@ -1,4 +1,4 @@
-import { lazy } from 'react'
+import { lazy, Suspense } from 'react'
 import { Link, type RouteObject } from 'react-router'
 import { PublicPage } from '../components/Page'
 import Daily from './Daily'
@@ -14,6 +14,8 @@ import Reset from './Reset'
 
 // The admin and review areas are only for a handful of people: keep them out of the main bundle.
 const Admin = lazy(() => import('./Admin'))
+const About = lazy(() => import('./About').then((m) => ({ default: m.About })))
+const Privacy = lazy(() => import('./About').then((m) => ({ default: m.Privacy })))
 const Review = lazy(() => import('./Review'))
 const ReviewDetail = lazy(() => import('./Review').then((m) => ({ default: m.ReviewDetail })))
 // Live sessions: their own bundle, with the QR encoder.
@@ -46,6 +48,24 @@ export const routes: RouteObject[] = [
   { path: '/login', element: <Login /> },
   { path: '/invite', element: <Invite /> },
   { path: '/reset', element: <Reset /> },
+  {
+    path: '/about',
+    errorElement: <Crashed />,
+    element: (
+      <Suspense fallback={null}>
+        <About />
+      </Suspense>
+    ),
+  },
+  {
+    path: '/privacy',
+    errorElement: <Crashed />,
+    element: (
+      <Suspense fallback={null}>
+        <Privacy />
+      </Suspense>
+    ),
+  },
   {
     element: <Layout />,
     errorElement: <Crashed />,

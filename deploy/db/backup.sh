@@ -9,9 +9,14 @@ dump() {
   file="/backups/${PGDATABASE}-$(date +%Y%m%d-%H%M%S)-$1.dump"
   pg_dump --format=custom --file="$file.part" || { rm -f "$file.part"; return 1; }
   mv "$file.part" "$file" || return 1
-  find /backups -name '*.dump' -mtime +"${KEEP_DAYS:-14}" -delete
   if [ -n "${HEARTBEAT_URL:-}" ]; then wget -q -T 10 -O /dev/null "$HEARTBEAT_URL" || true; fi
   echo "backup: $file"
+}
+
+# Dumps older than KEEP_DAYS go even when tonight's dump failed, so deleted accounts leave the backups on time.
+# -mtime +N matches files at least N+1 days old.
+prune() {
+  find /backups -name '*.dump' -mtime +"$((${KEEP_DAYS:-14} - 1))" -delete
 }
 
 if [ "${1:-}" = once ]; then
@@ -23,6 +28,7 @@ echo "backup: daily at ${BACKUP_AT:-03:30} $(date +%Z)"
 while true; do
   if [ "$(date +%H:%M)" = "${BACKUP_AT:-03:30}" ]; then
     dump nightly || echo "backup: FAILED, no heartbeat sent" >&2
+    prune
     sleep 61
   fi
   sleep 20

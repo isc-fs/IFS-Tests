@@ -127,6 +127,8 @@ class User(Base):
     xp: Mapped[int] = mapped_column(server_default="0")
     # Team Directory department codes (domain/live.py); the first one seats them in live quizzes.
     subdepartments: Mapped[list[str]] = mapped_column(ARRAY(String(8)), server_default="{}")
+    # When they stopped being active (alumni or disabled): the account is deleted a year later (ADR 0006).
+    left_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 Index("uq_users_display_name_lower", func.lower(User.display_name), unique=True)
@@ -377,7 +379,8 @@ class LiveSession(Base):
 
     id: Mapped[int] = mapped_column(Identity(), primary_key=True)
     code: Mapped[str] = mapped_column(String(6), unique=True)
-    host_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    # None once the host deleted their account: the players' results stay.
+    host_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
     config: Mapped[dict[str, Any]]
     state: Mapped[str] = mapped_column(String(16), server_default="lobby")
     position: Mapped[int] = mapped_column(server_default="-1")

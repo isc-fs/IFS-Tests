@@ -105,6 +105,10 @@ Staging then holds real member data: restore a staging dump again afterwards, or
 
 - The server reboots itself at 04:00 when security updates need it. Containers restart on their own; nightly jobs run earlier (daily questions 00:01, clean-up 03:00, backup 03:30).
 - Logs rotate automatically (3 × 10 MB per container).
+- **Season rollover (September):** Admin → *New season: who left the team?*, tick the leavers, *Mark as alumni*. They are deleted a year later unless set back to active.
+- **Someone asks for their data or to be deleted and can't sign in** (alumni and disabled accounts can't): Admin → their row → *Download their data* (a JSON file; send it privately) or *Delete account* and type their name. Deletion is immediate; backups drop it within 14 days. Members who can sign in do both from Profile → *Your data*.
+- **Restoring a backup** brings back accounts deleted since it was made. Before restoring, note the `user.delete` entries in the audit log newer than the dump (`SELECT target, at FROM audit_log WHERE action = 'user.delete' AND at > '<dump time>'`); after restoring, delete those accounts again from Admin (or `DELETE FROM users WHERE id IN (...)` as the migrator role).
+- The nightly clean-up prints what it removed, including `alumni_deleted` and `audit_purged`.
 
 ## 6. Secrets rotation
 
@@ -123,4 +127,5 @@ Same for `migrator` (`MIGRATOR_PASSWORD`) and `backup_ro` (`BACKUP_PASSWORD`, re
 - [ ] Restore drill done this term (4).
 - [ ] GitHub: maintainers are repo admins; leavers removed; branch rules still on.
 - [ ] Domain renewal date checked; certificates renewing.
-- [ ] Season rollover done in the app (alumni marked).
+- [ ] Season rollover done in the app (Admin → New season: alumni marked).
+- [ ] With the consultant: Nginx access logs for the quiz rotate within 14 days (the privacy notice says so).

@@ -154,6 +154,148 @@ class AdminUser(Out):
     last_seen: datetime | None
     created_at: datetime
     locked_until: datetime | None
+    left_at: datetime | None = Field(
+        description="Alumni or disabled since; the account is deleted a year later"
+    )
+
+
+class AlumniIn(In):
+    user_ids: list[Annotated[int, Field(ge=1, le=2**31 - 1)]] = Field(max_length=1000)
+
+
+class AlumniOut(BaseModel):
+    marked: int
+
+
+class DeleteAccountIn(In):
+    password: str = Field(max_length=256)
+
+
+class ExportAccount(BaseModel):
+    email: str
+    display_name: str
+    vertical: str | None
+    subdepartments: list[str]
+    position: str
+    role: str
+    status: str
+    xp: int
+    hidden_from_leaderboard: bool
+    joined_at: datetime
+    last_seen: datetime | None
+    failed_sign_ins: int
+    locked_until: datetime | None
+    inactive_since: datetime | None = Field(description="Alumni or disabled since")
+    deleted_on: datetime | None = Field(description="When the account will be deleted, if inactive")
+
+
+class ExportInvite(BaseModel):
+    role: str
+    vertical: str | None
+    note: str | None
+    used_at: datetime | None
+
+
+class ExportAnswer(BaseModel):
+    question_id: int
+    question: str
+    mode: str
+    area: str | None
+    answer: dict[str, Any]
+    correct: bool | None = Field(description="Hidden (null) while a mock run or live quiz is still going")
+    passed: bool
+    hint_used: bool
+    xp: int
+    late: bool | None
+    day: date | None
+    started_at: datetime
+    submitted_at: datetime | None
+
+
+class ExportMockRun(BaseModel):
+    quiz_id: int
+    season: int
+    counted: bool
+    started_at: datetime
+    finished_at: datetime | None
+
+
+class ExportLiveJoin(BaseModel):
+    code: str
+    created_at: datetime
+    joined_at: datetime
+    removed_by_host: bool
+    table: str | None
+    captain: bool
+
+
+class ExportHosted(BaseModel):
+    code: str
+    created_at: datetime
+    finished_at: datetime | None
+
+
+class ExportLiveAnswer(BaseModel):
+    code: str
+    question: int
+    answer: dict[str, Any]
+    correct: bool | None
+    submitted_at: datetime
+
+
+class ExportProposal(BaseModel):
+    code: str
+    question: int
+    answer: dict[str, Any]
+    at: datetime
+
+
+class ExportLive(BaseModel):
+    joined: list[ExportLiveJoin]
+    hosted: list[ExportHosted]
+    answers_sent_as_captain: list[ExportLiveAnswer]
+    proposals: list[ExportProposal]
+
+
+class ExportReport(BaseModel):
+    question_id: int
+    message: str
+    at: datetime
+    handled_at: datetime | None
+
+
+class ExportSignIn(BaseModel):
+    started_at: datetime
+    last_seen: datetime
+    expires_at: datetime
+
+
+class ExportHistory(BaseModel):
+    at: datetime
+    action: str
+    details: dict[str, Any]
+
+
+class ExportAction(BaseModel):
+    at: datetime
+    action: str
+    on: str
+
+
+class Export(BaseModel):
+    """Everything MingoQuiz stores about the member who asks (GET /api/me/export)."""
+
+    exported_at: datetime
+    account: ExportAccount
+    invite: ExportInvite | None
+    pending_hints: list[int]
+    answers: list[ExportAnswer]
+    mock_runs: list[ExportMockRun]
+    live: ExportLive
+    reports: list[ExportReport]
+    sign_ins: list[ExportSignIn]
+    account_history: list[ExportHistory]
+    actions: list[ExportAction]
 
 
 class UserPatch(In):

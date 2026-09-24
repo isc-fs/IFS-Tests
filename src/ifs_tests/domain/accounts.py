@@ -12,6 +12,9 @@ SESSION_ABSOLUTE = timedelta(days=30)
 SESSION_TOUCH_EVERY = timedelta(minutes=5)
 LOCK_AFTER = 5
 LOCK_FOR = timedelta(minutes=15)
+# Alumni accounts are deleted a year after they leave; the audit log keeps two years.
+ALUMNI_KEEP = timedelta(days=365)
+AUDIT_KEEP = timedelta(days=730)
 
 _DIGITS = set("0123456789")
 _NAME_PUNCTUATION = set(" .'-")

@@ -311,6 +311,61 @@
     }
    }
   },
+  "/api/me/export": {
+   "get": {
+    "tags": [
+     "me"
+    ],
+    "summary": "Export My Data",
+    "operationId": "export_my_data",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Export"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/me/delete": {
+   "post": {
+    "tags": [
+     "me"
+    ],
+    "summary": "Delete Account",
+    "operationId": "delete_account",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/DeleteAccountIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/api/admin/users": {
    "get": {
     "tags": [
@@ -373,6 +428,127 @@
        "application/json": {
         "schema": {
          "$ref": "#/components/schemas/AdminUser"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "delete": {
+    "tags": [
+     "admin"
+    ],
+    "summary": "Delete User",
+    "operationId": "delete_user",
+    "parameters": [
+     {
+      "name": "user_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "maximum": 2147483647,
+       "minimum": 1,
+       "title": "User Id"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/admin/users/{user_id}/export": {
+   "get": {
+    "tags": [
+     "admin"
+    ],
+    "summary": "Export User",
+    "description": "For someone who can't sign in (alumni, disabled) and asks for their data.",
+    "operationId": "export_user",
+    "parameters": [
+     {
+      "name": "user_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "maximum": 2147483647,
+       "minimum": 1,
+       "title": "User Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Export"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/admin/alumni": {
+   "post": {
+    "tags": [
+     "admin"
+    ],
+    "summary": "Mark Alumni",
+    "operationId": "mark_alumni",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/AlumniIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/AlumniOut"
         }
        }
       }
@@ -2650,6 +2826,19 @@
        }
       ],
       "title": "Locked Until"
+     },
+     "left_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Left At",
+      "description": "Alumni or disabled since; the account is deleted a year later"
      }
     },
     "type": "object",
@@ -2665,7 +2854,8 @@
      "leaderboard_opt_out",
      "last_seen",
      "created_at",
-     "locked_until"
+     "locked_until",
+     "left_at"
     ],
     "title": "AdminUser"
    },
@@ -2718,6 +2908,39 @@
      "hint"
     ],
     "title": "Aids"
+   },
+   "AlumniIn": {
+    "properties": {
+     "user_ids": {
+      "items": {
+       "type": "integer",
+       "maximum": 2147483647.0,
+       "minimum": 1.0
+      },
+      "type": "array",
+      "maxItems": 1000,
+      "title": "User Ids"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "user_ids"
+    ],
+    "title": "AlumniIn"
+   },
+   "AlumniOut": {
+    "properties": {
+     "marked": {
+      "type": "integer",
+      "title": "Marked"
+     }
+    },
+    "type": "object",
+    "required": [
+     "marked"
+    ],
+    "title": "AlumniOut"
    },
    "AnswerIn": {
     "properties": {
@@ -3048,6 +3271,21 @@
     ],
     "title": "DailyStatus"
    },
+   "DeleteAccountIn": {
+    "properties": {
+     "password": {
+      "type": "string",
+      "maxLength": 256,
+      "title": "Password"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "password"
+    ],
+    "title": "DeleteAccountIn"
+   },
    "DocLink": {
     "properties": {
      "title": {
@@ -3077,6 +3315,732 @@
      "url"
     ],
     "title": "DocLink"
+   },
+   "Export": {
+    "properties": {
+     "exported_at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Exported At"
+     },
+     "account": {
+      "$ref": "#/components/schemas/ExportAccount"
+     },
+     "invite": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/ExportInvite"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "pending_hints": {
+      "items": {
+       "type": "integer"
+      },
+      "type": "array",
+      "title": "Pending Hints"
+     },
+     "answers": {
+      "items": {
+       "$ref": "#/components/schemas/ExportAnswer"
+      },
+      "type": "array",
+      "title": "Answers"
+     },
+     "mock_runs": {
+      "items": {
+       "$ref": "#/components/schemas/ExportMockRun"
+      },
+      "type": "array",
+      "title": "Mock Runs"
+     },
+     "live": {
+      "$ref": "#/components/schemas/ExportLive"
+     },
+     "reports": {
+      "items": {
+       "$ref": "#/components/schemas/ExportReport"
+      },
+      "type": "array",
+      "title": "Reports"
+     },
+     "sign_ins": {
+      "items": {
+       "$ref": "#/components/schemas/ExportSignIn"
+      },
+      "type": "array",
+      "title": "Sign Ins"
+     },
+     "account_history": {
+      "items": {
+       "$ref": "#/components/schemas/ExportHistory"
+      },
+      "type": "array",
+      "title": "Account History"
+     },
+     "actions": {
+      "items": {
+       "$ref": "#/components/schemas/ExportAction"
+      },
+      "type": "array",
+      "title": "Actions"
+     }
+    },
+    "type": "object",
+    "required": [
+     "exported_at",
+     "account",
+     "invite",
+     "pending_hints",
+     "answers",
+     "mock_runs",
+     "live",
+     "reports",
+     "sign_ins",
+     "account_history",
+     "actions"
+    ],
+    "title": "Export",
+    "description": "Everything MingoQuiz stores about the member who asks (GET /api/me/export)."
+   },
+   "ExportAccount": {
+    "properties": {
+     "email": {
+      "type": "string",
+      "title": "Email"
+     },
+     "display_name": {
+      "type": "string",
+      "title": "Display Name"
+     },
+     "vertical": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Vertical"
+     },
+     "subdepartments": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Subdepartments"
+     },
+     "position": {
+      "type": "string",
+      "title": "Position"
+     },
+     "role": {
+      "type": "string",
+      "title": "Role"
+     },
+     "status": {
+      "type": "string",
+      "title": "Status"
+     },
+     "xp": {
+      "type": "integer",
+      "title": "Xp"
+     },
+     "hidden_from_leaderboard": {
+      "type": "boolean",
+      "title": "Hidden From Leaderboard"
+     },
+     "joined_at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Joined At"
+     },
+     "last_seen": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Last Seen"
+     },
+     "failed_sign_ins": {
+      "type": "integer",
+      "title": "Failed Sign Ins"
+     },
+     "locked_until": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Locked Until"
+     },
+     "inactive_since": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Inactive Since",
+      "description": "Alumni or disabled since"
+     },
+     "deleted_on": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Deleted On",
+      "description": "When the account will be deleted, if inactive"
+     }
+    },
+    "type": "object",
+    "required": [
+     "email",
+     "display_name",
+     "vertical",
+     "subdepartments",
+     "position",
+     "role",
+     "status",
+     "xp",
+     "hidden_from_leaderboard",
+     "joined_at",
+     "last_seen",
+     "failed_sign_ins",
+     "locked_until",
+     "inactive_since",
+     "deleted_on"
+    ],
+    "title": "ExportAccount"
+   },
+   "ExportAction": {
+    "properties": {
+     "at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "At"
+     },
+     "action": {
+      "type": "string",
+      "title": "Action"
+     },
+     "on": {
+      "type": "string",
+      "title": "On"
+     }
+    },
+    "type": "object",
+    "required": [
+     "at",
+     "action",
+     "on"
+    ],
+    "title": "ExportAction"
+   },
+   "ExportAnswer": {
+    "properties": {
+     "question_id": {
+      "type": "integer",
+      "title": "Question Id"
+     },
+     "question": {
+      "type": "string",
+      "title": "Question"
+     },
+     "mode": {
+      "type": "string",
+      "title": "Mode"
+     },
+     "area": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Area"
+     },
+     "answer": {
+      "additionalProperties": true,
+      "type": "object",
+      "title": "Answer"
+     },
+     "correct": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Correct",
+      "description": "Hidden (null) while a mock run or live quiz is still going"
+     },
+     "passed": {
+      "type": "boolean",
+      "title": "Passed"
+     },
+     "hint_used": {
+      "type": "boolean",
+      "title": "Hint Used"
+     },
+     "xp": {
+      "type": "integer",
+      "title": "Xp"
+     },
+     "late": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Late"
+     },
+     "day": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Day"
+     },
+     "started_at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Started At"
+     },
+     "submitted_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Submitted At"
+     }
+    },
+    "type": "object",
+    "required": [
+     "question_id",
+     "question",
+     "mode",
+     "area",
+     "answer",
+     "correct",
+     "passed",
+     "hint_used",
+     "xp",
+     "late",
+     "day",
+     "started_at",
+     "submitted_at"
+    ],
+    "title": "ExportAnswer"
+   },
+   "ExportHistory": {
+    "properties": {
+     "at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "At"
+     },
+     "action": {
+      "type": "string",
+      "title": "Action"
+     },
+     "details": {
+      "additionalProperties": true,
+      "type": "object",
+      "title": "Details"
+     }
+    },
+    "type": "object",
+    "required": [
+     "at",
+     "action",
+     "details"
+    ],
+    "title": "ExportHistory"
+   },
+   "ExportHosted": {
+    "properties": {
+     "code": {
+      "type": "string",
+      "title": "Code"
+     },
+     "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Created At"
+     },
+     "finished_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Finished At"
+     }
+    },
+    "type": "object",
+    "required": [
+     "code",
+     "created_at",
+     "finished_at"
+    ],
+    "title": "ExportHosted"
+   },
+   "ExportInvite": {
+    "properties": {
+     "role": {
+      "type": "string",
+      "title": "Role"
+     },
+     "vertical": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Vertical"
+     },
+     "note": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Note"
+     },
+     "used_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Used At"
+     }
+    },
+    "type": "object",
+    "required": [
+     "role",
+     "vertical",
+     "note",
+     "used_at"
+    ],
+    "title": "ExportInvite"
+   },
+   "ExportLive": {
+    "properties": {
+     "joined": {
+      "items": {
+       "$ref": "#/components/schemas/ExportLiveJoin"
+      },
+      "type": "array",
+      "title": "Joined"
+     },
+     "hosted": {
+      "items": {
+       "$ref": "#/components/schemas/ExportHosted"
+      },
+      "type": "array",
+      "title": "Hosted"
+     },
+     "answers_sent_as_captain": {
+      "items": {
+       "$ref": "#/components/schemas/ExportLiveAnswer"
+      },
+      "type": "array",
+      "title": "Answers Sent As Captain"
+     },
+     "proposals": {
+      "items": {
+       "$ref": "#/components/schemas/ExportProposal"
+      },
+      "type": "array",
+      "title": "Proposals"
+     }
+    },
+    "type": "object",
+    "required": [
+     "joined",
+     "hosted",
+     "answers_sent_as_captain",
+     "proposals"
+    ],
+    "title": "ExportLive"
+   },
+   "ExportLiveAnswer": {
+    "properties": {
+     "code": {
+      "type": "string",
+      "title": "Code"
+     },
+     "question": {
+      "type": "integer",
+      "title": "Question"
+     },
+     "answer": {
+      "additionalProperties": true,
+      "type": "object",
+      "title": "Answer"
+     },
+     "correct": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Correct"
+     },
+     "submitted_at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Submitted At"
+     }
+    },
+    "type": "object",
+    "required": [
+     "code",
+     "question",
+     "answer",
+     "correct",
+     "submitted_at"
+    ],
+    "title": "ExportLiveAnswer"
+   },
+   "ExportLiveJoin": {
+    "properties": {
+     "code": {
+      "type": "string",
+      "title": "Code"
+     },
+     "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Created At"
+     },
+     "joined_at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Joined At"
+     },
+     "removed_by_host": {
+      "type": "boolean",
+      "title": "Removed By Host"
+     },
+     "table": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Table"
+     },
+     "captain": {
+      "type": "boolean",
+      "title": "Captain"
+     }
+    },
+    "type": "object",
+    "required": [
+     "code",
+     "created_at",
+     "joined_at",
+     "removed_by_host",
+     "table",
+     "captain"
+    ],
+    "title": "ExportLiveJoin"
+   },
+   "ExportMockRun": {
+    "properties": {
+     "quiz_id": {
+      "type": "integer",
+      "title": "Quiz Id"
+     },
+     "season": {
+      "type": "integer",
+      "title": "Season"
+     },
+     "counted": {
+      "type": "boolean",
+      "title": "Counted"
+     },
+     "started_at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Started At"
+     },
+     "finished_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Finished At"
+     }
+    },
+    "type": "object",
+    "required": [
+     "quiz_id",
+     "season",
+     "counted",
+     "started_at",
+     "finished_at"
+    ],
+    "title": "ExportMockRun"
+   },
+   "ExportProposal": {
+    "properties": {
+     "code": {
+      "type": "string",
+      "title": "Code"
+     },
+     "question": {
+      "type": "integer",
+      "title": "Question"
+     },
+     "answer": {
+      "additionalProperties": true,
+      "type": "object",
+      "title": "Answer"
+     },
+     "at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "At"
+     }
+    },
+    "type": "object",
+    "required": [
+     "code",
+     "question",
+     "answer",
+     "at"
+    ],
+    "title": "ExportProposal"
+   },
+   "ExportReport": {
+    "properties": {
+     "question_id": {
+      "type": "integer",
+      "title": "Question Id"
+     },
+     "message": {
+      "type": "string",
+      "title": "Message"
+     },
+     "at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "At"
+     },
+     "handled_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Handled At"
+     }
+    },
+    "type": "object",
+    "required": [
+     "question_id",
+     "message",
+     "at",
+     "handled_at"
+    ],
+    "title": "ExportReport"
+   },
+   "ExportSignIn": {
+    "properties": {
+     "started_at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Started At"
+     },
+     "last_seen": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Last Seen"
+     },
+     "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Expires At"
+     }
+    },
+    "type": "object",
+    "required": [
+     "started_at",
+     "last_seen",
+     "expires_at"
+    ],
+    "title": "ExportSignIn"
    },
    "Feedback": {
     "properties": {
