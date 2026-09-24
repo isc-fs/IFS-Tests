@@ -451,7 +451,7 @@ export function LiveScreen() {
               <Countdown deadline={s.deadline_at} serverNow={s.server_now} onExpire={() => refresh(s.code)} />
             )}
           </div>
-          <p className="screen-question">{s.question.text}</p>
+          <p className={`screen-question${s.question.text.length > 280 ? ' long' : ''}`}>{s.question.text}</p>
           {s.question.images.map((src) => (
             <img key={src} src={src} alt="Figure for this question" className="screen-image" />
           ))}

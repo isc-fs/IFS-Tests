@@ -191,6 +191,7 @@ function Lobby({ s, dirty, onDirty }: { s: LiveState; dirty: boolean; onDirty: (
             <label>
               Name <input value={t.name} maxLength={40} onChange={(e) => edit(i, { name: e.target.value })} />
             </label>
+            <p className="muted">{t.member_ids.map((id) => names.get(id)).join(', ') || 'Nobody seated yet'}</p>
             <label>
               Captain{' '}
               <select

@@ -1257,6 +1257,7 @@ details[open] > summary::before {
   gap: 32px;
 }
 .screen-question {
+  white-space: pre-line;
   font-family: var(--isc-font-display);
   font-size: clamp(24px, 3.4vw, 44px);
   line-height: var(--isc-lh-heading);
@@ -1268,6 +1269,14 @@ details[open] > summary::before {
   font-size: clamp(20px, 2.6vw, 34px);
   list-style: upper-alpha;
   padding-left: 1.6em;
+}
+.screen-question.long {
+  font-family: var(--isc-font-body);
+  font-size: clamp(18px, 1.9vw, 28px);
+  color: var(--isc-c-text);
+}
+.table-edit .link-button {
+  align-self: flex-start;
 }
 .screen-image {
   max-height: 50vh;

@@ -23,7 +23,10 @@ export function RoomScore({ s }: { s: LiveState }) {
       <strong>
         {s.room_right} of {s.room_asked}
       </strong>
-      <span>{s.config.routing === 'owners' ? 'right for the team' : 'right at the best table so far'}</span>
+      <span>
+        {s.config.routing === 'owners' ? 'right for the team' : 'right at the best table'}
+        {s.state === 'finished' ? '' : ' so far'}
+      </span>
       {s.state === 'finished' && s.bar_to_beat && <span className="muted">{s.bar_to_beat}</span>}
     </output>
   )
@@ -153,6 +156,8 @@ export function Reveal({ s, r }: { s: LiveState; r: LiveReveal }) {
   )
 }
 
+const short = (text: string) => (text.length > 110 ? `${text.slice(0, 100).trimEnd()}…` : text)
+
 export function Results({ s }: { s: LiveState }) {
   return (
     <section className="stack" aria-labelledby="results-title">
@@ -163,7 +168,7 @@ export function Results({ s }: { s: LiveState }) {
       {(s.reveals ?? []).map((r) => (
         <details key={r.position}>
           <summary>
-            {r.position + 1}. {r.answers.some((a) => a.correct) ? '✓' : '✗'} {r.question.text}
+            {r.position + 1}. {r.answers.some((a) => a.correct) ? '✓' : '✗'} {short(r.question.text)}
           </summary>
           <Reveal s={s} r={r} />
         </details>
