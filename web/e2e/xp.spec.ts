@@ -30,7 +30,7 @@ test('a Department Head is placed at Jefe I; practice raises the account level a
   }
   await page.goto('/')
   await expect(page.getByRole('region', { name: 'Your rank: Jefe I' })).toContainText('50 LP · 50 LP to Jefe II')
-  await expect(page.getByRole('region', { name: /^Your account: Level \d+$/ })).not.toContainText('0 / 300 XP')
+  await expect(page.getByRole('progressbar', { name: /^XP to level \d+$/ })).not.toHaveAttribute('value', '0')
 
   await page.getByRole('link', { name: 'Your road to the top' }).click()
   const road = page.getByRole('region', { name: 'Your road to the top' })
