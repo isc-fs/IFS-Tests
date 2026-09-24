@@ -11,15 +11,19 @@ Most European events hand out their registration slots through a short, timed on
 ## What it does
 
 1. **Pulls the question bank.** Every past quiz (FSG, FSA, FSCZ, FSN, FSS, FS East...) with its questions, answers, worked solutions, images and the rulebooks each quiz was based on, via the [FS-Quiz API v2](https://api.fs-quiz.eu/#/).
-2. **Sorts it by who should answer it.** FS-Quiz has no topic field, so we tag every question ourselves:
+2. **Sorts it by who should answer it.** FS-Quiz has no topic field, so every question is tagged by area and topic (automatically, then checked by reviewers):
 
    | Area | Topics |
    |---|---|
-   | **Mechanical** | vehicle dynamics, aero, chassis & structures, powertrain mechanics, materials |
-   | **Electrical** | batteries & HV (accumulator, TS, IMD, AMS), driverless (DV rules, ASMS, EBS, missions), general electronics (circuits, LV, sensors, CAN) |
-   | **Rules & scoring** | points calculations, penalties, event procedures: everyone needs these |
+   | **Mechanical** | vehicle dynamics, aerodynamics, structures, powertrain |
+   | **Electrical** | high voltage, driverless, electronics |
+   | **Rules** | scoring and events: everyone needs these |
 
-3. **Lets the team practise** in a web app on the team's server: by topic, by replaying a real past quiz against its clock, and with a daily question per area, streaks and a leaderboard. Members join through an invite link. How it's built: [`docs/architecture.md`](docs/architecture.md) and the decisions in [`docs/adr/`](docs/adr/).
+3. **Lets the team train** in a web app on the team's server: practice by topic with that year's rulebooks beside each question, a timed daily question per area, replays of real past quizzes against their clock, and live quizzes for team meetings where each sub-department's table answers together. A League-style rank with LP moves with how well you answer, an account level with XP with how much you play, and there's a season leaderboard. Members join through an invite link.
+
+## Documentation
+
+Everything about using, running, changing and handing over MingoQuiz is in [`docs/`](docs/README.md): guides for players, live quiz hosts, reviewers and admins; development, architecture, data model, API and testing; the game rules; the runbook, the maintenance calendar and the handover guide. Decisions and their reasons are in [`docs/adr/`](docs/adr/).
 
 See [ROADMAP.md](ROADMAP.md) for the phase plan and branch status.
 
@@ -30,15 +34,16 @@ See [ROADMAP.md](ROADMAP.md) for the phase plan and branch status.
 Needs [uv](https://docs.astral.sh/uv/), Node 24 and Docker.
 
 ```bash
-uv sync                                  # Python dependencies
-uv run ifs-tests mirror                  # download the FS-Quiz bank into data/ (≈2 min, cached)
-uv run ifs-tests stats                   # what's in it
-
-docker compose up --build                # app + database on http://localhost:8000
-docker compose run --rm api alembic upgrade head
+uv sync                                                # Python dependencies
+docker compose up -d --build --wait                    # app + database on http://localhost:8000
+docker compose run --rm api alembic upgrade head       # create the schema
+docker compose run --rm api ifs-tests push --sample    # a small made-up bank: no calls to FS-Quiz
+docker compose exec api ifs-tests create-admin --email admin@example.com --name "Local Admin"
 ```
 
-For frontend work, run the API with `uv run uvicorn ifs_tests.api.app:app --reload` and the SPA with `cd web && npm ci --ignore-scripts && npm run dev` (Vite proxies API calls to port 8000).
+Then sign in at <http://localhost:8000>. Step by step, with what each command prints: [`docs/development.md`](docs/development.md).
+
+The real FS-Quiz bank is optional locally. Mirror it once (`uv run ifs-tests mirror --images`: about 130 requests plus the images, one a second, cached so a re-run only fetches what's new), then load it with `docker compose run --rm api ifs-tests push` ([development.md](docs/development.md#with-the-real-fs-quiz-bank)). Don't re-mirror without a reason: the FS-Quiz author asks users to avoid unnecessary queries. For frontend work, run the API with `uv run uvicorn ifs_tests.api.app:app --reload` and the SPA with `cd web && npm ci --ignore-scripts && npm run dev` (Vite proxies API calls to port 8000).
 
 Deploying to the team server: [`docs/runbook.md`](docs/runbook.md).
 
@@ -46,8 +51,8 @@ Checks that CI runs:
 
 ```bash
 uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pytest
-cd web && npm run format:check && npm run typecheck && npm run lint && npm test && npm run build && npm run size
-cd web && npm run e2e                     # needs the local stack and an admin, see .github/workflows/ci.yml
+(cd web && npm run format:check && npm run typecheck && npm run lint && npm test && npm run build && npm run size)
+(cd web && npm run e2e)                   # needs the local stack, the sample bank and the e2e admin: docs/testing.md
 ```
 
 ---

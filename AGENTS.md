@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Instructions for coding agents working in this repository. Read [README.md](README.md) first for what the project is.
+Instructions for coding agents working in this repository. Read [README.md](README.md) first for what the project is, and [docs/README.md](docs/README.md) for where everything is documented.
 
 ## Project
 
@@ -28,3 +28,4 @@ Instructions for coding agents working in this repository. Read [README.md](READ
 - **Server etiquette:** do not hammer the API. Work from the local mirror; only re-mirror when asked or when new quizzes are published. Keep the request delay in the client.
 - **Licence:** FS-Quiz data is ODbL. Keep the attribution; do not commit mirrored data to this public repository unless the team decides to publish it under the ODbL.
 - **Style:** simple code, minimal comments (only where something is non-obvious). English for code, docs and commits.
+- **Docs:** the repository must explain itself. A change in behaviour, a command, a job, a screen or an operating procedure updates the doc that owns it in the same PR (the owner table is in [docs/README.md](docs/README.md)); scoring changes update [docs/game-rules.md](docs/game-rules.md), and a change of design gets a new ADR. `tests/unit/test_docs.py` checks that links and file paths in the docs resolve.
