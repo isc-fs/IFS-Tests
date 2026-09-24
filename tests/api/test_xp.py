@@ -15,6 +15,7 @@ from ifs_tests.bank.mirror import load_bank
 from ifs_tests.bank.sample import SAMPLE_DIR
 from ifs_tests.db.models import Attempt, AuditLog, LiveQuestion, LiveSession, Question, User
 from ifs_tests.domain import daily as daily_rules
+from ifs_tests.domain import leaderboard as board_rules
 from ifs_tests.domain import rank as rank_rules
 from ifs_tests.domain import xp as xp_rules
 from ifs_tests.domain.rank import TOP
@@ -125,6 +126,8 @@ def test_the_position_you_join_with_places_your_rank(
         "first_wins_left": 3,
         "streak": 0,
         "streak_bonus": 0,
+        "streak_freezes": 0,
+        "rested_xp": 0,
     }
     assert [s["title"] for s in ladder][:3] == ["Mingo I", "Mingo II", "Mingo III"]
     assert ladder[TOP] == {
@@ -485,7 +488,7 @@ def test_a_question_seen_before_pays_a_quarter_as_the_daily(
     db.commit()
     r = c.post(f"/api/daily/attempts/{started['attempt_id']}/answer", json=right_answer(db, qid)).json()
     assert (r["xp"], r["lp"]) == (
-        earned(True, "daily", repeat=True, first_win=True),
+        earned(True, "daily", repeat=True, first_win=True, rested=300),  # two full days away banked 300
         approx(lp(db, qid, True, 50, "daily", repeat=True)),
     )
 
@@ -855,3 +858,54 @@ def test_an_ungraded_question_pays_its_small_xp_once_a_day(
     assert (again["xp"], again["lp"]) == (0, 0)  # no farming the participation XP
     next_madrid_day(c, clock)
     assert practise(c, qid, {"value": "anything"})["xp"] == earned(None)
+
+
+def test_rested_xp_builds_while_away_and_doubles_xp_until_spent(
+    signed_in: TestClient, new_client: NewClient, db: Session, bank: dict[int, int], clock: Clock
+) -> None:
+    c = new_client()
+    join(signed_in, c, "Ana")
+    practise(c, bank[90001], right_answer(db, bank[90001]))
+    assert progress(c)["account"]["rested_xp"] == 0
+    clock.advance(days=3)
+    login(c, "ana@alu.comillas.edu", PASSWORD)
+    assert progress(c)["account"]["rested_xp"] == 300  # two full days away
+    qid = bank[90002]
+    r = practise(c, qid, right_answer(db, qid))
+    assert r["bonuses"]["rested"] == earned(True)  # the base again
+    assert progress(c)["account"]["rested_xp"] == 300 - earned(True)
+
+
+def test_a_freeze_is_earned_every_seven_days_and_saves_a_missed_one(
+    signed_in: TestClient, new_client: NewClient, db: Session, bank: dict[int, int], clock: Clock
+) -> None:
+    c = new_client()
+    ana = join(signed_in, c, "Ana")
+    first = daily_rules.madrid_day(clock.now)
+    for i in range(7):  # seven on-time daily answers in a row
+        day = first + timedelta(days=i)
+        db.add(
+            Attempt(
+                user_id=ana["id"],
+                question_id=bank[90001],
+                mode="daily",
+                answer={},
+                correct=True,
+                day=day,
+                area="rules",
+                created_at=clock.now + timedelta(days=i),
+                submitted_at=clock.now + timedelta(days=i),
+                late=False,
+            )
+        )
+    db.commit()
+    night = board_rules.madrid_midnight(first + timedelta(days=7)) + timedelta(hours=3)
+    assert maintenance.run(db, night)["freezes_earned"] == 1
+    assert maintenance.run(db, night)["freezes_earned"] == 0  # once per streak day
+    # Day 8 is missed; the next night spends the freeze on it.
+    after = maintenance.run(db, night + timedelta(days=1))
+    assert (after["freezes_used"], after["freezes_earned"]) == (1, 0)
+    clock.now = night + timedelta(days=1, hours=7)
+    login(c, "ana@alu.comillas.edu", PASSWORD)
+    account = progress(c)["account"]
+    assert (account["streak"], account["streak_freezes"]) == (8, 0)

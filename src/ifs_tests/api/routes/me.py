@@ -76,6 +76,8 @@ def _me(db: Db, user: User, now: datetime) -> Me:
             first_wins_left=max(0, xp_rules.FIRST_WINS - xp.first_wins(db, user.id, now)),
             streak=streak,
             streak_bonus=round(xp_rules.streak_bonus(streak) * 100),
+            streak_freezes=user.streak_freezes,
+            rested_xp=xp.rested(db, user.rested_xp, user.rested_on, user.id, now),
         ),
     )
     return out

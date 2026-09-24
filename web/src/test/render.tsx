@@ -94,6 +94,8 @@ export function progress(points = 137, account: object = {}, top: string | null 
       first_wins_left: 3,
       streak: 2,
       streak_bonus: 5,
+      streak_freezes: 0,
+      rested_xp: 0,
       ...account,
     },
   }

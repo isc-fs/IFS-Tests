@@ -111,8 +111,16 @@ export function AccountCard({ me }: { me: Me }) {
           {a.streak
             ? `${a.streak} day${a.streak === 1 ? '' : 's'}${a.streak_bonus ? `, +${a.streak_bonus} % XP` : ''}.`
             : 'answer a daily question to start one.'}
+          {a.streak_freezes > 0 &&
+            ` ${a.streak_freezes} freeze${a.streak_freezes === 1 ? '' : 's'} will save it if you miss a day.`}
         </li>
+        {a.rested_xp > 0 && (
+          <li className="on">
+            <strong>Rested:</strong> {a.rested_xp} XP banked while you were away doubles your next right answers.
+          </li>
+        )}
       </ul>
+      <p className="muted small">A 7-day streak earns a freeze (hold up to 2); days away bank rested XP.</p>
     </section>
   )
 }

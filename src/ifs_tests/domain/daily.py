@@ -52,6 +52,19 @@ def is_late(submitted: datetime, deadline: datetime) -> bool:
     return submitted > deadline + GRACE
 
 
+FREEZE_EVERY, FREEZE_CAP = 7, 2  # a streak freeze every 7 days of streak, at most 2 held
+
+
+def freeze_needed(kept: set[date], yesterday: date) -> bool:
+    """Yesterday was missed while the streak was still alive the day before: a freeze can save it."""
+    return yesterday not in kept and yesterday - timedelta(days=1) in kept
+
+
+def freeze_earned(kept: set[date], played: set[date], yesterday: date) -> bool:
+    """Yesterday was played and brought the streak (freezes included) to a multiple of 7."""
+    return yesterday in played and streak(kept, yesterday) % FREEZE_EVERY == 0
+
+
 def streak(days: set[date], today: date) -> int:
     """Consecutive days with an on-time daily answer, ending today (or yesterday, if today is still open)."""
     day = today if today in days else today - timedelta(days=1)

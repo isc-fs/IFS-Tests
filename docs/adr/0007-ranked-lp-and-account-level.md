@@ -43,6 +43,9 @@ League of Legends: separate how much you play (account level) from how well you 
 - **Bonuses on right answers, added (never multiplied):** first win +50 % on the first 3 right answers of the day;
   combo +10 % per right answer in a row before this one, up to +50 %; daily streak +5 % a day, up to +50 %; a
   critical +100 % with a 5 % chance, drawn from a server secret per player, question and day (no rerolls).
+- **Coming back pays:** each full day away banks 150 rested XP (up to 450), which doubles the base of right answers
+  until spent. A 7-day daily streak earns a streak freeze (hold up to 2); the nightly job spends one on a missed
+  day so the streak survives.
 - **Levels:** from level L to L + 1 takes 250 + 50·min(L, 25) XP (300 at first, 1,500 a level from 25). Emblem
   frames at levels 10, 25, 50 and 100. All the slot-machine rewards live here, where they can't bend the rank.
 

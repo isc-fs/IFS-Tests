@@ -49,6 +49,13 @@ test('home shows your rank in LP, what a question is worth and your account leve
   expect(account).toHaveTextContent('Streak: 2 days, +5 % XP.')
 })
 
+test('freezes and rested XP show on the account card when there are some', async () => {
+  renderApp('/', { 'GET /api/me': { body: at(237, null, { streak_freezes: 1, rested_xp: 300 }) } })
+  const account = await screen.findByRole('region', { name: 'Level 4' })
+  expect(account).toHaveTextContent('1 freeze will save it if you miss a day.')
+  expect(account).toHaveTextContent('Rested: 300 XP banked while you were away doubles your next right answers.')
+})
+
 test('a rough patch says the game has your back', async () => {
   const me = at(640)
   me.progress.rank.miss_streak = 3

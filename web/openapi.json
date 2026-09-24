@@ -2807,6 +2807,16 @@
       "type": "integer",
       "title": "Streak Bonus",
       "description": "Extra XP on right answers from the daily streak, in percent"
+     },
+     "streak_freezes": {
+      "type": "integer",
+      "title": "Streak Freezes",
+      "description": "Freezes held: each saves the streak on a missed day"
+     },
+     "rested_xp": {
+      "type": "integer",
+      "title": "Rested Xp",
+      "description": "Rested XP banked while away: it doubles XP until spent"
      }
     },
     "type": "object",
@@ -2819,7 +2829,9 @@
      "combo",
      "first_wins_left",
      "streak",
-     "streak_bonus"
+     "streak_bonus",
+     "streak_freezes",
+     "rested_xp"
     ],
     "title": "AccountOut",
     "description": "The account level: XP from every answer, it only goes up."

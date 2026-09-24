@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session as DB
 
 from ..db.models import Attempt, DailyQuestion, Question, User
 from ..domain import daily as rules
-from . import xp
+from . import streaks, xp
 from .errors import UserError
 from .questions import Checked, check
 
@@ -76,15 +76,7 @@ def _attempt(db: DB, user: User, day: date, area: str) -> Attempt | None:
 
 
 def _on_time_days(db: DB, user: User) -> set[date]:
-    rows = db.scalars(
-        select(Attempt.day).where(
-            Attempt.user_id == user.id,
-            Attempt.mode == "daily",
-            Attempt.submitted_at.is_not(None),
-            Attempt.late.is_(False),
-        )
-    )
-    return {d for d in rows if d}
+    return streaks.kept(db, user.id)
 
 
 @dataclass

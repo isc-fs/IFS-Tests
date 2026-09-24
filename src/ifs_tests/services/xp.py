@@ -6,7 +6,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from sqlalchemy import Row, case, func, select, update
@@ -17,20 +17,25 @@ from ..domain import daily as daily_rules
 from ..domain import leaderboard as board_rules
 from ..domain import rank as rank_rules
 from ..domain import xp as rules
-from . import hints
+from . import hints, streaks
 
 
 def streak_days(db: DB, user_id: int, now: datetime) -> int:
-    """Consecutive Madrid days with an on-time daily answer, ending today (or yesterday)."""
-    days = db.scalars(
-        select(Attempt.day).where(
-            Attempt.user_id == user_id,
-            Attempt.mode == "daily",
-            Attempt.submitted_at.is_not(None),
-            Attempt.late.is_(False),
+    """Consecutive Madrid days with an on-time daily answer (or a freeze), ending today (or yesterday)."""
+    return streaks.days(db, user_id, now)
+
+
+def rested(db: DB, bank: int, topped_up: date | None, user_id: int, now: datetime) -> int:
+    """Rested XP as it stands today: the bank, plus what the full days away since the last play added to it."""
+    today = daily_rules.madrid_day(now)
+    if topped_up == today:
+        return bank
+    last = db.scalar(
+        select(func.max(func.date(func.timezone("Europe/Madrid", Attempt.created_at)))).where(
+            Attempt.user_id == user_id, Attempt.created_at < board_rules.madrid_midnight(today)
         )
     )
-    return daily_rules.streak({d for d in days if d}, daily_rules.madrid_day(now))
+    return rules.rested_bank(bank, (today - last).days - 1) if last else bank
 
 
 def lock(db: DB, user_id: int) -> Row[Any]:
@@ -45,6 +50,8 @@ def lock(db: DB, user_id: int) -> Row[Any]:
             User.rank_best,
             User.combo,
             User.miss_streak,
+            User.rested_xp,
+            User.rested_on,
         )
         .where(User.id == user_id)
         .with_for_update(key_share=True)
@@ -173,6 +180,7 @@ def grant(
         again_today=again_today,
         miss_streak=state.miss_streak,
     )
+    bank = rested(db, state.rested_xp, state.rested_on, user_id, now)
     earned = rules.xp_award(
         correct,
         question.difficulty,
@@ -187,6 +195,7 @@ def grant(
         combo=0 if live else state.combo,
         streak_days=streak_days(db, user_id, now),
         crit=right and not again_today and _crit(db, user_id, question.id, now),
+        rested=bank,
     )
     combo, miss = state.combo, state.miss_streak
     if not live and correct is not None and not (right and again_today):
@@ -204,6 +213,8 @@ def grant(
             rank_best=max(best, division),
             combo=combo,
             miss_streak=miss,
+            rested_xp=bank - earned.bonuses.get("rested", 0),
+            rested_on=daily_rules.madrid_day(now),
         )
         .returning(User.xp)
     ).scalar_one()

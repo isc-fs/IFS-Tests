@@ -106,6 +106,8 @@ class AccountOut(BaseModel):
     first_wins_left: int = Field(description="Right answers left today with the first-win bonus")
     streak: int
     streak_bonus: int = Field(description="Extra XP on right answers from the daily streak, in percent")
+    streak_freezes: int = Field(description="Freezes held: each saves the streak on a missed day")
+    rested_xp: int = Field(description="Rested XP banked while away: it doubles XP until spent")
 
 
 class Progress(BaseModel):

@@ -79,3 +79,15 @@ def test_streak_bonus(days: int, share: float) -> None:
 )
 def test_difficulty(kind: str, time_s: int | None, answered: int, right: int, expected: int) -> None:
     assert difficulty(kind, time_s, answered, right) == expected
+
+
+def test_rested_xp_banks_while_away_and_doubles_the_base_until_spent() -> None:
+    from ifs_tests.domain.xp import rested_bank
+
+    assert [rested_bank(0, d) for d in (-1, 0, 1, 2, 5)] == [0, 0, 150, 300, 450]
+    assert rested_bank(400, 1) == 450
+    full = xp_award(True, 3, "daily", rested=450)
+    assert (full.amount, full.bonuses) == (100, {"rested": 50})
+    last = xp_award(True, 3, "daily", rested=20)
+    assert (last.amount, last.bonuses) == (70, {"rested": 20})
+    assert xp_award(False, 3, "daily", rested=450).bonuses == {}  # only right answers spend it

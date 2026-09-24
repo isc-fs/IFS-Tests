@@ -26,4 +26,5 @@ export const BONUS_NAMES: Record<string, string> = {
   combo: 'Combo',
   streak: 'Streak',
   crit: 'Critical!',
+  rested: 'Rested',
 }

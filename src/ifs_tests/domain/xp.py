@@ -16,6 +16,7 @@ FIRST_WINS, FIRST_WIN = 3, 0.5  # the first three right answers of the day
 COMBO_STEP, COMBO_CAP = 0.1, 5  # +10 % per right answer in a row before this one, up to +50 %
 STREAK_STEP, STREAK_CAP = 0.05, 10  # +5 % per day of daily streak after the first, up to +50 %
 CRIT_CHANCE, CRIT = 0.05, 1.0  # a rare double
+RESTED_PER_DAY, RESTED_CAP = 150, 450  # XP banked per full day away; it doubles XP until spent
 MILESTONES = (10, 25, 50, 100)  # account levels that earn an emblem frame
 
 MIN_SAMPLE = 20  # answers before success rates start to move a question's difficulty
@@ -47,9 +48,11 @@ def xp_award(
     combo: int = 0,
     streak_days: int = 0,
     crit: bool = False,
+    rested: int = 0,
 ) -> Xp:
     """XP for one answer: something for every answer given, the most for a right one plus its bonuses. A
-    question left to run out gives nothing, and one already graded today gives nothing again."""
+    question left to run out gives nothing, and one already graded today gives nothing again. `rested` is the
+    rested XP banked: it doubles a right answer's base while it lasts (the caller spends what the bonus used)."""
     if not answered or again_today:
         return Xp(0)
     base = BASE_XP[difficulty] * MODE[mode] * (REPEAT if repeat else 1) * (HINT if hint else 1)
@@ -64,7 +67,14 @@ def xp_award(
         "crit": CRIT if crit else 0.0,
     }
     bonuses = {k: round(base * v) for k, v in shares.items() if round(base * v) > 0}
+    if rested > 0:
+        bonuses["rested"] = min(max(1, round(base)), rested)
     return Xp(max(1, round(base)) + sum(bonuses.values()), bonuses)
+
+
+def rested_bank(bank: int, days_away: int) -> int:
+    """Rested XP after `days_away` full days without playing."""
+    return min(RESTED_CAP, bank + RESTED_PER_DAY * max(days_away, 0))
 
 
 def to_next(level: int) -> int:

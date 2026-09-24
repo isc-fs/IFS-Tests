@@ -135,6 +135,12 @@ class User(Base):
     # Right answers in a row (the XP combo) and wrong ones in a row (the LP cushion), across modes but live.
     combo: Mapped[int] = mapped_column(SmallInteger, server_default="0")
     miss_streak: Mapped[int] = mapped_column(SmallInteger, server_default="0")
+    # Rested XP: banked while away, it doubles XP until spent; `rested_on` is the last day it was topped up.
+    rested_xp: Mapped[int] = mapped_column(server_default="0")
+    rested_on: Mapped[date | None] = mapped_column(Date)
+    # Streak freezes held (earned every 7 days of streak, at most 2) and the streak day that last earned one.
+    streak_freezes: Mapped[int] = mapped_column(SmallInteger, server_default="0")
+    freeze_earned_on: Mapped[date | None] = mapped_column(Date)
     # Team Directory department codes (domain/live.py); the first one seats them in live quizzes.
     subdepartments: Mapped[list[str]] = mapped_column(ARRAY(String(8)), server_default="{}")
     # When they stopped being active (alumni or disabled): the account is deleted a year later (ADR 0006).
@@ -142,6 +148,15 @@ class User(Base):
 
 
 Index("uq_users_display_name_lower", func.lower(User.display_name), unique=True)
+
+
+class StreakFreeze(Base):
+    """A day a streak freeze kept someone's daily streak alive."""
+
+    __tablename__ = "streak_freezes"
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    day: Mapped[date] = mapped_column(Date, primary_key=True)
 
 
 class Invite(Base):

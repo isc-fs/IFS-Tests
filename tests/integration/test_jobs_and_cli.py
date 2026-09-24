@@ -37,6 +37,8 @@ def test_maintenance_removes_only_stale_rows_and_is_idempotent(db: Session, cloc
         "dailies_closed": 0,
         "difficulty_changed": 0,
         "ranks_reset": 0,
+        "freezes_used": 0,
+        "freezes_earned": 0,
         "alumni_deleted": 0,
         "audit_purged": 0,
     }

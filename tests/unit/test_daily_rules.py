@@ -66,3 +66,18 @@ def test_streak_counts_back_from_today_or_yesterday() -> None:
     assert streak(days - {D}, D) == 2  # today not answered yet: yesterday's streak still stands
     assert streak(days, D + timedelta(days=2)) == 0
     assert streak(set(), D) == 0
+
+
+def test_streak_freezes_save_a_missed_day_and_come_every_seven_days() -> None:
+    from ifs_tests.domain.daily import freeze_earned, freeze_needed
+
+    d = date(2026, 10, 10)
+    days = {d - timedelta(days=i) for i in range(2, 9)}  # played the 7 days before yesterday
+    assert freeze_needed(days, d - timedelta(days=1))
+    assert not freeze_needed(days | {d - timedelta(days=1)}, d - timedelta(days=1))  # played it
+    assert not freeze_needed(set(), d - timedelta(days=1))  # no streak to save
+    week = {d - timedelta(days=i) for i in range(1, 8)}
+    assert freeze_earned(week, week, d - timedelta(days=1))
+    assert not freeze_earned(
+        week, week - {d - timedelta(days=1)}, d - timedelta(days=1)
+    )  # a freeze earns none

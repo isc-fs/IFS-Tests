@@ -58,6 +58,18 @@ export type AccountOut = {
      * Extra XP on right answers from the daily streak, in percent
      */
     streak_bonus: number;
+    /**
+     * Streak Freezes
+     *
+     * Freezes held: each saves the streak on a missed day
+     */
+    streak_freezes: number;
+    /**
+     * Rested Xp
+     *
+     * Rested XP banked while away: it doubles XP until spent
+     */
+    rested_xp: number;
 };
 
 /**
