@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import func, select, text, update
 from sqlalchemy.orm import Session as DB
 
 from ..auth.passwords import verify_password
@@ -27,7 +27,6 @@ from ..db.models import (
     Session,
     User,
 )
-from ..db.session import rowcount
 from ..domain import accounts as rules
 from . import live
 from .accounts import AccountError, _active_admin_ids, _record_failure, audit
@@ -324,5 +323,6 @@ def purge(db: DB, now: datetime) -> dict[str, int]:
         audit(db, None, "user.delete", f"user:{uid}", by="retention")
         _delete(db, locked.user, locked.sessions, now)
         deleted += 1
-    old = rowcount(db.execute(delete(AuditLog).where(AuditLog.at < now - rules.AUDIT_KEEP)))
+    # The app can't delete from the audit log; this function removes only entries past the keep.
+    old = db.scalar(text("SELECT purge_audit_log(:before)"), {"before": now - rules.AUDIT_KEEP}) or 0
     return {"alumni_deleted": deleted, "audit_purged": old}
