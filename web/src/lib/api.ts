@@ -67,6 +67,16 @@ export function errorMessage(error: unknown): string {
   return 'Something went wrong. Try again.'
 }
 
+/** A dropped connection or a proxy's error page: unlike the API's own refusals, it carries no `detail`. */
+export const transient = (error: unknown) => !(error as ApiError | null)?.detail
+
+/** For answers the server takes once and repeats back (daily, mock, a table's answer): a failed send is tried
+ * twice more within about 1.5 s, inside the 3 s of grace after a clock runs out. */
+export const resend = {
+  retry: (count: number, error: unknown) => count < 2 && transient(error),
+  retryDelay: (count: number) => 500 * 2 ** count,
+}
+
 /** Messages the server attached to specific form fields, if any. */
 export function fieldErrors(error: unknown): Record<string, string> {
   return (error as ApiError | null)?.fields ?? {}

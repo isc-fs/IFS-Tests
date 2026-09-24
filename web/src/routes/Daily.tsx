@@ -13,7 +13,7 @@ import { ErrorNotice, Notice } from '../components/Form'
 import { LearningAids } from '../components/LearningAids'
 import { Page } from '../components/Page'
 import { QuestionCard } from '../components/QuestionCard'
-import { queryClient } from '../lib/api'
+import { queryClient, resend } from '../lib/api'
 import { AREAS } from '../lib/areas'
 import { lp, tenths } from '../lib/rank'
 import { xp } from '../lib/xp'
@@ -84,6 +84,7 @@ function Play({ play, onDone }: { play: TimedQuestion; onDone: () => void }) {
   const [result, setResult] = useState<DailyResult>()
   const send = useMutation({
     ...answerDailyMutation(),
+    ...resend,
     onSuccess: (r) => {
       setResult(r)
       queryClient.invalidateQueries({ queryKey: dailyStatusQueryKey() })
@@ -97,6 +98,7 @@ function Play({ play, onDone }: { play: TimedQuestion; onDone: () => void }) {
           question={play.question}
           feedback={result?.feedback}
           pending={send.isPending}
+          failed={send.isError}
           expired={expired}
           clock={<Countdown deadline={play.deadline_at} serverNow={play.server_now} onExpire={expire} />}
           onAnswer={(body) => send.mutate({ path: { attempt_id: play.attempt_id }, body })}

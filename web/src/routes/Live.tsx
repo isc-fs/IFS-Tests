@@ -16,7 +16,7 @@ import { Answered, answerText, Reveal, Results, RoomScore, ScreenOptions, Tables
 import { APP_NAME, Page } from '../components/Page'
 import { Qr } from '../components/Qr'
 import { QuestionCard } from '../components/QuestionCard'
-import { errorMessage, ME_KEY, queryClient, useMe } from '../lib/api'
+import { errorMessage, ME_KEY, queryClient, resend, useMe } from '../lib/api'
 import { AREAS, TOPICS } from '../lib/areas'
 import { joinUrl, refresh, tableName, toggle, useLive } from '../lib/live'
 import { HostControls } from './LiveHost'
@@ -350,7 +350,7 @@ function Answering({ s }: { s: LiveState }) {
   const [preset, setPreset] = useState<AnswerIn>()
   const [expired, setExpired] = useState(false)
   const expire = useCallback(() => setExpired(true), [])
-  const send = useMutation({ ...answerMutation(), onSuccess: () => refresh(s.code) })
+  const send = useMutation({ ...answerMutation(), ...resend, onSuccess: () => refresh(s.code) })
   const propose = useMutation({ ...proposeMutation(), onSuccess: () => refresh(s.code) })
   const question = s.question
   if (!question) return null
@@ -382,6 +382,7 @@ function Answering({ s }: { s: LiveState }) {
         question={question}
         focusOnShow={s.position > 0}
         pending={send.isPending || propose.isPending}
+        failed={send.isError}
         expired={expired}
         clock={clock}
         preset={preset}

@@ -196,6 +196,7 @@ export function QuestionCard({
   question,
   feedback,
   pending,
+  failed,
   onAnswer,
   next,
   clock,
@@ -212,6 +213,8 @@ export function QuestionCard({
   question: PlayQuestion
   feedback?: Feedback
   pending?: boolean
+  /** The last send failed (the page says why). Once time is up, the player can then send again. */
+  failed?: boolean
   onAnswer: (answer: AnswerIn) => void
   next?: ReactNode
   /** Shown next to the question while it is open. */
@@ -257,7 +260,9 @@ export function QuestionCard({
   const kind = question.answer_kind
   const choice = kind.startsWith('choice')
   const answered = !!feedback
-  const locked = answered || !!expired
+  // Time's up and the send failed even after its retries: the player sends again, and may fix what they typed.
+  const stuck = !!expired && !answered && !!failed && !pending
+  const locked = answered || (!!expired && !stuck)
 
   useEffect(() => {
     if (feedback) after.current?.querySelector<HTMLElement>('button')?.focus()
@@ -266,6 +271,7 @@ export function QuestionCard({
     if (focusOnShow) text.current?.focus()
   }, [focusOnShow])
 
+  const entered: AnswerIn = choice ? { options: chosen } : kind === 'self' ? {} : { value }
   const sent = useRef(false)
   useEffect(() => {
     if (!expired || answered || sent.current) return
@@ -358,7 +364,20 @@ export function QuestionCard({
             error={missing}
           />
         )}
-        {expired && !answered && <Notice tone="error">Time's up. Sending your answer…</Notice>}
+        {expired && !answered && !stuck && <Notice tone="error">Time's up. Sending your answer…</Notice>}
+        {stuck && (
+          <>
+            <Notice tone="error">Time's up, and your answer didn't reach the server.</Notice>
+            <div className="answer-actions">
+              <button type="button" onClick={() => onAnswer(entered)}>
+                Send my answer again
+              </button>
+            </div>
+            <p className="muted answer-note">
+              The server's clock decides whether it still counts: up to 3 seconds after the end is in time.
+            </p>
+          </>
+        )}
         {!answered && !expired && (
           <div className="answer-actions">
             <button type="submit" disabled={pending}>

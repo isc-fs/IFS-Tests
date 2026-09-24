@@ -109,6 +109,11 @@ not your browser's.
 but counted as wrong. A question you never answer is closed as out of time: it costs LP like a wrong answer and
 earns no XP.
 
+**If the send fails.** When the answer sent at zero doesn't get through (a dropped connection, a server error), the
+page tries twice more within about a second and a half. If it still fails, it says **Time's up, and your answer
+didn't reach the server.** with a **Send my answer again** button; the server's clock decides whether it still
+counts.
+
 **Streak.** Each day with at least one daily question answered on time (right, wrong or "I'm not sure") extends
 your streak. Each day of streak after the first adds 5 % XP to right answers, up to +50 %.
 
