@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     media_dir: Path = Path("data/media")
     # FS-Quiz mirror (bank.json and img/), written by `ifs-tests mirror`, read by `ifs-tests push`.
     bank_dir: Path = Path("data/fsquiz")
+    # Connections per process; deploy/compose.yaml sizes them against Postgres's max_connections.
+    db_pool_size: int = 5
+    db_max_overflow: int = 5
 
     @model_validator(mode="after")
     def deployed_means_https(self) -> Settings:

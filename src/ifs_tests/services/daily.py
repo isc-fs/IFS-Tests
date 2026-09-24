@@ -232,8 +232,8 @@ def answer(
                 season_at=a.created_at,
             )
             db.execute(update(Attempt).where(Attempt.id == a.id).values(xp=granted.xp, lp=granted.lp))
+        db.refresh(a)  # while the player's lock still keeps the account, and so this attempt, in place
         db.commit()
-        db.refresh(a)
     result = review_attempt(db, user, a)
     if (
         granted
@@ -281,7 +281,7 @@ def close_expired(db: DB, now: datetime, user_id: int | None = None) -> int:
             )
             db.execute(update(Attempt).where(Attempt.id == attempt_id).values(xp=granted.xp, lp=granted.lp))
             closed += 1
-        db.commit()  # one attempt per transaction: attempt then player, the same lock order as answering
+        db.commit()  # one attempt per transaction: player, then attempt, the order answering takes
     return closed
 
 

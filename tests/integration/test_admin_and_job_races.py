@@ -64,6 +64,15 @@ def unexpected(results: dict[str, Any] | list[Any]) -> list[Any]:
     ]
 
 
+def signed_in(s: Session, user_id: int) -> User:
+    """For players a racing admin may delete before the harness looks them up: the app answers such a request
+    401 before any service code runs, so a missing account is that 401, not a harness failure."""
+    user = s.get(User, user_id)
+    if user is None:
+        raise UserError("Sign in first.", 401)
+    return user
+
+
 def mk(db: Session, n: int, prefix: str, **kw: Any) -> list[User]:
     users = [
         User(
@@ -189,14 +198,14 @@ def test_delete_while_answering(
     if mode == "daily":
         _, a = daily.start(db, player, "rules", NOW)
         answer: Callable[[Session], Any] = lambda s: daily.answer(  # noqa: E731
-            s, s.get_one(User, player.id), a.id, None, "-1", NOW
+            s, signed_in(s, player.id), a.id, None, "-1", NOW
         )
     else:
         run = mock.start(db, player, 9002, NOW)
         cur = mock.state(db, player, run.id, NOW).current
         assert cur is not None
         aid = cur[1].id
-        answer = lambda s: mock.answer(s, s.get_one(User, player.id), run.id, aid, [], None, NOW)  # noqa: E731
+        answer = lambda s: mock.answer(s, signed_in(s, player.id), run.id, aid, [], None, NOW)  # noqa: E731
     hold = threading.Event()
     pause_after(monkeypatch, xp_service, "last_seen", "player", hold)
 
@@ -414,10 +423,10 @@ def test_live_many_tables_each_feedback_with_deletion_and_end(
     tables = [ps[i::4] for i in range(4)]  # interleaved ids across tables
     code = rehearsal(db, host, tables, feedback="each")
     jobs: list[Callable[[Session], Any]] = [
-        (lambda s, t=t: live.answer(s, s.get_one(User, t[0].id), code, [], None, False, NOW)) for t in tables
+        (lambda s, t=t: live.answer(s, signed_in(s, t[0].id), code, [], None, False, NOW)) for t in tables
     ]
     jobs += [
-        (lambda s, u=u: live.propose(s, s.get_one(User, u.id), code, {"options": [], "value": None}, NOW))
+        (lambda s, u=u: live.propose(s, signed_in(s, u.id), code, {"options": [], "value": None}, NOW))
         for t in tables
         for u in t[1:3]
     ]
@@ -428,6 +437,9 @@ def test_live_many_tables_each_feedback_with_deletion_and_end(
     jobs.append(lambda s: live.view(s, s.get_one(User, host.id), code, NOW))
     results = race(app_engine, *jobs)
     assert not unexpected(results), results
+    targets = {tables[1][2].id, tables[2][0].id}
+    left = set(db.scalars(select(User.id).where(User.id.in_([u.id for u in ps]))))
+    assert left >= {u.id for u in ps} - targets  # signed_in's 401 only ever stands for a deleted target
     live.end(db, db.get_one(User, host.id), code, NOW)
     # nobody got XP twice for the question
     dup = db.execute(

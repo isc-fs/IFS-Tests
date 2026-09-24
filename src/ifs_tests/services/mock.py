@@ -275,7 +275,7 @@ def close_expired(db: DB, now: datetime) -> int:
             _time_out(db, s, db.get_one(Question, a.question_id), a, now)
             s.position += 1
             closed += 1
-        db.commit()  # one question per transaction: session, then player, the order answering takes
+        db.commit()  # one question per transaction: player, then run, the order answering takes
     return closed
 
 

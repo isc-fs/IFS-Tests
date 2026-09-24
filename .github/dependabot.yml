@@ -19,3 +19,11 @@ updates:
   - package-ecosystem: docker
     directory: /
     schedule: { interval: weekly }
+    cooldown: { default-days: 7 }
+  - package-ecosystem: docker-compose
+    directory: /deploy
+    schedule: { interval: weekly }
+    cooldown: { default-days: 7 }
+    ignore:
+      # A new Postgres major needs a dump and restore into a fresh volume, not just a tag bump.
+      - { dependency-name: postgres, update-types: ["version-update:semver-major"] }

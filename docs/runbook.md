@@ -63,7 +63,7 @@ The bank lives in the database; images live in the `media` volume. Load it after
 ```bash
 deploy/refresh-bank.sh staging     # then the same for prod
 ```
-It mirrors FS-Quiz into the `fsquiz` volume (about 130 requests plus one per new image, one per second; only what is missing is fetched) and loads it into the database. Safe to repeat: unchanged questions are skipped, and a question whose official answer changed upstream is flagged under Admin → Question bank. Images FS-Quiz can't serve are skipped; questions that need a missing image stay hidden until it arrives. The mirror needs outbound HTTPS from the api container (through the `proxy` network).
+It re-mirrors FS-Quiz into the `fsquiz` volume (about 125 requests plus one per new image, one per second; images already there are kept) and loads it into the database. Safe to repeat: unchanged questions are skipped, and a question whose official answer changed upstream is flagged under Admin → Question bank. Images FS-Quiz can't serve are skipped; questions that need a missing image stay hidden until it arrives. The mirror needs outbound HTTPS from the api container (through the `proxy` network).
 
 ## 3. Roll back
 
