@@ -199,6 +199,22 @@ def test_a_new_position_moves_the_rank_by_the_difference_in_placements(
     assert (raised["position"], raised["rank_points"]) == ("technical_director", 1234.5)  # already above
 
 
+def test_a_new_position_applies_a_pending_season_reset_first(
+    signed_in: TestClient, new_client: NewClient, db: Session
+) -> None:
+    ana = join(signed_in, new_client(), "Ana", "member")
+    leo = join(signed_in, new_client(), "Leo")
+    # Both last played in 2024: their 1200 and 600 stand at 900 and 300 this season (2026).
+    set_rank(db, ana["id"], 1200, rank_season=2024)
+    set_rank(db, leo["id"], 600, rank_season=2024)
+    lowered = signed_in.patch(f"/api/admin/users/{ana['id']}", json={"position": "mingo"}).json()
+    raised = signed_in.patch(f"/api/admin/users/{leo['id']}", json={"position": "department_head"}).json()
+    assert (lowered["rank_points"], raised["rank_points"]) == (600, 550)
+    db.expire_all()
+    seasons = db.scalars(select(User.rank_season).where(User.id.in_([ana["id"], leo["id"]])))
+    assert set(seasons) == {2026}
+
+
 def test_a_promotion_by_position_is_no_fanfare_later(
     signed_in: TestClient, new_client: NewClient, db: Session, bank: dict[int, int]
 ) -> None:

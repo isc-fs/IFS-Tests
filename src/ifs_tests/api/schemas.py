@@ -204,7 +204,16 @@ class ExportAccount(BaseModel):
     role: str
     status: str
     xp: int
+    xp_before_ranked: int = Field(description="Lifetime XP from before ranks and account levels (ADR 0007)")
     rank_points: float
+    rank_season: int = Field(description="The season the rank points belong to; 0 if never placed")
+    best_division: str = Field(description="The highest division reached in that season")
+    right_in_a_row: int
+    wrong_in_a_row: int
+    rested_xp: int
+    rested_on: date | None
+    streak_freezes: int
+    streak_freeze_earned_on: date | None
     hidden_from_leaderboard: bool
     joined_at: datetime
     last_seen: datetime | None
@@ -290,6 +299,12 @@ class ExportReport(BaseModel):
     handled_at: datetime | None
 
 
+class ExportReset(BaseModel):
+    created_at: datetime
+    expires_at: datetime
+    used_at: datetime | None
+
+
 class ExportSignIn(BaseModel):
     started_at: datetime
     last_seen: datetime
@@ -319,12 +334,15 @@ class Export(BaseModel):
     mock_runs: list[ExportMockRun]
     live: ExportLive
     reports: list[ExportReport]
+    streak_freezes_used: list[date]
+    password_resets: list[ExportReset]
     sign_ins: list[ExportSignIn]
     account_history: list[ExportHistory]
     actions: list[ExportAction]
 
 
 class UserPatch(In):
+    email: str | None = Field(default=None, max_length=254)
     role: Role | None = None
     status: Status | None = None
     position: Position | None = None

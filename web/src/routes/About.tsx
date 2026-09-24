@@ -29,16 +29,18 @@ export function Privacy() {
           <li>
             <strong>Your training:</strong> every answer (typed ones included) and whether it was right, the LP and XP
             it earned, hints you took, mock quiz runs, live quizzes you joined or hosted, your table and whether you
-            captained it, answers you sent for your table, proposals you sent to your captain, and problems you reported
-            on questions.
+            captained it, answers you sent for your table, proposals you sent to your captain, problems you reported on
+            questions, and what your rank and XP run on: your best division this season, right and wrong answers in a
+            row, rested XP, and streak freezes held and used.
           </li>
           <li>
-            <strong>Signing in:</strong> when each of your sign-ins started and was last used.
+            <strong>Signing in:</strong> when each of your sign-ins started and was last used, and any password reset
+            link an admin made for you.
           </li>
           <li>
-            <strong>An admin log:</strong> changes to accounts (joined, role, position or status changed, reset links,
-            locks, deletions) and to questions, so admins are accountable for what they do. It refers to people by
-            account number.
+            <strong>An admin log:</strong> changes to accounts (joined, role, position, status or email changed, reset
+            links, locks, deletions) and to questions, so admins are accountable for what they do. It refers to people
+            by account number.
           </li>
           <li>
             <strong>Web server logs:</strong> the server in front of the site records the IP address and time of each

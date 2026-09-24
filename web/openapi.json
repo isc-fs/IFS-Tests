@@ -3483,6 +3483,21 @@
       "type": "array",
       "title": "Reports"
      },
+     "streak_freezes_used": {
+      "items": {
+       "type": "string",
+       "format": "date"
+      },
+      "type": "array",
+      "title": "Streak Freezes Used"
+     },
+     "password_resets": {
+      "items": {
+       "$ref": "#/components/schemas/ExportReset"
+      },
+      "type": "array",
+      "title": "Password Resets"
+     },
      "sign_ins": {
       "items": {
        "$ref": "#/components/schemas/ExportSignIn"
@@ -3515,6 +3530,8 @@
      "mock_runs",
      "live",
      "reports",
+     "streak_freezes_used",
+     "password_resets",
      "sign_ins",
      "account_history",
      "actions"
@@ -3566,9 +3583,64 @@
       "type": "integer",
       "title": "Xp"
      },
+     "xp_before_ranked": {
+      "type": "integer",
+      "title": "Xp Before Ranked",
+      "description": "Lifetime XP from before ranks and account levels (ADR 0007)"
+     },
      "rank_points": {
       "type": "number",
       "title": "Rank Points"
+     },
+     "rank_season": {
+      "type": "integer",
+      "title": "Rank Season",
+      "description": "The season the rank points belong to; 0 if never placed"
+     },
+     "best_division": {
+      "type": "string",
+      "title": "Best Division",
+      "description": "The highest division reached in that season"
+     },
+     "right_in_a_row": {
+      "type": "integer",
+      "title": "Right In A Row"
+     },
+     "wrong_in_a_row": {
+      "type": "integer",
+      "title": "Wrong In A Row"
+     },
+     "rested_xp": {
+      "type": "integer",
+      "title": "Rested Xp"
+     },
+     "rested_on": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Rested On"
+     },
+     "streak_freezes": {
+      "type": "integer",
+      "title": "Streak Freezes"
+     },
+     "streak_freeze_earned_on": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Streak Freeze Earned On"
      },
      "hidden_from_leaderboard": {
       "type": "boolean",
@@ -3644,7 +3716,16 @@
      "role",
      "status",
      "xp",
+     "xp_before_ranked",
      "rank_points",
+     "rank_season",
+     "best_division",
+     "right_in_a_row",
+     "wrong_in_a_row",
+     "rested_xp",
+     "rested_on",
+     "streak_freezes",
+     "streak_freeze_earned_on",
      "hidden_from_leaderboard",
      "joined_at",
      "last_seen",
@@ -4141,6 +4222,39 @@
      "handled_at"
     ],
     "title": "ExportReport"
+   },
+   "ExportReset": {
+    "properties": {
+     "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Created At"
+     },
+     "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Expires At"
+     },
+     "used_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Used At"
+     }
+    },
+    "type": "object",
+    "required": [
+     "created_at",
+     "expires_at",
+     "used_at"
+    ],
+    "title": "ExportReset"
    },
    "ExportSignIn": {
     "properties": {
@@ -6863,6 +6977,18 @@
    },
    "UserPatch": {
     "properties": {
+     "email": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 254
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Email"
+     },
      "role": {
       "anyOf": [
        {

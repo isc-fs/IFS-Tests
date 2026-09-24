@@ -466,6 +466,14 @@ export type Export = {
      */
     reports: Array<ExportReport>;
     /**
+     * Streak Freezes Used
+     */
+    streak_freezes_used: Array<string>;
+    /**
+     * Password Resets
+     */
+    password_resets: Array<ExportReset>;
+    /**
      * Sign Ins
      */
     sign_ins: Array<ExportSignIn>;
@@ -516,9 +524,51 @@ export type ExportAccount = {
      */
     xp: number;
     /**
+     * Xp Before Ranked
+     *
+     * Lifetime XP from before ranks and account levels (ADR 0007)
+     */
+    xp_before_ranked: number;
+    /**
      * Rank Points
      */
     rank_points: number;
+    /**
+     * Rank Season
+     *
+     * The season the rank points belong to; 0 if never placed
+     */
+    rank_season: number;
+    /**
+     * Best Division
+     *
+     * The highest division reached in that season
+     */
+    best_division: string;
+    /**
+     * Right In A Row
+     */
+    right_in_a_row: number;
+    /**
+     * Wrong In A Row
+     */
+    wrong_in_a_row: number;
+    /**
+     * Rested Xp
+     */
+    rested_xp: number;
+    /**
+     * Rested On
+     */
+    rested_on: string | null;
+    /**
+     * Streak Freezes
+     */
+    streak_freezes: number;
+    /**
+     * Streak Freeze Earned On
+     */
+    streak_freeze_earned_on: string | null;
     /**
      * Hidden From Leaderboard
      */
@@ -847,6 +897,24 @@ export type ExportReport = {
      * Handled At
      */
     handled_at: string | null;
+};
+
+/**
+ * ExportReset
+ */
+export type ExportReset = {
+    /**
+     * Created At
+     */
+    created_at: string;
+    /**
+     * Expires At
+     */
+    expires_at: string;
+    /**
+     * Used At
+     */
+    used_at: string | null;
 };
 
 /**
@@ -2437,6 +2505,10 @@ export type TokenIn = {
  * UserPatch
  */
 export type UserPatch = {
+    /**
+     * Email
+     */
+    email?: string | null;
     role?: Role | null;
     status?: Status | null;
     position?: Position | null;
