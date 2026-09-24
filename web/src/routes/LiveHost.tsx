@@ -136,8 +136,10 @@ function Lobby({ s, dirty, onDirty }: { s: LiveState; dirty: boolean; onDirty: (
     })),
   )
   const done = { onSuccess: () => refresh(s.code) }
-  const auto = useMutation({ ...seatBySubdepartmentMutation(), ...done })
-  const save = useMutation({ ...seatTablesMutation(), onSuccess: () => (onDirty(false), refresh(s.code)) })
+  // Both replace the tables on the server; the draft is then rebuilt from them.
+  const saved = { onSuccess: () => (onDirty(false), refresh(s.code)) }
+  const auto = useMutation({ ...seatBySubdepartmentMutation(), ...saved })
+  const save = useMutation({ ...seatTablesMutation(), ...saved })
   const configure = useMutation({ ...configureSessionMutation(), ...done })
   const path = { path: { code: s.code } }
   const change = (next: Draft[]) => (setDraft(next), onDirty(true))

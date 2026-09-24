@@ -8,6 +8,7 @@ from ifs_tests.domain.live import (
     CODE_ALPHABET,
     SUBDEPARTMENTS,
     Player,
+    captain,
     new_code,
     owner,
     seat_by_subdepartment,
@@ -71,3 +72,16 @@ def test_a_question_goes_to_the_table_owning_its_topic_or_the_catch_all(
 )
 def test_speed_points(correct: bool | None, elapsed: float, budget: int | None, points: int) -> None:
     assert speed_points(correct, elapsed, budget) == points
+
+
+@pytest.mark.parametrize(
+    ("ranks", "expected"),
+    [
+        ({1: 350.0, 2: 550.0, 3: 50.0}, 2),
+        ({6: 550.0, 2: 550.0}, 2),  # a tie goes to the earlier member
+        ({7: 50.25, 3: 50.0}, 7),
+        ({}, None),  # an empty table has nobody to captain it
+    ],
+)
+def test_the_captain_is_the_best_ranked_member(ranks: dict[int, float], expected: int | None) -> None:
+    assert captain(ranks) == expected

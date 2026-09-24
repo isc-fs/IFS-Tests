@@ -1,4 +1,5 @@
-"""Practice: any playable question, answered as often as you like, at half XP; a question seen before earns a tenth."""
+"""Practice: any playable question not still running for you elsewhere, answered as often as you like, at
+three quarters of the base XP; a question seen before earns a quarter of that (domain/xp.py)."""
 
 from __future__ import annotations
 
@@ -76,6 +77,13 @@ def next_question(
     q = db.scalars(stmt.order_by(func.coalesce(mine.c.n, 0), func.random()).limit(1)).first()
     if q is None:
         raise UserError("No questions match that filter yet.", 404)
+    return q
+
+
+def question(db: DB, user: User, question_id: int, now: datetime) -> Question:
+    """One question to practise, never one still to be answered in a daily, mock or live quiz."""
+    q = playable(db, question_id)
+    not_running(db, user.id, q.id, now)
     return q
 
 

@@ -10,9 +10,11 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from ifs_tests.db.models import Attempt, User
+from ifs_tests.db.models import Attempt, LiveSession, User
 from ifs_tests.domain.rank import placement
 from ifs_tests.domain.xp import xp_award
+from ifs_tests.services import maintenance
+from ifs_tests.services.questions import running
 
 from ..conftest import Clock
 from .helpers import invite, login, register, right_answer
@@ -310,8 +312,8 @@ def test_the_host_moves_people_between_questions_and_removes_them(room: dict[str
         .status_code
         == 204
     )
-    assert tables(room, code)["Aerodynamics"]["captain_id"] is None  # a captain who moves stops captaining
     ana = room["Ana_id"]
+    assert tables(room, code)["Aerodynamics"]["captain_id"] == ana  # the member left takes over
     assert (
         room["Tere"].patch(f"{url}/tables/{t['Aerodynamics']['id']}", json={"captain_id": ana}).status_code
         == 204
@@ -344,7 +346,7 @@ def test_the_host_downloads_the_results_as_a_safe_csv(room: dict[str, Any], db: 
     r = room["Tere"].get(f"/api/live/sessions/{code}/results.csv")
     assert r.status_code == 200 and r.headers["content-type"].startswith("text/csv")
     rows = list(csv.reader(io.StringIO(r.text)))
-    assert rows[0][:3] == ["question", "text", "answered by"]
+    assert rows[0][:5] == ["question", "text", "for table", "answered by", "captain"]
     assert rows[0][5:8] == ["answer", "official answer", "right"]
     assert any(row[3] == "'=HYPERLINK(1)" and row[7] == "yes" and row[6] for row in rows[1:])
     assert not any(row[5].isdigit() for row in rows[1:])  # option text, not database ids
@@ -424,12 +426,14 @@ def test_removing_a_captain_mid_question_lets_the_other_tables_close_it(
     code = lobby(room, areas=["rules"])
     advance(room, code)
     assert room["Tere"].delete(f"/api/live/sessions/{code}/players/{room['Leo_id']}").status_code == 204
+    assert tables(room, code)["Aerodynamics"]["captain_id"] == room["Ana_id"]  # the member left takes over
+    assert room["Tere"].delete(f"/api/live/sessions/{code}/players/{room['Ana_id']}").status_code == 204
     t = tables(room, code)
-    assert t["Aerodynamics"]["captain_id"] is None and room["Leo_id"] not in t["Aerodynamics"]["member_ids"]
+    assert t["Aerodynamics"]["captain_id"] is None and t["Aerodynamics"]["member_ids"] == []
     assert send(room["Leo"], code, {"options": []}) == 403  # gone, and no longer a captain
     qid = state(room["Pau"], code)["question"]["id"]
     assert send(room["Pau"], code, right_answer(db, qid)) == 204
-    assert state(room["Ana"], code)["state"] == "closed"  # a table without a captain is not waited for
+    assert state(room["Marta"], code)["state"] == "closed"  # a table without a captain is not waited for
 
 
 def test_joined_but_unseated_players_see_the_quiz_and_earn_nothing(
@@ -643,3 +647,45 @@ def test_tables_built_by_hand_get_a_captain_and_unowned_questions_go_to_the_bigg
     assert (t["Big"]["captain_id"], t["Small"]["captain_id"]) == (room["Leo_id"], room["Pau_id"])
     advance(room, code)
     assert state(room["Pau"], code)["question_table_id"] == t["Big"]["id"]
+
+
+# From the live-quiz review
+
+
+def test_a_table_whose_captain_moves_away_gets_its_best_ranked_member_as_captain(
+    room: dict[str, Any], db: Session
+) -> None:
+    code = lobby(room, areas=["rules"])
+    t = tables(room, code)
+    aero, bat = t["Aerodynamics"]["id"], t["Batteries"]["id"]
+    url = f"/api/live/sessions/{code}/players"
+    advance(room, code)
+    assert room["Tere"].put(f"{url}/{room['Leo_id']}", json={"table_id": bat}).status_code == 204
+    t = tables(room, code)
+    assert (t["Aerodynamics"]["captain_id"], t["Batteries"]["captain_id"]) == (room["Ana_id"], room["Pau_id"])
+    qid = state(room["Ana"], code)["question"]["id"]
+    assert send(room["Ana"], code, right_answer(db, qid)) == 204  # the table can still answer
+    assert room["Tere"].put(f"{url}/{room['Ana_id']}", json={"table_id": None}).status_code == 204
+    assert tables(room, code)["Aerodynamics"]["captain_id"] is None  # nobody left to captain it
+    assert room["Tere"].put(f"{url}/{room['Marta_id']}", json={"table_id": aero}).status_code == 204
+    assert tables(room, code)["Aerodynamics"]["captain_id"] == room["Marta_id"]  # the first one back
+
+
+def test_the_nightly_job_finishes_an_abandoned_rehearsal_and_shares_its_xp(
+    room: dict[str, Any], db: Session, clock: Clock
+) -> None:
+    code = lobby(room, areas=["rules"], count=1, feedback="end")
+    advance(room, code)
+    qid = state(room["Leo"], code)["question"]["id"]
+    send(room["Leo"], code, right_answer(db, qid))
+    assert qid in running(db, room["Ana_id"], clock.now, daily=False)
+    clock.advance(hours=23)
+    assert maintenance.run(db, clock.now)["live_sessions_finished"] == 0  # the host may still come back
+    clock.advance(hours=2)
+    assert maintenance.run(db, clock.now)["live_sessions_finished"] == 1
+    assert db.scalars(select(LiveSession.state).where(LiveSession.code == code)).one() == "finished"
+    rows = db.scalars(select(Attempt).where(Attempt.mode == "live")).all()
+    assert sorted(a.user_id for a in rows) == sorted([room["Ana_id"], room["Leo_id"]])
+    assert all(a.xp > 0 for a in rows)
+    assert qid not in running(db, room["Ana_id"], clock.now, daily=False)
+    assert maintenance.run(db, clock.now)["live_sessions_finished"] == 0

@@ -5,11 +5,14 @@ from __future__ import annotations
 
 import random
 from dataclasses import dataclass, field
+from datetime import timedelta
 
 # No look-alikes (0/O, 1/I/L), so a code read off a projector is typed right first time.
 CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
 CODE_LENGTH = 6
 EVERYONE_ELSE = "Everyone else"
+# A session nobody ended by then was abandoned: the nightly job finishes it and shares its XP.
+ABANDONED_AFTER = timedelta(days=1)
 
 # The Team Directory's departments in Notion, by vertical, and the question topics each answers best.
 SUBDEPARTMENTS: dict[str, tuple[str, str, tuple[str, ...]]] = {
@@ -67,10 +70,16 @@ def seat_by_subdepartment(players: list[Player]) -> list[Table]:
     tables = []
     for code in sorted(groups, key=lambda c: (c == "", c)):
         members = groups[code]
-        captain = max(members, key=lambda p: (p.rank, -p.user_id))
         name, _, topics = SUBDEPARTMENTS[code] if code else (EVERYONE_ELSE, "", ())
-        tables.append(Table(name, [p.user_id for p in members], captain.user_id, list(topics)))
+        best = captain({p.user_id: p.rank for p in members})
+        tables.append(Table(name, [p.user_id for p in members], best, list(topics)))
     return tables
+
+
+def captain(ranks: dict[int, float]) -> int | None:
+    """The member with the most rank points ({user_id: points}), the earlier one on a tie; nobody at an
+    empty table."""
+    return max(ranks, key=lambda uid: (ranks[uid], -uid), default=None)
 
 
 def owner(topic: str | None, tables: list[tuple[int, list[str]]], catch_all: int | None) -> int | None:
