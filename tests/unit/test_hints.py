@@ -46,7 +46,7 @@ def test_ranges_lists_and_text() -> None:
         [],
         1,
     )
-    assert n is not None and n.text == "2 values; the first is 518."
+    assert n is not None and n.text == "2 values; the first is between 453 and 637."
     t = hint({"kind": "text", "accept": ["ams"]}, [], 1)
     assert t is not None and t.text == '3 characters, starting with "a".'
 
@@ -93,3 +93,51 @@ def test_hint_numbers_read_back_as_printed(v: float) -> None:
             assert unreadable(key, printed) is None
             parsed = number(printed)
             assert parsed is not None and parsed["v"] == float(printed)
+
+
+def _ends(text: str) -> tuple[float, float]:
+    lo, hi = (float(x) for x in re.findall(r"-?\d+(?:\.\d+)?", text)[-2:])
+    return lo, hi
+
+
+def _right(n: dict[str, float], x: float) -> bool:
+    return bool(grade({"kind": "number", "accept": [n]}, value=f"{x:.10g}"))
+
+
+# DOM-01 / BANK-12: neither end nor the middle of a hint's range is right, whatever the seed.
+@pytest.mark.parametrize(
+    "n",
+    [{"v": float(v), "d": 0} for v in (4, 5, 6, 9, 17, 58, 425, 3404, 64107, -10368)]
+    + [
+        {"v": v, "d": d}
+        for v, d in ((0.1, 1), (0.23, 2), (0.713, 3), (3.5, 1), (82.9, 1), (509.85, 2), (-4.2, 1))
+    ],
+)
+def test_a_number_hint_is_right_neither_at_its_ends_nor_in_its_middle(n: dict[str, float]) -> None:
+    for seed in range(300):
+        h = hint({"kind": "number", "accept": [n]}, [], seed)
+        assert h is not None
+        lo, hi = _ends(h.text)
+        assert lo < n["v"] < hi
+        assert not any(_right(n, x) for x in (lo, hi, (lo + hi) / 2)), (seed, h.text)
+
+
+@pytest.mark.parametrize(("lo", "hi"), [(70, 80), (11.7, 12.1), (3.8, 3.9), (898, 901), (-5, 5)])
+def test_a_range_hint_holds_the_range_off_centre(lo: float, hi: float) -> None:
+    for seed in range(300):
+        h = hint({"kind": "range", "accept": [{"lo": lo, "hi": hi}]}, [], seed)
+        assert h is not None
+        a, b = _ends(h.text)
+        assert a < lo <= hi < b and not lo <= (a + b) / 2 <= hi, (seed, h.text)
+
+
+def test_a_list_hint_gives_a_range_for_its_first_value_not_the_value() -> None:
+    first = {"v": 518.4, "d": 1}
+    key = {"kind": "numbers", "accept": [{"values": [first, {"v": 604.8, "d": 1}], "ordered": True}]}
+    for seed in range(100):
+        h = hint(key, [], seed)
+        assert h is not None and h.text.startswith("2 values; the first is between ")
+        lo, hi = _ends(h.text)
+        assert lo < 518.4 < hi and not any(_right(first, x) for x in (lo, hi, (lo + hi) / 2))
+    small = {"kind": "numbers", "accept": [{"values": [{"v": 1, "d": 0}, {"v": 7, "d": 0}], "ordered": True}]}
+    assert hint(small, [], 1) is None

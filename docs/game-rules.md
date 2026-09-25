@@ -156,7 +156,7 @@ Learning aids follow the division the player stands in *now*, including after a 
 
 The rulebook, handbook and other documents of the quizzes a question came from are shown at every rank: they are the material of the real quiz, not a training wheel.
 
-A hint is generated from the answer key: two options left on a single choice, how many options are right on a multiple choice, a range holding a number without being centred on it, the count and first value of a list, the length and first letter of a text. Numbers in a hint are written the way the answer field reads them (a decimal point, no thousands separators), so one can be typed back as it is. One per question, before answering. No hint is given when it would give the answer away (see `src/ifs_tests/domain/hints.py`). Hints are drawn with a server secret (the `hint_salt` row in the `settings` table), so nobody can compute them from the public bank.
+A hint is generated from the answer key: two options left on a single choice, how many options are right on a multiple choice, a range holding a number 10–40 % in from one end (so neither its ends nor its middle are right), a range holding a range with its middle outside it, the count of a list and a range for its first value, the length and first letter of a text. Numbers in a hint are written the way the answer field reads them (a decimal point, no thousands separators), so one can be typed back as it is. One per question, before answering. No hint is given when it would give the answer away (see `src/ifs_tests/domain/hints.py`). Hints are drawn with a server secret (the `hint_salt` row in the `settings` table), so nobody can compute them from the public bank.
 
 ---
 

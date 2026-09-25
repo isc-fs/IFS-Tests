@@ -150,8 +150,8 @@ daily questions, a mock run or a live quiz, and refuses to open one by its link 
 
 While your rank still gets them (Mingo I to Jefe V), a question you can be graded on offers **Hint (a right answer
 earns half)**. A hint never gives the answer away: on a single choice it greys out all but two options; on a
-multiple choice it says how many options are right; on a number it gives a range; on a list of values, how many and
-the first; on a text, its length and first letter. Some questions have no hint. One hint per question, before you
+multiple choice it says how many options are right; on a number it gives a range (the answer isn't in its middle);
+on a list of values, how many and a range for the first; on a text, its length and first letter. Some questions have no hint. One hint per question, before you
 answer. It halves the XP of a right answer (and the LP in daily and
 mock questions). Hints end at DT I.
 
