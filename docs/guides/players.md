@@ -111,7 +111,7 @@ earns no XP.
 
 **If the send fails.** When the answer sent at zero doesn't get through (a dropped connection, a server error), the
 page tries twice more within about a second and a half. If it still fails, it says **Time's up, and your answer
-didn't reach the server.** with a **Send my answer again** button; the server's clock decides whether it still
+didn't go through.** with a **Send my answer again** button; the server's clock decides whether it still
 counts.
 
 **Offline.** Without a connection a banner says **You're offline. The page carries on when the connection is back.**

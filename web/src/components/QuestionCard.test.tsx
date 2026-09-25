@@ -70,13 +70,44 @@ test('when the send at zero keeps failing, the player can send the same answer a
   const { sent } = renderApp('/daily', daily(0, 3))
   await start()
   const again = await screen.findByRole('button', { name: 'Send my answer again' }, { timeout: 4000 })
-  expect(screen.getByText(/didn't reach the server/)).toBeInTheDocument()
+  expect(screen.getByText(/didn't go through/)).toBeInTheDocument()
   expect(screen.queryByText(/Sending your answer…/)).toBeNull()
   await userEvent.click(again)
   expect(await screen.findByText(/Correct: \+15 LP, \+60 XP/)).toBeInTheDocument()
   const bodies = sent('POST /api/daily/attempts/99/answer').map((c) => c.body)
   expect(bodies).toHaveLength(4)
   expect(new Set(bodies.map((b) => JSON.stringify(b)))).toEqual(new Set([JSON.stringify({ options: [] })]))
+})
+
+test('a typed answer refused when the time runs out can be fixed and sent again in the grace', async () => {
+  const typed = { ...QUESTION, answer_kind: 'number', options: [] }
+  const now = Date.now()
+  const { sent } = renderApp('/daily', {
+    ...daily(1, 0),
+    'POST /api/daily/mech/start': {
+      body: {
+        attempt_id: 99,
+        question: typed,
+        server_now: new Date(now).toISOString(),
+        deadline_at: new Date(now + 1000).toISOString(),
+      },
+    },
+    'POST /api/daily/attempts/99/answer': (body) =>
+      (body as { value?: string }).value === '3.5'
+        ? { body: { ...RESULT, question: typed } }
+        : { status: 400, body: { detail: 'Type the number only: no units, % or thousands separators.' } },
+  })
+  await start()
+  await userEvent.type(await screen.findByRole('textbox'), '3.5 mm')
+  expect(await screen.findByText(/no units, % or thousands separators\./, {}, { timeout: 4000 })).toBeInTheDocument()
+  expect(screen.getByText(/didn't go through/)).toBeInTheDocument()
+  const field = screen.getByRole('textbox')
+  expect(field).not.toHaveAttribute('readonly')
+  await userEvent.clear(field)
+  await userEvent.type(field, '3.5')
+  await userEvent.click(screen.getByRole('button', { name: 'Send my answer again' }))
+  expect(await screen.findByText(/Correct: \+15 LP, \+60 XP/)).toBeInTheDocument()
+  expect(sent('POST /api/daily/attempts/99/answer').map((c) => c.body)).toEqual([{ value: '3.5 mm' }, { value: '3.5' }])
 })
 
 test("an answer the server refuses isn't sent again by itself", async () => {
