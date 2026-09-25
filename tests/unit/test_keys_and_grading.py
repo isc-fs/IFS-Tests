@@ -5,7 +5,7 @@ from typing import Any
 import pytest
 
 from ifs_tests.domain.grading import correction, grade, tolerance, unreadable
-from ifs_tests.domain.keys import answer_kind, build_key, display, number, split_values
+from ifs_tests.domain.keys import MAX_TEXT, answer_kind, build_key, display, number, split_values
 
 
 def ans(*texts: str, correct: bool = True) -> list[dict[str, Any]]:
@@ -374,6 +374,11 @@ def test_a_number_with_a_unit_is_no_text_key() -> None:
     assert build_key("input", ans("Qxc8"))["kind"] == "text"  # type: ignore[index]
 
 
+def test_a_text_key_is_at_most_max_text_characters() -> None:
+    assert build_key("input", ans("Q" * MAX_TEXT)) == {"kind": "text", "accept": ["q" * MAX_TEXT]}
+    assert build_key("input", ans("Q" * (MAX_TEXT + 1))) == {"kind": "self"}
+
+
 # A pair answers two things in the order the question asks (Q452 "1, 7": days for the first deadline, then for
 # the second); three or more ascending whole numbers are a "which of these" set (Q701, Q843, Q854).
 @pytest.mark.parametrize(
@@ -383,6 +388,7 @@ def test_a_number_with_a_unit_is_no_text_key() -> None:
         ("1, 7", "7; 1", False),
         ("1, 3, 5", "5; 3; 1", True),
         ("1-2-3", "3-2-1", True),
+        ("2, 2, 5", "5; 2; 2", False),  # a repeated number isn't ascending: the order counts
     ],
 )
 def test_only_three_or_more_ascending_whole_numbers_are_a_set(key_text: str, given: str, ok: bool) -> None:
