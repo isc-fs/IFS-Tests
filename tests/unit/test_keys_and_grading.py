@@ -209,7 +209,19 @@ def test_either_of_two_accepted_answers_counts() -> None:
     assert grade(key, value="1;2;3") is False
 
 
-@pytest.mark.parametrize(("given", "ok"), [("11.7", True), ("12.1", True), ("11,9", True), ("12.2", False)])
+@pytest.mark.parametrize(
+    ("given", "ok"),
+    [
+        ("11.7", True),
+        ("12.1", True),
+        ("11,9", True),
+        ("12.2", False),
+        ("11.699999999", True),  # both bounds count, down to float noise
+        ("12.100000001", True),
+        ("11.69999999", False),
+        ("12.10000001", False),
+    ],
+)
 def test_range_answers(given: str, ok: bool) -> None:
     assert grade(build_key("input-range", ans("11.7-12.1")), value=given) is ok
 
