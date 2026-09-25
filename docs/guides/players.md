@@ -137,6 +137,9 @@ daily questions, a mock run or a live quiz, and refuses to open one by its link 
 - Numbers: a decimal point or a comma both work (`3.5` or `3,5`, no space after the comma: `3, 5` reads as two
   values), and so do `.5` and `3.5e-3`. Type just the number, in the unit the question asks for: no units, no `%`,
   no thousands separators (`2778`, not `2,778`; a comma with exactly three digits after it is asked about).
+- A number is right when it rounds to the official answer at the precision the answer is given with (`82.9`
+  accepts `82.94`; 0.1 % either way when that's more). A whole number (a count, "round to the nearest one", a binary
+  string) accepts only what rounds to it, and an official answer of zero accepts only zero.
 - Several values: separate them with semicolons, in the order the question asks, e.g. `12.5; 40`.
 - An answer the app can't read (`3.5 mm`, `46%`, one value where two are asked) isn't graded: it's refused with a
   message saying what to type, and your try isn't used, so fix it and send it again before the clock runs out.

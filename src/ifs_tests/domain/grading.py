@@ -10,9 +10,14 @@ RELATIVE = 0.001
 
 
 def tolerance(n: dict[str, Any]) -> float:
-    """Half a unit in the key's last decimal place, or 0.1 % of the value if that is larger:
-    a key of 0.23 accepts 0.225 to 0.235, a key of 82.9 accepts ±0.08, a key of 64107 accepts ±64."""
-    return max(0.5 * 10.0 ** -int(n["d"]), RELATIVE * abs(float(n["v"])))
+    """Half a unit in the key's last decimal place, or 0.1 % of the value if that is larger: a key of 0.23
+    accepts 0.225 to 0.235, a key of 82.9 accepts ±0.08. A whole number accepts only what rounds to it (64107:
+    ±0.5): it's a count, an exact value like 32768 or a binary string, or asked "to the nearest one". Zero is a
+    reasoned answer (nothing above the surface, no difference), not a rounded one: it accepts only zero."""
+    if n["v"] == 0:
+        return 0.0
+    half = 0.5 * 10.0 ** -int(n["d"])
+    return half if n["d"] == 0 else max(half, RELATIVE * abs(float(n["v"])))
 
 
 def _close(given: float, expected: dict[str, Any]) -> bool:

@@ -40,8 +40,9 @@ def _around(v: float, rng: random.Random) -> tuple[float, float]:
 
 
 def _too_tight(n: dict[str, float]) -> bool:
-    """A range this narrow would sit inside the grading tolerance: every number in it would count as right."""
-    return max(abs(n["v"]), 1.0) * 0.15 <= tolerance(n)
+    """A range this narrow would sit inside the grading tolerance: every number in it would count as right. And
+    zero would be everyone's guess in any range around it."""
+    return n["v"] == 0 or max(abs(n["v"]), 1.0) * 0.15 <= tolerance(n)
 
 
 def hint(key: Key | None, options: list[int], seed: int) -> Hint | None:

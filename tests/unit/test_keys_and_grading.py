@@ -135,7 +135,34 @@ def test_a_single_bare_comma_splits_only_when_several_values_are_expected() -> N
 def test_tolerance_follows_the_keys_precision() -> None:
     assert tolerance({"v": 82.9, "d": 1}) == pytest.approx(0.0829)
     assert tolerance({"v": 0.23, "d": 2}) == pytest.approx(0.005)
-    assert tolerance({"v": 64107, "d": 0}) == pytest.approx(64.107)
+    assert tolerance({"v": 64107, "d": 0}) == pytest.approx(0.5)  # BANK-05: whole numbers are exact
+    assert tolerance({"v": 0.0, "d": 2}) == 0
+
+
+# BANK-05: whole numbers (counts, 2^15, a binary string, "round to the nearest one") and zero are exact.
+@pytest.mark.parametrize(
+    ("key_text", "given", "ok"),
+    [
+        ("32768", "32768", True),
+        ("32768", "32768.4", True),
+        ("32768", "32767", False),
+        ("32768", "32800", False),
+        ("111111111101100", "111111111101100", True),
+        ("111111111101100", "111111111101101", False),
+        ("111111111101100", "111111111100000", False),
+        ("64107", "64050", False),
+        ("0", "0", True),
+        ("0", "0.00", True),
+        ("0", "-0", True),
+        ("0", "0.4", False),
+        ("0", "-0.4", False),
+        ("0.0", "0.04", False),
+        ("82.9", "82.98", True),  # a key with decimals keeps the 0.1 %
+        ("509.85", "510.2", True),
+    ],
+)
+def test_exact_answers(key_text: str, given: str, ok: bool) -> None:
+    assert grade(build_key("input", ans(key_text)), value=given) is ok
 
 
 @pytest.mark.parametrize(

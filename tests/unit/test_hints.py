@@ -26,13 +26,13 @@ def test_multiple_choice_says_how_many_are_right() -> None:
     assert h is not None and (h.text, h.removed_options) == ("2 of the 5 options are right.", [])
 
 
-@pytest.mark.parametrize(("v", "seed"), [(0.713, 1), (82.9, 2), (-4.2, 3), (0.0, 4), (1_250_000.0, 5)])
+@pytest.mark.parametrize(("v", "seed"), [(0.713, 1), (82.9, 2), (-4.2, 3), (0.05, 4), (1_250_000.0, 5)])
 def test_a_number_gets_a_range_that_holds_it_without_being_centred(v: float, seed: int) -> None:
     h = hint({"kind": "number", "accept": [{"v": v, "d": 3}]}, [], seed)
     assert h is not None
     lo, hi = (float(x.replace(",", "")) for x in re.findall(r"-?\d[\d,]*(?:\.\d+)?", h.text)[:2])
     assert lo < v < hi
-    assert abs((v - lo) - (hi - v)) > 1e-9 or v == 0
+    assert abs((v - lo) - (hi - v)) > 1e-9
 
 
 def test_ranges_lists_and_text() -> None:
@@ -60,7 +60,8 @@ def test_nothing_to_hint_without_a_gradable_key(key: dict[str, object] | None) -
     ("key", "options"),
     [
         ({"kind": "number", "accept": [{"v": 1.0, "d": 0}]}, []),  # any number in the range would round to 1
-        ({"kind": "number", "accept": [{"v": 0.0, "d": 0}]}, []),
+        ({"kind": "number", "accept": [{"v": 0.0, "d": 0}]}, []),  # zero: the obvious guess in any range
+        ({"kind": "number", "accept": [{"v": 0.0, "d": 2}]}, []),
         ({"kind": "text", "accept": ["c"]}, []),  # the first letter is the answer
         ({"kind": "text", "accept": ["ab"]}, []),
         ({"kind": "choice", "mode": "one", "options": [11, 12]}, [10, 11, 12, 13]),  # both options left right
