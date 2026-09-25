@@ -396,6 +396,7 @@ function Answering({ s }: { s: LiveState }) {
         focusOnShow={s.position > 0}
         pending={send.isPending || propose.isPending}
         failed={send.isError}
+        error={send.error}
         expired={expired}
         clock={clock}
         preset={preset}

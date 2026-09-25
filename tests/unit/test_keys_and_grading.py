@@ -5,7 +5,15 @@ from typing import Any
 import pytest
 
 from ifs_tests.domain.grading import correction, grade, tolerance, unreadable
-from ifs_tests.domain.keys import MAX_TEXT, answer_kind, build_key, decimal_comma, display, number, split_values
+from ifs_tests.domain.keys import (
+    MAX_TEXT,
+    answer_kind,
+    build_key,
+    decimal_comma,
+    display,
+    number,
+    split_values,
+)
 
 
 def ans(*texts: str, correct: bool = True) -> list[dict[str, Any]]:

@@ -116,6 +116,7 @@ function Play({ play, onDone }: { play: TimedQuestion; onDone: () => void }) {
           feedback={result?.feedback}
           pending={send.isPending}
           failed={send.isError}
+          error={send.error}
           expired={expired}
           clock={<Countdown deadline={play.deadline_at} serverNow={play.server_now} onExpire={expire} />}
           onAnswer={(body) => send.mutate({ path: { attempt_id: play.attempt_id }, body })}
