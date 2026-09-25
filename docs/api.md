@@ -178,7 +178,7 @@ No session needed; the CSRF header still is.
 | `POST /api/live/sessions/{code}/end` | host | Finish now |
 | `PUT /api/live/sessions/{code}/proposal` | seated player | Suggest an answer to the captain of the table answering |
 | `POST /api/live/sessions/{code}/answer` | captain of the answering table | Send the table's one answer |
-| `GET /api/live/sessions/{code}/results.csv` | host | Results as CSV, one row per table answer (or per question nobody answered), with the columns `question`, `text`, `for table`, `answered by`, `captain`, `answer`, `official answer`, `right`, `points`; cells that a spreadsheet would run as formulas are escaped |
+| `GET /api/live/sessions/{code}/results.csv` | host | Results as CSV, one row per table answer (or per question nobody answered), with the columns `question`, `text`, `for table`, `answered by`, `captain`, `answer`, `official answer`, `right`, `points`; UTF-8 with a byte order mark, `;` between cells (Excel in Spanish); cells that a spreadsheet would run as formulas are escaped, plain numbers aren't |
 | `GET /api/live/sessions/{code}/events` | its host or a player | Server-Sent Events stream of version numbers (below) |
 
 ### Outside the routers
@@ -186,7 +186,7 @@ No session needed; the CSRF header still is.
 | Path | Purpose |
 |---|---|
 | `GET`/`HEAD /healthz` | `{"status": "ok", "version": ...}`. Liveness: process only, never touches the database; the image's own health check and uptime probes use it. Not in the OpenAPI document |
-| `GET`/`HEAD /readyz` | Readiness: runs `SELECT 1` through the app's own database role and pool. `{"status": "ok"}`, or 503 `{"status": "unavailable"}` (the cause goes to the api log, never the response). No auth. Used by the api's health check in `deploy/compose.yaml` and by `deploy.sh`'s smoke test. Not in the OpenAPI document |
+| `GET`/`HEAD /readyz` | Readiness: one catalogue query through the app's own database role and pool, checking that every table and column the code maps exists (extra ones from a newer release are fine). `{"status": "ok"}`; 503 `{"status": "unavailable"}` when the database can't be reached, or 503 `{"status": "schema out of date"}` when a mapped column is missing (the cause, with the columns, goes to the api log, never the response). No auth. Used by the api's health check in `deploy/compose.yaml` and by `deploy.sh`'s smoke test. Not in the OpenAPI document |
 | `GET /media/{name}` | Question and solution images, cached for a year (names are content hashes) |
 | `GET /assets/*` | The SPA's built files, cached for a year |
 | any other `GET` | The SPA's `index.html` (`no-cache`), so client-side routes load |

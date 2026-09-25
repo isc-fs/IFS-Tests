@@ -34,6 +34,8 @@ docs only. **Status:** Open → Fixed (merged, with its test) → Verified (red-
 
 Follow-ups found by the independent verification, fixed in fix/13: BANK-01 text-only upstream change now flagged `wording` (`test_a_reworded_question_keeps_the_correction_and_asks_to_check_it`); a retired option refused on a new answer (`test_an_option_removed_upstream_is_refused_on_a_new_answer`).
 
+Also from the verification, fixed in fix/15: `/readyz` now checks every mapped table and column (it missed a schema that didn't match the code); the lobby warns about tables a thin topic will rarely reach (`domain/live.reach`).
+
 Also closed by these PRs: OPS-02, OPS-04, OPS-14, the restore part of DOC-01 (#54), PERF-02 (#56).
 
 ## Medium
@@ -61,13 +63,13 @@ Workstreams run in parallel, each owning its files; G starts once A–F have mer
 | DOM-02 blind guess pays in a bad run | P2 | D, fix/14 | | Open | |
 | PLAY-02 mock clocks clamped to 60–600 s | P2 | D, fix/14 | | Open | |
 | DOM-04 / PLAY-04 freeze only applied at 03:00 | P3 | D, fix/14 | | Open | |
-| ACC-02 undoing a position change loses LP | P2 | E admin, CSV, scripts, fix/15 | | Open | |
-| LIVE-06 results CSV garbled in Spanish Excel | P2 | E, fix/15 | | Open | |
-| DOC-01 (rest) refresh-bank.sh `.env` checks | P2 | E, fix/15 | | Open | |
-| ACC-01 admins demoting each other at once | P3 | E, fix/15 | | Open | |
-| OPS-05 reused migration number skipped | P3 | E, fix/15 | | Open | |
-| ACC-03 invite note visible to the member | P3 | E, fix/15 | | Open | |
-| DOC-03 mock quizzes include ungraded questions | P3 | E, fix/15 | | Open | |
+| ACC-02 undoing a position change loses LP | P2 | E admin, CSV, scripts, fix/15 | | Fixed | `users.position_lifts` (migration 0022); `test_undoing_a_mistaken_raise_keeps_what_was_earned`; probe 130→350→130 loses 0 (was 80); lower-then-raise still loses by ADR 0007 |
+| LIVE-06 results CSV garbled in Spanish Excel | P2 | E, fix/15 | | Fixed | `test_the_results_open_in_a_spanish_excel` (BOM, `;`, `-12.5` unescaped); not checked in a real Excel |
+| DOC-01 (rest) refresh-bank.sh `.env` checks | P2 | E, fix/15 | | Fixed | `tests/unit/test_deploy_scripts.py` runs the real script against a stub docker |
+| ACC-01 admins demoting each other at once | P3 | E, fix/15 | | Fixed | `check_still_admin` under `ADMIN_LOCK`; red-team race gives 403 for the second (was both succeed) |
+| OPS-05 reused migration number skipped | P3 | E, fix/15 | | Fixed | `deploy_migrations` fingerprints (4 script tests); not deployed end to end |
+| ACC-03 invite note visible to the member | P3 | E, fix/15 | | Fixed | admins' guide corrected (the export is right, ADR 0006) |
+| DOC-03 mock quizzes include ungraded questions | P3 | E, fix/15 | | Fixed | data-model corrected |
 | PERF-03 leaderboard scans all history | P2 | F capacity, fix/16 | | Fixed | index `ix_attempts_lp_day` (migration 0019), `jit=off`; `test_the_boards_read_this_seasons_play_not_the_whole_history`; red-team burst at 3 seasons: p95 2.8–3.2 s → 11–24 ms |
 | PERF-04 exports can run out of memory | P2 | F, fix/16 | | Fixed | batched export, ≤2 per process (429), `memswap_limit`; exports byte-identical; 12 at once: no swap (was 512 MiB + 282 swapped) |
 | GATE-02 surviving mutants (late right, repeat misses) | P2 | G tests, fix/17 | | Open | |

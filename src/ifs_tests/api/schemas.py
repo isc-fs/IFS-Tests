@@ -174,6 +174,9 @@ class AdminUser(Out):
     position: Position
     xp: int
     rank_points: float
+    rank_by_position: dict[Position, float] = Field(
+        description="Their rank points if moved to each position: shown before a change is saved"
+    )
     leaderboard_opt_out: bool
     last_seen: datetime | None
     created_at: datetime
@@ -208,6 +211,9 @@ class ExportAccount(BaseModel):
     rank_points: float
     rank_season: int = Field(description="The season the rank points belong to; 0 if never placed")
     best_division: str = Field(description="The highest division reached in that season")
+    position_lifts: dict[str, int | float] | None = Field(
+        description="The LP each raise of position gave this season, which a lower position takes back"
+    )
     right_in_a_row: int
     wrong_in_a_row: int
     rested_xp: int
@@ -790,6 +796,11 @@ class LiveTableOut(BaseModel):
     answered: bool = Field(description="Has sent its answer to the current question")
     right: int = Field(description="Right answers so far, once they may be shown")
     points: int
+    reach: float | None = Field(
+        default=None,
+        description="In the lobby of a specialists quiz: the share of draws of this quiz's questions in which "
+        "the table gets at least one (0 without a captain); null otherwise",
+    )
 
 
 class Proposal(BaseModel):

@@ -122,6 +122,14 @@ Under **Tables**:
      table whose topics the quiz doesn't ask about.
    - "*n* questions for *m* tables: some tables won't get a question." Each question goes to one table, so ask at
      least as many questions as there are tables if everyone should answer.
+   - "Likely to get no question: *table* (a question in *x* % of draws), …" Once the tables are saved, the server
+     runs the routing rule on 100 draws of these settings from the bank (or on the past quiz itself, which gives 0 %
+     or 100 %) and names every seated table that gets a question in fewer than half of them. It happens when a
+     topic has few questions and several tables share it: the real bank has only 8 Driverless questions, so after
+     **Seat by sub-department**, with 60 Mechanical and Electronics questions, Driverless gets one in about half the
+     draws, Integration in about 1 in 5 and Pipeline almost never. Give those tables another topic, seat the people
+     at one Driverless table, or ask more questions. The warning disappears while you edit the tables and comes
+     back, updated, when you save them.
 5. **Remove this table** deletes a table (its people become unseated).
 6. Press **Save the tables**. The button reads **Tables saved** when there is nothing left to save.
 
@@ -187,10 +195,16 @@ Press **Download the results (CSV)** for a spreadsheet. Only the host gets this 
 | `for table` | The table the question went to, or "every table" |
 | `answered by` | The table that sent this answer (empty if nobody answered) |
 | `captain` | Who sent it |
-| `answer` | The answer sent, or "not sure" for a pass |
+| `answer` | The answer sent, or "not sure" for a pass; several options one a line, like the official answer |
 | `official answer` | The answer it was graded against |
 | `right` | yes or no (empty for an ungraded question or no answer) |
 | `points` | Speed points |
+
+The file is made for Excel set to Spanish: cells are separated by `;` and it starts with a UTF-8 byte order mark, so
+a double click opens it in columns with the accents right. Excel set to English (comma as its list separator) shows
+each row in one column: open it with **Data › From Text/CSV** and pick the semicolon, or use Google Sheets or
+LibreOffice, which detect it. A name or answer starting with `=`, `+`, `-` or `@` gets a `'` in front so the
+spreadsheet doesn't run it as a formula; a plain number such as `-12.5` is left as it is.
 
 ## What players earn
 

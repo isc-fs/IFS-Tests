@@ -118,8 +118,9 @@ Placement is a start, not a floor: a Technical Director who answers badly falls 
 
 **When an admin changes a position** (`_set_position` in `src/ifs_tests/services/accounts.py`):
 
-- To a **higher** position: rank points become at least the new placement. Nobody loses what they earned above it.
-- To a **lower** position (a correction): the head start is taken back, `rank points − (old placement − new placement)`, floored at 0. What they earned stays.
+- To a **higher** position: rank points become at least the new placement. Nobody loses what they earned above it. The LP the raise gave is recorded per position crossed (`users.position_lifts`, this season only).
+- To a **lower** position (a correction): the head start is taken back, floored at 0, and what they earned stays. For each position given up, the head start is what the raise to it gave, or, for a position held since sign-up or since before this season's reset, the whole gap to the placement below. So undoing a mistaken raise puts them back exactly: Mingo at 130 raised to Returning member (350) and put back is at 130 again, plus or minus what they answered in between. The rule is `reposition` in `src/ifs_tests/domain/rank.py`.
+- A lower then a raise is not an exact undo: the raise lifts to the placement, as any raise does (a Technical Director at 1,100 corrected to Department Head is at 600, and raised back is at 1,050). The admin page shows the effect before saving.
 - Either way the promotion fanfare doesn't play for the new division: they were placed there, not promoted.
 - If the 1 September reset is still pending for them (placed in an earlier season, no answer or nightly job since), it is applied first, then the new position.
 

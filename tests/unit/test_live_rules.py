@@ -10,6 +10,7 @@ from ifs_tests.domain.live import (
     Player,
     captain,
     new_code,
+    reach,
     route,
     seat_by_subdepartment,
     speed_points,
@@ -84,6 +85,40 @@ def test_after_seating_by_subdepartment_every_table_owning_a_topic_gets_question
     for tid, owned in tables:
         same.setdefault(tuple(owned), []).append(got.count(tid))
     assert all(max(n) - min(n) <= 1 for n in same.values()), same
+
+
+DRIVERLESS = [(1, ["dv"]), (2, ["dv"]), (3, ["dv"]), (4, ["aero"])]  # Driverless, Integration, Pipeline, Aero
+
+
+@pytest.mark.parametrize(
+    ("pool", "count", "tables", "catch_all", "expected"),
+    [
+        # A past quiz: every question, in its order; the routing rule says exactly who gets what.
+        (["dv", "aero", "aero"], 3, DRIVERLESS, 4, {1: 1.0, 2: 0.0, 3: 0.0, 4: 1.0}),
+        (["dv", "dv", "dv", None], 4, DRIVERLESS, 4, {1: 1.0, 2: 1.0, 3: 1.0, 4: 1.0}),
+        # A table owning nothing asked, and not the catch-all, gets nothing.
+        (["aero"] * 5, 5, [(1, ["dv"]), (4, ["aero"])], 4, {1: 0.0, 4: 1.0}),
+        # Fewer questions in the bank than asked for: all of them are asked.
+        (["dv", "dv"], 10, DRIVERLESS, 4, {1: 1.0, 2: 1.0, 3: 0.0, 4: 0.0}),
+    ],
+)
+def test_which_tables_a_quiz_reaches_follows_the_routing_rule(
+    pool: list[str | None],
+    count: int,
+    tables: list[tuple[int, list[str]]],
+    catch_all: int,
+    expected: dict[int, float],
+) -> None:
+    assert reach(pool, count, tables, catch_all, random.Random(1)) == expected
+
+
+def test_a_topic_with_few_questions_rarely_reaches_the_third_table_sharing_it() -> None:
+    """The red team's bank: 8 dv questions among about a thousand; ten questions drawn."""
+    pool = ["dv"] * 8 + ["aero"] * 992
+    got = reach(pool, 10, DRIVERLESS, 4, random.Random(1))
+    assert got[4] == 1.0 and got[1] < 0.15 and got[3] < 0.02
+    many = reach(["dv"] * 300 + ["aero"] * 700, 10, DRIVERLESS, 4, random.Random(1))
+    assert many[3] > 0.5  # plenty of dv: the third owner usually gets one
 
 
 @pytest.mark.parametrize(

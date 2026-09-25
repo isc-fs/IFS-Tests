@@ -70,6 +70,7 @@ One row per member. **Personal data.**
 | `rank_points` | Rank, `numeric(8,2)`: 100 points per division, 0 = Mingo I, 1500+ = the top title; floor 0 |
 | `rank_season` | Season (start year) the rank belongs to; 0 = placed by the migration, no reset due |
 | `rank_best` | Highest division reached this season (only a new one plays the promotion) |
+| `position_lifts` | `jsonb`, null until an admin changes their position: `{"season": 2026, "member": 220.0, …}`, the LP each raise gave per position crossed that season, which a lower position takes back ([game rules](game-rules.md#24-placement-by-position)); ignored once the season is over |
 | `combo`, `miss_streak` | Right answers in a row (XP combo) and wrong ones in a row (LP cushion); capped at 99 |
 | `rested_xp`, `rested_on` | Banked rested XP and the Madrid day it was last topped up |
 | `streak_freezes`, `freeze_earned_on` | Streak freezes held (0–2) and the streak day that last earned one |
@@ -156,7 +157,7 @@ The rulebooks, handbooks and other documents a quiz was based on. Linked, never 
 | `topic` | A topic of that area (`bank/topics.AREAS`), or null |
 | `difficulty` | 1–5, set on import and recalibrated nightly |
 | `answer_kind` | How the answer is entered: `choice-one`, `choice-many`, `number`, `numbers`, `range`, `text`, or `self` (reveal only). Safe to show before answering |
-| `graded` | Answers can be scored automatically; daily questions, mock quizzes and live quizzes use graded ones only |
+| `graded` | Answers can be scored automatically; daily questions and live quizzes use graded ones only. Mock runs ask every playable question of the quiz, ungraded ones too (the player compares with the official answer; it earns XP only), so a quiz's "graded" count can be lower than its questions, even 0 |
 | `playable` | Served to players: `NOT images_missing AND NOT excluded` |
 | `images_missing` | An image referenced by the question isn't in the media directory yet |
 | `excluded`, `exclusion_note` | Hidden, and why: by a reviewer, or by the import when FS-Quiz says it removed the question (the note then starts with "FS-Quiz") |
@@ -328,6 +329,10 @@ The migration 0002 revokes `UPDATE`, `DELETE` and `TRUNCATE` on `audit_log` from
 
 Alembic's current revision: the newest file in `migrations/versions/` (the table under [Migrations](#migrations) lists them).
 
+### `deploy_migrations`
+
+Only on the server, outside Alembic and the models: `deploy/deploy.sh` creates it (as `migrator`) and, after each migration step, records every migration of the deployed image, `revision` (primary key) and `fingerprint` (16 hex characters of a SHA-256 of the migration's code without comments, docstrings or layout). A revision alone can't tell a migration from an edited one under the same number; with this record a deploy refuses an image whose migration under an applied number has other code, and a roll back is allowed to skip migrations only when the database recorded the image's whole chain and the revision it is at ([runbook](runbook.md#22-when-a-deploy-fails)). It is part of every dump, so a restore brings back the record that matches the restored schema.
+
 ## Personal data
 
 [ADR 0006](adr/0006-personal-data.md) sets the rules; `services/privacy.py` implements them. AGENTS.md requires anything new stored about a person to appear in `services/privacy.export` and to go when the account is deleted (a cascading foreign key or a step in `privacy._delete`).
@@ -379,6 +384,7 @@ Retention: alumni and disabled accounts are deleted 365 days after `left_at`; th
 | 0017 | Stable options: `answer_options.fsquiz_id` and `retired`; `questions.upstream_note`. Expand only: the previous release ignores the new columns, and the next `ifs-tests push` fills `fsquiz_id` |
 | 0018 | `live_tables.proposals`, a counter per table so a proposal wakes only that table's screens. Expand only |
 | 0020 | `questions.graded_hash` and `upstream_change`: a new solution, image or wording upstream keeps a reviewer's correction; `quizzes.retired` for quizzes FS-Quiz deleted. Expand only: the previous release ignores them, and the next `ifs-tests push` fills `graded_hash` |
+| 0022 | `users.position_lifts`, so a correction of position takes back only what a raise gave. Expand only: the previous release ignores it |
 
 ### Expand/contract
 
@@ -386,6 +392,7 @@ Retention: alumni and disabled accounts are deleted 365 days after `left_at`; th
 
 - **Expand** in one release: add tables and nullable (or defaulted) columns, widen checks, backfill. Never rename or drop something the running release uses.
 - **Contract** in a later release, once no deployed image uses the old column: drop it.
+- **Never edit a migration once it has run anywhere** (staging included): the database keeps its revision number, so the edited version would never run there. Write a new migration instead. `deploy.sh` refuses such an image ([`deploy_migrations`](#deploy_migrations)); reformatting or rewording comments is fine, the fingerprint ignores them.
 
 Example: 0014 added `account_xp` and left `xp` in place, because the release before ADR 0007 still wrote lifetime XP there during the deploy; the model maps the old column as `legacy_xp` so SQLAlchemy keeps it in the schema. `tests/integration/test_migrations.py` checks upgrade → downgrade → upgrade and that the models and migrations produce the same schema.
 

@@ -241,7 +241,7 @@ function Lobby({ s, dirty, onDirty }: { s: LiveState; dirty: boolean; onDirty: (
             </button>
           </fieldset>
         ))}
-        {s.config.routing === 'owners' && <Routing draft={draft} config={s.config} />}
+        {s.config.routing === 'owners' && <Routing draft={draft} config={s.config} saved={dirty ? null : s.tables} />}
         <h3>Players</h3>
         <ul className="seat-list">
           {s.players.map((p) => (
@@ -347,8 +347,10 @@ function Seating({ s }: { s: LiveState }) {
 }
 
 /** Where each question goes in specialists mode, so gaps show before the start: topics of this quiz nobody owns,
- * and tables that will get no question at all. A topic several tables own is shared out among them. */
-function Routing({ draft, config }: { draft: Draft[]; config: LiveConfig }) {
+ * and tables that will get no question at all. A topic several tables own is shared out among them. Once the
+ * tables are saved, the server's prediction (`reach`, the routing rule run on draws of these settings) also
+ * names tables that will rarely get one: a topic with few questions shared by several tables. */
+function Routing({ draft, config, saved }: { draft: Draft[]; config: LiveConfig; saved: LiveState['tables'] | null }) {
   if (draft.length === 0) return null
   const filtered = config.questions === 'areas' && ((config.areas?.length ?? 0) > 0 || (config.topics?.length ?? 0) > 0)
   const asked = new Set(
@@ -362,6 +364,10 @@ function Routing({ draft, config }: { draft: Draft[]; config: LiveConfig }) {
     draft.find((t) => t.catch_all) ?? [...draft].sort((a, b) => b.member_ids.length - a.member_ids.length)[0]
   const seated = draft.filter((t) => t.member_ids.length > 0)
   const idle = seated.filter((t) => t !== fallback && !t.topics.some((topic) => asked.has(topic)))
+  const idleNames = new Set(idle.map((t) => t.name))
+  const rare = (saved ?? []).filter(
+    (t) => t.member_ids.length > 0 && t.reach != null && t.reach < 0.5 && !idleNames.has(t.name),
+  )
   return (
     <>
       {loose.length > 0 && (
@@ -374,6 +380,14 @@ function Routing({ draft, config }: { draft: Draft[]; config: LiveConfig }) {
           {idle.map((t) => t.name).join(', ')} {idle.length === 1 ? 'owns' : 'own'} no topic in this quiz, so{' '}
           {idle.length === 1 ? 'it gets' : 'they get'} no questions and earn no XP. Tick a topic for{' '}
           {idle.length === 1 ? 'it' : 'them'}, or seat those people at another table.
+        </Notice>
+      )}
+      {rare.length > 0 && (
+        <Notice tone="info">
+          Likely to get no question:{' '}
+          {rare.map((t) => `${t.name} (a question in ${Math.round((t.reach ?? 0) * 100)} % of draws)`).join(', ')}.
+          Their topics have few questions with these settings, and tables sharing a topic take turns. Give them another
+          topic, seat those people at another table, or ask more questions.
         </Notice>
       )}
       {config.questions === 'areas' && (config.count ?? 10) < seated.length && (

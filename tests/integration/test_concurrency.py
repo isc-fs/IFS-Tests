@@ -64,7 +64,8 @@ def test_two_admins_demoting_each_other_leave_one_admin(db: Session, app_engine:
         lambda s: accounts.update_user(s, s.get_one(User, a.id), b.id, role="member"),
         lambda s: accounts.update_user(s, s.get_one(User, b.id), a.id, role="member"),
     )
-    assert sum(isinstance(r, accounts.AccountError) and r.status == 409 for r in results) == 1
+    # The second to take the admin lock is no admin any more (ACC-01).
+    assert sum(isinstance(r, accounts.AccountError) and r.status == 403 for r in results) == 1
     admins = db.scalar(select(func.count()).where(User.role == "admin", User.status == "active"))
     assert admins == 1
 

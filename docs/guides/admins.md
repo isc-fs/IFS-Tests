@@ -32,8 +32,10 @@ order: **Invite a member**, **Members**, **New season: who left the team?** (fol
    - **Vertical**: **Let them choose**, or a vertical (Management, Mechanical, Tractive System, Electronics,
      Driverless, Business, Board). A vertical set here isn't asked on the join form; they can still change it later
      in their profile.
-   - **Who it's for**: required, up to 80 characters, for example their name. Only admins see it; it isn't written
-     to the activity log, and it is deleted 30 days after the invite is used or expires.
+   - **Who it's for**: required, up to 80 characters, for example their name. Admins see it under **Open invites**,
+     and once the link is used the person it was for sees it in their data export, like everything stored about
+     them ([ADR 0006](../adr/0006-personal-data.md)): write nothing you wouldn't show them. It isn't written to the
+     activity log, and it is deleted 30 days after the invite is used or expires.
 2. Press **Create link**. The link appears once, selected: "Invite for *note*. Send it privately: it works once and
    expires *date*." Press **Copy** and send it through a private channel.
 
@@ -108,9 +110,11 @@ rank, but it decides two things:
 
   **Raising** someone's position lifts their rank to at least the new placement (someone at Mingo III made
   Department Head goes to Jefe I; someone already higher stays where they are). **Lowering** it takes back the head
-  start the old position gave, which is the difference between the two placements, and keeps what they earned since
-  (someone who joined as Technical Director and climbed 50 LP, corrected to Mingo, ends at Mingo II). It never goes
-  below zero. Use lowering to fix a wrong claim, not as a punishment.
+  start the old position gave and keeps what they earned since (someone who joined as Technical Director and climbed
+  50 LP, corrected to Mingo, ends at Mingo II). If the position came from a raise, only what the raise gave is taken
+  back, so putting a mistaken raise back returns them to where they were. It never goes below zero. Use lowering to
+  fix a wrong claim, not as a punishment. Before a position change is saved, the page asks you to confirm and says
+  where their rank goes, for example "Their rank goes from Mingo II, 30 LP to Mingo IV, 50 LP".
 - **Who can host live quizzes:** Technical Directors (and admins).
 
 Members choose their position when they join; only admins change it afterwards, including their own. If the
@@ -258,8 +262,10 @@ once when they use a reset link.
 
 **I lost an invite link before sending it.** Revoke it under **Open invites** and create another.
 
-**Someone picked the wrong position.** Change **Position** on their row. Lowering it takes back the head start the
-wrong position gave.
+**Someone picked the wrong position.** Change **Position** on their row and check the rank in the confirmation
+before you press OK. Lowering it takes back the head start the wrong position gave; putting back a raise you made by
+mistake returns them to where they were. Raising someone you lowered by mistake only lifts them to the placement, so
+check twice before lowering.
 
 **Someone left and wants their data.** **Download their data** and send the file privately.
 

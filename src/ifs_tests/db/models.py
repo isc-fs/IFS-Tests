@@ -136,6 +136,9 @@ class User(Base):
     rank_season: Mapped[int] = mapped_column(SmallInteger, server_default="0")
     # The highest division reached this season: only reaching a new one plays the promotion.
     rank_best: Mapped[int] = mapped_column(SmallInteger, server_default="0")
+    # The LP each raise of position gave this season, per position crossed ({"season": 2026, "member": 220}):
+    # a lower position takes back only that (domain/rank.py `reposition`).
+    position_lifts: Mapped[dict[str, Any] | None]
     # Right answers in a row (the XP combo) and wrong ones in a row (the LP cushion), across modes but live.
     combo: Mapped[int] = mapped_column(SmallInteger, server_default="0")
     miss_streak: Mapped[int] = mapped_column(SmallInteger, server_default="0")
@@ -284,7 +287,8 @@ class Question(Base):
     difficulty: Mapped[int] = mapped_column(server_default="3")
     # How the answer is entered; safe to show before answering. "self" = reveal only.
     answer_kind: Mapped[str] = mapped_column(String(16))
-    # Whether answers can be scored automatically. Daily questions and mock quizzes only use graded ones.
+    # Whether answers can be scored automatically. Daily questions and live quizzes only use graded ones; mock
+    # runs ask ungraded ones too.
     graded: Mapped[bool] = mapped_column(server_default="false")
     # Served to players only when true: no image missing and not excluded by a reviewer.
     playable: Mapped[bool] = mapped_column(server_default="true")

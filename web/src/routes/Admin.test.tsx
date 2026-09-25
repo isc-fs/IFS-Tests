@@ -103,6 +103,26 @@ test('disabling a member asks first; cancelling sends nothing', async () => {
   await waitFor(() => expect(sent('PATCH /api/admin/users/2')[0].body).toEqual({ status: 'disabled' }))
 })
 
+test('a position change shows what it does to the rank first; cancelling sends nothing', async () => {
+  const confirm = vi.fn(() => false)
+  vi.stubGlobal('confirm', confirm)
+  const marta = { ...USERS[1], rank_points: 130, rank_by_position: { mingo: 130, member: 350 } }
+  const { sent } = renderApp('/admin', {
+    ...base,
+    'GET /api/admin/users': { body: [USERS[0], marta] },
+    'PATCH /api/admin/users/2': { body: { ...marta, position: 'member', rank_points: 350 } },
+  })
+  const position = within(await row('Marta')).getByLabelText('Position')
+  await userEvent.selectOptions(position, 'member')
+  expect(confirm).toHaveBeenCalledWith(
+    "Change Marta's position to Returning member? Their rank goes from Mingo II, 30 LP to Mingo IV, 50 LP.",
+  )
+  expect(sent('PATCH /api/admin/users/2')).toHaveLength(0)
+  confirm.mockReturnValue(true)
+  await userEvent.selectOptions(position, 'member')
+  await waitFor(() => expect(sent('PATCH /api/admin/users/2')[0].body).toEqual({ position: 'member' }))
+})
+
 test('admins cannot change their own role, and locked members are flagged', async () => {
   renderApp('/admin', base)
   expect(within(await row('Chief')).getByLabelText('Role')).toBeDisabled()

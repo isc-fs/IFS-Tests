@@ -22,6 +22,13 @@ repo=$(cd "$(dirname "$0")/.." && pwd)
 dir=${QUIZ_ROOT:-/srv/quiz}/$env
 envfile=$dir/.env
 [[ -f $envfile ]] || die "missing $envfile"
+[[ $(stat -c %a "$envfile" 2>/dev/null || stat -f %Lp "$envfile") == 600 ]] || die "$envfile must be chmod 600"
+set -a
+# shellcheck source=/dev/null
+. "$envfile"
+set +a
+# Compose names the project after QUIZ_ENV: a mismatch would refresh the other environment.
+[[ $QUIZ_ENV == "$env" ]] || die "QUIZ_ENV in $envfile is '$QUIZ_ENV', expected '$env'"
 [[ -f $dir/deployed-tag ]] || die "nothing deployed in $env yet"
 
 compose() {

@@ -105,6 +105,25 @@ def placement(position: str) -> float:
     return PLACEMENT[position] * DIVISION + 50.0
 
 
+def reposition(points: float, old: str, new: str, lifts: dict[str, float]) -> tuple[float, dict[str, float]]:
+    """A new position on the team places them again. A higher one lifts the rank to at least its placement and
+    records, per position crossed, the LP that lift gave. A lower one takes back those lifts (for a position held
+    since sign-up or since before this season, its whole head start: the gap to the placement below), keeping
+    what they earned, so undoing a mistaken raise puts them back where they were. Floor 0."""
+    ladder = sorted(PLACEMENT, key=PLACEMENT.__getitem__)
+    lo, hi = sorted((ladder.index(old), ladder.index(new)))
+    crossed = ladder[lo + 1 : hi + 1]
+    lifts = dict(lifts)
+    if PLACEMENT[new] > PLACEMENT[old]:
+        for p in crossed:
+            lifts[p] = max(placement(p) - points, 0.0)
+            points += lifts[p]
+        return points, lifts
+    width = {p: placement(p) - placement(ladder[ladder.index(p) - 1]) for p in crossed}
+    back = sum(lifts.pop(p, width[p]) for p in crossed)
+    return max(points - back, 0.0), lifts
+
+
 def season_reset(points: float, position: str) -> float:
     """1 September: three divisions back (the top counts as 1500), never below your position's placement, and
     never above where you finished."""

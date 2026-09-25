@@ -101,6 +101,14 @@ export type AdminUser = {
      */
     rank_points: number;
     /**
+     * Rank By Position
+     *
+     * Their rank points if moved to each position: shown before a change is saved
+     */
+    rank_by_position: {
+        [key in Position]?: number;
+    };
+    /**
      * Leaderboard Opt Out
      */
     leaderboard_opt_out: boolean;
@@ -545,6 +553,14 @@ export type ExportAccount = {
      * The highest division reached in that season
      */
     best_division: string;
+    /**
+     * Position Lifts
+     *
+     * The LP each raise of position gave this season, which a lower position takes back
+     */
+    position_lifts: {
+        [key: string]: number | number;
+    } | null;
     /**
      * Right In A Row
      */
@@ -1469,6 +1485,12 @@ export type LiveTableOut = {
      * Points
      */
     points: number;
+    /**
+     * Reach
+     *
+     * In the lobby of a specialists quiz: the share of draws of this quiz's questions in which the table gets at least one (0 without a captain); null otherwise
+     */
+    reach?: number | null;
 };
 
 /**

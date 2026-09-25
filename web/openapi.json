@@ -2877,6 +2877,17 @@
       "type": "number",
       "title": "Rank Points"
      },
+     "rank_by_position": {
+      "additionalProperties": {
+       "type": "number"
+      },
+      "propertyNames": {
+       "$ref": "#/components/schemas/Position"
+      },
+      "type": "object",
+      "title": "Rank By Position",
+      "description": "Their rank points if moved to each position: shown before a change is saved"
+     },
      "leaderboard_opt_out": {
       "type": "boolean",
       "title": "Leaderboard Opt Out"
@@ -2935,6 +2946,7 @@
      "position",
      "xp",
      "rank_points",
+     "rank_by_position",
      "leaderboard_opt_out",
      "last_seen",
      "created_at",
@@ -3602,6 +3614,28 @@
       "title": "Best Division",
       "description": "The highest division reached in that season"
      },
+     "position_lifts": {
+      "anyOf": [
+       {
+        "additionalProperties": {
+         "anyOf": [
+          {
+           "type": "integer"
+          },
+          {
+           "type": "number"
+          }
+         ]
+        },
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Position Lifts",
+      "description": "The LP each raise of position gave this season, which a lower position takes back"
+     },
      "right_in_a_row": {
       "type": "integer",
       "title": "Right In A Row"
@@ -3720,6 +3754,7 @@
      "rank_points",
      "rank_season",
      "best_division",
+     "position_lifts",
      "right_in_a_row",
      "wrong_in_a_row",
      "rested_xp",
@@ -5192,6 +5227,18 @@
      "points": {
       "type": "integer",
       "title": "Points"
+     },
+     "reach": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Reach",
+      "description": "In the lobby of a specialists quiz: the share of draws of this quiz's questions in which the table gets at least one (0 without a captain); null otherwise"
      }
     },
     "type": "object",
