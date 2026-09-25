@@ -6433,6 +6433,25 @@
       ],
       "title": "Key Changed At"
      },
+     "upstream_change": {
+      "anyOf": [
+       {
+        "type": "string",
+        "enum": [
+         "answer",
+         "wording",
+         "content",
+         "removed",
+         "back"
+        ]
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Upstream Change",
+      "description": "Why it is in the changed-upstream queue: its answer or options changed (any correction was removed), the wording of the question or an option changed (the correction stays), a hidden question changed, FS-Quiz deleted it, or it is back after being deleted"
+     },
      "official": {
       "anyOf": [
        {
@@ -6515,6 +6534,7 @@
      "excluded",
      "exclusion_note",
      "key_changed_at",
+     "upstream_change",
      "official",
      "correction",
      "options",

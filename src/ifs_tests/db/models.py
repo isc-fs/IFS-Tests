@@ -240,6 +240,8 @@ class Quiz(Base):
     status: Mapped[str] = mapped_column(String(32))
     information: Mapped[str | None] = mapped_column(Text)
     last_qualifier: Mapped[dict[str, Any] | None]
+    # FS-Quiz no longer publishes it: not offered again, kept for the runs that played it.
+    retired: Mapped[bool] = mapped_column(server_default="false")
 
 
 class Document(Base):
@@ -292,7 +294,12 @@ class Question(Base):
     # Set once a reviewer confirmed area and topic; re-imports keep them.
     labels_reviewed: Mapped[bool] = mapped_column(server_default="false")
     source_hash: Mapped[str] = mapped_column(String(64))
+    # What decides whether an answer is right (type, which options, which are correct, typed answers). Null
+    # for rows loaded before migration 0020, until the next import fills it.
+    graded_hash: Mapped[str | None] = mapped_column(String(64))
     key_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Why it is in the "changed upstream" queue: answer, wording, content (of a hidden question), removed, back.
+    upstream_change: Mapped[str | None] = mapped_column(String(16))
     # FS-Quiz's own note that the question was removed from its quiz, as last seen on import.
     upstream_note: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

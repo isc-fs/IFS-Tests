@@ -49,6 +49,7 @@ def _detail(db: Db, reviewer: User, question_id: int, now: datetime) -> ReviewQu
         excluded=q.excluded,
         exclusion_note=q.exclusion_note,
         key_changed_at=q.key_changed_at,
+        upstream_change=q.upstream_change,
         official=key.display if key else None,
         correction=key.override_display if key and key.override else None,
         options=[

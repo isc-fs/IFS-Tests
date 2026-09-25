@@ -89,7 +89,7 @@ The cheapest complete mirror is:
 4. Optional: page `GET /question` (~43 calls) to find questions that are in no published quiz (9 today), then `GET /question/{id}` for those.
 5. Optional: images from `img.fs-quiz.eu` (375 files).
 
-That is ~130 calls for everything, versus ~1,100 if you went question by question. Raw responses are cached, so re-running only fetches quizzes that are new; `--refresh` fetches steps 1–3 again (images stay cached), which is the only way to pick up changes to quizzes already mirrored, new document editions and new last-qualifier results. The server's `deploy/refresh-bank.sh` always passes `--refresh` (unless told `--no-mirror`, which only loads the mirror already there), so run it once a season, after the January–February quizzes are published.
+That is ~130 calls for everything, versus ~1,100 if you went question by question. Raw responses are cached, so re-running only fetches quizzes that are new; `--refresh` fetches steps 1–3 again (images stay cached), which is the only way to pick up changes to quizzes already mirrored, new document editions and new last-qualifier results. `bank.json` is built from the quizzes `/event/all` lists now, not from every cached file: a quiz FS-Quiz stops listing, or answers 404 for (its cached file is then deleted), leaves the bank, and the next push retires it and the questions only it held. Questions outside any quiz are only re-checked with `--question-index`, which also drops cached ones the index no longer has. The server's `deploy/refresh-bank.sh` always passes `--refresh` (unless told `--no-mirror`, which only loads the mirror already there), so run it once a season, after the January–February quizzes are published.
 
 ```bash
 uv sync

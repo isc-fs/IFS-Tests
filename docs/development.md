@@ -35,7 +35,7 @@ The sample bank is twelve made-up questions and three quizzes (`src/ifs_tests/ba
    docker compose run --rm api alembic upgrade head
    docker compose run --rm api ifs-tests push --sample
    ```
-   The push prints `ImportReport(added=12, updated=0, unchanged=0, key_changed=0, ungraded=2, missing_images=0, rekeyed=0, hidden=0)`.
+   The push prints `ImportReport(added=12, updated=0, unchanged=0, key_changed=0, ungraded=2, missing_images=0, rekeyed=0, hidden=0, retired=0, restored=0, not_retired=0)`.
 4. Create the first admin. It prompts for the password twice (at least 10 characters, not a common one, not containing your email or name):
    ```bash
    docker compose exec api ifs-tests create-admin --email admin@example.com --name "Local Admin"

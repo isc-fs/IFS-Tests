@@ -35,6 +35,7 @@ const DETAIL = {
   excluded: false,
   exclusion_note: null,
   key_changed_at: '2026-09-20T10:00:00Z',
+  upstream_change: 'answer',
   official: 'AIR',
   correction: null,
   options: [
@@ -115,6 +116,9 @@ test('a question: confirm labels, acknowledge the upstream change, correct the a
   expect(await screen.findByText('Which relay must open?')).toBeInTheDocument()
   expect(screen.getByText(/Answered 8 times, 25% right\. FS-Quiz #811\./)).toBeInTheDocument()
   expect(screen.getByText('The answer is the precharge relay')).toBeInTheDocument()
+  expect(
+    screen.getByText(/FS-Quiz changed its answer or its options\. Any correction was removed\./),
+  ).toBeInTheDocument()
 
   const labels = screen.getByRole('form', { name: 'Area and topic' })
   await userEvent.selectOptions(within(labels).getByLabelText('Topic'), 'electronics')

@@ -92,7 +92,9 @@ def quizzes(db: DB, user: User) -> list[QuizInfo]:
     )
     open_: dict[int, int] = {qid: sid for qid, sid in running}
     rows = db.scalars(
-        select(Quiz).order_by(Quiz.held_on.desc().nulls_last(), Quiz.year.desc(), Quiz.id)
+        select(Quiz)
+        .where(Quiz.retired.is_(False))
+        .order_by(Quiz.held_on.desc().nulls_last(), Quiz.year.desc(), Quiz.id)
     ).all()
     names = labels(db, [q for q in rows if q.id in stats])
     out = []
@@ -117,7 +119,7 @@ def quizzes(db: DB, user: User) -> list[QuizInfo]:
 def start(db: DB, user: User, quiz_id: int, now: datetime) -> MockSession:
     """Start a run, or return the one already open for this quiz."""
     quiz = db.get(Quiz, quiz_id)
-    if quiz is None or not _questions(db, quiz_id):
+    if quiz is None or quiz.retired or not _questions(db, quiz_id):
         raise UserError("That quiz isn't available.", 404)
     season = rules.season(timing.madrid_day(now))
     played = db.scalar(

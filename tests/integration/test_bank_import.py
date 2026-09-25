@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from ifs_tests.bank.mirror import load_bank
 from ifs_tests.bank.sample import SAMPLE_DIR
 from ifs_tests.db.models import AnswerKey, AnswerOption, AuditLog, Question, Quiz, QuizQuestion, Solution
+from ifs_tests.domain import xp as xp_rules
 from ifs_tests.services.bank import import_bank, summary
 
 from ..conftest import Clock
@@ -102,9 +103,9 @@ def test_changed_official_answer_is_flagged(
     raw(sample, 90001)["text"] += " (reworded)"
     clock.advance(days=1)
     report = import_bank(db, sample, SAMPLE_DIR / "img", tmp_path, clock.now)
-    assert (report.updated, report.key_changed, report.unchanged) == (2, 1, 10)
-    assert by_fsquiz(db, 90002).key_changed_at == clock.now
-    assert by_fsquiz(db, 90001).key_changed_at is None
+    assert (report.updated, report.key_changed, report.reworded, report.unchanged) == (2, 1, 1, 10)
+    assert by_fsquiz(db, 90002).upstream_change == "answer"
+    assert by_fsquiz(db, 90001).upstream_change == "wording"
     assert db.scalar(select(func.count()).select_from(Solution)) == 2
 
 
@@ -214,7 +215,7 @@ def test_a_changed_choice_question_keeps_its_options(
     db.expire_all()
 
     after = option_rows(db, q.id)
-    assert report.key_changed == 0
+    assert report.key_changed == 1  # an option removed and one added: what is graded changed
     assert after["10 seconds"].id == before["10 s"] and after["2 s"].id == before["2 s"]
     assert after["5 s"].id == before["5 s"] and after["5 s"].retired
     assert not after["20 s"].retired and after["20 s"].id not in before.values()
@@ -289,3 +290,161 @@ def test_questions_fsquiz_removed_are_hidden_once(
     db.commit()
     report = import_bank(db, sample, SAMPLE_DIR / "img", tmp_path, clock.now)
     assert report.hidden == 0 and by_fsquiz(db, 90002).playable
+
+
+def corrected(db: Session, fsquiz_id: int, override: dict[str, Any], shown: str) -> Question:
+    """A reviewer's correction, and a difficulty recalibrated from how people answered."""
+    q = by_fsquiz(db, fsquiz_id)
+    key = db.get_one(AnswerKey, q.id)
+    key.override, key.override_display = override, shown
+    q.difficulty = 5
+    db.commit()
+    return q
+
+
+def test_a_new_solution_image_or_time_keeps_the_correction_and_difficulty(
+    db: Session, clock: Clock, tmp_path: Path, sample: dict[str, Any]
+) -> None:
+    import_bank(db, copy.deepcopy(sample), SAMPLE_DIR / "img", tmp_path, clock.now)
+    five = next(o.id for o in option_rows(db, by_fsquiz(db, 90008).id).values() if o.text == "5 s")
+    fix = {"kind": "choice", "mode": "one", "options": [five]}
+    q = corrected(db, 90008, fix, "5 s")
+    changed = raw(sample, 90008)
+    changed["solutions"].append({"solution_id": 1, "text": "Rule D 9.1.2: 2 s per cone.", "images": []})
+    changed["images"].append("sample/beam.png")
+    changed["time"] = 90
+    clock.advance(days=1)
+    report = import_bank(db, copy.deepcopy(sample), SAMPLE_DIR / "img", tmp_path, clock.now)
+    db.expire_all()
+
+    assert (report.updated, report.key_changed) == (1, 0)
+    assert db.get_one(AnswerKey, q.id).override == fix
+    q = by_fsquiz(db, 90008)
+    assert (q.difficulty, q.key_changed_at, q.time_s, len(q.images)) == (5, None, 90, 1)
+    assert db.scalar(select(func.count()).where(Solution.question_id == q.id)) == 1
+
+
+def test_a_reworded_question_keeps_its_correction_and_is_flagged(
+    db: Session, clock: Clock, tmp_path: Path, sample: dict[str, Any]
+) -> None:
+    import_bank(db, copy.deepcopy(sample), SAMPLE_DIR / "img", tmp_path, clock.now)
+    fix = {"kind": "number", "accept": [{"v": 0.321, "d": 3}]}
+    q = corrected(db, 90002, fix, "0.321")
+    raw(sample, 90002)["text"] += " Round to 3 decimals."
+    raw(sample, 90008)["answers"][3]["text"] = "10 seconds"
+    raw(sample, 90001)["answers"].reverse()  # only the order: nothing to check
+    clock.advance(days=1)
+    report = import_bank(db, copy.deepcopy(sample), SAMPLE_DIR / "img", tmp_path, clock.now)
+    db.expire_all()
+
+    assert (report.updated, report.reworded, report.key_changed) == (3, 2, 0)
+    assert db.get_one(AnswerKey, q.id).override == fix
+    q = by_fsquiz(db, 90002)
+    assert q.difficulty == 5 and q.text.endswith("Round to 3 decimals.")
+    for fsquiz_id in (90002, 90008):
+        assert (by_fsquiz(db, fsquiz_id).key_changed_at, by_fsquiz(db, fsquiz_id).upstream_change) == (
+            clock.now,
+            "wording",
+        )
+    assert by_fsquiz(db, 90001).key_changed_at is None
+
+
+def test_a_changed_answer_drops_the_correction_and_asks_again(
+    db: Session, clock: Clock, tmp_path: Path, sample: dict[str, Any]
+) -> None:
+    import_bank(db, copy.deepcopy(sample), SAMPLE_DIR / "img", tmp_path, clock.now)
+    q = corrected(db, 90002, {"kind": "number", "accept": [{"v": 0.321, "d": 3}]}, "0.321")
+    raw(sample, 90002)["answers"][0]["text"] = "0.33"
+    clock.advance(days=1)
+    report = import_bank(db, copy.deepcopy(sample), SAMPLE_DIR / "img", tmp_path, clock.now)
+    db.expire_all()
+
+    assert report.key_changed == 1
+    assert db.get_one(AnswerKey, q.id).override is None
+    q = by_fsquiz(db, 90002)
+    assert (q.key_changed_at, q.upstream_change) == (clock.now, "answer")
+    assert q.difficulty == xp_rules.difficulty(q.answer_kind, q.time_s)
+
+
+def test_questions_loaded_before_the_graded_hash_are_judged_by_their_stored_answer(
+    db: Session, clock: Clock, tmp_path: Path, sample: dict[str, Any]
+) -> None:
+    import_bank(db, copy.deepcopy(sample), SAMPLE_DIR / "img", tmp_path, clock.now)
+    db.execute(update(Question).values(graded_hash=None))
+    fix = {"kind": "number", "accept": [{"v": 0.321, "d": 3}]}
+    q = corrected(db, 90002, fix, "0.321")
+    raw(sample, 90002)["solutions"][0]["text"] = "Worked out again."
+    raw(sample, 90012)["answers"][0]["text"] = "2800"
+    import_bank(db, copy.deepcopy(sample), SAMPLE_DIR / "img", tmp_path, clock.now)
+    db.expire_all()
+
+    assert db.get_one(AnswerKey, q.id).override == fix
+    assert by_fsquiz(db, 90012).upstream_change == "answer"
+    assert db.scalar(select(func.count()).where(Question.graded_hash.is_(None))) == 0
+
+
+def drop(bank: dict[str, Any], quizzes: tuple[int, ...] = (), questions: tuple[int, ...] = ()) -> None:
+    """FS-Quiz deletes these quizzes and questions; questions only in a deleted quiz go with it."""
+    bank["quizzes"] = [z for z in bank["quizzes"] if z["quiz_id"] not in quizzes]
+    for z in bank["quizzes"]:
+        z["question_ids"] = [i for i in z["question_ids"] if i not in questions]
+    listed = {i for z in bank["quizzes"] for i in z["question_ids"]}
+    bank["questions"] = [q for q in bank["questions"] if q["question_id"] in listed]
+
+
+def test_quizzes_and_questions_deleted_upstream_are_retired_once(
+    db: Session, clock: Clock, tmp_path: Path, sample: dict[str, Any]
+) -> None:
+    import_bank(db, copy.deepcopy(sample), SAMPLE_DIR / "img", tmp_path, clock.now)
+    drop(sample, quizzes=(9003,), questions=(90005,))  # 9003 alone holds 90011
+    clock.advance(days=1)
+    report = import_bank(db, copy.deepcopy(sample), SAMPLE_DIR / "img", tmp_path, clock.now)
+    db.expire_all()
+
+    assert (report.retired, report.key_changed) == (2, 0)
+    assert db.get_one(Quiz, 9003).retired and not db.get_one(Quiz, 9001).retired
+    for fsquiz_id in (90005, 90011):
+        q = by_fsquiz(db, fsquiz_id)
+        assert q.excluded and not q.playable and q.exclusion_note == "Deleted from FS-Quiz."
+        assert (q.key_changed_at, q.upstream_change) == (clock.now, "removed")
+    assert by_fsquiz(db, 90003).playable  # still in quiz 9001
+    kept = db.scalar(select(func.count()).where(QuizQuestion.quiz_id == 9003))
+    assert kept == 3  # finished runs of the quiz still show their questions
+
+    kept_by_reviewer = by_fsquiz(db, 90005)
+    kept_by_reviewer.excluded, kept_by_reviewer.playable = False, True
+    db.commit()
+    report = import_bank(db, copy.deepcopy(sample), SAMPLE_DIR / "img", tmp_path, clock.now)
+    assert report.retired == 0 and by_fsquiz(db, 90005).playable and not by_fsquiz(db, 90011).playable
+
+
+def test_a_question_back_at_fsquiz_is_shown_again_and_flagged(
+    db: Session, clock: Clock, tmp_path: Path, sample: dict[str, Any]
+) -> None:
+    import_bank(db, copy.deepcopy(sample), SAMPLE_DIR / "img", tmp_path, clock.now)
+    gone = copy.deepcopy(sample)
+    drop(gone, quizzes=(9003,))
+    import_bank(db, gone, SAMPLE_DIR / "img", tmp_path, clock.now)
+    clock.advance(days=1)
+    report = import_bank(db, copy.deepcopy(sample), SAMPLE_DIR / "img", tmp_path, clock.now)
+    db.expire_all()
+
+    assert report.restored == 1 and not db.get_one(Quiz, 9003).retired
+    q = by_fsquiz(db, 90011)
+    assert q.playable and not q.excluded and q.upstream_note is None
+    assert (q.key_changed_at, q.upstream_change) == (clock.now, "back")
+
+
+def test_a_mirror_missing_most_of_the_bank_retires_nothing_unless_allowed(
+    db: Session, clock: Clock, tmp_path: Path, sample: dict[str, Any]
+) -> None:
+    import_bank(db, copy.deepcopy(sample), SAMPLE_DIR / "img", tmp_path, clock.now)
+    drop(sample, quizzes=(9002, 9003))  # a third of the questions
+    report = import_bank(db, copy.deepcopy(sample), SAMPLE_DIR / "img", tmp_path, clock.now)
+    assert (report.retired, report.not_retired) == (0, 4)
+    assert db.scalar(select(func.count()).where(Question.playable)) == 12
+    assert not db.get_one(Quiz, 9002).retired
+
+    report = import_bank(db, sample, SAMPLE_DIR / "img", tmp_path, clock.now, allow_mass_removal=True)
+    assert (report.retired, report.not_retired) == (4, 0)
+    assert db.get_one(Quiz, 9002).retired

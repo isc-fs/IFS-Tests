@@ -150,3 +150,49 @@ def test_an_open_question_keeps_working_across_a_reload(
     r = c.post(f"/api/daily/attempts/{daily['attempt_id']}/answer", json={"options": [right]})
     assert r.status_code == 200, r.text
     assert r.json()["feedback"]["correct"] is True
+
+
+def test_a_quiz_deleted_upstream_leaves_play_but_not_history(
+    setup: tuple[dict[str, Any], Path, TestClient], db: Session, clock: Clock, app_client: TestClient
+) -> None:
+    bank, media, c = setup
+    state = c.post("/api/mock/quizzes/9003/start").json()
+    run = state["session_id"]
+    while state["current"]:
+        state = c.post(
+            f"/api/mock/sessions/{run}/answer",
+            json={"attempt_id": state["current"]["attempt_id"], "unsure": True},
+        ).json()
+    gone = by_fsquiz(db, 90011)  # only in quiz 9003
+
+    bank["quizzes"] = [z for z in bank["quizzes"] if z["quiz_id"] != 9003]
+    bank["questions"] = [q for q in bank["questions"] if q["question_id"] != 90011]
+    clock.advance(minutes=5)
+    import_bank(db, copy.deepcopy(bank), SAMPLE_DIR / "img", media, clock.now)
+
+    assert 9003 not in [z["id"] for z in c.get("/api/mock/quizzes").json()]
+    assert c.post("/api/mock/quizzes/9003/start").status_code == 404
+    assert c.get(f"/api/practice/questions/{gone.id}").status_code == 404
+    finished = c.get(f"/api/mock/sessions/{run}").json()["summary"]
+    assert len(finished["items"]) == 3
+    changed = app_client.get("/api/review/questions", params={"queue": "changed"}).json()
+    assert [r["id"] for r in changed["rows"]] == [gone.id]
+
+
+def test_an_option_removed_upstream_is_refused_on_a_new_answer(
+    setup: tuple[dict[str, Any], Path, TestClient], db: Session, clock: Clock
+) -> None:
+    bank, media, c = setup
+    run = c.post("/api/mock/quizzes/9002/start").json()  # first question: 90001, on screen
+    shown = {o["text"]: o["id"] for o in run["current"]["question"]["options"]}
+
+    raw(bank, 90001)["answers"] = [a for a in raw(bank, 90001)["answers"] if a["text"] != "0.837 m"]
+    clock.advance(seconds=20)
+    import_bank(db, copy.deepcopy(bank), SAMPLE_DIR / "img", media, clock.now)
+
+    url = f"/api/mock/sessions/{run['session_id']}/answer"
+    body = {"attempt_id": run["current"]["attempt_id"]}
+    r = c.post(url, json={**body, "options": [shown["0.837 m"]]})
+    assert r.status_code == 400 and r.json()["detail"] == "Pick one of the listed answers.", r.text
+    r = c.post(url, json={**body, "options": [shown["0.713 m"]]})
+    assert r.status_code == 200 and r.json()["current"] is not None

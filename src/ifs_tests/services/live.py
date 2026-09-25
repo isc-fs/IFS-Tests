@@ -62,8 +62,10 @@ def create(db: DB, host: User, config: dict[str, Any], now: datetime) -> LiveSes
 
 
 def _check_config(db: DB, config: dict[str, Any]) -> None:
-    if config["questions"] == "quiz" and db.get(Quiz, config.get("quiz_id") or 0) is None:
-        raise UserError("That quiz doesn't exist.", 404)
+    if config["questions"] == "quiz":
+        quiz = db.get(Quiz, config.get("quiz_id") or 0)
+        if quiz is None or quiz.retired:
+            raise UserError("That quiz doesn't exist.", 404)
 
 
 def _session(db: DB, code: str, lock: bool = False) -> LiveSession:

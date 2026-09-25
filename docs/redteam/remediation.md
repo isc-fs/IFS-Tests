@@ -32,6 +32,8 @@ docs only. **Status:** Open → Fixed (merged, with its test) → Verified (red-
 | LIVE-01 shared topic only to its first table | High | fix/9, #56 | Fixed | `tests/unit/test_live_rules.py` spread test |
 | LIVE-02 / PERF-01 full meeting saturates the API | High | fix/9, #56 | Fixed | 80-player load probe before/after (PR #56); XP-once race test |
 
+Follow-ups found by the independent verification, fixed in fix/13: BANK-01 text-only upstream change now flagged `wording` (`test_a_reworded_question_keeps_the_correction_and_asks_to_check_it`); a retired option refused on a new answer (`test_an_option_removed_upstream_is_refused_on_a_new_answer`).
+
 Also closed by these PRs: OPS-02, OPS-04, OPS-14, the restore part of DOC-01 (#54), PERF-02 (#56).
 
 ## Medium
@@ -51,8 +53,8 @@ Workstreams run in parallel, each owning its files; G starts once A–F have mer
 | BANK-06 / UI-03 correction changes the question type | P1 | B, fix/12 | | Open | |
 | BANK-05 tolerance accepts wrong exact answers | P2 | B, fix/12 | | Open | |
 | DOM-01 / BANK-12 number hints give the answer | P2 | B, fix/12 | | Open | |
-| BANK-07 upstream solution drops a correction | P2 | C bank pipeline, fix/13 | | Open | |
-| BANK-08 upstream deletions don't propagate | P2 | C, fix/13 | | Open | |
+| BANK-07 upstream solution drops a correction | P2 | C bank pipeline, fix/13 | | Fixed | `graded_hash` (migration 0020): `test_a_new_solution_image_or_time_keeps_the_correction_and_difficulty`; red-team `test_solution_only_change.py` keeps the correction and difficulty 5 |
+| BANK-08 upstream deletions don't propagate | P2 | C, fix/13 | | Fixed | `tests/unit/test_mirror.py`, `test_a_quiz_deleted_upstream_leaves_play_but_not_history`; red-team `mirror_probe.py` 121 → 119 quizzes; mass-removal guard |
 | PLAY-05 abandoned mock run blocks dailies | P1 | D play and time rules, fix/14 | | Open | |
 | PLAY-03 daily started before midnight vanishes | P2 | D, fix/14 | | Open | |
 | DOM-03 / PLAY-01 mock summary counts late as right | P2 | D, fix/14 | | Open | |

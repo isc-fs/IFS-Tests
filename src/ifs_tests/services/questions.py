@@ -196,8 +196,11 @@ def explain(db: DB, q: Question, correct: bool | None, passed: bool = False) -> 
 def check(db: DB, q: Question, options: list[int] | None, value: str | None, unsure: bool = False) -> Checked:
     """Grade a new answer and return everything needed to explain it. Never call before the player answered.
     `unsure` is "I'm not sure": no answer, marked not right, the official answer shown. An option FS-Quiz
-    removed while the question was on screen is still accepted (and graded against the current key)."""
-    choices = db.scalars(select(AnswerOption.id).where(AnswerOption.question_id == q.id)).all()
+    removed is refused like any unknown one, even if it was on screen; answers that picked it earlier still
+    show it (`show`)."""
+    choices = db.scalars(
+        select(AnswerOption.id).where(AnswerOption.question_id == q.id, AnswerOption.retired.is_(False))
+    ).all()
     if options and not set(options) <= set(choices):
         raise UserError("Pick one of the listed answers.")
     key = db.get(AnswerKey, q.id)
