@@ -70,6 +70,7 @@ What changes the formula:
 | **Mode** | K: daily 30, mock 20, **practice 0, live 0** | Practice is for learning; a live answer is a table's, not one person's |
 | **Repeat**: the player already had this question graded this season, in any mode | K × 0.25 | They have seen the official answer |
 | **Same day**: already answered today (Madrid), in any mode, graded or not | Right: 0 LP. Wrong: charged as usual | Once a day pays |
+| **Daily after an ended mock run**: its question was closed unanswered in the run while it was the day's daily | Neither repeat nor same day: pays in full | Its answer stayed hidden (§3.1) |
 | **Mock replay**: a quiz the player already ran this season | No LP at all (XP only) | The run is marked not `counted` in `src/ifs_tests/services/mock.py` |
 | **Hint** | Gain halved; on a single choice the guess floor becomes ½ (two options left) | So a hinted guess never pays either |
 | **Answer kind, outside the rules area** | Multiple choice K × 0.75, typed answers (number, list, range, text) K × 0.5, single choice × 1 | A slip in a sum isn't not knowing, and typed answers play harder than their rating. Both ways |
@@ -197,6 +198,8 @@ What the answer earns:
 
 Repeats are defined as for LP: graded before in this season, in any mode. In practice that means a question you've already had graded earns a quarter, at most once a day.
 
+One exception, for the daily question: a mock question closed without an answer (left to run out, or on screen when the run was ended) after that day's daily question started running for the player is neither "answered today" nor "seen" for it. Its answer stayed hidden in the run's summary (see `running` in `src/ifs_tests/services/questions.py`), so the daily still pays in full (`_hidden_mock` in `src/ifs_tests/services/xp.py`). Any answer given in the run, even "not sure" or late, counts: the daily then pays 0.
+
 ### 3.2 Bonuses on right answers
 
 Bonuses are shares of the base, **added** to it, never multiplied together. Each is rounded to whole XP.
@@ -289,7 +292,7 @@ Worked values (computed): a single choice with no time budget and 17 of 20 right
 - A run replays one past quiz, one question at a time, in the quiz's order. A question's clock starts when it is shown; one left to run out is closed as out of time (0 XP, LP as a wrong answer) when its player comes back or by the nightly job.
 - **Clock:** the time the question had in the real quiz, not clamped like the daily question's (real quizzes give from 10 s to 20 min). A time FS-Quiz doesn't give falls back to the daily defaults for the kind of answer (120 s, 150 s, 240 s); a time outside 10 s to 1 hour is treated as bad data and clamped into it (`budget` in `src/ifs_tests/domain/mock.py`). The quiz list's total time is the sum of those same clocks, so the list and the run agree.
 - **"*n* of *m* right"** and **your best** on the quiz list count right answers sent in time. A right answer sent late is scored as wrong (LP and XP), so it isn't counted as right either.
-- **Ending a run early** (`end` in `src/ifs_tests/services/mock.py`): the question on screen is closed as out of time, as if its clock had run out, because it has been seen; the questions not reached are not scored at all and count as not right in the summary ("*n* of *m* right" counts every graded question of the run). An ended run is finished: it was the player's run of that quiz for the season, so the next one is a replay.
+- **Ending a run early** (`end` in `src/ifs_tests/services/mock.py`): the question on screen is closed as out of time, as if its clock had run out, because it has been seen; the questions not reached are not scored at all and count as not right in the summary ("*n* of *m* right" counts every graded question of the run). An ended run is finished: it was the player's run of that quiz for the season, so the next one is a replay. If the question on screen is that day's daily question, ending the run frees the daily, which then pays in full (§3.1).
 - **Forgotten runs:** the nightly job ends a run nobody has touched for 2 days the same way (`end_stale`). While a run is open its questions are held back from the daily question and practice (see `running` in `src/ifs_tests/services/questions.py`), so a forgotten run must not hold them forever.
 
 | Constant | Value | File |

@@ -69,12 +69,25 @@ def lock(db: DB, user_id: int) -> Row[Any]:
     return row
 
 
+def _hidden_mock(since: datetime) -> Any:
+    """A mock question closed without an answer (left to run out, or on screen when the run was ended) since
+    `since`, while the question was running for the player as a daily one: the run's summary kept its answer
+    hidden, so the player neither answered it nor saw its answer."""
+    return (Attempt.mode == "mock") & (Attempt.answer == {}) & (Attempt.submitted_at >= since)
+
+
 def last_seen(
-    db: DB, user_id: int, question_id: int, now: datetime, other_than: int | None = None
+    db: DB,
+    user_id: int,
+    question_id: int,
+    now: datetime,
+    other_than: int | None = None,
+    hidden_since: datetime | None = None,
 ) -> datetime | None:
     """When the player last had this question graded this season, in any mode: from then on they have seen
     its answer. A new season starts everyone afresh; a mock answer belongs to the season its run started in,
-    as on the leaderboard."""
+    as on the leaderboard. `hidden_since`: for a daily answer, when its question started running for the
+    player (see `_hidden_mock`)."""
     season_start = board_rules.madrid_midnight(board_rules.first_day("season", daily_rules.madrid_day(now)))
     stmt = (
         select(func.max(Attempt.created_at))
@@ -88,6 +101,8 @@ def last_seen(
     )
     if other_than is not None:
         stmt = stmt.where(Attempt.id != other_than)
+    if hidden_since is not None:
+        stmt = stmt.where(~_hidden_mock(hidden_since))
     return db.scalar(stmt)
 
 
@@ -99,9 +114,15 @@ def _options(db: DB, question: Question) -> int:
 
 
 def answered_today(
-    db: DB, user_id: int, question_id: int, now: datetime, other_than: int | None = None
+    db: DB,
+    user_id: int,
+    question_id: int,
+    now: datetime,
+    other_than: int | None = None,
+    hidden_since: datetime | None = None,
 ) -> bool:
-    """Whether the player already answered this question today (Madrid), graded or not: once a day pays."""
+    """Whether the player already answered this question today (Madrid), graded or not: once a day pays.
+    `hidden_since` as for `last_seen`."""
     start = board_rules.madrid_midnight(daily_rules.madrid_day(now))
     stmt = select(func.count()).where(
         Attempt.user_id == user_id,
@@ -112,6 +133,8 @@ def answered_today(
     )
     if other_than is not None:
         stmt = stmt.where(Attempt.id != other_than)
+    if hidden_since is not None:
+        stmt = stmt.where(~_hidden_mock(hidden_since))
     return bool(db.scalar(stmt))
 
 

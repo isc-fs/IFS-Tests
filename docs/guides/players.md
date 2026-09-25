@@ -365,8 +365,10 @@ runs move LP.
 **I got 0 XP for a right answer.** You had already answered that question today, in some mode. A question pays XP
 once a day.
 
-**I can't start today's daily question.** It is also in a mock run or live quiz you haven't finished; answer it
-there first, or end the mock run (**End this run**).
+**I can't start today's daily question.** It is also in a mock run or live quiz you haven't finished. Either answer
+it there first: a question pays once a day, so the daily then pays nothing (0 XP, 0 LP). Or end the mock run
+(**End this run**): the question on screen counts as out of time in the run, its official answer stays hidden in the
+run's summary until you answer the daily, and the daily then pays in full.
 
 **Practice says a question is running elsewhere.** Same rule: a question you still have to answer in your daily
 questions, a mock run or a live quiz can't be opened, practised or hinted at until you do.

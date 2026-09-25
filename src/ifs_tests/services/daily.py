@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session as DB
 
 from ..db.models import Attempt, DailyQuestion, Question, User
 from ..domain import daily as rules
+from ..domain.leaderboard import madrid_midnight
 from . import hints, streaks, xp
 from .errors import UserError
 from .questions import Checked, check, explain, running
@@ -168,7 +169,8 @@ def start(db: DB, user: User, area: str, now: datetime) -> tuple[Question, Attem
     q = db.get_one(Question, qid)
     if q.id in running(db, user.id, now, daily=False):
         raise UserError(
-            "This question is running in your mock or live quiz: answer it there first, or end the mock run.",
+            "This question is running in your mock or live quiz: answer it there first (then it pays nothing more "
+            "here today), or end the mock run (it counts as out of time there, and this one still pays in full).",
             409,
         )
     db.execute(
@@ -237,7 +239,8 @@ def answer(
             .returning(Attempt.id)
         ).first()
         if recorded:  # only the request that recorded the answer earns the XP
-            repeat = xp.last_seen(db, user.id, q.id, now, other_than=a.id) is not None
+            hidden = madrid_midnight(a.day)  # running for the player since: see xp._hidden_mock
+            repeat = xp.last_seen(db, user.id, q.id, now, other_than=a.id, hidden_since=hidden) is not None
             granted = xp.grant(
                 db,
                 user.id,
@@ -249,7 +252,7 @@ def answer(
                 repeat=repeat,
                 passed=checked.passed,
                 hint=a.hint_used,
-                again_today=xp.answered_today(db, user.id, q.id, now, other_than=a.id),
+                again_today=xp.answered_today(db, user.id, q.id, now, other_than=a.id, hidden_since=hidden),
                 season_at=a.created_at,
                 played_on=a.day,
             )
@@ -268,7 +271,7 @@ def close_expired(db: DB, now: datetime, user_id: int | None = None) -> int:
     """Close daily questions left to run out: late and wrong, like an answer sent after the time.
     Otherwise closing the tab on a hard question would dodge the XP a wrong answer costs."""
     stmt = (
-        select(Attempt.id, Attempt.question_id, Attempt.user_id, Attempt.created_at)
+        select(Attempt.id, Attempt.question_id, Attempt.user_id, Attempt.created_at, Attempt.day)
         .where(
             Attempt.mode == "daily", Attempt.submitted_at.is_(None), Attempt.deadline_at < now - rules.GRACE
         )
@@ -277,7 +280,7 @@ def close_expired(db: DB, now: datetime, user_id: int | None = None) -> int:
     if user_id is not None:
         stmt = stmt.where(Attempt.user_id == user_id)
     closed = 0
-    for attempt_id, question_id, owner, started in db.execute(stmt).all():
+    for attempt_id, question_id, owner, started, day in db.execute(stmt).all():
         xp.lock(db, owner)
         q = db.get_one(Question, question_id)
         correct = False if q.graded else None
@@ -288,7 +291,10 @@ def close_expired(db: DB, now: datetime, user_id: int | None = None) -> int:
             .returning(Attempt.id)
         ).first()
         if recorded:
-            repeat = xp.last_seen(db, owner, q.id, now, other_than=attempt_id) is not None
+            hidden = madrid_midnight(day or rules.madrid_day(started))
+            repeat = (
+                xp.last_seen(db, owner, q.id, now, other_than=attempt_id, hidden_since=hidden) is not None
+            )
             granted = xp.grant(
                 db,
                 owner,

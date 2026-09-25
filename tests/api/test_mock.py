@@ -7,18 +7,20 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
+from pytest import approx
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from ifs_tests.bank.mirror import load_bank
 from ifs_tests.bank.sample import SAMPLE_DIR
 from ifs_tests.db.models import Attempt, DailyQuestion, Question, QuizQuestion, User
+from ifs_tests.domain import rank as rank_rules
 from ifs_tests.domain.xp import xp_award
 from ifs_tests.services import maintenance
 from ifs_tests.services.bank import import_bank
 
 from ..conftest import Clock
-from .helpers import PASSWORD, login, member, right_answer
+from .helpers import PASSWORD, login, member, options, right_answer
 
 pytestmark = pytest.mark.integration
 NewClient = Callable[[], TestClient]
@@ -359,3 +361,73 @@ def test_an_answer_the_grader_cannot_read_is_refused_and_the_run_waits(
             assert again["current"]["attempt_id"] == current["attempt_id"]
         state = answer(player, state, right_answer(db, current["question"]["id"]))
     assert refused == 2 and state["summary"]["correct"] == 5
+
+
+def _todays_daily_on_screen(player: TestClient, db: Session) -> tuple[dict[str, Any], Question]:
+    """A run whose question on screen is also today's daily question in its area."""
+    player.get("/api/daily")
+    state = player.post(f"/api/mock/quizzes/{CV}/start").json()
+    q = db.get_one(Question, state["current"]["question"]["id"])
+    db.execute(update(DailyQuestion).where(DailyQuestion.area == q.area).values(question_id=q.id))
+    db.commit()
+    return state, q
+
+
+def _daily_right(player: TestClient, db: Session, q: Question) -> dict[str, Any]:
+    started = player.post(f"/api/daily/{q.area}/start")
+    assert started.status_code == 200, started.text
+    r = player.post(f"/api/daily/attempts/{started.json()['attempt_id']}/answer", json=right_answer(db, q.id))
+    assert r.status_code == 200, r.text
+    return dict(r.json())
+
+
+def _full_daily_lp(db: Session, q: Question, **kw: Any) -> float:
+    points = db.scalars(select(User.rank_points).where(User.display_name == "Marta")).one()
+    n = len(options(db, q.id)) if q.answer_kind == "choice-one" else 0
+    return rank_rules.lp_award(
+        True, points, 3, "daily", area=q.area, answer_kind=q.answer_kind, options=n, **kw
+    ).amount
+
+
+def test_ending_a_run_frees_the_daily_on_screen_and_it_pays_in_full(player: TestClient, db: Session) -> None:
+    state, q = _todays_daily_on_screen(player, db)
+    assert player.post(f"/api/daily/{q.area}/start").status_code == 409
+    ended = player.post(f"/api/mock/sessions/{state['session_id']}/end").json()["summary"]["items"][0]
+    assert ended["question"]["id"] == q.id and ended["late"] and ended["feedback"]["lp"] < 0
+    assert (ended["feedback"]["official"], ended["feedback"]["correct_options"]) == (None, [])
+    assert player.get(f"/api/practice/questions/{q.id}").status_code == 409
+    full = _full_daily_lp(db, q)
+    r = _daily_right(player, db, q)
+    # closed without an answer while its answer stayed hidden: neither answered today nor seen
+    assert (r["xp"], r["lp"]) == (xp_award(True, 3, "daily", first_win=True).amount, approx(full))
+    shown = player.get(f"/api/mock/sessions/{state['session_id']}").json()["summary"]["items"][0]
+    assert shown["feedback"]["official"]  # the daily is answered: the run's summary can show it now
+
+
+@pytest.mark.parametrize("unsure", [False, True])
+def test_a_daily_question_answered_in_the_mock_pays_nothing_again_that_day(
+    player: TestClient, db: Session, unsure: bool
+) -> None:
+    state, q = _todays_daily_on_screen(player, db)
+    body = {"unsure": True} if unsure else right_answer(db, q.id)
+    state = answer(player, state, body)
+    player.post(f"/api/mock/sessions/{state['session_id']}/end")
+    r = _daily_right(player, db, q)
+    assert (r["xp"], r["lp"]) == (0, 0)  # once a day, whether the answer was right or "not sure"
+
+
+def test_a_question_whose_answer_a_finished_run_showed_is_a_repeat_as_the_daily(
+    player: TestClient, db: Session, clock: Clock
+) -> None:
+    state = player.post(f"/api/mock/quizzes/{CV}/start").json()
+    q = db.get_one(Question, state["current"]["question"]["id"])
+    item = player.post(f"/api/mock/sessions/{state['session_id']}/end").json()["summary"]["items"][0]
+    assert item["feedback"]["official"]  # not running anywhere yesterday: the summary showed the answer
+    clock.advance(days=1)
+    player.post("/auth/login", json={"email": "marta@alu.comillas.edu", "password": PASSWORD})
+    player.get("/api/daily")
+    db.execute(update(DailyQuestion).where(DailyQuestion.area == q.area).values(question_id=q.id))
+    db.commit()
+    repeat = _full_daily_lp(db, q, repeat=True)
+    r = _daily_right(player, db, q)
+    assert r["lp"] == approx(repeat)
