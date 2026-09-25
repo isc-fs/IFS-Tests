@@ -284,6 +284,45 @@ The server is a Hetzner CX33 shared with the team's other apps ([handover](hando
 consultant first. Nginx's per-address caps (160 streams, 160 requests in flight) fit 80 people; for more people behind
 one campus address raise both in `deploy/nginx/quiz.conf`.
 
+
+### 5.6 Leaderboard and data export capacity
+
+The red team's probe (`perf/burst.py`: 60 signed-in members open the leaderboard and the vertical board within 2 s)
+on a local stack with the `deploy/compose.yaml` limits and the red team's seeded season of play (71 accounts, 103k
+answers), then grown to three seasons (309k). Previous release and this one back to back; the machine was shared
+with other heavy jobs, so compare columns rather than absolute numbers. p95 of the leaderboard / vertical board:
+
+| | Previous release | This release |
+|---|---|---|
+| One season, September | 215–405 ms / 200–486 ms, database CPU saturated | 17–21 ms / 10–11 ms, database CPU under 11 % |
+| Three seasons, September | 2.8–3.2 s / 2.1–3.2 s | 11–24 ms / 7–21 ms |
+| Three seasons, a full season into the current one (August) | 3.7–4.0 s / 3.3–3.6 s | 14–17 ms / 10–11 ms |
+| Area and 7-day boards, one season, September | 195–259 ms | 10–12 ms |
+| Area and 7-day boards, three seasons, September | 2.9–3.1 s | 20–32 ms |
+| Area and 7-day boards, a full season into the current one (worst case: the whole season fell in the 7 days too) | 3.4–4.6 s | 90–183 ms |
+
+The boards used to add up every answer ever given on each view. Now they read each member's play in the period
+through an index ([data-model](data-model.md#attempts)), so the cost follows the season, not the history. The
+database runs without JIT compilation (`jit=off` in `deploy/compose.yaml`): late in a season Postgres compiled the
+area boards' sums on every view, which took two thirds of their time (with JIT on, those boards stayed at 2.5–3.3 s
+in the last row).
+
+A data export holds one member's whole history in memory. Measured with the red team's `perf/export_mem.py` (the
+heaviest members' exports, 8.6 MB of JSON each at three seasons) on the api container (512 MiB; 176 MiB at rest):
+
+| | Previous release | This release |
+|---|---|---|
+| 6 exports, one season: peak / held 20 s later | 292 / 284 MiB | 227 / 214 MiB |
+| 6 exports, three seasons: peak / held | 494 / 415 MiB, 2.2 s each at worst | 303 / 247 MiB, 1.1 s |
+| 12 at once, three seasons | 512 MiB (the limit), 282 MiB pushed to swap | 325 / 246 MiB; 4 served, 8 told to try again (429) |
+
+An export now reads only the columns it shows, in batches, each question's text once, and writes the JSON straight
+to bytes. Each api process prepares at most two at once and answers 429 ("Another download is being prepared. Try
+again in a minute.") to more, because Nginx lets one address send a burst of 80 to that path. The api also has
+`memswap_limit` equal to its memory limit: if it ever goes past it, the kernel stops a worker (uvicorn starts a new
+one; its live streams reconnect) instead of the whole api slowing down in swap. Exports are rare: if members ever see
+that 429 in normal use, raise `EXPORTS_AT_ONCE` in `services/privacy.py` and check the memory with the probe.
+
 ---
 
 ## 6. Incidents

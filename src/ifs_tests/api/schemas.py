@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator, model_validator
 
 from ..db.models import Position, Role, Status, Vertical
 
@@ -339,6 +339,14 @@ class Export(BaseModel):
     sign_ins: list[ExportSignIn]
     account_history: list[ExportHistory]
     actions: list[ExportAction]
+
+
+_export = TypeAdapter(Export)
+
+
+def export_json(data: dict[str, Any]) -> bytes:
+    """The export file: checked against `Export` and written straight to bytes, as FastAPI would."""
+    return _export.dump_json(_export.validate_python(data))
 
 
 class UserPatch(In):

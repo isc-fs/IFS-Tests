@@ -20,7 +20,9 @@ from sqlalchemy import (
     String,
     Table,
     Text,
+    and_,
     func,
+    literal_column,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -510,6 +512,18 @@ Index(
     unique=True,
     postgresql_where=Attempt.mode == "daily",
 )
+
+# The Madrid day a daily or practice answer's LP belongs to, and those answers that moved someone's rank: the
+# leaderboards read only a period's rows through this index (a mock run's LP goes by the run's start instead).
+# Literals, not bound parameters, so every plan can match the index's expression and predicate.
+LP_DAY = func.coalesce(
+    Attempt.day, func.date(func.timezone(literal_column("'Europe/Madrid'"), Attempt.created_at))
+)
+RANKED_PLAY = and_(
+    Attempt.lp != literal_column("0"),
+    Attempt.mode.in_([literal_column("'daily'"), literal_column("'practice'")]),
+)
+Index("ix_attempts_lp_day", Attempt.user_id, LP_DAY, postgresql_where=RANKED_PLAY)
 
 
 class DailyQuestion(Base):

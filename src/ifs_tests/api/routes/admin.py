@@ -17,6 +17,7 @@ from ..schemas import (
     Link,
     OpenInvite,
     UserPatch,
+    export_json,
 )
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -44,13 +45,13 @@ def update_user(user_id: Id, body: UserPatch, admin: Admin, db: Db, now: Now) ->
     )
 
 
-@router.get("/users/{user_id}/export")
-def export_user(user_id: Id, admin: Admin, db: Db, now: Now, response: Response) -> Export:
+@router.get("/users/{user_id}/export", response_model=Export)
+def export_user(user_id: Id, admin: Admin, db: Db, now: Now) -> Response:
     """For someone who can't sign in (alumni, disabled) and asks for their data."""
-    response.headers["Content-Disposition"] = (
-        f'attachment; filename="mingoquiz-export-{user_id}-{now.date()}.json"'
-    )
-    return Export.model_validate(privacy.export_for(db, admin, user_id, now))
+    with privacy.export_slot():
+        body = export_json(privacy.export_for(db, admin, user_id, now))
+    disposition = f'attachment; filename="mingoquiz-export-{user_id}-{now.date()}.json"'
+    return Response(body, media_type="application/json", headers={"Content-Disposition": disposition})
 
 
 @router.delete("/users/{user_id}", status_code=204)

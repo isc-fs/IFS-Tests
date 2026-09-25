@@ -108,7 +108,7 @@ Everything under `src/ifs_tests/` (empty `__init__.py` files left out).
 | **services/** | |
 | `services/errors.py` | `UserError`: message, HTTP status and per-field messages |
 | `services/accounts.py` | Invites, registration, first admin, sign-in and lockout, password reset and change, profile, admin changes (under `ADMIN_LOCK`), audit helper |
-| `services/privacy.py` | Data export, account deletion, alumni, the nightly retention purge ([ADR 0006](adr/0006-personal-data.md)) |
+| `services/privacy.py` | Data export, account deletion, alumni, the nightly retention purge ([ADR 0006](adr/0006-personal-data.md)). An export reads only the columns it shows, in batches, and each process prepares at most two at once (`export_slot`, held by the routes until the JSON is written) |
 | `services/questions.py` | Questions as players see them (options, quiz labels, documents), `check` (grading a new answer), `explain` (the official answer around a stored result, never re-graded), and answer secrecy (`running`, `running_for`, `not_running`) |
 | `services/practice.py` | Practice areas, next question, one question by ID, answering |
 | `services/daily.py` | Choosing the day's questions (`ensure_daily`), start, answer, closing abandoned ones |
@@ -119,7 +119,7 @@ Everything under `src/ifs_tests/` (empty `__init__.py` files left out).
 | `services/season.py` | The 1 September rank reset |
 | `services/hints.py` | Hints for practice, daily and mock questions; the `hint_salt` server secret |
 | `services/learning.py` | Learning panels filtered by the player's division |
-| `services/leaderboard.py` | The boards and the vertical board |
+| `services/leaderboard.py` | The boards and the vertical board. Each looks up, member by member, only the period's play (index `ix_attempts_lp_day`, and a mock run's answers through the run), so a view costs the same after many seasons |
 | `services/review.py` | Reviewer queues, search, label and exclusion changes, answer corrections, reports |
 | `services/bank.py` | Loading `bank.json` and images into the database (`import_bank`), the admin bank summary |
 | `services/maintenance.py` | The nightly job: clean-up and every periodic task, in one place |
@@ -263,7 +263,7 @@ flowchart LR
 
 ## Targets
 
-Targets set at design time. The latency and availability figures have not been measured yet, except for a live quiz at meeting scale ([runbook](runbook.md#55-live-quiz-capacity)): the load test is part of `feat/20-launch` on the roadmap.
+Targets set at design time. The latency and availability figures have not been measured yet, except for a live quiz at meeting scale ([runbook](runbook.md#55-live-quiz-capacity)) and the leaderboard with a room opening it at once ([runbook](runbook.md#56-leaderboard-and-data-export-capacity)): the load test is part of `feat/20-launch` on the roadmap.
 
 - p95 latency under 300 ms for start, submit and practice requests, under 400 ms for the leaderboard.
 - JavaScript under 180 KB gzipped, counting every script the build writes to `dist/assets` (`size-limit` in `web/package.json`; `npm run size` fails CI above it).

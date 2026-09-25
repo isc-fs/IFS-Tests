@@ -66,8 +66,8 @@ Workstreams run in parallel, each owning its files; G starts once A–F have mer
 | OPS-05 reused migration number skipped | P3 | E, fix/15 | | Open | |
 | ACC-03 invite note visible to the member | P3 | E, fix/15 | | Open | |
 | DOC-03 mock quizzes include ungraded questions | P3 | E, fix/15 | | Open | |
-| PERF-03 leaderboard scans all history | P2 | F capacity, fix/16 | | Open | |
-| PERF-04 exports can run out of memory | P2 | F, fix/16 | | Open | |
+| PERF-03 leaderboard scans all history | P2 | F capacity, fix/16 | | Fixed | index `ix_attempts_lp_day` (migration 0019), `jit=off`; `test_the_boards_read_this_seasons_play_not_the_whole_history`; red-team burst at 3 seasons: p95 2.8–3.2 s → 11–24 ms |
+| PERF-04 exports can run out of memory | P2 | F, fix/16 | | Fixed | batched export, ≤2 per process (429), `memswap_limit`; exports byte-identical; 12 at once: no swap (was 512 MiB + 282 swapped) |
 | GATE-02 surviving mutants (late right, repeat misses) | P2 | G tests, fix/17 | | Open | |
 | GATE-03 grace untested on closing paths | P2 | G, fix/17 | | Open | |
 | GATE-04 mock time-out on an ungraded question untested | P2 | G, fix/17 | | Open | |
