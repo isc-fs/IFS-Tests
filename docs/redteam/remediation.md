@@ -40,11 +40,12 @@ Workstreams run in parallel, each owning its files; G starts once A–F have mer
 
 | Finding | P | Workstream / branch | PR | Status | Proof |
 |---|---|---|---|---|---|
-| GATE-01 learning aids wipe the answer | P1 | A answer screen, fix/11 | | Open | |
-| UI-01 stuck when the send at zero fails | P1 | A, fix/11 | | Open | |
-| UI-05 offline shows nothing | P2 | A, fix/11 | | Open | |
-| BANK-09 iPhone can't type `-` or `;` | P2 | A, fix/11 | | Open | |
-| LIVE-05 / UI-04 removed player frozen | P3 | A, fix/11 | | Open | |
+| GATE-01 learning aids wipe the answer (+UI-08 jump) | P1 | A answer screen, fix/11 | | Fixed | `LearningAids.test.tsx` answer and hint survive the aids loading; red-team `RtLostChoice.test.tsx` passes; button moves 0 px (was 130/60) |
+| UI-01 stuck when the send at zero fails | P1 | A, fix/11 | | Fixed | `QuestionCard.test.tsx` retry within the grace, then "Send my answer again"; refusals not retried |
+| UI-05 offline shows nothing | P2 | A, fix/11 | | Fixed | `QuestionCard.test.tsx` offline banner and waiting-answer note; red-team `offline.mjs` |
+| BANK-09 iPhone can't type `-` or `;` | P2 | A, fix/11 | | Fixed | `inputMode="text"` for every typed answer (tests per answer kind); not yet checked on a real iPhone |
+| LIVE-05 / UI-04 removed player frozen | P3 | A, fix/11 | | Fixed | `Live.test.tsx` refusal shown, polling and stream stop; red-team `liveremove.mjs` |
+| UI-06 daily "See the question" fails silently (Low) | P3 | A, fix/11 | | Fixed | `Daily.test.tsx` error shown |
 | BANK-04 / DOM-11 units or `%` graded wrong | P1 | B grading and hints, fix/12 | | Fixed | unreadable answers refused with 400 before anything is recorded (daily, mock, practice, live tests); real-bank probe: units/%/thousands always refused, `.5` and scientific now accepted |
 | UI-02 hint thousands separator | P1 | B, fix/12 | | Fixed | `test_hint_numbers_read_back_as_printed` (was 'Between 1,892 and 3,616.') |
 | BANK-06 / UI-03 correction changes the question type | P1 | B, fix/12 | | Fixed | `test_a_correction_is_read_for_the_questions_own_type`; red-team `test_review_formats`: `12.5 kW`, `3,000` refused |

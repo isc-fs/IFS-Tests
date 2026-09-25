@@ -41,6 +41,8 @@ Every error body is JSON with a `detail`:
 
 `UserError` messages are written for the person using the app; the web app shows `detail` as is and puts `fields` next to the form inputs (`errorMessage` and `fieldErrors` in `web/src/lib/api.ts`).
 
+An answer (daily, mock, a table's live answer) that fails without a `detail` (a dropped connection, a proxy's error page) is sent again twice, 0.5 s and 1 s apart (`resend` in `web/src/lib/api.ts`), inside the 3 s of grace after a clock. These routes record the first answer and repeat it back (live: "Your table has already answered."), so a retry never scores twice. Refusals with a `detail` are shown, never retried.
+
 ## Limits and paging
 
 - Request bodies: Nginx accepts at most 64 KB. Strings in bodies have explicit `max_length`s in the schemas.

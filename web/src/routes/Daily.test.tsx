@@ -123,3 +123,12 @@ test('a finished question can be reviewed', async () => {
   expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Electrical')
   expect(screen.queryByRole('button', { name: 'Check answer' })).toBeNull()
 })
+
+test("a finished question that can't be loaded says so", async () => {
+  renderApp('/daily', {
+    ...api(timed(120)),
+    'GET /api/daily/elec/review': { status: 409, body: { detail: "Answer today's question first." } },
+  })
+  await userEvent.click(await screen.findByRole('button', { name: 'See the Electrical question' }))
+  expect(await screen.findByText("Answer today's question first.")).toBeInTheDocument()
+})

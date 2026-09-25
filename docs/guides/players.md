@@ -109,6 +109,15 @@ not your browser's.
 but counted as wrong. A question you never answer is closed as out of time: it costs LP like a wrong answer and
 earns no XP.
 
+**If the send fails.** When the answer sent at zero doesn't get through (a dropped connection, a server error), the
+page tries twice more within about a second and a half. If it still fails, it says **Time's up, and your answer
+didn't reach the server.** with a **Send my answer again** button; the server's clock decides whether it still
+counts.
+
+**Offline.** Without a connection a banner says **You're offline. The page carries on when the connection is back.**
+An answer you send meanwhile waits and goes when the connection returns. The clock keeps running, and the server's
+clock decides whether the answer arrived in time.
+
 **Streak.** Each day with at least one daily question answered on time (right, wrong or "I'm not sure") extends
 your streak. Each day of streak after the first adds 5 % XP to right answers, up to +50 %.
 
@@ -144,6 +153,8 @@ daily questions, a mock run or a live quiz, and refuses to open one by its link 
 - An answer the app can't read (`3.5 mm`, `46%`, one value where two are asked) isn't graded: it's refused with a
   message saying what to type, and your try isn't used, so fix it and send it again before the clock runs out.
 - Text: capital letters and spaces don't matter.
+- On a phone, typed answers open the ordinary keyboard: switch it to numbers (**123** on an iPhone). A number pad
+  would leave out the minus sign (iPhone) and the semicolon.
 - Some questions aren't graded automatically: press **Show the official answer** and compare it yourself.
 
 ### Hints
@@ -162,7 +173,8 @@ and mock questions it costs at most half the LP a wrong answer would.
 
 ### Learning aids
 
-At the lower divisions, panels sit beside the question (above and below it on a narrow screen):
+At the lower divisions, panels sit beside the question (above and below it on a narrow screen). They take their
+place as the question opens and fill in a moment later, so the question never moves and keeps what you entered:
 
 - **Useful formulas** for the question's topic;
 - **Learn more**: reading links.
@@ -356,7 +368,8 @@ profile marks "(seats you)".
 **I joined a live quiz late.** Wait for the host to seat you; until then you can't answer or propose. You share XP
 only for the questions your table answers after you sit down.
 
-**The host removed me and I can't rejoin.** Removal is final for that session; ask the host.
+**The host removed me and I can't rejoin.** Your screen says **The host removed you from this live quiz.** within a few
+seconds, with **Back to live quizzes**. Removal is final for that session; ask the host.
 
 **My proposal wasn't used.** Only the captain's answer counts. Proposals are suggestions.
 

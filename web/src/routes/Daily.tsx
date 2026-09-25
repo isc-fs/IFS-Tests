@@ -13,7 +13,7 @@ import { ErrorNotice, Notice } from '../components/Form'
 import { LearningAids } from '../components/LearningAids'
 import { Page } from '../components/Page'
 import { QuestionCard } from '../components/QuestionCard'
-import { queryClient } from '../lib/api'
+import { queryClient, resend } from '../lib/api'
 import { AREAS } from '../lib/areas'
 import { lp, tenths } from '../lib/rank'
 import { xp } from '../lib/xp'
@@ -84,6 +84,7 @@ function Play({ play, onDone }: { play: TimedQuestion; onDone: () => void }) {
   const [result, setResult] = useState<DailyResult>()
   const send = useMutation({
     ...answerDailyMutation(),
+    ...resend,
     onSuccess: (r) => {
       setResult(r)
       queryClient.invalidateQueries({ queryKey: dailyStatusQueryKey() })
@@ -97,6 +98,7 @@ function Play({ play, onDone }: { play: TimedQuestion; onDone: () => void }) {
           question={play.question}
           feedback={result?.feedback}
           pending={send.isPending}
+          failed={send.isError}
           expired={expired}
           clock={<Countdown deadline={play.deadline_at} serverNow={play.server_now} onExpire={expire} />}
           onAnswer={(body) => send.mutate({ path: { attempt_id: play.attempt_id }, body })}
@@ -134,7 +136,10 @@ export default function Daily() {
     setReview(undefined)
     status.refetch()
   }
-  const open = async (area: Area) => setReview((await reviewDaily({ path: { area } })).data)
+  const open = useMutation({
+    mutationFn: async (area: Area) => (await reviewDaily({ path: { area } })).data,
+    onSuccess: setReview,
+  })
 
   if (play) {
     return (
@@ -173,7 +178,7 @@ export default function Daily() {
         The daily questions and mock quizzes move your rank; practice and live quizzes earn XP only. Each day of your
         streak after the first adds 5 % XP (up to +50 %). New questions at midnight, Madrid time.
       </p>
-      <ErrorNotice error={start.error ?? status.error} />
+      <ErrorNotice error={start.error ?? open.error ?? status.error} />
       {s && s.areas.length === 0 && <Notice tone="error">No daily questions yet: the question bank is empty.</Notice>}
       <ul className="daily-areas">
         {s?.areas.map((a) => (
@@ -182,7 +187,7 @@ export default function Daily() {
             area={a}
             busy={start.isPending}
             onStart={() => start.mutate({ path: { area: a.area as Area } })}
-            onReview={() => open(a.area as Area)}
+            onReview={() => open.mutate(a.area as Area)}
           />
         ))}
       </ul>

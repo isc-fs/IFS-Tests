@@ -453,3 +453,38 @@ test('a wrong code is explained next to the field', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Join' }))
   expect(await screen.findByText('No live quiz with that code.')).toBeInTheDocument()
 })
+
+test('a player the host removes is told so, and the screen stops asking', async () => {
+  let removed = false
+  const { sent } = at('/live/ABC234', { ...MEMBER, id: 2 }, open, {
+    'GET /api/live/sessions/ABC234': () =>
+      removed ? { status: 403, body: { detail: 'Join the live quiz first.' } } : { body: open },
+    'POST /api/live/sessions/ABC234/join': {
+      status: 403,
+      body: { detail: 'The host removed you from this live quiz.' },
+    },
+  })
+  expect(await screen.findByText('Which flag means rain?')).toBeInTheDocument()
+  removed = true
+  await refresh('ABC234')
+  expect(await screen.findByText('The host removed you from this live quiz.')).toBeInTheDocument()
+  expect(screen.queryByText(/Reconnecting/)).toBeNull()
+  expect(screen.queryByText('Which flag means rain?')).toBeNull()
+  expect(screen.getByRole('link', { name: 'Back to live quizzes' })).toHaveAttribute('href', '/live')
+  const asked = sent('GET /api/live/sessions/ABC234').length
+  await refresh('ABC234')
+  expect(sent('GET /api/live/sessions/ABC234')).toHaveLength(asked)
+})
+
+test('a removed player opening the link again sees only why', async () => {
+  renderApp('/live/ABC234', {
+    'GET /api/me': { body: MEMBER },
+    'GET /api/live/sessions/ABC234': { status: 403, body: { detail: 'Join the live quiz first.' } },
+    'POST /api/live/sessions/ABC234/join': {
+      status: 403,
+      body: { detail: 'The host removed you from this live quiz.' },
+    },
+  })
+  expect(await screen.findByText('The host removed you from this live quiz.')).toBeInTheDocument()
+  expect(screen.queryByText(/Joining/)).toBeNull()
+})
