@@ -279,6 +279,7 @@ Worked values (computed): a single choice with no time budget and 17 of 20 right
 ### Mock runs
 
 - A run replays one past quiz, one question at a time, in the quiz's order. A question's clock starts when it is shown; one left to run out is closed as out of time (0 XP, LP as a wrong answer) when its player comes back or by the nightly job.
+- **"*n* of *m* right"** and **your best** on the quiz list count right answers sent in time. A right answer sent late is scored as wrong (LP and XP), so it isn't counted as right either.
 - **Ending a run early** (`end` in `src/ifs_tests/services/mock.py`): the question on screen is closed as out of time, as if its clock had run out, because it has been seen; the questions not reached are not scored at all and count as not right in the summary ("*n* of *m* right" counts every graded question of the run). An ended run is finished: it was the player's run of that quiz for the season, so the next one is a replay.
 - **Forgotten runs:** the nightly job ends a run nobody has touched for 2 days the same way (`end_stale`). While a run is open its questions are held back from the daily question and practice (see `running` in `src/ifs_tests/services/questions.py`), so a forgotten run must not hold them forever.
 

@@ -1608,7 +1608,7 @@ export type MockQuiz = {
     /**
      * Best
      *
-     * Most correct answers in a finished run
+     * Most right answers in time in a finished run
      */
     best: number | null;
     /**
@@ -1653,6 +1653,8 @@ export type MockState = {
 export type MockSummary = {
     /**
      * Correct
+     *
+     * Right answers sent in time: a late one is scored as wrong
      */
     correct: number;
     /**

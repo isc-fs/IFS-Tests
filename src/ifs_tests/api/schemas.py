@@ -523,7 +523,7 @@ class MockQuiz(BaseModel):
     graded: int
     total_time_s: int | None
     bar_to_beat: str | None
-    best: int | None = Field(description="Most correct answers in a finished run")
+    best: int | None = Field(description="Most right answers in time in a finished run")
     open_session: int | None
 
 
@@ -539,7 +539,7 @@ class MockItem(BaseModel):
 
 
 class MockSummary(BaseModel):
-    correct: int
+    correct: int = Field(description="Right answers sent in time: a late one is scored as wrong")
     graded: int = Field(description="Graded questions in the run, those not reached included")
     unreached: int = Field(description="Questions not reached because the run was ended early: not scored")
     xp: int

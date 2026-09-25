@@ -181,8 +181,9 @@ def test_a_late_answer_moves_on_and_counts_as_wrong(player: TestClient, db: Sess
         state = answer(player, state, right_answer(db, state["current"]["question"]["id"]))
     s = state["summary"]
     late = xp_award(True, 3, "mock", late=True).amount
-    assert (s["correct"], s["xp"]) == (5, late + run_xp(4))
+    assert (s["correct"], s["xp"]) == (4, late + run_xp(4))  # right but late is scored as wrong
     assert [i["late"] for i in s["items"]] == [True, False, False, False, False]
+    assert next(q for q in player.get("/api/mock/quizzes").json() if q["id"] == CV)["best"] == 4
     lps = [i["feedback"]["lp"] for i in s["items"]]
     assert lps[0] < 0 < min(lps[1:])
 

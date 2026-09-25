@@ -75,7 +75,7 @@ def quizzes(db: DB, user: User) -> list[QuizInfo]:
     stats = {qid: (n, graded, total, timed) for qid, n, graded, total, timed in counts}
     right = (
         select(Attempt.session_id, func.count().label("n"))
-        .where(Attempt.correct.is_(True), Attempt.session_id.is_not(None))
+        .where(Attempt.correct.is_(True), Attempt.late.is_not(True), Attempt.session_id.is_not(None))
         .group_by(Attempt.session_id)
         .subquery()
     )
@@ -338,7 +338,7 @@ def _summary(db: DB, s: MockSession, now: datetime) -> Summary:
         # level 0: a summary item carries its own XP and LP, not where the player stands now
         checked.score = xp.Grant(xp=a.xp if a else 0, lp=a.lp if a else 0.0, level=0)
         items.append(Item(q, checked, bool(a and a.late), answer))
-    correct = sum(1 for i in items if i.checked.correct)
+    correct = sum(1 for i in items if i.checked.correct and not i.late)  # right but late scores as wrong
     unreached = [q for q in _questions(db, s.quiz_id) if q.id not in attempts]
     quiz = db.get_one(Quiz, s.quiz_id)
     return Summary(

@@ -5503,7 +5503,7 @@
        }
       ],
       "title": "Best",
-      "description": "Most correct answers in a finished run"
+      "description": "Most right answers in time in a finished run"
      },
      "open_session": {
       "anyOf": [
@@ -5593,7 +5593,8 @@
     "properties": {
      "correct": {
       "type": "integer",
-      "title": "Correct"
+      "title": "Correct",
+      "description": "Right answers sent in time: a late one is scored as wrong"
      },
      "graded": {
       "type": "integer",

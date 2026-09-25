@@ -198,8 +198,9 @@ quiz. You see your results only at the end.
 3. Press **Start**.
 4. Answer each question before its clock runs out. Hints, "I'm not sure" and learning aids work as in practice.
    A sent answer can't be changed.
-5. At the end you see "*n* of *m* right", the LP and XP the run earned, the bar to beat, and **Your answers**: each
-   question with its verdict (right, wrong, not sure, out of time, not graded) and its official answer.
+5. At the end you see "*n* of *m* right" (a right answer sent after the clock counts as wrong), the LP and XP the
+   run earned, the bar to beat, and **Your answers**: each question with its verdict (right, wrong, not sure, out
+   of time, not graded) and its official answer.
 
 **Leaving and resuming.** Leave whenever you like: the quiz shows **Continue** on the list. Only the question on
 screen has a running clock. If its time runs out while you're away, it is closed as out of time (wrong, no XP); the
