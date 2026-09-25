@@ -129,6 +129,23 @@ def test_a_bad_run_is_cushioned_and_the_way_back_pays_more() -> None:
     assert next_miss_streak(miss, None, False, False) == miss
 
 
+@pytest.mark.parametrize(
+    ("correct", "passed", "late", "after"),
+    [
+        (True, False, False, 0),  # a right answer ends the bad run
+        (True, False, True, 4),  # right but late counts as wrong
+        (False, False, False, 4),
+        (False, False, True, 4),
+        (False, True, False, 3),  # "I'm not sure" in time leaves it alone
+        (False, True, True, 4),  # after the clock it is a miss
+        (None, False, False, 3),  # ungraded
+        (None, False, True, 3),
+    ],
+)
+def test_next_miss_streak(correct: bool | None, passed: bool, late: bool, after: int) -> None:
+    assert next_miss_streak(3, correct, passed, late) == after
+
+
 @pytest.mark.parametrize("points", [0, 50, 550, 1050, 1550])
 @pytest.mark.parametrize("options", [2, 4])
 def test_on_a_single_choice_a_bad_run_shrinks_until_a_blind_guess_still_loses(

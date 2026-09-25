@@ -5,7 +5,7 @@ from typing import Any
 import pytest
 
 from ifs_tests.domain.grading import correction, grade, tolerance, unreadable
-from ifs_tests.domain.keys import answer_kind, build_key, display, number, split_values
+from ifs_tests.domain.keys import MAX_TEXT, answer_kind, build_key, display, number, split_values
 
 
 def ans(*texts: str, correct: bool = True) -> list[dict[str, Any]]:
@@ -209,7 +209,19 @@ def test_either_of_two_accepted_answers_counts() -> None:
     assert grade(key, value="1;2;3") is False
 
 
-@pytest.mark.parametrize(("given", "ok"), [("11.7", True), ("12.1", True), ("11,9", True), ("12.2", False)])
+@pytest.mark.parametrize(
+    ("given", "ok"),
+    [
+        ("11.7", True),
+        ("12.1", True),
+        ("11,9", True),
+        ("12.2", False),
+        ("11.699999999", True),  # both bounds count, down to float noise
+        ("12.100000001", True),
+        ("11.69999999", False),
+        ("12.10000001", False),
+    ],
+)
 def test_range_answers(given: str, ok: bool) -> None:
     assert grade(build_key("input-range", ans("11.7-12.1")), value=given) is ok
 
@@ -362,6 +374,11 @@ def test_a_number_with_a_unit_is_no_text_key() -> None:
     assert build_key("input", ans("Qxc8"))["kind"] == "text"  # type: ignore[index]
 
 
+def test_a_text_key_is_at_most_max_text_characters() -> None:
+    assert build_key("input", ans("Q" * MAX_TEXT)) == {"kind": "text", "accept": ["q" * MAX_TEXT]}
+    assert build_key("input", ans("Q" * (MAX_TEXT + 1))) == {"kind": "self"}
+
+
 # A pair answers two things in the order the question asks (Q452 "1, 7": days for the first deadline, then for
 # the second); three or more ascending whole numbers are a "which of these" set (Q701, Q843, Q854).
 @pytest.mark.parametrize(
@@ -371,6 +388,7 @@ def test_a_number_with_a_unit_is_no_text_key() -> None:
         ("1, 7", "7; 1", False),
         ("1, 3, 5", "5; 3; 1", True),
         ("1-2-3", "3-2-1", True),
+        ("2, 2, 5", "5; 2; 2", False),  # a repeated number isn't ascending: the order counts
     ],
 )
 def test_only_three_or_more_ascending_whole_numbers_are_a_set(key_text: str, given: str, ok: bool) -> None:

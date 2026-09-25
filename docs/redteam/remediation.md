@@ -74,10 +74,12 @@ Workstreams run in parallel, each owning its files; G starts once A–F have mer
 | PERF-03 leaderboard scans all history | P2 | F capacity, fix/16 | | Fixed | index `ix_attempts_lp_day` (migration 0019), `jit=off`; `test_the_boards_read_this_seasons_play_not_the_whole_history`; red-team burst at 3 seasons: p95 2.8–3.2 s → 11–24 ms |
 | PERF-04 exports can run out of memory | P2 | F, fix/16 | | Fixed | batched export, ≤2 per process (429), `memswap_limit`; exports byte-identical; 12 at once: no swap (was 512 MiB + 282 swapped) |
 | DOM-05 rested XP counts a played day as away (Low) | P3 | D, fix/14 | | Fixed | `played_on` for rested XP; probe banked 150 → 0 |
-| GATE-02 surviving mutants (late right, repeat misses) | P2 | G tests, fix/19 | | Open | |
-| GATE-03 grace untested on closing paths | P2 | G, fix/19 | | Open | |
-| GATE-04 mock time-out on an ungraded question untested | P2 | G, fix/19 | | Open | |
-| GATE-05 missing boundary rows | P2 | G, fix/19 | | Open | |
+| GATE-02 surviving mutants (late right, repeat misses) | P2 | G tests, fix/19 | | Fixed | R8 and SX2 survived 1497 tests; killed by `test_next_miss_streak` and `test_a_miss_on_a_question_seen_before_neither_builds_nor_eases_the_bad_run` |
+| GATE-03 grace untested on closing paths | P2 | G, fix/19 | | Fixed | SD1, SM1, SM3 killed by `test_neither_the_page_nor_the_nightly_job_closes_a_question_inside_its_grace` (daily and mock) |
+| GATE-04 mock time-out on an ungraded question untested | P2 | G, fix/19 | | Fixed | SM2 killed by `test_an_ungraded_question_left_to_run_out_never_moves_the_rank` |
+| GATE-05 missing boundary rows | P2 | G, fix/19 | | Fixed | G5 and X6 killed by new rows in `test_range_answers` and `test_difficulty` |
+| GATE-06 key-parsing boundaries (Low) | P3 | G, fix/19 | | Fixed | K1, K2 killed by new rows and `test_a_text_key_is_at_most_max_text_characters` |
+| GATE-07 `tsc` never checked `web/e2e/` (Low) | P3 | G, fix/19 | | Fixed | `web/tsconfig.e2e.json` in `npm run typecheck`: a probe type error exits 0 before, 2 after |
 
 ## Found while fixing
 

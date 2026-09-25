@@ -14,7 +14,7 @@ from ifs_tests.bank.mirror import load_bank
 from ifs_tests.bank.sample import SAMPLE_DIR
 from ifs_tests.db.models import Attempt, DailyQuestion, Question, QuizQuestion, User
 from ifs_tests.domain.xp import xp_award
-from ifs_tests.services import maintenance
+from ifs_tests.services import maintenance, mock
 from ifs_tests.services.bank import import_bank
 
 from ..conftest import Clock
@@ -171,6 +171,21 @@ def test_a_question_left_to_run_out_is_closed_as_wrong(player: TestClient, db: S
     assert (timed_out["correct"], timed_out["xp"]) == (False, 0) and timed_out["lp"] < 0
 
 
+def test_neither_the_page_nor_the_nightly_job_closes_a_question_inside_its_grace(
+    player: TestClient, db: Session, clock: Clock
+) -> None:
+    state = player.post(f"/api/mock/quizzes/{CV}/start").json()
+    clock.now = datetime.fromisoformat(state["current"]["deadline_at"])
+    clock.advance(seconds=3)
+    assert mock.close_expired(db, clock.now) == 0
+    again = player.get(f"/api/mock/sessions/{state['session_id']}").json()
+    assert (again["position"], again["current"]["attempt_id"]) == (0, state["current"]["attempt_id"])
+    while again["current"]:
+        again = answer(player, again, right_answer(db, again["current"]["question"]["id"]))
+    s = again["summary"]
+    assert (s["correct"], s["items"][0]["late"]) == (5, False)
+
+
 def test_a_late_answer_moves_on_and_counts_as_wrong(player: TestClient, db: Session, clock: Clock) -> None:
     state = player.post(f"/api/mock/quizzes/{CV}/start").json()
     clock.now = datetime.fromisoformat(state["current"]["deadline_at"])
@@ -205,6 +220,27 @@ def test_ungraded_questions_are_shown_and_never_move_the_rank(player: TestClient
             rights += 1
     assert (s["correct"], s["graded"], s["xp"], len(s["items"])) == (6, 6, expected, 8)
     assert [i["feedback"]["correct"] for i in s["items"]].count(None) == 2
+
+
+def test_an_ungraded_question_left_to_run_out_never_moves_the_rank(
+    player: TestClient, db: Session, clock: Clock
+) -> None:
+    state = player.post("/api/mock/quizzes/9001/start").json()
+    while state["current"]["question"]["graded"]:
+        state = answer(player, state, right_answer(db, state["current"]["question"]["id"]))
+    ungraded = state["current"]["question"]["id"]
+    rank = select(User.rank_points).where(User.display_name == "Marta")
+    before = db.scalars(rank).one()
+    clock.now = datetime.fromisoformat(state["current"]["deadline_at"])
+    clock.advance(seconds=4)
+    state = player.get(f"/api/mock/sessions/{state['session_id']}").json()
+    db.expire_all()
+    assert db.scalars(rank).one() == before
+    while state["current"]:
+        q = state["current"]["question"]
+        state = answer(player, state, right_answer(db, q["id"]) if q["graded"] else {"options": []})
+    item = next(i for i in state["summary"]["items"] if i["question"]["id"] == ungraded)
+    assert (item["late"], item["feedback"]["correct"], item["feedback"]["lp"]) == (True, None, 0)
 
 
 def test_runs_belong_to_their_player(
