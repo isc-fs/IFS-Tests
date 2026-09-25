@@ -23,7 +23,8 @@ Key = dict[str, Any]
 
 _JUNK = {0x200B: None, 0x200C: None, 0x200D: None, 0xFEFF: None, 0xA0: " ", 0x202F: " ", 0x2009: " "}
 _DASHES = {0x2212: "-", 0x2013: "-", 0x2014: "-"}
-_NUMBER = re.compile(r"^[+-]?\d+(?:[.,]\d+)?$")
+_NUMBER = re.compile(r"^[+-]?(?:\d+(?:[.,](\d+))?|\.(\d+))(?:e([+-]?\d+))?$", re.IGNORECASE)
+_THOUSANDS = re.compile(r"^[+-]?[1-9]\d{0,2},\d{3}$")
 _RANGE = re.compile(r"^([+-]?\d+(?:[.,]\d+)?)\s*-\s*([+-]?\d+(?:[.,]\d+)?)$")
 _SEQUENCE = re.compile(r"^\d+(?:-\d+){2,}$")
 _OR = re.compile(r"\sor\s", re.IGNORECASE)  # no quantifiers: linear on long runs of spaces
@@ -35,15 +36,23 @@ def clean(text: str) -> str:
 
 
 def number(text: str) -> dict[str, Any] | None:
-    """'82,9' -> {'v': 82.9, 'd': 1}: the value and how many decimals it was given with."""
+    """'82,9' -> {'v': 82.9, 'd': 1}: the value and how many decimals it was given with. Also '.23' and
+    '2.3e-1'."""
     text = clean(text)
     if re.search(r",\s", text):
         return None
     text = text.replace(" ", "")
-    if not _NUMBER.match(text):
+    m = _NUMBER.match(text)
+    if not m:
         return None
-    decimals = len(re.split(r"[.,]", text)[1]) if re.search(r"[.,]", text) else 0
-    return {"v": float(text.replace(",", ".")), "d": decimals}
+    decimals = len(m.group(1) or m.group(2) or "") - int(m.group(3) or 0)
+    return {"v": float(text.replace(",", ".")), "d": max(decimals, 0)}
+
+
+def ambiguous(text: str) -> bool:
+    """'64,107': a decimal comma or a thousands separator? Only a player's answer is asked; keys are read with
+    a decimal comma, as FS-Quiz writes them."""
+    return bool(_THOUSANDS.match(clean(text).replace(" ", "")))
 
 
 def split_values(text: str, expected: int | None = None) -> list[str]:

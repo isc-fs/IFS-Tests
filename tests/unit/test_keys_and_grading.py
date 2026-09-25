@@ -4,7 +4,7 @@ from typing import Any
 
 import pytest
 
-from ifs_tests.domain.grading import grade, tolerance
+from ifs_tests.domain.grading import grade, tolerance, unreadable
 from ifs_tests.domain.keys import answer_kind, build_key, display, number, split_values
 
 
@@ -221,3 +221,70 @@ def test_number_parser_rejects_garbage() -> None:
     assert number("1.2.3") is None
     assert number("12 kN") is None
     assert number("1 000") == {"v": 1000.0, "d": 0}
+
+
+# BANK-04 / DOM-11: forms a player obviously means are read; anything else is refused, never graded wrong.
+@pytest.mark.parametrize(
+    ("key_text", "given"),
+    [
+        ("0.23", ".23"),
+        ("0.23", "0,23"),
+        ("3.5", "3.5e0"),
+        ("0.23", "2.3E-1"),
+        ("-0.5", "-.5"),
+        ("64107", "64 107"),
+    ],
+)
+def test_obvious_number_forms_are_read(key_text: str, given: str) -> None:
+    key = build_key("input", ans(key_text))
+    assert unreadable(key, given) is None
+    assert grade(key, value=given) is True
+
+
+@pytest.mark.parametrize(
+    ("qtype", "key_text", "given", "says"),
+    [
+        ("input", "3.5", "3.5 mm", "no units"),
+        ("input", "46", "46%", "no units, %"),
+        ("input", "46", "46 %", "no units, %"),
+        ("input", "82.9", "about 83", "just a number"),
+        ("input", "82.9", "82.9.1", "just a number"),
+        ("input-range", "11.7-12.1", "11.7-12.1", "just a number"),
+        ("input-range", "11.7-12.1", "12 V", "no units"),
+        ("input", "64107", "64,107", "Is 64,107 64.107 or 64107?"),
+        ("input", "3404", "-3,404", "Type the one you mean"),
+        ("input", "518.4; 604.8", "518.4", "Type 2 numbers separated by semicolons"),
+        ("input", "518.4; 604.8", "518.4 V; 604.8 V", "Type 2 numbers"),
+        ("input", "518.4; 604.8", "518.4; 604.8; 1", "Type 2 numbers"),
+        ("input", "1125000; 3657.5; 119", "1,125; 3657.5; 119", "Type the one you mean"),
+    ],
+)
+def test_answers_the_grader_cannot_read_are_refused_with_what_to_type(
+    qtype: str, key_text: str, given: str, says: str
+) -> None:
+    problem = unreadable(build_key(qtype, ans(key_text)), given)
+    assert problem is not None and says in problem
+
+
+def test_a_list_whose_accepted_answers_differ_in_length_does_not_reveal_how_many() -> None:
+    key = build_key("input", ans("2, 3, 4, 6", "1, 2, 4, 5, 6"))
+    assert unreadable(key, "1; 2; 3") is None and grade(key, value="1; 2; 3") is False
+    assert (
+        unreadable(key, "4")
+        == "Type the numbers separated by semicolons, like 12.5; 40: no units or other text."
+    )
+
+
+@pytest.mark.parametrize(
+    ("key", "given"),
+    [
+        (None, "3.5 mm"),
+        ({"kind": "self"}, "anything"),
+        ({"kind": "text", "accept": ["qxc8"]}, "Q x c8!"),
+        ({"kind": "number", "accept": [{"v": 3.5, "d": 1}]}, ""),  # no answer: graded wrong, not refused
+        ({"kind": "number", "accept": [{"v": 3.5, "d": 1}]}, None),
+        ({"kind": "number", "accept": [{"v": 0.125, "d": 3}]}, "0,125"),  # a leading zero is no thousands
+    ],
+)
+def test_what_is_never_refused(key: dict[str, Any] | None, given: str | None) -> None:
+    assert unreadable(key, given) is None

@@ -112,7 +112,7 @@ No session needed; the CSRF header still is.
 |---|---|
 | `GET /api/daily` | Today's state per area, streak, XP and LP today; closes the caller's abandoned daily questions |
 | `POST /api/daily/{area}/start` | Start the clock (`area` is `mech`, `elec` or `rules`); reveals the question and the deadline with the server's clock. Returns the running attempt if already started |
-| `POST /api/daily/attempts/{attempt_id}/answer` | Submit once; a retry returns the stored result |
+| `POST /api/daily/attempts/{attempt_id}/answer` | Submit once; a retry returns the stored result. A typed answer the grader can't read (units, `%`, `2,778`, one value for a list) is refused with 400 and a `value` field error saying what to type, before anything is recorded; the same holds for every answer route |
 | `GET /api/daily/{area}/review` | Today's answered question with its result |
 | `POST /api/daily/attempts/{attempt_id}/hint` | A hint on the running daily question |
 

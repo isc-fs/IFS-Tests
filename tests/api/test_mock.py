@@ -248,3 +248,23 @@ def test_a_question_that_becomes_playable_mid_run_joins_it(player: TestClient, d
     while state["current"]:
         state = answer(player, state, right_answer(db, state["current"]["question"]["id"]))
     assert len(state["summary"]["items"]) == 5
+
+
+def test_an_answer_the_grader_cannot_read_is_refused_and_the_run_waits(
+    player: TestClient, db: Session
+) -> None:
+    state = player.post(f"/api/mock/quizzes/{CV}/start").json()
+    refused = 0
+    while state["current"]:
+        current = state["current"]
+        if current["question"]["answer_kind"] == "number":
+            r = player.post(
+                f"/api/mock/sessions/{state['session_id']}/answer",
+                json={"attempt_id": current["attempt_id"], "value": "12 kN"},
+            )
+            assert r.status_code == 400 and "no units" in r.json()["detail"]
+            refused += 1
+            again = player.get(f"/api/mock/sessions/{state['session_id']}").json()
+            assert again["current"]["attempt_id"] == current["attempt_id"]
+        state = answer(player, state, right_answer(db, current["question"]["id"]))
+    assert refused == 2 and state["summary"]["correct"] == 5

@@ -30,6 +30,41 @@ def _numbers(text: str, alternative: dict[str, Any]) -> bool:
     return all(_close(v, e) for v, e in zip(values, expected, strict=True))
 
 
+NUMBER_HELP = "Type just a number, like 3.5 or 3,5: no units, % or other text."
+
+
+def _list_help(counts: set[int]) -> str:
+    many = f"{next(iter(counts))} numbers" if len(counts) == 1 else "the numbers"
+    return f"Type {many} separated by semicolons, like 12.5; 40: no units or other text."
+
+
+def _thousands(text: str) -> str:
+    return f"Is {text} {text.replace(',', '.')} or {text.replace(',', '')}? Type the one you mean."
+
+
+def unreadable(key: keys.Key | None, value: str | None) -> str | None:
+    """Why a typed answer can't be graded, said the way the player should fix it; None when it can. An empty
+    answer isn't unreadable: it's no answer, graded wrong (what a clock running out sends)."""
+    text = keys.clean(value or "")
+    if key is None or key["kind"] not in ("number", "numbers", "range") or not text:
+        return None
+    if key["kind"] == "numbers":
+        counts = {len(a["values"]) for a in key["accept"]}
+        for n in sorted(counts):
+            parts = keys.split_values(text, n)
+            if len(parts) >= 2 and all(keys.number(p) for p in parts):
+                break
+        else:
+            return _list_help(counts)
+        # The count is shown with the question when every accepted answer agrees on it; otherwise it's secret.
+        if len(counts) == 1 and len(parts) not in counts:
+            return _list_help(counts)
+        return next((_thousands(p) for p in parts if keys.ambiguous(p)), None)
+    if keys.number(text) is None:
+        return NUMBER_HELP
+    return _thousands(text.replace(" ", "")) if keys.ambiguous(text) else None
+
+
 def grade(key: keys.Key | None, options: list[int] | None = None, value: str | None = None) -> bool | None:
     """True or False, or None when the question can't be graded (no key, or reveal-only)."""
     if key is None or key["kind"] == "self":

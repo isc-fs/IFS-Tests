@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from ifs_tests.bank.mirror import load_bank
 from ifs_tests.bank.sample import SAMPLE_DIR
 from ifs_tests.db.models import Attempt, DailyQuestion, Question, User
+from ifs_tests.domain.daily import madrid_day
 from ifs_tests.domain.rank import lp_award, placement
 from ifs_tests.domain.xp import xp_award
 from ifs_tests.services import daily
@@ -287,3 +288,23 @@ def test_starting_keeps_working_once_the_connection_has_prepared_the_insert(
         db.add(u)
         db.commit()
         daily.start(db, u, "mech", clock.now)
+
+
+def test_an_answer_the_grader_cannot_read_is_refused_and_can_be_fixed_in_time(
+    player: TestClient, db: Session, clock: Clock, bank: None
+) -> None:
+    q = db.scalars(select(Question).where(Question.fsquiz_id == 90002)).one()  # 0.32, in mech
+    db.add(DailyQuestion(day=madrid_day(clock.now), area=q.area, question_id=q.id))
+    db.commit()
+    started = player.post(f"/api/daily/{q.area}/start").json()
+    assert started["question"]["id"] == q.id
+    url = f"/api/daily/attempts/{started['attempt_id']}/answer"
+    clock.now = datetime.fromisoformat(started["deadline_at"])
+    clock.advance(seconds=2)  # past the clock, within the grace
+    refused = player.post(url, json={"value": "0.32 mm"})
+    assert refused.status_code == 400 and "no units" in refused.json()["detail"]
+    db.expire_all()
+    assert db.get_one(Attempt, started["attempt_id"]).submitted_at is None
+    assert points(db) == MINGO
+    r = player.post(url, json={"value": ".32"}).json()
+    assert (r["feedback"]["correct"], r["late"]) == (True, False)
