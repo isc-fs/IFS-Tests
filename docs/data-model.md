@@ -228,7 +228,7 @@ A hint taken on a practice question, spent by the next answer to it. Primary key
 
 ### `daily_questions`
 
-The question of the day per area, fixed once chosen: primary key (`day`, `area`), `question_id` (→ `questions`, `ON DELETE CASCADE`, indexed). A chosen question a reviewer hides is replaced (upsert) for anyone who hasn't started it.
+The question of the day per area, fixed once chosen: primary key (`day`, `area`), `question_id` (→ `questions`, `ON DELETE CASCADE`, indexed). A chosen question a reviewer hides is replaced (upsert) for anyone who hasn't started it. `drawn_at` is when it was drawn or redrawn (null for rows drawn before 0023): a mock question closed before then showed its answer, so it doesn't count as hidden for that daily (`services/daily._running_since`).
 
 ### `mock_sessions`
 
@@ -388,6 +388,7 @@ Retention: alumni and disabled accounts are deleted 365 days after `left_at`; th
 | 0020 | `questions.graded_hash` and `upstream_change`: a new solution, image or wording upstream keeps a reviewer's correction; `quizzes.retired` for quizzes FS-Quiz deleted. Expand only: the previous release ignores them, and the next `ifs-tests push` fills `graded_hash` |
 | 0021 | `users.position_lifts`, so a correction of position takes back only what a raise gave. Expand only: the previous release ignores it |
 | 0022 | `mock_sessions.unreached` and `unreached_graded`, so upstream deletions don't rewrite a finished run's summary; backfilled for finished runs from the quiz as it stood. Expand only: the previous release ignores them, and a run it finishes during the deploy keeps them null (counted as the quiz stands) |
+| 0023 | `daily_questions.drawn_at`, so a mock question closed after midnight but before the day's draw (whose answer the summary showed) doesn't count as hidden for that daily. Expand only: null rows count from midnight, as before |
 
 ### Expand/contract
 

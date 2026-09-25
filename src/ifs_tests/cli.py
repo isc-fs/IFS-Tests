@@ -123,7 +123,7 @@ def _app_command(args: argparse.Namespace) -> None:
             from .services.daily import ensure_daily
 
             with make_db() as db:
-                return ensure_daily(db, madrid_day(at))
+                return ensure_daily(db, madrid_day(at), at)
 
         def ping() -> None:
             with make_db() as db:

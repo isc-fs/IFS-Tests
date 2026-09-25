@@ -106,6 +106,17 @@ Also in fix/20: a carried daily's result stays reviewable after midnight (PLAY-0
 only questions that existed before the push, and `refresh-bank.sh --allow-mass-removal`; decimal commas read where the
 question asks for them (Q864, Q881, Q1058).
 
+V1 re-ran everything on `dev` after #78: all six items verified, no regressions. Its Low notes, closed in fix/21:
+
+| Gap | Fix | Proof |
+|---|---|---|
+| PLAY-05 window: a mock question closed between midnight and the 00:01 draw showed its answer, and if drawn the daily then paid in full | a daily runs from when it is drawn (or redrawn), stored as `daily_questions.drawn_at` (migration 0023); only later mock closes count as hidden | `test_a_question_whose_answer_was_shown_before_the_days_draw_pays_nothing_as_that_daily`; with midnight as before it pays 75 XP / +16.5 |
+| `refresh-bank.sh --allow-mass-removal` could force retirement on a freshly fetched (possibly broken) mirror | the flag needs `--no-mirror`: refresh, check, then load | `test_deploy_scripts.py`: refused with no docker call |
+| A reviewer's correction `59,988` on Q864 was refused as ambiguous | corrections read the question's text for a decimal comma, as players' answers do | `test_a_correction_reads_a_decimal_comma_where_the_question_asks_for_three_decimals`; dropping the flag in `review.py` fails it |
+
+Not changed: the leaderboard's area and 7-day sums can be up to 30 s old (R-2's cache, documented); simulations that
+move a fake clock days ahead in seconds see that as board errors, and with the cache off they find none.
+
 ## Low and Info
 
 Not scheduled yet: see the report's sections 4.1–4.9. When one is picked up, add its row here.

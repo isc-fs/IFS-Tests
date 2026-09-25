@@ -545,6 +545,8 @@ class DailyQuestion(Base):
     day: Mapped[date] = mapped_column(Date, primary_key=True)
     area: Mapped[str] = mapped_column(String(16), primary_key=True)
     question_id: Mapped[int] = mapped_column(ForeignKey("questions.id", ondelete="CASCADE"), index=True)
+    # When it was drawn (or redrawn after a reviewer hid it): only from then is it running for players.
+    drawn_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class MockSession(Base):

@@ -449,6 +449,24 @@ def test_a_daily_question_answered_in_the_mock_pays_nothing_again_that_day(
     assert (r["xp"], r["lp"]) == (0, 0)  # once a day, whether the answer was right or "not sure"
 
 
+def test_a_question_whose_answer_was_shown_before_the_days_draw_pays_nothing_as_that_daily(
+    player: TestClient, db: Session, clock: Clock
+) -> None:
+    """Before the day's draw a question is nobody's daily, so ending a run shows its answer. If the draw then
+    picks it, the player has seen the answer: once a day, it pays nothing (it used to pay in full, because
+    everything closed after midnight counted as hidden)."""
+    state = player.post(f"/api/mock/quizzes/{CV}/start").json()
+    q = db.get_one(Question, state["current"]["question"]["id"])
+    item = player.post(f"/api/mock/sessions/{state['session_id']}/end").json()["summary"]["items"][0]
+    assert item["feedback"]["official"]  # not a daily yet: the summary showed the answer
+    clock.advance(seconds=30)
+    player.get("/api/daily")  # the day's draw, after the run ended
+    db.execute(update(DailyQuestion).where(DailyQuestion.area == q.area).values(question_id=q.id))
+    db.commit()
+    r = _daily_right(player, db, q)
+    assert (r["xp"], r["lp"]) == (0, 0)
+
+
 def test_a_question_whose_answer_a_finished_run_showed_is_a_repeat_as_the_daily(
     player: TestClient, db: Session, clock: Clock
 ) -> None:

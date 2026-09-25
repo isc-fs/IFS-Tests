@@ -135,7 +135,7 @@ def test_many_first_visitors_of_the_day_get_the_same_questions(
     db: Session, app_engine: Engine, daily_player: User
 ) -> None:
     day = madrid_day(NOW)
-    results = race(app_engine, *[lambda s: daily.ensure_daily(s, day)] * 6)
+    results = race(app_engine, *[lambda s: daily.ensure_daily(s, day, NOW)] * 6)
     assert all(r == results[0] for r in results), results
     assert db.scalar(select(func.count()).select_from(DailyQuestion)) == 3
 

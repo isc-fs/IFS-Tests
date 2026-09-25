@@ -28,6 +28,8 @@ for arg in "$@"; do
   esac
 done
 [[ $env =~ ^(staging|prod)$ ]] || die "environment must be staging or prod"
+# The guard is there for a broken mirror: override it only on a mirror already fetched and checked.
+[[ -z $mass || $mirror == 0 ]] || die "--allow-mass-removal needs --no-mirror: refresh, check the mirror (ifs-tests stats), then load it"
 
 repo=$(cd "$(dirname "$0")/.." && pwd)
 dir=${QUIZ_ROOT:-/srv/quiz}/$env

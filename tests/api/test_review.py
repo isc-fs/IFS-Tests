@@ -380,3 +380,17 @@ def test_a_correction_is_read_for_the_questions_own_type(
         player.post(f"/api/practice/questions/{typed}/answer", json={"value": "122"}).json()["correct"]
         is True
     )
+
+
+def test_a_correction_reads_a_decimal_comma_where_the_question_asks_for_three_decimals(
+    reviewer: TestClient, player: TestClient, db: Session, bank: dict[int, int]
+) -> None:
+    qid = bank[90012]
+    url = f"/api/review/questions/{qid}/answer"
+    assert reviewer.put(url, json={"value": "59,988"}).status_code == 400  # 59.988 or 59988?
+    db.get_one(Question, qid).text += " Round the answer to three decimal places."
+    db.commit()
+    fixed = reviewer.put(url, json={"value": "59,988"}).json()
+    assert (fixed["answer_kind"], fixed["correction"]) == ("number", "59,988")  # Q864
+    ok = player.post(f"/api/practice/questions/{qid}/answer", json={"value": "59.988"}).json()
+    assert ok["correct"] is True

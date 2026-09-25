@@ -441,3 +441,14 @@ def test_where_the_question_asks_for_three_decimals_a_comma_is_a_decimal_one(
     assert unreadable(key, given) is not None  # anywhere else it could be a thousands comma
     assert unreadable(key, given, decimal_comma=True) is None
     assert grade(key, value=given) is True
+
+
+@pytest.mark.parametrize(
+    ("text", "asks_for_a_decimal_comma", "value"),
+    [("59,988", True, 59.988), ("59,988", False, None), ("59.988", False, 59.988)],
+)
+def test_a_correction_reads_a_decimal_comma_where_the_question_asks_for_one(
+    text: str, asks_for_a_decimal_comma: bool, value: float | None
+) -> None:
+    key = correction("input", text, asks_for_a_decimal_comma)
+    assert (key["accept"][0]["v"] if key else None) == value
