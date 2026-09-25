@@ -27,7 +27,7 @@ The page opens on a row of queue chips, each with how many questions it holds:
 | Queue | What is in it | What to do |
 |---|---|---|
 | **Reported** (the default) | Questions with a player's report not yet handled. | Read the reports, fix the question, **Mark handled**. |
-| **Changed upstream** | Questions FS-Quiz changed since they were loaded in a way that needs a second look: their answer or options, or a hidden question. | Check the answer, correct it if needed, press **I've checked it**. |
+| **Changed upstream** | Questions FS-Quiz changed since they were loaded in a way that needs a second look: their answer or options, their wording, or a hidden question. | Check the answer, correct it if needed, press **I've checked it**. |
 | **Unclassified** | Questions the keyword guess couldn't place, not yet checked by a reviewer. | Pick the area and topic, **Confirm labels**. |
 | **Not graded** | Visible questions MingoQuiz can't grade automatically: players only compare with the official answer. | Give a correct answer in a gradable format, if there is one. |
 | **Hidden** | Questions a reviewer hid from players, those FS-Quiz says it removed from its quiz (the reason starts with "FS-Quiz"), and those FS-Quiz deleted ("Deleted from FS-Quiz."). | Bring back any that were fixed or that are fine. |
@@ -64,7 +64,7 @@ The page is headed "Question *id*", with **Back to the queues** at the top. From
 ### Changed upstream
 
 Shown only when FS-Quiz changed the question after it was loaded. It says when and what changed: its answer or
-options (any correction was removed), a hidden question that may have been fixed, a question FS-Quiz deleted (now
+options (any correction was removed), its wording (any correction stays: check it still fits), a hidden question that may have been fixed, a question FS-Quiz deleted (now
 hidden), or one it published again (now shown). Check the answer, correct it below if needed, then press **I've checked it**. That takes it out of the
 queue.
 
@@ -140,8 +140,11 @@ For each question:
   again. A hidden question stays hidden. What happens to your work depends on what changed:
   - **Its answer or its options** (a new official answer, an option added or removed): a correction is dropped,
     since it was made for the old version, and the question goes to **Changed upstream**.
-  - **Anything else** (a solution added, a new image, the time, the options reordered, a typo): the correction and
-    the question's difficulty stay, and it isn't flagged, unless it is hidden (it may have been fixed).
+  - **Its wording** (the text of the question or of an option, even a typo fix): the correction and the question's
+    difficulty stay, and the question goes to **Changed upstream**, since a reworded question can mean something
+    else. Check that the answer (and your correction) still fit.
+  - **Anything else** (a solution added, a new image, the time, the options reordered): the correction and the
+    question's difficulty stay, and it isn't flagged, unless it is hidden (it may have been fixed).
 - **Removed by FS-Quiz**: when a quiz note or the solution says the question was later removed or deleted from its
   quiz (a wrong answer, a confusing wording), it is hidden with FS-Quiz's sentence as the reason and lands in
   **Hidden**. Read the note: if the question is fine (or you corrected it), **Show to players again**; later reloads

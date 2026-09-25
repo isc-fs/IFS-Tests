@@ -1,7 +1,7 @@
 """Load the mirrored FS-Quiz bank (bank.json) into the database. Safe to run again: unchanged questions are
 skipped, changed ones are updated in place (options keep their IDs, so answers already given stay valid), a
-change to what is graded drops a reviewer's correction and is flagged for review (a new solution, image or
-wording isn't), questions FS-Quiz says it removed are hidden, and quizzes and questions it deleted are
+change to what is graded drops a reviewer's correction and is flagged for review, a change of wording is
+flagged but keeps the correction (a new solution or image is neither), questions FS-Quiz says it removed are hidden, and quizzes and questions it deleted are
 retired: no longer played, kept for history."""
 
 from __future__ import annotations
@@ -52,6 +52,7 @@ class ImportReport:
     updated: int = 0
     unchanged: int = 0
     key_changed: int = 0
+    reworded: int = 0
     ungraded: int = 0
     missing_images: int = 0
     rekeyed: int = 0
@@ -194,6 +195,17 @@ def _answer_changed(q: Question, raw: dict[str, Any], key: AnswerKey, current: l
     return q.type != raw["type"] or ids != wanted or key.display != keys.display(raw["type"], raw["answers"])
 
 
+def _reworded(q: Question, raw: dict[str, Any], current: list[AnswerOption]) -> bool:
+    """The question's text or an option's text changed: the meaning may have, so a reviewer should look."""
+    if q.text != (raw["text"] or ""):
+        return True
+    texts = {o.fsquiz_id: o.text for o in current if not o.retired and o.fsquiz_id is not None}
+    answers = raw["answers"] if raw["type"] in CHOICE else []
+    return any(
+        texts.get(a["answer_id"], keys.clean(a["text"] or "")) != keys.clean(a["text"] or "") for a in answers
+    )
+
+
 def _write_question(
     db: DB,
     q: Question,
@@ -204,8 +216,9 @@ def _write_question(
     previous: AnswerKey | None,
 ) -> str | None:
     """Bring a question up to date with `raw`. Returns why it needs a reviewer's eyes again, if it does:
-    "answer" when what is graded changed (a reviewer's correction is dropped, difficulty starts again), or
-    "content" when a hidden question changed (it may have been fixed)."""
+    "answer" when what is graded changed (a reviewer's correction is dropped, difficulty starts again),
+    "wording" when the text of the question or an option changed (the correction stays), or "content" when a
+    hidden question changed (it may have been fixed)."""
     images = [media(p) for p in raw["images"]]
     q.images = [i for i in images if i]
     q.images_missing = not all(images)
@@ -220,6 +233,7 @@ def _write_question(
         return None
 
     answer_changed = previous is None or _answer_changed(q, raw, previous, current)
+    reworded = _reworded(q, raw, current)
     if not q.labels_reviewed:
         area, topic, _ = topics.tag(raw)
         q.area, q.topic = area, topic or None
@@ -243,6 +257,8 @@ def _write_question(
         if answer_changed:
             why = "answer"
             previous.override = previous.override_display = None
+        elif reworded:
+            why = "wording"
         elif q.excluded:
             why = "content"
         previous.key, previous.display = key, shown
@@ -254,7 +270,7 @@ def _write_question(
 def _flag(q: Question, why: str, now: datetime) -> None:
     """Put a question in the reviewers' "Changed upstream" queue, saying why. A dropped correction stays the
     reason over a milder one until a reviewer has checked it."""
-    if not (why == "content" and q.key_changed_at is not None and q.upstream_change == "answer"):
+    if not (why in ("wording", "content") and q.key_changed_at is not None and q.upstream_change == "answer"):
         q.upstream_change = why
     q.key_changed_at = now
 
@@ -350,7 +366,8 @@ def import_bank(
             why = _write_question(db, q, raw, media, now, current, answer_keys.get(q.id))
             if why:
                 _flag(q, why, now)
-                report.key_changed += 1
+                report.reworded += why == "wording"
+                report.key_changed += why != "wording"
         report.restored += _restore(q, now)
         report.hidden += _hide_removed(q, removed.get(raw["question_id"]))
 

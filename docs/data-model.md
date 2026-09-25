@@ -163,7 +163,7 @@ The rulebooks, handbooks and other documents a quiz was based on. Linked, never 
 | `labels_reviewed` | A reviewer confirmed area and topic; re-imports keep them |
 | `source_hash` | SHA-256 of the FS-Quiz content (type, text, time, answers, images, solutions); an unchanged hash skips the question on re-import |
 | `graded_hash` | SHA-256 of what is graded (type; options by FS-Quiz answer ID and which are correct, or the typed answers). A change drops a reviewer's correction and resets difficulty; any other change keeps them. Null for rows loaded before migration 0020, until the next `push` fills it |
-| `key_changed_at`, `upstream_change` | When and why a re-import put the question in the reviewers' "changed" queue: `answer` (what is graded changed; any correction was dropped), `content` (a hidden question changed), `removed` (FS-Quiz deleted it) or `back` (published again after that). Cleared when a reviewer confirms they checked it |
+| `key_changed_at`, `upstream_change` | When and why a re-import put the question in the reviewers' "changed" queue: `answer` (what is graded changed; any correction was dropped), `wording` (the text of the question or an option changed; the correction stays), `content` (a hidden question changed), `removed` (FS-Quiz deleted it) or `back` (published again after that). Cleared when a reviewer confirms they checked it |
 | `upstream_note` | FS-Quiz's sentence saying the question was removed from its quiz, as last seen on import (`domain/upstream.py`), or `Deleted from FS-Quiz.` when the bank no longer has it at all. A new note hides the question once; the same note on later imports doesn't hide it again |
 | `created_at`, `updated_at` | |
 

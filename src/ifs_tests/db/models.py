@@ -296,7 +296,7 @@ class Question(Base):
     # for rows loaded before migration 0020, until the next import fills it.
     graded_hash: Mapped[str | None] = mapped_column(String(64))
     key_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    # Why it is in the "changed upstream" queue: answer, content (of a hidden question), removed, back.
+    # Why it is in the "changed upstream" queue: answer, wording, content (of a hidden question), removed, back.
     upstream_change: Mapped[str | None] = mapped_column(String(16))
     # FS-Quiz's own note that the question was removed from its quiz, as last seen on import.
     upstream_note: Mapped[str | None] = mapped_column(Text)

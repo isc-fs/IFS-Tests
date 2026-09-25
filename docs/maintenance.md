@@ -64,7 +64,7 @@ The registration quizzes run over the winter (FSG's is usually in January). FS-Q
 
 1. **Maintainer: refresh the bank** on staging, then prod: `deploy/refresh-bank.sh staging`, check Admin → Question bank, then `deploy/refresh-bank.sh prod` ([runbook 2.3](runbook.md#23-question-bank)). The script always re-fetches every quiz, the rulebook and handbook list and the last qualifiers' results (`mirror --refresh`), so changes to quizzes already mirrored arrive too; images already downloaded are kept. That is about 130 requests per environment, one a second: run it once a season, not more, since the FS-Quiz author asks users to avoid unnecessary queries.
 2. **Reviewers: work the queues** in Review:
-   - **Changed upstream**: FS-Quiz changed a question's answer or options (any local correction was dropped), or a hidden question. Check it and correct again if needed.
+   - **Changed upstream**: FS-Quiz changed a question's answer or options (any local correction was dropped), its wording (the correction stays), or a hidden question, or deleted it. Check it and correct again if needed.
    - **Unclassified**: new questions whose topic the keyword tagger couldn't guess. Set area and topic.
    - **Not graded**: questions the app can't grade automatically; a typed correction can make them gradable.
 3. **Technical Directors: check the new rules.** Questions show later editions of the rulebooks and handbooks they were based on. If a rule changed, hide or correct the affected questions, and check the formulas and reading panels (`src/ifs_tests/content/learning.json`) still hold; a developer changes that file.

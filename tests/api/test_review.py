@@ -173,6 +173,20 @@ def test_an_answer_changed_upstream_drops_the_correction_and_asks_again(
     assert ok["key_changed_at"] is None and page(reviewer)["queues"]["changed"] == 0
 
 
+def test_a_reworded_question_keeps_the_correction_and_asks_to_check_it(
+    reviewer: TestClient, db: Session, clock: Clock, tmp_path: Path, bank: dict[int, int]
+) -> None:
+    qid = bank[90002]
+    reviewer.put(f"/api/review/questions/{qid}/answer", json={"value": "0.321"})
+    changed = copy.deepcopy(load_bank(SAMPLE_DIR))
+    next(q for q in changed["questions"] if q["question_id"] == 90002)["text"] += " Round to 3 decimals."
+    clock.advance(hours=1)
+    import_bank(db, changed, SAMPLE_DIR / "img", tmp_path, clock.now)
+    d = reviewer.get(f"/api/review/questions/{qid}").json()
+    assert (d["correction"], d["upstream_change"]) == ("0.321", "wording")
+    assert [r["id"] for r in page(reviewer, queue="changed")["rows"]] == [qid]
+
+
 def test_players_report_problems_and_reviewers_resolve_them(
     reviewer: TestClient, player: TestClient, bank: dict[int, int], monkeypatch: pytest.MonkeyPatch
 ) -> None:

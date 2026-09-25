@@ -618,9 +618,10 @@ class ReviewQuestion(BaseModel):
     excluded: bool
     exclusion_note: str | None
     key_changed_at: datetime | None
-    upstream_change: Literal["answer", "content", "removed", "back"] | None = Field(
+    upstream_change: Literal["answer", "wording", "content", "removed", "back"] | None = Field(
         description="Why it is in the changed-upstream queue: its answer or options changed (any correction was "
-        "removed), a hidden question changed, FS-Quiz deleted it, or it is back after being deleted"
+        "removed), the wording of the question or an option changed (the correction stays), a hidden question "
+        "changed, FS-Quiz deleted it, or it is back after being deleted"
     )
     official: str | None
     correction: str | None

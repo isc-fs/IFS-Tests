@@ -2186,9 +2186,9 @@ export type ReviewQuestion = {
     /**
      * Upstream Change
      *
-     * Why it is in the changed-upstream queue: its answer or options changed (any correction was removed), a hidden question changed, FS-Quiz deleted it, or it is back after being deleted
+     * Why it is in the changed-upstream queue: its answer or options changed (any correction was removed), the wording of the question or an option changed (the correction stays), a hidden question changed, FS-Quiz deleted it, or it is back after being deleted
      */
-    upstream_change: 'answer' | 'content' | 'removed' | 'back' | null;
+    upstream_change: 'answer' | 'wording' | 'content' | 'removed' | 'back' | null;
     /**
      * Official
      */

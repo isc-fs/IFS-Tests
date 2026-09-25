@@ -33,6 +33,7 @@ const when = (iso: string) =>
 
 const UPSTREAM: Record<NonNullable<ReviewQuestion['upstream_change']>, string> = {
   answer: 'FS-Quiz changed its answer or its options. Any correction was removed.',
+  wording: 'FS-Quiz reworded the question or an option. Any correction stays: check it still fits.',
   content: 'FS-Quiz changed this hidden question: it may have been fixed.',
   removed: 'FS-Quiz deleted this question, so it is hidden. Past results keep it.',
   back: 'FS-Quiz published this question again after deleting it, so it is shown again.',

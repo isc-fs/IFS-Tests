@@ -103,9 +103,9 @@ def test_changed_official_answer_is_flagged(
     raw(sample, 90001)["text"] += " (reworded)"
     clock.advance(days=1)
     report = import_bank(db, sample, SAMPLE_DIR / "img", tmp_path, clock.now)
-    assert (report.updated, report.key_changed, report.unchanged) == (2, 1, 10)
-    assert by_fsquiz(db, 90002).key_changed_at == clock.now
-    assert by_fsquiz(db, 90001).key_changed_at is None
+    assert (report.updated, report.key_changed, report.reworded, report.unchanged) == (2, 1, 1, 10)
+    assert by_fsquiz(db, 90002).upstream_change == "answer"
+    assert by_fsquiz(db, 90001).upstream_change == "wording"
     assert db.scalar(select(func.count()).select_from(Solution)) == 2
 
 
@@ -324,20 +324,29 @@ def test_a_new_solution_image_or_time_keeps_the_correction_and_difficulty(
     assert db.scalar(select(func.count()).where(Solution.question_id == q.id)) == 1
 
 
-def test_a_reworded_question_keeps_its_correction(
+def test_a_reworded_question_keeps_its_correction_and_is_flagged(
     db: Session, clock: Clock, tmp_path: Path, sample: dict[str, Any]
 ) -> None:
     import_bank(db, copy.deepcopy(sample), SAMPLE_DIR / "img", tmp_path, clock.now)
     fix = {"kind": "number", "accept": [{"v": 0.321, "d": 3}]}
     q = corrected(db, 90002, fix, "0.321")
     raw(sample, 90002)["text"] += " Round to 3 decimals."
+    raw(sample, 90008)["answers"][3]["text"] = "10 seconds"
+    raw(sample, 90001)["answers"].reverse()  # only the order: nothing to check
     clock.advance(days=1)
-    import_bank(db, copy.deepcopy(sample), SAMPLE_DIR / "img", tmp_path, clock.now)
+    report = import_bank(db, copy.deepcopy(sample), SAMPLE_DIR / "img", tmp_path, clock.now)
     db.expire_all()
 
+    assert (report.updated, report.reworded, report.key_changed) == (3, 2, 0)
     assert db.get_one(AnswerKey, q.id).override == fix
     q = by_fsquiz(db, 90002)
     assert q.difficulty == 5 and q.text.endswith("Round to 3 decimals.")
+    for fsquiz_id in (90002, 90008):
+        assert (by_fsquiz(db, fsquiz_id).key_changed_at, by_fsquiz(db, fsquiz_id).upstream_change) == (
+            clock.now,
+            "wording",
+        )
+    assert by_fsquiz(db, 90001).key_changed_at is None
 
 
 def test_a_changed_answer_drops_the_correction_and_asks_again(
