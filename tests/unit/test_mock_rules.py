@@ -24,11 +24,18 @@ def test_seasons_start_in_september(day: date, expected: int) -> None:
             "9 correct answers in 22 min 05 s.",
         ),
         ({"method": "time", "score": None, "correct_answers": None, "time_s": None}, None),
+        (
+            {"method": "time", "score": None, "correct_answers": None, "time_s": 1118},
+            "finished in 18 min 38 s.",
+        ),
     ],
 )
 def test_bar_to_beat(lq: dict[str, object] | None, text: str | None) -> None:
     result = bar_to_beat(lq)
-    assert result == (None if text is None else "The last team to get a slot had " + text)
+    if text and text.startswith("finished"):
+        assert result == "The last team to get a slot " + text
+    else:
+        assert result == (None if text is None else "The last team to get a slot had " + text)
 
 
 @pytest.mark.parametrize(

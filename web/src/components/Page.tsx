@@ -101,12 +101,20 @@ export function PublicPage({
 }
 
 /** Invite and reset tokens travel in the URL fragment, which browsers never send to a server.
- *  Read it once, then drop it from the address bar and history. */
+ *  Read it, then drop it from the address bar and history; a link pasted into the same tab only changes the
+ *  fragment, so read that too. */
 export function useFragmentToken(): string {
-  const [token] = useState(() => window.location.hash.slice(1))
+  const [token, setToken] = useState(() => window.location.hash.slice(1))
   useEffect(() => {
-    const { pathname, search, hash } = window.location
-    if (hash) window.history.replaceState(window.history.state, '', pathname + search)
+    const take = () => {
+      const { pathname, search, hash } = window.location
+      if (!hash) return
+      setToken(hash.slice(1))
+      window.history.replaceState(window.history.state, '', pathname + search)
+    }
+    take()
+    window.addEventListener('hashchange', take)
+    return () => window.removeEventListener('hashchange', take)
   }, [])
   return token
 }

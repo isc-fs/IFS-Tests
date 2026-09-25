@@ -142,6 +142,21 @@ Three testers who fixed nothing ran `dev` ab5202d on production-like stacks: the
 
 Also in fix/23: the hosts' guide example names the Mechanical and Electrical areas (it said "Electronics", a topic).
 
+| Run | Result |
+|---|---|
+| E1 journeys | Every step of the players', admins', reviewers' and hosts' guides at 1280 and 375 px does what the guide says, but for the live reveal (F1, F5 below); all 14 fixed UI findings checked in the browser pass; through Nginx, CSP and headers everywhere, the auth limit, and no answer key in any response while a question runs for the caller (daily, mock, live, the event stream). The Playwright suite: 26/26 on one worker; with parallel workers 23–25/26, the misses being the suite's own ~86 sign-ins in 12 s from one address (Nginx's burst, not a user journey) and one live click blocked by F1 |
+
+| Finding | Fix (fix/24) | Proof |
+|---|---|---|
+| F1 (Medium): worked-solution and question figures in the live reveal and results weren't width-limited: on a phone the page grew to 583–1160 px on 10 of 12 questions of FS East 2025 EV | they are links to the full-size figure with the same class as everywhere else (`.question-image img`) | E1's own probe on the fix: all 12 questions and the unfolded results at 375 px, figures 309 px; `Live.test.tsx` |
+| F3 (Low): "The last team to get a slot had in 18 min 38 s." when FS-Quiz records only the time | "… finished in 18 min 38 s." | `test_bar_to_beat` (fails on the old wording) |
+| F4 (Low): a good invite or reset link pasted into the tab that showed a bad one still said "invalid" | the page reads the fragment again when it changes | `Reset.test.tsx` (fails without it) |
+| F5 (Low): "Answered by every table." then "No table answered in time." | "For every table." / "For *table*." | `Live.test.tsx`, E1's probe screens |
+| F6 (Low, doc): the players' guide promised "You're in." to latecomers | the guide says what the lobby and a latecomer see | |
+| Info: Nginx named its version | `server_tokens off` | |
+
+Still present and not scheduled (Low, report section 4): UI-07, UI-11, UI-15, UI-16, ACC-09, OPS-09. PERF-05 (Nginx's 429 shown as "Something went wrong") went with fix/23.
+
 ## Low and Info
 
 Not scheduled yet: see the report's sections 4.1–4.9. When one is picked up, add its row here.

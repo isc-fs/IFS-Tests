@@ -44,7 +44,7 @@ test('a host runs a live quiz: players join with the code, one proposes, the cap
   await expect(captain.getByRole('button', { name: 'Use this' })).toBeVisible()
   await captain.getByRole('button', { name: 'Use this' }).click()
   await captain.getByRole('button', { name: 'Send the table’s answer' }).click()
-  await expect(captain.getByText('Answered by every table.')).toBeVisible() // the question closed: one table, one answer
+  await expect(captain.getByText('For every table.')).toBeVisible() // the question closed: one table, one answer
   await expect(mate.getByText(/of 1/).first()).toBeVisible()
 
   await page.getByRole('button', { name: 'Finish and show the results' }).click()
