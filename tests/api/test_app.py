@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
 
 from ifs_tests.api.app import create_app
@@ -39,6 +39,46 @@ def test_readyz_queries_the_database(app_client: TestClient) -> None:
     r = app_client.get("/readyz")
     assert r.status_code == 200 and r.json() == {"status": "ok"}
     assert app_client.head("/readyz").status_code == 200
+
+
+def app_on(dist: Path, db: Session) -> TestClient:
+    """The app on the test's own session, so a schema change it makes (never committed) is what readyz sees."""
+
+    def same_session() -> Iterator[Session]:
+        yield db
+
+    app = create_app(Settings(env="test", web_dist=dist, public_origin="https://quiz.example"))
+    app.dependency_overrides[get_db] = same_session
+    return TestClient(app)
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "change",
+    [
+        "ALTER TABLE users DROP COLUMN account_xp",  # the red team's rewritten migration
+        "DROP TABLE live_proposals",
+    ],
+)
+def test_readyz_is_503_when_the_schema_lacks_what_the_code_maps(dist: Path, db: Session, change: str) -> None:
+    try:
+        db.execute(text(change))
+        r = app_on(dist, db).get("/readyz")
+    finally:
+        db.rollback()
+    assert r.status_code == 503 and r.json() == {"status": "schema out of date"}
+
+
+@pytest.mark.integration
+def test_readyz_is_ok_when_the_schema_is_ahead_of_the_code(dist: Path, db: Session) -> None:
+    """Expand/contract: the previous release keeps running on the newer schema during a deploy."""
+    try:
+        db.execute(text("ALTER TABLE users ADD COLUMN from_the_next_release int"))
+        db.execute(text("CREATE TABLE from_the_next_release (id int)"))
+        r = app_on(dist, db).get("/readyz")
+    finally:
+        db.rollback()
+    assert r.status_code == 200
 
 
 def test_readyz_is_503_when_the_database_is_unreachable(dist: Path) -> None:

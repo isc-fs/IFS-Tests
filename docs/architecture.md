@@ -61,7 +61,7 @@ Everything under `src/ifs_tests/` (empty `__init__.py` files left out).
 | `cli.py` | The `ifs-tests` command: `mirror`, `stats`, `show`, `topics`, `push`, `openapi`, `create-admin`, `invite`, `reset-link`, `maintenance`, `scheduler` |
 | `scheduler.py` | A minimal daily job runner for the `scheduler` container (Madrid times, a heartbeat file for the health check, touched only while the database answers) |
 | **api/** | |
-| `api/app.py` | Builds the FastAPI app: middleware, exception handlers, routers, `/healthz` (liveness) and `/readyz` (a database query), 404 for unknown `/api` and `/auth` paths, `/media` and SPA static files |
+| `api/app.py` | Builds the FastAPI app: middleware, exception handlers, routers, `/healthz` (liveness) and `/readyz` (the database reachable and holding every column the code maps), 404 for unknown `/api` and `/auth` paths, `/media` and SPA static files |
 | `api/security.py` | `SecurityHeaders` (CSP and other headers on every response) and `CSRFGuard` middleware |
 | `api/deps.py` | Request dependencies: database session `Db`, clock `Now`, `AppSettings`, and the role guards `Member`, `Reviewer`, `Admin`; `background_db` for work after the response |
 | `api/schemas.py` | Every request and response body; field descriptions end up in the OpenAPI document |

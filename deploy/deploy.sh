@@ -92,7 +92,7 @@ ready = get("/readyz")
 if ready.headers.get_content_type() == "text/html":
     print("  skip readyz: this image predates it (a rollback to an older release)")
 else:
-    checks["readyz 200 (database reachable as app_rt)"] = ready.status == 200
+    checks["readyz 200 (database reachable as app_rt, schema as the code maps it)"] = ready.status == 200
 for name, ok in checks.items():
     print(("  ok   " if ok else "  FAIL ") + name)
 sys.exit(0 if all(checks.values()) else 1)
@@ -101,7 +101,8 @@ PY
 
 healthy=0
 compose "$tag" up -d --remove-orphans --wait --wait-timeout 90 api scheduler && healthy=1
-# Smoke-test even when a container isn't healthy: its checks say why (readyz FAIL: the database or APP_PASSWORD).
+# Smoke-test even when a container isn't healthy: its checks say why (readyz FAIL: the database, APP_PASSWORD or
+# a schema missing columns the code maps).
 if smoke && [[ $healthy == 1 ]]; then
   echo "$tag" > "$dir/deployed-tag"
   echo "$(date -u +%FT%TZ) $env $tag $(whoami)" >> "$dir/deploy-history"
