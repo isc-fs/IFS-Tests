@@ -119,7 +119,7 @@ Everything under `src/ifs_tests/` (empty `__init__.py` files left out).
 | `services/season.py` | The 1 September rank reset |
 | `services/hints.py` | Hints for practice, daily and mock questions; the `hint_salt` server secret |
 | `services/learning.py` | Learning panels filtered by the player's division |
-| `services/leaderboard.py` | The boards and the vertical board |
+| `services/leaderboard.py` | The boards and the vertical board. Each looks up, member by member, only the period's play (index `ix_attempts_lp_day`, and a mock run's answers through the run), so a view costs the same after many seasons |
 | `services/review.py` | Reviewer queues, search, label and exclusion changes, answer corrections, reports |
 | `services/bank.py` | Loading `bank.json` and images into the database (`import_bank`), the admin bank summary |
 | `services/maintenance.py` | The nightly job: clean-up and every periodic task, in one place |
@@ -263,7 +263,7 @@ flowchart LR
 
 ## Targets
 
-Targets set at design time. The latency and availability figures have not been measured yet, except for a live quiz at meeting scale ([runbook](runbook.md#55-live-quiz-capacity)): the load test is part of `feat/20-launch` on the roadmap.
+Targets set at design time. The latency and availability figures have not been measured yet, except for a live quiz at meeting scale ([runbook](runbook.md#55-live-quiz-capacity)) and the leaderboard with a room opening it at once ([runbook](runbook.md#56-leaderboard-and-data-export-capacity)): the load test is part of `feat/20-launch` on the roadmap.
 
 - p95 latency under 300 ms for start, submit and practice requests, under 400 ms for the leaderboard.
 - JavaScript under 180 KB gzipped, counting every script the build writes to `dist/assets` (`size-limit` in `web/package.json`; `npm run size` fails CI above it).

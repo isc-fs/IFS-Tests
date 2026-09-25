@@ -284,6 +284,29 @@ The server is a Hetzner CX33 shared with the team's other apps ([handover](hando
 consultant first. Nginx's per-address caps (160 streams, 160 requests in flight) fit 80 people; for more people behind
 one campus address raise both in `deploy/nginx/quiz.conf`.
 
+
+### 5.6 Leaderboard and data export capacity
+
+The red team's probe (`perf/burst.py`: 60 signed-in members open the leaderboard and the vertical board within 2 s)
+on a local stack with the `deploy/compose.yaml` limits and the red team's seeded season of play (71 accounts, 103k
+answers), then grown to three seasons (309k). Previous release and this one back to back; the machine was shared
+with other heavy jobs, so compare columns rather than absolute numbers. p95 of the leaderboard / vertical board:
+
+| | Previous release | This release |
+|---|---|---|
+| One season, September | 215–405 ms / 200–486 ms, database CPU saturated | 17–21 ms / 10–11 ms, database CPU under 11 % |
+| Three seasons, September | 2.8–3.2 s / 2.1–3.2 s | 11–24 ms / 7–21 ms |
+| Three seasons, a full season into the current one (August) | 3.7–4.0 s / 3.3–3.6 s | 14–17 ms / 10–11 ms |
+| Area and 7-day boards, one season, September | 195–259 ms | 10–12 ms |
+| Area and 7-day boards, three seasons, September | 2.9–3.1 s | 20–32 ms |
+| Area and 7-day boards, a full season into the current one (worst case: the whole season fell in the 7 days too) | 3.4–4.6 s | 90–183 ms |
+
+The boards used to add up every answer ever given on each view. Now they read each member's play in the period
+through an index ([data-model](data-model.md#attempts)), so the cost follows the season, not the history. The
+database runs without JIT compilation (`jit=off` in `deploy/compose.yaml`): late in a season Postgres compiled the
+area boards' sums on every view, which took two thirds of their time (with JIT on, those boards stayed at 2.5–3.3 s
+in the last row).
+
 ---
 
 ## 6. Incidents

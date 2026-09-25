@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import func, select, update
+from sqlalchemy import event, func, select, text, update
 from sqlalchemy.orm import Session
 
 from ifs_tests.bank.mirror import load_bank
@@ -15,7 +15,7 @@ from ifs_tests.bank.sample import SAMPLE_DIR
 from ifs_tests.db.models import Attempt, DailyQuestion, Question, User
 from ifs_tests.domain.daily import madrid_day
 from ifs_tests.domain.xp import account_level
-from ifs_tests.services import daily, mock, practice
+from ifs_tests.services import daily, leaderboard, mock, practice
 from ifs_tests.services.bank import import_bank
 
 from ..conftest import Clock
@@ -433,3 +433,91 @@ def test_both_boards_need_a_member(team: None, new_client: NewClient) -> None:
     anon = new_client()
     assert anon.get("/api/leaderboard").status_code == 401
     assert anon.get("/api/leaderboard/verticals").status_code == 401
+
+
+def attempts_read(db: Session, look: Callable[[], object]) -> int:
+    """Rows of `attempts` the statements behind `look` read, as EXPLAIN ANALYZE counts them, with sequential
+    scans off: a filter no index can serve reads every row ever stored."""
+    seen: list[tuple[str, Any]] = []
+
+    def grab(conn: Any, cursor: Any, statement: str, parameters: Any, context: Any, many: bool) -> None:
+        seen.append((statement, parameters))
+
+    engine = db.get_bind()
+    event.listen(engine, "before_cursor_execute", grab)
+    try:
+        look()
+    finally:
+        event.remove(engine, "before_cursor_execute", grab)
+
+    def read(node: dict[str, Any]) -> float:
+        own = 0.0
+        if node.get("Relation Name") == "attempts":
+            rows = node["Actual Rows"] + node.get("Rows Removed by Filter", 0)
+            own = (rows + node.get("Rows Removed by Index Recheck", 0)) * node["Actual Loops"]
+        return own + sum(read(child) for child in node.get("Plans", []))
+
+    conn = db.connection()
+    conn.exec_driver_sql("SET LOCAL enable_seqscan = off")
+    total = 0.0
+    for statement, parameters in seen:
+        if "attempts" in statement:
+            plan = conn.exec_driver_sql(
+                "EXPLAIN (ANALYZE, FORMAT JSON) " + statement, parameters
+            ).scalar_one()
+            total += read(plan[0]["Plan"])
+    db.rollback()
+    return round(total)
+
+
+def test_the_boards_read_this_seasons_play_not_the_whole_history(
+    team: None, app_client: TestClient, new_client: NewClient, db: Session, clock: Clock
+) -> None:
+    """PERF-03: every view summed all attempts ever stored, so the board slowed down season after season."""
+    join(app_client, new_client, "Marta")
+    marta = user(db, "Marta")
+    for name in ("Leo", "Pau", "Kai"):
+        u = add(db, name, "Driverless", rank_points=300)
+        play_daily(db, u, "mech", clock.now)
+        play_daily(db, u, "elec", clock.now, correct=False)
+        practise(db, u, clock.now)
+    play_mock(db, marta, clock.now)
+    play_daily(db, marta, "rules", clock.now)
+    # Twenty earlier seasons of the same play (in the spirit of the red team's growth.sql).
+    db.execute(
+        text("""
+        CREATE TEMP TABLE runs AS
+          SELECT s.id AS old_id, k, nextval(pg_get_serial_sequence('mock_sessions', 'id')) AS new_id
+          FROM mock_sessions s, generate_series(1, 20) k;
+        INSERT INTO mock_sessions (id, user_id, quiz_id, season, counted, position, started_at, finished_at)
+        OVERRIDING SYSTEM VALUE
+        SELECT r.new_id, s.user_id, s.quiz_id, s.season - r.k, s.counted, s.position,
+               s.started_at - interval '400 days' * r.k, s.finished_at - interval '400 days' * r.k
+        FROM runs r JOIN mock_sessions s ON s.id = r.old_id;
+        INSERT INTO attempts (user_id, question_id, mode, answer, correct, created_at, day, area, submitted_at,
+                              late, session_id, xp, lp, passed)
+        SELECT a.user_id, a.question_id, a.mode, a.answer, a.correct, a.created_at - interval '400 days' * g.k,
+               a.day - 400 * g.k, a.area, a.submitted_at - interval '400 days' * g.k, a.late, r.new_id, a.xp,
+               a.lp, a.passed
+        FROM attempts a CROSS JOIN generate_series(1, 20) g(k)
+        LEFT JOIN runs r ON r.old_id = a.session_id AND r.k = g.k;
+        """)
+    )
+    db.commit()
+    db.execute(text("ANALYZE attempts"))
+    this_season = db.scalar(
+        select(func.count())
+        .select_from(Attempt)
+        .where(Attempt.created_at >= datetime(2026, 8, 31, tzinfo=UTC))
+    )
+    assert this_season and db.scalar(select(func.count()).select_from(Attempt)) == 21 * this_season
+
+    looks: dict[str, Callable[[], object]] = {
+        "ranked": lambda: leaderboard.board(db, marta, None, "season", clock.now),
+        "mech": lambda: leaderboard.board(db, marta, "mech", "season", clock.now),
+        "week": lambda: leaderboard.board(db, marta, None, "week", clock.now),
+        "mech week": lambda: leaderboard.board(db, marta, "mech", "week", clock.now),
+        "verticals": lambda: leaderboard.verticals(db, "season", clock.now),
+    }
+    read = {name: attempts_read(db, look) for name, look in looks.items()}
+    assert read == {name: min(n, this_season) for name, n in read.items()}
