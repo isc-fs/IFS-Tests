@@ -162,7 +162,8 @@ For someone who asks to be deleted and can't sign in. Members who can sign in do
 3. Press **Delete for good** (**Keep** cancels).
 
 Deletion is immediate and can't be undone. Their account, answers, XP and rank go; live quiz tables they sat at keep
-their results; problems they reported stay without their name; any live quiz they were still hosting is finished.
+their results (a table they captained in a quiz still going gets its best-ranked member as captain); problems they
+reported stay without their name; any live quiz they were still hosting is finished.
 Backups drop the account within 14 days. You can't delete your own account here: use your profile.
 
 ### The last admin

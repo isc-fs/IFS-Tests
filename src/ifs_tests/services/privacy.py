@@ -341,10 +341,12 @@ def delete_self(db: DB, user: User, password: str, now: datetime) -> None:
         raise AccountError(NOT_CONFIRMED, 403, {"password": NOT_CONFIRMED})
     _guard_last_admin(locked.admins, locked.user)
     audit(db, None, "user.delete", f"user:{user.id}", by="self")
+    played = live.seated_in(db, user.id)
     _delete(db, locked.user, locked.sessions, now)
     db.commit()
     for s in locked.sessions:  # the sessions they hosted are over: their players' XP goes out
         live.share(db, s.id, now)
+    live.after_deletion(db, played)
 
 
 def delete_user(db: DB, actor: User, user_id: int, now: datetime) -> None:
@@ -356,10 +358,12 @@ def delete_user(db: DB, actor: User, user_id: int, now: datetime) -> None:
         raise AccountError("No such user.", 404)
     _guard_last_admin(locked.admins, locked.user)
     audit(db, actor, "user.delete", f"user:{user_id}", by="admin")
+    played = live.seated_in(db, user_id)
     _delete(db, locked.user, locked.sessions, now)
     db.commit()
     for s in locked.sessions:
         live.share(db, s.id, now)
+    live.after_deletion(db, played)
 
 
 def mark_alumni(db: DB, actor: User, user_ids: list[int], now: datetime) -> int:

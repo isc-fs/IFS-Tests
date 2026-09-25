@@ -187,6 +187,36 @@ def lock_hosted(db: DB, host_id: int) -> list[LiveSession]:
     return list(db.scalars(stmt))
 
 
+def seated_in(db: DB, user_id: int) -> list[int]:
+    """The unfinished sessions someone plays in."""
+    stmt = (
+        select(LivePlayer.session_id)
+        .join(LiveSession, LiveSession.id == LivePlayer.session_id)
+        .where(LivePlayer.user_id == user_id, LiveSession.state != "finished")
+    )
+    return list(db.scalars(stmt))
+
+
+def after_deletion(db: DB, session_ids: list[int]) -> None:
+    """Once a player's account is gone: a table they captained gets its best-ranked member, as when the host
+    removes someone, and every screen refetches. Not part of the deletion, which never waits for a session."""
+    for sid in session_ids:
+        s = db.scalar(
+            select(LiveSession)
+            .where(LiveSession.id == sid, LiveSession.state != "finished")
+            .with_for_update(key_share=True)
+            .execution_options(populate_existing=True)
+        )
+        if s is None:
+            continue
+        empty = db.scalars(
+            select(LiveTable.id).where(LiveTable.session_id == sid, LiveTable.captain_id.is_(None))
+        )
+        _recaptain(db, s, set(empty))
+        _touch(s)
+        db.commit()
+
+
 def finish(db: DB, sessions: list[LiveSession], now: datetime) -> None:
     for s in sessions:
         _finish(db, s, now)
