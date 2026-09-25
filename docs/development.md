@@ -164,7 +164,7 @@ Locally, `/api/docs` shows the interactive OpenAPI page.
 | `npm run dev` | Vite dev server on port 5173 |
 | `npm run gen:api` | Regenerate `web/src/api/` from `web/openapi.json` |
 | `npm run format` / `npm run format:check` | Prettier |
-| `npm run typecheck` | `tsc -b` |
+| `npm run typecheck` | `tsc -b` over the app (`tsconfig.app.json`), `vite.config.ts` (`tsconfig.node.json`), and the Playwright specs with `playwright.config.ts` and `openapi-ts.config.ts` (`tsconfig.e2e.json`) |
 | `npm run lint` | oxlint, warnings are errors (`web/.oxlintrc.json`: React, accessibility, no `dangerouslySetInnerHTML`, no `eval`) |
 | `npm test` | Component tests with coverage gates |
 | `npm run build` | Production build into `web/dist/` |
