@@ -360,3 +360,18 @@ def test_corrections_players_could_not_be_graded_against_are_refused(qtype: str,
 def test_a_number_with_a_unit_is_no_text_key() -> None:
     assert build_key("input", ans("12.5 kW")) == {"kind": "self"}
     assert build_key("input", ans("Qxc8"))["kind"] == "text"  # type: ignore[index]
+
+
+# A pair answers two things in the order the question asks (Q452 "1, 7": days for the first deadline, then for
+# the second); three or more ascending whole numbers are a "which of these" set (Q701, Q843, Q854).
+@pytest.mark.parametrize(
+    ("key_text", "given", "ok"),
+    [
+        ("1, 7", "1; 7", True),
+        ("1, 7", "7; 1", False),
+        ("1, 3, 5", "5; 3; 1", True),
+        ("1-2-3", "3-2-1", True),
+    ],
+)
+def test_only_three_or_more_ascending_whole_numbers_are_a_set(key_text: str, given: str, ok: bool) -> None:
+    assert grade(build_key("input", ans(key_text)), value=given) is ok

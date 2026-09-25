@@ -111,10 +111,11 @@ def _alternative(qtype: str, text: str) -> tuple[str, Any] | None:
     if n := number(text):
         return "number", n
     if ns := numbers(text):
-        # Ascending whole numbers read as "which of these" sets, where order doesn't matter.
+        # Three or more ascending whole numbers read as a "which of these" set, where order doesn't matter. A pair
+        # answers two things in the order the question asks ("1, 7": days for one deadline, then the other).
         whole = all(x["d"] == 0 for x in ns)
         ascending = all(a["v"] < b["v"] for a, b in zip(ns, ns[1:], strict=False))
-        return "numbers", {"values": ns, "ordered": not (whole and ascending)}
+        return "numbers", {"values": ns, "ordered": not (whole and ascending and len(ns) >= 3)}
     short = clean(text)
     # A number with a unit isn't a code: players typing the number would be marked wrong.
     if 0 < len(short) <= MAX_TEXT and "," not in short and not _UNIT.match(short):
