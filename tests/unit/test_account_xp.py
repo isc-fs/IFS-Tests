@@ -75,6 +75,7 @@ def test_streak_bonus(days: int, share: float) -> None:
         ("choice-one", None, 19, 0, 3),  # too few answers to trust the rate
         ("choice-one", None, 40, 2, 4),  # 5 % right: much harder than it looks
         ("numbers", 600, 50, 48, 2),  # 96 % right: easier than it looks
+        ("choice-one", 45, 20, 16, 1),  # exactly 80 % right already counts as easy
     ],
 )
 def test_difficulty(kind: str, time_s: int | None, answered: int, right: int, expected: int) -> None:

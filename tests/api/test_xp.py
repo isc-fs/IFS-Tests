@@ -397,6 +397,33 @@ def test_a_pass_leaves_the_bad_run_as_it_is(
     assert progress(c)["rank"]["miss_streak"] == 3
 
 
+def test_a_miss_on_a_question_seen_before_neither_builds_nor_eases_the_bad_run(
+    signed_in: TestClient, new_client: NewClient, db: Session, clock: Clock, bank: dict[int, int]
+) -> None:
+    c = new_client()
+    leo = join(signed_in, c, "Leo", "member")
+    set_rank(db, leo["id"], 350.0, miss_streak=3)
+    started = c.post("/api/daily/mech/start").json()
+    qid = started["question"]["id"]
+    db.add(
+        Attempt(
+            user_id=leo["id"],
+            question_id=qid,
+            mode="practice",
+            answer={},
+            correct=False,
+            created_at=clock.now - timedelta(days=3),
+        )
+    )
+    db.commit()
+    r = c.post(f"/api/daily/attempts/{started['attempt_id']}/answer", json=_wrong(started)).json()
+    assert (r["feedback"]["cushioned"], r["feedback"]["lp"]) == (
+        False,
+        approx(lp(db, qid, False, 350.0, "daily", repeat=True)),
+    )
+    assert progress(c)["rank"]["miss_streak"] == 3  # cheap repeat misses can't stage a cushion
+
+
 def test_the_bad_run_counter_is_capped(
     signed_in: TestClient, new_client: NewClient, db: Session, bank: dict[int, int]
 ) -> None:
