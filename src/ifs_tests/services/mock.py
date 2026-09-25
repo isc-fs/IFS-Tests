@@ -415,6 +415,7 @@ def answer(
                 again_today=xp.answered_today(db, user.id, q.id, now, other_than=a.id),
                 ranked=s.counted,
                 season_at=s.started_at,
+                played_on=timing.madrid_day(a.created_at),
             )
             db.execute(update(Attempt).where(Attempt.id == a.id).values(xp=granted.xp, lp=granted.lp))
         db.commit()

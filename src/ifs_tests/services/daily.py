@@ -251,6 +251,7 @@ def answer(
                 hint=a.hint_used,
                 again_today=xp.answered_today(db, user.id, q.id, now, other_than=a.id),
                 season_at=a.created_at,
+                played_on=a.day,
             )
             db.execute(update(Attempt).where(Attempt.id == a.id).values(xp=granted.xp, lp=granted.lp))
         db.refresh(a)  # while the player's lock still keeps the account, and so this attempt, in place

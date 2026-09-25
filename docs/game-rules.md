@@ -203,7 +203,7 @@ Bonuses are shares of the base, **added** to it, never multiplied together. Each
 
 The combo counts right answers across practice, daily and mock (not live). A wrong, late or passed answer resets it; an ungraded one leaves it. Live answers get no first-win and no combo, and leave the combo alone; streak, critical and rested still apply.
 
-**Rested XP:** each full Madrid day with no scored answer banks 150 rested XP, up to 450. It counts from the last scored answer, so a daily question left to run out doesn't spend the days away.
+**Rested XP:** each full Madrid day with no scored answer banks 150 rested XP, up to 450. It counts from the last scored answer, so a daily question left to run out doesn't spend the days away. An answer plays the day its question was shown: a daily started at 23:59 and answered at 00:01 played the day before, not the new one (`played_on` in `grant`, `src/ifs_tests/services/xp.py`).
 
 **Streak and freezes:** the daily streak is the number of consecutive Madrid days with an on-time daily answer in any area (right, wrong or "not sure"), ending today, or yesterday while today is still open. Every 7 days of streak earns a **freeze** (hold at most 2). The nightly job spends one on a missed day while the streak was alive the day before, so two freezes can bridge two missed days. The job catches up on up to 3 nights it missed. Code: `src/ifs_tests/domain/daily.py` and `src/ifs_tests/services/streaks.py`.
 
@@ -265,7 +265,7 @@ Worked values (computed): a single choice with no time budget and 17 of 20 right
 - If a reviewer or a bank reload hides today's question (or it stops being gradable), it is replaced for everyone who hasn't started it; people who did keep theirs.
 - **Clock:** the real quiz's time budget, otherwise 120 s for single choice, 150 s for multiple choice, 240 s for typed answers; always clamped to 60–600 s. Three seconds of grace. A late answer counts as wrong.
 - **One try.** A daily left to run out is closed as late when the player next opens the daily page, or by the nightly job: 0 XP, and LP as a wrong answer.
-- **Started before midnight:** a daily belongs to the day it was started, until its own deadline. One started at 23:59 stays on the daily page after midnight (in place of the new day's question for that area, which appears once it is answered or has run out), can be answered in time, and then counts for its day: the streak and the leaderboard. Until then it is still running for the player, so practice and the review tools keep its answer back (`_carried` in `src/ifs_tests/services/daily.py`, `running` in `src/ifs_tests/services/questions.py`).
+- **Started before midnight:** a daily belongs to the day it was started, until its own deadline. One started at 23:59 stays on the daily page after midnight (in place of the new day's question for that area, which appears once it is answered or has run out), can be answered in time, and then counts for its day: the streak, the leaderboard and rested XP. Until then it is still running for the player, so practice and the review tools keep its answer back (`_carried` in `src/ifs_tests/services/daily.py`, `running` in `src/ifs_tests/services/questions.py`).
 
 | Constant | Value | File |
 |---|---|---|

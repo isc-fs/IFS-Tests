@@ -285,6 +285,24 @@ def test_a_daily_started_before_midnight_stays_its_days_until_its_deadline(
     assert next(a for a in status["areas"] if a["area"] == "mech")["state"] == "new"  # the new day's question
 
 
+def test_a_daily_answered_just_after_midnight_counts_its_own_day_as_played(
+    player: TestClient, db: Session, clock: Clock
+) -> None:
+    clock.now = datetime(2026, 10, 5, 10, 0, tzinfo=UTC)
+    login(player, "marta@alu.comillas.edu", PASSWORD)
+    play(player, db, "mech")
+    clock.now = datetime(2026, 10, 6, 21, 59, tzinfo=UTC)  # 23:59 on 6 October in Madrid
+    login(player, "marta@alu.comillas.edu", PASSWORD)
+    started = player.post("/api/daily/mech/start").json()
+    clock.advance(seconds=90)  # answered on 7 October, in time
+    r = player.post(
+        f"/api/daily/attempts/{started['attempt_id']}/answer",
+        json=right_answer(db, started["question"]["id"]),
+    ).json()
+    assert r["late"] is False and "rested" not in r["feedback"]["bonuses"]
+    assert player.get("/api/me").json()["progress"]["account"]["rested_xp"] == 0  # 6 October was played
+
+
 def test_attempts_belong_to_their_player(
     player: TestClient, app_client: TestClient, new_client: NewClient
 ) -> None:
