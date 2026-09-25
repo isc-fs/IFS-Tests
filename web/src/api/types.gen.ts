@@ -1599,6 +1599,8 @@ export type MockQuiz = {
     graded: number;
     /**
      * Total Time S
+     *
+     * What a run allows: the sum of its questions' clocks
      */
     total_time_s: number | null;
     /**

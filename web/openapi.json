@@ -5480,7 +5480,8 @@
         "type": "null"
        }
       ],
-      "title": "Total Time S"
+      "title": "Total Time S",
+      "description": "What a run allows: the sum of its questions' clocks"
      },
      "bar_to_beat": {
       "anyOf": [

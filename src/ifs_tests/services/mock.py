@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy import case, func, select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session as DB
 
@@ -60,19 +60,14 @@ class QuizInfo:
 
 
 def quizzes(db: DB, user: User) -> list[QuizInfo]:
-    counts = db.execute(
-        select(
-            QuizQuestion.quiz_id,
-            func.count(),
-            func.count(case((Question.graded, 1))),
-            func.sum(Question.time_s),
-            func.count(Question.time_s),
-        )
+    stats: dict[int, tuple[int, int, int]] = {}
+    for quiz_id, graded, time_s, kind in db.execute(
+        select(QuizQuestion.quiz_id, Question.graded, Question.time_s, Question.answer_kind)
         .join(Question, Question.id == QuizQuestion.question_id)
         .where(Question.playable)
-        .group_by(QuizQuestion.quiz_id)
-    )
-    stats = {qid: (n, graded, total, timed) for qid, n, graded, total, timed in counts}
+    ):
+        n, g, total = stats.get(quiz_id, (0, 0, 0))
+        stats[quiz_id] = (n + 1, g + graded, total + rules.budget(time_s, kind))
     right = (
         select(Attempt.session_id, func.count().label("n"))
         .where(Attempt.correct.is_(True), Attempt.late.is_not(True), Attempt.session_id.is_not(None))
@@ -100,14 +95,14 @@ def quizzes(db: DB, user: User) -> list[QuizInfo]:
     for quiz in rows:
         if quiz.id not in stats:
             continue
-        n, graded, total, timed = stats[quiz.id]
+        n, graded, total = stats[quiz.id]
         out.append(
             QuizInfo(
                 quiz=quiz,
                 label=names[quiz.id],
                 questions=n,
                 graded=graded,
-                total_time_s=total if timed == n else None,
+                total_time_s=total,
                 best=best.get(quiz.id),
                 open_session=open_.get(quiz.id),
             )
@@ -218,7 +213,7 @@ def _advance(db: DB, s: MockSession, now: datetime) -> tuple[Question, Attempt] 
                 created_at=now,
                 session_id=s.id,
                 area=q.area,
-                deadline_at=now + timedelta(seconds=timing.budget(q.time_s, q.answer_kind)),
+                deadline_at=now + timedelta(seconds=rules.budget(q.time_s, q.answer_kind)),
             )
             db.add(a)
             db.flush()

@@ -521,7 +521,7 @@ class MockQuiz(BaseModel):
     held_on: date | None
     questions: int
     graded: int
-    total_time_s: int | None
+    total_time_s: int | None = Field(description="What a run allows: the sum of its questions' clocks")
     bar_to_beat: str | None
     best: int | None = Field(description="Most right answers in time in a finished run")
     open_session: int | None

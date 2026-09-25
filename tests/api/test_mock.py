@@ -317,3 +317,25 @@ def test_the_nightly_job_ends_runs_left_untouched(player: TestClient, db: Sessio
     s = player.get(f"/api/mock/sessions/{forgotten['session_id']}").json()["summary"]
     assert (s["unreached"], len(s["items"])) == (4, 1)
     assert player.get(f"/api/mock/sessions/{fresh['session_id']}").json()["summary"] is None
+
+
+def test_each_question_runs_on_its_real_time_and_the_list_adds_up_the_same_clocks(
+    player: TestClient, db: Session, clock: Clock
+) -> None:
+    first, second, *rest = run_questions(db)
+    db.execute(update(Question).where(Question.id == first).values(time_s=900))  # past the daily's 10 minutes
+    db.execute(update(Question).where(Question.id == second).values(time_s=None, answer_kind="number"))
+    db.execute(update(Question).where(Question.id.in_(rest)).values(time_s=30))  # under the daily's minute
+    db.commit()
+    listed = next(q for q in player.get("/api/mock/quizzes").json() if q["id"] == CV)
+    assert listed["total_time_s"] == 900 + 240 + 30 * len(
+        rest
+    )  # an unknown time gets the default for its kind
+    state = player.post(f"/api/mock/quizzes/{CV}/start").json()
+    clocks = []
+    while state["current"]:
+        c = state["current"]
+        clocks.append((datetime.fromisoformat(c["deadline_at"]) - clock.now).total_seconds())
+        state = answer(player, state, right_answer(db, c["question"]["id"]))
+    assert clocks == [900, 240, *[30] * len(rest)]
+    assert sum(clocks) == listed["total_time_s"]

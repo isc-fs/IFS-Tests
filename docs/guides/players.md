@@ -190,11 +190,12 @@ have up to 20 waiting.
 ## Mock quizzes
 
 **Mock** (top menu) replays past registration quizzes one question at a time, each on the time it had in the real
-quiz. You see your results only at the end.
+quiz (a question FS-Quiz gives no time gets 2 minutes for single choice, 2 min 30 s for multiple choice, 4 minutes
+for typed answers). You see your results only at the end.
 
 1. Filter by **Class** (EV, CV, DV) or type in **Event or year**.
-2. Each quiz shows its number of questions, its total time, your best score, and the bar to beat: what the last
-   team to get a slot achieved, when FS-Quiz records it.
+2. Each quiz shows its number of questions, its total time (the sum of its questions' clocks), your best score,
+   and the bar to beat: what the last team to get a slot achieved, when FS-Quiz records it.
 3. Press **Start**.
 4. Answer each question before its clock runs out. Hints, "I'm not sure" and learning aids work as in practice.
    A sent answer can't be changed.
