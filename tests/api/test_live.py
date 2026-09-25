@@ -221,6 +221,16 @@ def test_proposals_reach_the_captain_of_the_table_that_answers(room: dict[str, A
     assert state(room["Marta"], code)["proposals"] == []  # another table's proposals stay at that table
 
 
+def test_the_lobby_says_which_tables_the_questions_would_reach(room: dict[str, Any]) -> None:
+    code = lobby(room, topics=["hv"], areas=[], count=1, routing="owners")
+    reach = {t["name"]: t["reach"] for t in state(room["Tere"], code)["tables"]}
+    assert reach == {"Aerodynamics": 0.0, "Batteries": 1.0}  # only battery questions: Aero gets none
+    advance(room, code)
+    assert {t["reach"] for t in state(room["Tere"], code)["tables"]} == {None}  # a prediction for the lobby
+    everyone = lobby(room, topics=["hv"], areas=[], count=1, routing="all")
+    assert {t["reach"] for t in state(room["Tere"], everyone)["tables"]} == {None}
+
+
 def test_specialists_each_question_goes_to_the_table_owning_its_topic(
     room: dict[str, Any], db: Session, bank: dict[int, int]
 ) -> None:

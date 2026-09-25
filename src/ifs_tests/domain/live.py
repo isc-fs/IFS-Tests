@@ -100,6 +100,26 @@ def route(
     return out
 
 
+def reach(
+    pool: Sequence[str | None],
+    count: int,
+    tables: Sequence[tuple[int, Sequence[str]]],
+    catch_all: int | None,
+    rng: random.Random,
+    draws: int = 100,
+) -> dict[int, float]:
+    """How often each table gets at least one question, so the lobby can warn before the start: the routing
+    rule run on draws of `count` topics from the pool the quiz picks from. When the pool is no bigger than
+    `count` (a past quiz, in its order), every question is asked and one run says exactly who gets what."""
+    runs = [list(pool)] if count >= len(pool) else [rng.sample(pool, count) for _ in range(draws)]
+    hits = dict.fromkeys((tid for tid, _ in tables), 0)
+    for topics in runs:
+        for tid in set(route(topics, tables, catch_all)):
+            if tid in hits:
+                hits[tid] += 1
+    return {tid: n / len(runs) for tid, n in hits.items()}
+
+
 def speed_points(correct: bool | None, elapsed_s: float, budget_s: int | None) -> int:
     """Kahoot-style: 1000 for an instant right answer, down to 500 at the buzzer; nothing when wrong."""
     if not correct:

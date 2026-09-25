@@ -9,12 +9,12 @@ import random
 import re
 import threading
 import time
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timedelta
 from typing import Any, Literal
 
-from sqlalchemy import delete, func, or_, select, update
+from sqlalchemy import Select, delete, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DB
@@ -389,19 +389,47 @@ def remove(db: DB, host: User, code: str, user_id: int) -> None:
     db.commit()
 
 
-def _pick(db: DB, config: dict[str, Any]) -> list[Question]:
-    base = select(Question).where(Question.playable, Question.graded)
+def _pool(config: dict[str, Any], *columns: Any) -> Select[Any]:
+    """The questions a session picks from: a past quiz's in order, or those of the chosen areas and topics."""
+    base = select(*columns).where(Question.playable, Question.graded)
     if config["questions"] == "quiz":
-        stmt = (
+        return (
             base.join(QuizQuestion, QuizQuestion.question_id == Question.id)
             .where(QuizQuestion.quiz_id == config["quiz_id"])
             .order_by(QuizQuestion.position)
         )
-        return list(db.scalars(stmt))
     areas, topics = config.get("areas") or [], config.get("topics") or []
     if areas or topics:
         base = base.where(or_(Question.area.in_(areas), Question.topic.in_(topics)))
-    return list(db.scalars(base.order_by(func.random()).limit(config["count"])))
+    return base
+
+
+def _pick(db: DB, config: dict[str, Any]) -> list[Question]:
+    stmt = _pool(config, Question)
+    if config["questions"] != "quiz":
+        stmt = stmt.order_by(func.random()).limit(config["count"])
+    return list(db.scalars(stmt))
+
+
+def _routing(db: DB, s: LiveSession) -> tuple[list[tuple[int, list[str]]], int | None]:
+    """The tables that answer (those with a captain) and their topics, and the catch-all: the chosen table,
+    else the biggest, which has the widest mix of people."""
+    tables = [t for t in _tables(db, s) if t.captain_id is not None]
+    if not tables:
+        return [], None
+    sizes = Counter(p.table_id for p in _players(db, s).values())
+    catch_all = next((t.id for t in tables if t.catch_all), max(tables, key=lambda t: sizes[t.id]).id)
+    return [(t.id, list(t.topics)) for t in tables], catch_all
+
+
+def _reach(db: DB, s: LiveSession) -> dict[int, float]:
+    """In the lobby of a specialists quiz: how often each table would get a question (rules.reach)."""
+    if s.state != "lobby" or s.config["routing"] != "owners":
+        return {}
+    owners, catch_all = _routing(db, s)
+    pool = list(db.scalars(_pool(s.config, Question.topic)))
+    count = len(pool) if s.config["questions"] == "quiz" else s.config["count"]
+    return rules.reach(pool, count, owners, catch_all, random.Random(s.id))
 
 
 def _budget(config: dict[str, Any], q: Question) -> int | None:
@@ -448,16 +476,12 @@ def advance(db: DB, host: User, code: str, now: datetime, seen: tuple[str, int] 
 
 
 def _start(db: DB, s: LiveSession, now: datetime) -> None:
-    tables = [t for t in _tables(db, s) if t.captain_id is not None]
-    if not tables:
+    owners, catch_all = _routing(db, s)
+    if not owners:
         raise UserError("Seat people at a table with a captain first.", 409)
     questions = _pick(db, s.config)
     if not questions:
         raise UserError("No questions match these settings.", 409)
-    owners = [(t.id, list(t.topics)) for t in tables]
-    # Questions no table owns go to the chosen table, else the biggest: it has the widest mix of people.
-    sizes = {t.id: len([p for p in _players(db, s).values() if p.table_id == t.id]) for t in tables}
-    catch_all = next((t.id for t in tables if t.catch_all), max(tables, key=lambda t: sizes[t.id]).id)
     if s.config["routing"] == "owners":
         routed = rules.route([q.topic for q in questions], owners, catch_all)
     else:
@@ -633,6 +657,7 @@ class TableView:
     answered: bool
     right: int = 0
     points: int = 0
+    reach: float | None = None  # lobby of a specialists quiz: how often it would get a question
 
 
 @dataclass(frozen=True)
@@ -809,6 +834,7 @@ def _build(db: DB, s: LiveSession) -> Room:
     questions = {
         lq.position: lq for lq in db.scalars(select(LiveQuestion).where(LiveQuestion.session_id == s.id))
     }
+    reach = _reach(db, s)
     answers: dict[int, dict[int, Sent]] = defaultdict(dict)
     for a in db.execute(
         select(
@@ -836,6 +862,7 @@ def _build(db: DB, s: LiveSession) -> Room:
                 t.catch_all,
                 seated[t.id],
                 t.id in answers[s.position],
+                reach=reach.get(t.id, 0.0) if reach else None,
             )
             for t in _tables(db, s)
         ],

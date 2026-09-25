@@ -1485,6 +1485,12 @@ export type LiveTableOut = {
      * Points
      */
     points: number;
+    /**
+     * Reach
+     *
+     * In the lobby of a specialists quiz: the share of draws of this quiz's questions in which the table gets at least one (0 without a captain); null otherwise
+     */
+    reach?: number | null;
 };
 
 /**

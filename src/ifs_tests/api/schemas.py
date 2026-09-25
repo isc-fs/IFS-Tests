@@ -783,6 +783,11 @@ class LiveTableOut(BaseModel):
     answered: bool = Field(description="Has sent its answer to the current question")
     right: int = Field(description="Right answers so far, once they may be shown")
     points: int
+    reach: float | None = Field(
+        default=None,
+        description="In the lobby of a specialists quiz: the share of draws of this quiz's questions in which "
+        "the table gets at least one (0 without a captain); null otherwise",
+    )
 
 
 class Proposal(BaseModel):

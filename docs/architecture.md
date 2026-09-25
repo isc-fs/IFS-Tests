@@ -113,7 +113,7 @@ Everything under `src/ifs_tests/` (empty `__init__.py` files left out).
 | `services/practice.py` | Practice areas, next question, one question by ID, answering |
 | `services/daily.py` | Choosing the day's questions (`ensure_daily`), start, answer, closing abandoned ones |
 | `services/mock.py` | Mock runs: start, advance, time-outs, answer, summary |
-| `services/live.py` | Live quiz sessions end to end: seating, routing, answers and proposals, the state view shared per version (`Room`), what the event streams watch (`watch`), sharing XP after questions close, finishing abandoned sessions, the results CSV |
+| `services/live.py` | Live quiz sessions end to end: seating, routing (and, in the lobby, how often each table would get a question: `domain/live.reach`), answers and proposals, the state view shared per version (`Room`), what the event streams watch (`watch`), sharing XP after questions close, finishing abandoned sessions, the results CSV |
 | `services/xp.py` | Scoring one answer in both currencies under the player's row lock (`lock`, `grant`), difficulty recalibration |
 | `services/streaks.py` | Streak days and the nightly streak-freeze job |
 | `services/season.py` | The 1 September rank reset |
