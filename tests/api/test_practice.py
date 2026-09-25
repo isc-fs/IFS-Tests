@@ -206,3 +206,16 @@ def test_an_answer_the_grader_cannot_read_is_refused_and_can_be_fixed(
     assert "no units" in player.post(url, json={"value": "2778 N"}).json()["detail"]
     assert db.scalar(select(func.count()).select_from(Attempt)) == 0
     assert player.post(url, json={"value": "2778"}).json()["correct"] is True
+
+
+def test_a_comma_is_a_decimal_one_where_the_question_asks_for_three_decimals(
+    player: TestClient, db: Session, bank: dict[int, int]
+) -> None:
+    qid = bank[90012]
+    url = f"/api/practice/questions/{qid}/answer"
+    assert player.post(url, json={"value": "2,778"}).status_code == 400  # 2.778 or 2778?
+    q = db.get_one(Question, qid)
+    q.text += " Round the answer to three decimal places."
+    db.commit()
+    r = player.post(url, json={"value": "2,778"})
+    assert r.status_code == 200 and r.json()["correct"] is False  # 2.778, as the question asks: not 2778

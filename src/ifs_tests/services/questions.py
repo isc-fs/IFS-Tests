@@ -32,6 +32,7 @@ from ..db.models import (
 )
 from ..domain.daily import madrid_day
 from ..domain.grading import grade, unreadable
+from ..domain.keys import decimal_comma
 from .errors import UserError
 
 if TYPE_CHECKING:
@@ -207,7 +208,7 @@ def check(db: DB, q: Question, options: list[int] | None, value: str | None, uns
     key = db.get(AnswerKey, q.id)
     k = key.effective if key else None
     passed = unsure and q.graded
-    if q.graded and not passed and (problem := unreadable(k, value)):
+    if q.graded and not passed and (problem := unreadable(k, value, decimal_comma(q.text))):
         raise UserError(problem, fields={"value": problem})
     correct = (False if passed else grade(k, options=options, value=value)) if q.graded else None
     return explain(db, q, correct, passed)
