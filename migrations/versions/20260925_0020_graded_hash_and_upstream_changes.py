@@ -1,4 +1,5 @@
-"""graded hash and upstream changes: a new solution or wording keeps a reviewer's correction
+"""graded hash and upstream changes: a new solution or wording keeps a reviewer's correction, and quizzes
+FS-Quiz deleted are retired
 
 Revision ID: 0020
 Revises: 0018
@@ -23,8 +24,10 @@ def upgrade() -> None:
     `graded_hash`."""
     op.add_column("questions", sa.Column("graded_hash", sa.String(length=64), nullable=True))
     op.add_column("questions", sa.Column("upstream_change", sa.String(length=16), nullable=True))
+    op.add_column("quizzes", sa.Column("retired", sa.Boolean(), server_default="false", nullable=False))
 
 
 def downgrade() -> None:
+    op.drop_column("quizzes", "retired")
     op.drop_column("questions", "upstream_change")
     op.drop_column("questions", "graded_hash")

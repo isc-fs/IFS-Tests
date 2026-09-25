@@ -1,7 +1,8 @@
 """Load the mirrored FS-Quiz bank (bank.json) into the database. Safe to run again: unchanged questions are
 skipped, changed ones are updated in place (options keep their IDs, so answers already given stay valid), a
 change to what is graded drops a reviewer's correction and is flagged for review (a new solution, image or
-wording isn't), and questions FS-Quiz says it removed are hidden."""
+wording isn't), questions FS-Quiz says it removed are hidden, and quizzes and questions it deleted are
+retired: no longer played, kept for history."""
 
 from __future__ import annotations
 
@@ -16,7 +17,7 @@ from typing import Any
 
 from PIL import UnidentifiedImageError
 from PIL.Image import DecompressionBombError
-from sqlalchemy import delete, func, insert, select
+from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.dialects.postgresql import insert as upsert
 from sqlalchemy.orm import Session as DB
 
@@ -40,6 +41,9 @@ from ..domain import xp as xp_rules
 
 log = logging.getLogger(__name__)
 CHOICE = ("single-choice", "multi-choice")
+GONE = "Deleted from FS-Quiz."
+# A mirror missing more of the bank than this is more likely broken than FS-Quiz deleting that much at once.
+MAX_RETIRED = 0.25
 
 
 @dataclass
@@ -52,6 +56,9 @@ class ImportReport:
     missing_images: int = 0
     rekeyed: int = 0
     hidden: int = 0
+    retired: int = 0
+    restored: int = 0
+    not_retired: int = 0  # deleted upstream, but too many at once: see MAX_RETIRED
 
 
 def _digest(content: object) -> str:
@@ -101,6 +108,7 @@ def _upsert_events_and_quizzes(db: DB, bank: dict[str, Any]) -> None:
             "status": q["status"],
             "information": q.get("information"),
             "last_qualifier": q.get("last_qualifier"),
+            "retired": False,
         }
         db.execute(upsert(Quiz).values(row).on_conflict_do_update(index_elements=["id"], set_=row))
     ids = [q["quiz_id"] for q in bank["quizzes"]]
@@ -245,8 +253,8 @@ def _write_question(
 
 def _flag(q: Question, why: str, now: datetime) -> None:
     """Put a question in the reviewers' "Changed upstream" queue, saying why. A dropped correction stays the
-    reason until a reviewer has checked it."""
-    if q.key_changed_at is None or q.upstream_change != "answer" or why == "answer":
+    reason over a milder one until a reviewer has checked it."""
+    if not (why == "content" and q.key_changed_at is not None and q.upstream_change == "answer"):
         q.upstream_change = why
     q.key_changed_at = now
 
@@ -262,12 +270,43 @@ def _hide_removed(q: Question, note: str | None) -> bool:
     return True
 
 
+def _retire(q: Question, now: datetime) -> bool:
+    """Hide a question FS-Quiz deleted, once: a reviewer who shows it again isn't overruled by later imports,
+    and one already hidden keeps its reason."""
+    if q.upstream_note == GONE:
+        return False
+    q.upstream_note = GONE
+    if q.excluded:
+        return False
+    q.excluded, q.exclusion_note, q.playable = True, GONE, False
+    _flag(q, "removed", now)
+    return True
+
+
+def _restore(q: Question, now: datetime) -> bool:
+    """A question FS-Quiz deleted is back: show it again if it is hidden only because it was gone."""
+    if q.upstream_note != GONE:
+        return False
+    q.upstream_note = None
+    if not (q.excluded and q.exclusion_note == GONE):
+        return False
+    q.excluded, q.exclusion_note = False, None
+    q.playable = not q.images_missing
+    _flag(q, "back", now)
+    return True
+
+
 def _all_in(media_dir: Path, names: list[str]) -> bool:
     return all((media_dir / n).is_file() for n in names)
 
 
 def import_bank(
-    db: DB, bank: dict[str, Any], image_dir: Path | None, media_dir: Path, now: datetime
+    db: DB,
+    bank: dict[str, Any],
+    image_dir: Path | None,
+    media_dir: Path,
+    now: datetime,
+    allow_mass_removal: bool = False,
 ) -> ImportReport:
     report = ImportReport()
     media = _Media(image_dir, media_dir)
@@ -312,7 +351,19 @@ def import_bank(
             if why:
                 _flag(q, why, now)
                 report.key_changed += 1
+        report.restored += _restore(q, now)
         report.hidden += _hide_removed(q, removed.get(raw["question_id"]))
+
+    listed = {raw["question_id"] for raw in bank["questions"]}
+    gone = [q for fid, q in existing.items() if fid not in listed and q.upstream_note != GONE]
+    here = sum(1 for q in existing.values() if q.upstream_note != GONE)
+    if len(gone) > MAX_RETIRED * here and not allow_mass_removal:
+        log.warning("%d of %d questions are missing from the bank: none retired", len(gone), here)
+        report.not_retired = len(gone)
+    else:
+        report.retired = sum(_retire(q, now) for q in gone)
+        quizzes = [q["quiz_id"] for q in bank["quizzes"]]
+        db.execute(update(Quiz).where(Quiz.id.not_in(quizzes)).values(retired=True))
 
     ids = [q["quiz_id"] for q in bank["quizzes"]]
     db.execute(delete(QuizQuestion).where(QuizQuestion.quiz_id.in_(ids)))

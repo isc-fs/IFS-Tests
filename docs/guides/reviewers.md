@@ -30,7 +30,7 @@ The page opens on a row of queue chips, each with how many questions it holds:
 | **Changed upstream** | Questions FS-Quiz changed since they were loaded in a way that needs a second look: their answer or options, or a hidden question. | Check the answer, correct it if needed, press **I've checked it**. |
 | **Unclassified** | Questions the keyword guess couldn't place, not yet checked by a reviewer. | Pick the area and topic, **Confirm labels**. |
 | **Not graded** | Visible questions MingoQuiz can't grade automatically: players only compare with the official answer. | Give a correct answer in a gradable format, if there is one. |
-| **Hidden** | Questions a reviewer hid from players, and those FS-Quiz says it removed from its quiz (the reason starts with "FS-Quiz"). | Bring back any that were fixed or that are fine. |
+| **Hidden** | Questions a reviewer hid from players, those FS-Quiz says it removed from its quiz (the reason starts with "FS-Quiz"), and those FS-Quiz deleted ("Deleted from FS-Quiz."). | Bring back any that were fixed or that are fine. |
 | **All** | Every question. | Use with search. |
 
 Under the chips:
@@ -63,9 +63,9 @@ The page is headed "Question *id*", with **Back to the queues** at the top. From
 
 ### Changed upstream
 
-Shown only when FS-Quiz changed the question after it was loaded. It says when and what changed: "FS-Quiz changed
-its answer or its options. Any correction was removed." or "FS-Quiz changed this hidden question: it may have been
-fixed." Check the answer, correct it below if needed, then press **I've checked it**. That takes it out of the
+Shown only when FS-Quiz changed the question after it was loaded. It says when and what changed: its answer or
+options (any correction was removed), a hidden question that may have been fixed, a question FS-Quiz deleted (now
+hidden), or one it published again (now shown). Check the answer, correct it below if needed, then press **I've checked it**. That takes it out of the
 queue.
 
 ### Reports from players
@@ -147,6 +147,10 @@ For each question:
   **Hidden**. Read the note: if the question is fine (or you corrected it), **Show to players again**; later reloads
   won't hide it again unless FS-Quiz writes a new note. Quizzes 76 and 81 say "Question 10" of different questions
   (723 and 724), so both are hidden; one of them is probably fine.
+- **Deleted by FS-Quiz** (a whole quiz, or a question, gone from FS-Quiz): the question is hidden with the reason
+  "Deleted from FS-Quiz." and lands in **Changed upstream** and **Hidden**; the quiz is no longer offered for mock
+  runs or live quizzes. Past results keep both. If you show the question again, later reloads leave it alone; if
+  FS-Quiz publishes it again, it is shown again and lands in **Changed upstream**.
 - **New**: labelled by keyword guess; the unclassified ones land in **Unclassified**.
 
 A reload never changes past results: options keep their identity when FS-Quiz edits them, an option FS-Quiz removed

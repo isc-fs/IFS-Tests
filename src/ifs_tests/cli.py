@@ -44,6 +44,11 @@ def main(argv: list[str] | None = None) -> None:
 
     b = sub.add_parser("push", help="load the mirrored bank (bank.json and img/) into the database")
     b.add_argument("--sample", action="store_true", help="load the small made-up sample bank instead")
+    b.add_argument(
+        "--allow-mass-removal",
+        action="store_true",
+        help="retire what the bank lacks even if it is more than a quarter of the questions",
+    )
 
     sub.add_parser("openapi", help="print the API's OpenAPI schema (used to generate the web client)")
 
@@ -138,7 +143,9 @@ def _app_command(args: argparse.Namespace) -> None:
 
                 source = SAMPLE_DIR if args.sample else args.data
                 logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(message)s")
-                report = import_bank(db, load_bank(source), source / "img", settings.media_dir, now)
+                report = import_bank(
+                    db, load_bank(source), source / "img", settings.media_dir, now, args.allow_mass_removal
+                )
                 print(f"Bank loaded from {source}: {report}")
             elif args.cmd == "maintenance":
                 print(maintenance.run(db, now))

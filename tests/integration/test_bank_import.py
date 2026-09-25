@@ -372,3 +372,70 @@ def test_questions_loaded_before_the_graded_hash_are_judged_by_their_stored_answ
     assert db.get_one(AnswerKey, q.id).override == fix
     assert by_fsquiz(db, 90012).upstream_change == "answer"
     assert db.scalar(select(func.count()).where(Question.graded_hash.is_(None))) == 0
+
+
+def drop(bank: dict[str, Any], quizzes: tuple[int, ...] = (), questions: tuple[int, ...] = ()) -> None:
+    """FS-Quiz deletes these quizzes and questions; questions only in a deleted quiz go with it."""
+    bank["quizzes"] = [z for z in bank["quizzes"] if z["quiz_id"] not in quizzes]
+    for z in bank["quizzes"]:
+        z["question_ids"] = [i for i in z["question_ids"] if i not in questions]
+    listed = {i for z in bank["quizzes"] for i in z["question_ids"]}
+    bank["questions"] = [q for q in bank["questions"] if q["question_id"] in listed]
+
+
+def test_quizzes_and_questions_deleted_upstream_are_retired_once(
+    db: Session, clock: Clock, tmp_path: Path, sample: dict[str, Any]
+) -> None:
+    import_bank(db, copy.deepcopy(sample), SAMPLE_DIR / "img", tmp_path, clock.now)
+    drop(sample, quizzes=(9003,), questions=(90005,))  # 9003 alone holds 90011
+    clock.advance(days=1)
+    report = import_bank(db, copy.deepcopy(sample), SAMPLE_DIR / "img", tmp_path, clock.now)
+    db.expire_all()
+
+    assert (report.retired, report.key_changed) == (2, 0)
+    assert db.get_one(Quiz, 9003).retired and not db.get_one(Quiz, 9001).retired
+    for fsquiz_id in (90005, 90011):
+        q = by_fsquiz(db, fsquiz_id)
+        assert q.excluded and not q.playable and q.exclusion_note == "Deleted from FS-Quiz."
+        assert (q.key_changed_at, q.upstream_change) == (clock.now, "removed")
+    assert by_fsquiz(db, 90003).playable  # still in quiz 9001
+    kept = db.scalar(select(func.count()).where(QuizQuestion.quiz_id == 9003))
+    assert kept == 3  # finished runs of the quiz still show their questions
+
+    kept_by_reviewer = by_fsquiz(db, 90005)
+    kept_by_reviewer.excluded, kept_by_reviewer.playable = False, True
+    db.commit()
+    report = import_bank(db, copy.deepcopy(sample), SAMPLE_DIR / "img", tmp_path, clock.now)
+    assert report.retired == 0 and by_fsquiz(db, 90005).playable and not by_fsquiz(db, 90011).playable
+
+
+def test_a_question_back_at_fsquiz_is_shown_again_and_flagged(
+    db: Session, clock: Clock, tmp_path: Path, sample: dict[str, Any]
+) -> None:
+    import_bank(db, copy.deepcopy(sample), SAMPLE_DIR / "img", tmp_path, clock.now)
+    gone = copy.deepcopy(sample)
+    drop(gone, quizzes=(9003,))
+    import_bank(db, gone, SAMPLE_DIR / "img", tmp_path, clock.now)
+    clock.advance(days=1)
+    report = import_bank(db, copy.deepcopy(sample), SAMPLE_DIR / "img", tmp_path, clock.now)
+    db.expire_all()
+
+    assert report.restored == 1 and not db.get_one(Quiz, 9003).retired
+    q = by_fsquiz(db, 90011)
+    assert q.playable and not q.excluded and q.upstream_note is None
+    assert (q.key_changed_at, q.upstream_change) == (clock.now, "back")
+
+
+def test_a_mirror_missing_most_of_the_bank_retires_nothing_unless_allowed(
+    db: Session, clock: Clock, tmp_path: Path, sample: dict[str, Any]
+) -> None:
+    import_bank(db, copy.deepcopy(sample), SAMPLE_DIR / "img", tmp_path, clock.now)
+    drop(sample, quizzes=(9002, 9003))  # a third of the questions
+    report = import_bank(db, copy.deepcopy(sample), SAMPLE_DIR / "img", tmp_path, clock.now)
+    assert (report.retired, report.not_retired) == (0, 4)
+    assert db.scalar(select(func.count()).where(Question.playable)) == 12
+    assert not db.get_one(Quiz, 9002).retired
+
+    report = import_bank(db, sample, SAMPLE_DIR / "img", tmp_path, clock.now, allow_mass_removal=True)
+    assert (report.retired, report.not_retired) == (4, 0)
+    assert db.get_one(Quiz, 9002).retired
