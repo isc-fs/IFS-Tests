@@ -1,7 +1,7 @@
 """position lifts: what a raise of position gave, so a correction takes back only that
 
-Revision ID: 0022
-Revises: 0018
+Revision ID: 0021
+Revises: 0020
 Create Date: 2026-09-25 12:00:00.000000
 
 """
@@ -13,8 +13,8 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = "0022"
-down_revision: str | Sequence[str] | None = "0018"
+revision: str = "0021"
+down_revision: str | Sequence[str] | None = "0020"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

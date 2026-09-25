@@ -526,7 +526,9 @@ def test_rollover_and_nightly_vs_answers(db: Session, app_engine: Engine, daily_
 def test_position_change_vs_answers(db: Session, app_engine: Engine, daily_player: User) -> None:
     actor = mk(db, 1, "actor", role="admin")[0]
     ps = mk(db, 8, "pos")
-    qs = list(db.scalars(select(Question.id).where(Question.graded, Question.playable).limit(8)))
+    # "-1" is a wrong answer to every question but a list, which refuses it as unreadable.
+    graded = select(Question.id).where(Question.graded, Question.playable, Question.answer_kind != "numbers")
+    qs = list(db.scalars(graded.limit(8)))
     jobs: list[Callable[[Session], Any]] = []
     for u, q in zip(ps, qs, strict=False):
         jobs.append(

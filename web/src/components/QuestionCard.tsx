@@ -10,8 +10,8 @@ import { Field, Form, Notice } from './Form'
 import { ReportProblem } from './ReportProblem'
 
 const HINTS: Record<string, string> = {
-  number: 'A number. Decimal point or comma both work.',
-  range: 'A number. Decimal point or comma both work.',
+  number: 'A number, without units, % or thousands separators. Decimal point or comma both work.',
+  range: 'A number, without units, % or thousands separators. Decimal point or comma both work.',
   text: "Capital letters and spaces don't matter.",
 }
 
@@ -379,7 +379,7 @@ export function QuestionCard({
         )}
         {stuck && (
           <>
-            <Notice tone="error">Time's up, and your answer didn't reach the server.</Notice>
+            <Notice tone="error">Time's up, and your answer didn't go through.</Notice>
             <div className="answer-actions">
               <button type="button" onClick={() => onAnswer(entered)}>
                 Send my answer again

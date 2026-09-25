@@ -2,7 +2,7 @@
 FS-Quiz deleted are retired
 
 Revision ID: 0020
-Revises: 0018
+Revises: 0019
 Create Date: 2026-09-25 12:00:00.000000
 
 """
@@ -14,7 +14,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "0020"
-down_revision: str | Sequence[str] | None = "0018"
+down_revision: str | Sequence[str] | None = "0019"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

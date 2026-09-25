@@ -50,21 +50,21 @@ Workstreams run in parallel, each owning its files; G starts once A–F have mer
 | BANK-09 iPhone can't type `-` or `;` | P2 | A, fix/11 | | Fixed | `inputMode="text"` for every typed answer (tests per answer kind); not yet checked on a real iPhone |
 | LIVE-05 / UI-04 removed player frozen | P3 | A, fix/11 | | Fixed | `Live.test.tsx` refusal shown, polling and stream stop; red-team `liveremove.mjs` |
 | UI-06 daily "See the question" fails silently (Low) | P3 | A, fix/11 | | Fixed | `Daily.test.tsx` error shown |
-| BANK-04 / DOM-11 units or `%` graded wrong | P1 | B grading and hints, fix/12 | | Open | |
-| UI-02 hint thousands separator | P1 | B, fix/12 | | Open | |
-| BANK-06 / UI-03 correction changes the question type | P1 | B, fix/12 | | Open | |
-| BANK-05 tolerance accepts wrong exact answers | P2 | B, fix/12 | | Open | |
-| DOM-01 / BANK-12 number hints give the answer | P2 | B, fix/12 | | Open | |
+| BANK-04 / DOM-11 units or `%` graded wrong | P1 | B grading and hints, fix/12 | | Fixed | unreadable answers refused with 400 before anything is recorded (daily, mock, practice, live tests); real-bank probe: units/%/thousands always refused, `.5` and scientific now accepted |
+| UI-02 hint thousands separator | P1 | B, fix/12 | | Fixed | `test_hint_numbers_read_back_as_printed` (was 'Between 1,892 and 3,616.') |
+| BANK-06 / UI-03 correction changes the question type | P1 | B, fix/12 | | Fixed | `test_a_correction_is_read_for_the_questions_own_type`; red-team `test_review_formats`: `12.5 kW`, `3,000` refused |
+| BANK-05 tolerance accepts wrong exact answers | P2 | B, fix/12 | | Fixed | `test_exact_answers`; Q448/Q959/Q984 reject the red team's wrong values; whole bank 990/990 right accepted and 990/990 wrong rejected |
+| DOM-01 / BANK-12 number hints give the answer | P2 | B, fix/12 | | Fixed | red-team `hint_giveaway`: always-right midpoints 4 → 0, Q1070 86 % → 0 %, list hints stating a value 6200 → 0 |
+| Q452 pair order (from the verification) | — | B, fix/12 | | Fixed | a set needs ≥3 ascending whole numbers; applies at the next `ifs-tests push` |
 | BANK-07 upstream solution drops a correction | P2 | C bank pipeline, fix/13 | | Fixed | `graded_hash` (migration 0020): `test_a_new_solution_image_or_time_keeps_the_correction_and_difficulty`; red-team `test_solution_only_change.py` keeps the correction and difficulty 5 |
 | BANK-08 upstream deletions don't propagate | P2 | C, fix/13 | | Fixed | `tests/unit/test_mirror.py`, `test_a_quiz_deleted_upstream_leaves_play_but_not_history`; red-team `mirror_probe.py` 121 → 119 quizzes; mass-removal guard |
 | PLAY-05 abandoned mock run blocks dailies | P1 | D play and time rules, fix/14 | | Fixed | `POST /api/mock/sessions/{id}/end` + nightly end of runs untouched for 2 days (API tests); probe: forgotten run ended on day 3, dailies served again |
 | PLAY-03 daily started before midnight vanishes | P2 | D, fix/14 | | Fixed | `test_a_daily_started_before_midnight_stays_its_days_until_its_deadline`; probe: practice 200 → 409, daily pays in full |
-| DOM-05 rested XP counts a played day as away (Low) | P3 | D, fix/14 | | Fixed | `played_on` for rested XP; probe banked 150 → 0 |
 | DOM-03 / PLAY-01 mock summary counts late as right | P2 | D, fix/14 | | Fixed | `test_mock.py` now expects 4 right and best 4 (it asserted the bug) |
 | DOM-02 blind guess pays in a bad run | P2 | D, fix/14 | | Fixed (rules change: TDs to confirm) | property tests over miss streaks 0/3/10 (100 failures before); probe at 50 pts: guess +2.10 → −2.01 |
 | PLAY-02 mock clocks clamped to 60–600 s | P2 | D, fix/14 | | Fixed | probe: run allows 1280 s = listed total (was 720 vs 1280) |
 | DOM-04 / PLAY-04 freeze only applied at 03:00 | P3 | D, fix/14 | | Fixed | freezes applied on read and score; probe: streak 9 with bonus at 00:30 |
-| ACC-02 undoing a position change loses LP | P2 | E admin, CSV, scripts, fix/15 | | Fixed | `users.position_lifts` (migration 0022); `test_undoing_a_mistaken_raise_keeps_what_was_earned`; probe 130→350→130 loses 0 (was 80); lower-then-raise still loses by ADR 0007 |
+| ACC-02 undoing a position change loses LP | P2 | E admin, CSV, scripts, fix/15 | | Fixed | `users.position_lifts` (migration 0021); `test_undoing_a_mistaken_raise_keeps_what_was_earned`; probe 130→350→130 loses 0 (was 80); lower-then-raise still loses by ADR 0007 |
 | LIVE-06 results CSV garbled in Spanish Excel | P2 | E, fix/15 | | Fixed | `test_the_results_open_in_a_spanish_excel` (BOM, `;`, `-12.5` unescaped); not checked in a real Excel |
 | DOC-01 (rest) refresh-bank.sh `.env` checks | P2 | E, fix/15 | | Fixed | `tests/unit/test_deploy_scripts.py` runs the real script against a stub docker |
 | ACC-01 admins demoting each other at once | P3 | E, fix/15 | | Fixed | `check_still_admin` under `ADMIN_LOCK`; red-team race gives 403 for the second (was both succeed) |
@@ -73,6 +73,7 @@ Workstreams run in parallel, each owning its files; G starts once A–F have mer
 | DOC-03 mock quizzes include ungraded questions | P3 | E, fix/15 | | Fixed | data-model corrected |
 | PERF-03 leaderboard scans all history | P2 | F capacity, fix/16 | | Fixed | index `ix_attempts_lp_day` (migration 0019), `jit=off`; `test_the_boards_read_this_seasons_play_not_the_whole_history`; red-team burst at 3 seasons: p95 2.8–3.2 s → 11–24 ms |
 | PERF-04 exports can run out of memory | P2 | F, fix/16 | | Fixed | batched export, ≤2 per process (429), `memswap_limit`; exports byte-identical; 12 at once: no swap (was 512 MiB + 282 swapped) |
+| DOM-05 rested XP counts a played day as away (Low) | P3 | D, fix/14 | | Fixed | `played_on` for rested XP; probe banked 150 → 0 |
 | GATE-02 surviving mutants (late right, repeat misses) | P2 | G tests, fix/17 | | Open | |
 | GATE-03 grace untested on closing paths | P2 | G, fix/17 | | Open | |
 | GATE-04 mock time-out on an ungraded question untested | P2 | G, fix/17 | | Open | |

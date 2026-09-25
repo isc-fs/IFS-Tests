@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from ifs_tests.db.models import Attempt, LiveAnswer, LiveQuestion, LiveSession, User
+from ifs_tests.db.models import Attempt, LiveAnswer, LiveQuestion, LiveSession, Question, User
 from ifs_tests.domain.rank import placement
 from ifs_tests.domain.xp import xp_award
 from ifs_tests.services import live, maintenance
@@ -790,3 +790,18 @@ def test_the_nightly_job_finishes_an_abandoned_rehearsal_and_shares_its_xp(
     assert all(a.xp > 0 for a in rows)
     assert qid not in running(db, room["Ana_id"], clock.now, daily=False)
     assert maintenance.run(db, clock.now)["live_sessions_finished"] == 0
+
+
+def test_a_captains_answer_the_grader_cannot_read_is_refused_and_can_be_fixed(
+    room: dict[str, Any], db: Session
+) -> None:
+    db.execute(update(Question).where(Question.fsquiz_id == 90012).values(area="rules"))  # 2778
+    db.execute(update(Question).where(Question.fsquiz_id == 90008).values(playable=False))
+    db.commit()
+    code = lobby(room, areas=["rules"], count=1)
+    advance(room, code)
+    assert state(room["Leo"], code)["question"]["answer_kind"] == "number"
+    r = room["Leo"].post(f"/api/live/sessions/{code}/answer", json={"value": "2778 N"})
+    assert r.status_code == 400 and "no units" in r.json()["detail"]
+    assert not any(t["answered"] for t in state(room["Ana"], code)["tables"])
+    assert send(room["Leo"], code, {"value": "2778"}) == 204

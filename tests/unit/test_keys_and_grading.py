@@ -4,7 +4,7 @@ from typing import Any
 
 import pytest
 
-from ifs_tests.domain.grading import grade, tolerance
+from ifs_tests.domain.grading import correction, grade, tolerance, unreadable
 from ifs_tests.domain.keys import answer_kind, build_key, display, number, split_values
 
 
@@ -135,7 +135,34 @@ def test_a_single_bare_comma_splits_only_when_several_values_are_expected() -> N
 def test_tolerance_follows_the_keys_precision() -> None:
     assert tolerance({"v": 82.9, "d": 1}) == pytest.approx(0.0829)
     assert tolerance({"v": 0.23, "d": 2}) == pytest.approx(0.005)
-    assert tolerance({"v": 64107, "d": 0}) == pytest.approx(64.107)
+    assert tolerance({"v": 64107, "d": 0}) == pytest.approx(0.5)  # BANK-05: whole numbers are exact
+    assert tolerance({"v": 0.0, "d": 2}) == 0
+
+
+# BANK-05: whole numbers (counts, 2^15, a binary string, "round to the nearest one") and zero are exact.
+@pytest.mark.parametrize(
+    ("key_text", "given", "ok"),
+    [
+        ("32768", "32768", True),
+        ("32768", "32768.4", True),
+        ("32768", "32767", False),
+        ("32768", "32800", False),
+        ("111111111101100", "111111111101100", True),
+        ("111111111101100", "111111111101101", False),
+        ("111111111101100", "111111111100000", False),
+        ("64107", "64050", False),
+        ("0", "0", True),
+        ("0", "0.00", True),
+        ("0", "-0", True),
+        ("0", "0.4", False),
+        ("0", "-0.4", False),
+        ("0.0", "0.04", False),
+        ("82.9", "82.98", True),  # a key with decimals keeps the 0.1 %
+        ("509.85", "510.2", True),
+    ],
+)
+def test_exact_answers(key_text: str, given: str, ok: bool) -> None:
+    assert grade(build_key("input", ans(key_text)), value=given) is ok
 
 
 @pytest.mark.parametrize(
@@ -221,3 +248,130 @@ def test_number_parser_rejects_garbage() -> None:
     assert number("1.2.3") is None
     assert number("12 kN") is None
     assert number("1 000") == {"v": 1000.0, "d": 0}
+
+
+# BANK-04 / DOM-11: forms a player obviously means are read; anything else is refused, never graded wrong.
+@pytest.mark.parametrize(
+    ("key_text", "given"),
+    [
+        ("0.23", ".23"),
+        ("0.23", "0,23"),
+        ("3.5", "3.5e0"),
+        ("0.23", "2.3E-1"),
+        ("-0.5", "-.5"),
+        ("64107", "64 107"),
+    ],
+)
+def test_obvious_number_forms_are_read(key_text: str, given: str) -> None:
+    key = build_key("input", ans(key_text))
+    assert unreadable(key, given) is None
+    assert grade(key, value=given) is True
+
+
+@pytest.mark.parametrize(
+    ("qtype", "key_text", "given", "says"),
+    [
+        ("input", "3.5", "3.5 mm", "no units"),
+        ("input", "46", "46%", "no units, %"),
+        ("input", "46", "46 %", "no units, %"),
+        ("input", "82.9", "about 83", "just a number"),
+        ("input", "82.9", "82.9.1", "just a number"),
+        ("input-range", "11.7-12.1", "11.7-12.1", "just a number"),
+        ("input-range", "11.7-12.1", "12 V", "no units"),
+        ("input", "64107", "64,107", "Is 64,107 64.107 or 64107?"),
+        ("input", "3404", "-3,404", "Type the one you mean"),
+        ("input", "518.4; 604.8", "518.4", "Type 2 numbers separated by semicolons"),
+        ("input", "518.4; 604.8", "518.4 V; 604.8 V", "Type 2 numbers"),
+        ("input", "518.4; 604.8", "518.4; 604.8; 1", "Type 2 numbers"),
+        ("input", "1125000; 3657.5; 119", "1,125; 3657.5; 119", "Type the one you mean"),
+    ],
+)
+def test_answers_the_grader_cannot_read_are_refused_with_what_to_type(
+    qtype: str, key_text: str, given: str, says: str
+) -> None:
+    problem = unreadable(build_key(qtype, ans(key_text)), given)
+    assert problem is not None and says in problem
+
+
+def test_a_list_whose_accepted_answers_differ_in_length_does_not_reveal_how_many() -> None:
+    key = build_key("input", ans("2, 3, 4, 6", "1, 2, 4, 5, 6"))
+    assert unreadable(key, "1; 2; 3") is None and grade(key, value="1; 2; 3") is False
+    assert (
+        unreadable(key, "4")
+        == "Type the numbers separated by semicolons, like 12.5; 40: no units or other text."
+    )
+
+
+@pytest.mark.parametrize(
+    ("key", "given"),
+    [
+        (None, "3.5 mm"),
+        ({"kind": "self"}, "anything"),
+        ({"kind": "text", "accept": ["qxc8"]}, "Q x c8!"),
+        ({"kind": "number", "accept": [{"v": 3.5, "d": 1}]}, ""),  # no answer: graded wrong, not refused
+        ({"kind": "number", "accept": [{"v": 3.5, "d": 1}]}, None),
+        ({"kind": "number", "accept": [{"v": 0.125, "d": 3}]}, "0,125"),  # a leading zero is no thousands
+    ],
+)
+def test_what_is_never_refused(key: dict[str, Any] | None, given: str | None) -> None:
+    assert unreadable(key, given) is None
+
+
+# BANK-06 / UI-03: a reviewer's correction is read for the question's own type, and players must be able to type
+# it back and be graded right.
+@pytest.mark.parametrize(
+    ("qtype", "text", "kind"),
+    [
+        ("input-range", "3.8-3.9", "range"),
+        ("input-range", "3.8-3.9 or 4.1-4.2", "range"),
+        ("input", "118 or 122", "number"),
+        ("input", "82.9", "number"),
+        ("input", "70-80", "range"),
+        ("input", "518.4; 604.8", "numbers"),
+        ("input", "Qxc8", "text"),
+        ("input", "6/7", "text"),
+        ("drag_sort", "12; 24; 60; 600", "numbers"),  # a drag-sort's correction is typed like an input's
+    ],
+)
+def test_corrections_that_players_can_be_graded_against(qtype: str, text: str, kind: str) -> None:
+    key = correction(qtype, text)
+    assert key is not None and key["kind"] == kind
+
+
+@pytest.mark.parametrize(
+    ("qtype", "text"),
+    [
+        ("input-range", "3.8 to 3.9"),
+        ("input-range", "12 V"),
+        ("input-range", "3.85"),  # a range question takes a range
+        ("input", "12.5 kW"),
+        ("input", "3.5mm"),
+        ("input", "46%"),
+        ("input", "3.8 to 3.9"),
+        ("input", "1,500"),  # players typing 1,500 would be asked whether they mean 1.5 or 1500
+        ("input", "lowest, then the others"),
+        ("input", ""),
+    ],
+)
+def test_corrections_players_could_not_be_graded_against_are_refused(qtype: str, text: str) -> None:
+    assert correction(qtype, text) is None
+
+
+def test_a_number_with_a_unit_is_no_text_key() -> None:
+    assert build_key("input", ans("12.5 kW")) == {"kind": "self"}
+    assert build_key("input", ans("Qxc8"))["kind"] == "text"  # type: ignore[index]
+
+
+# A pair answers two things in the order the question asks (Q452 "1, 7": days for the first deadline, then for
+# the second); three or more ascending whole numbers are a "which of these" set (Q701, Q843, Q854).
+@pytest.mark.parametrize(
+    ("key_text", "given", "ok"),
+    [
+        ("1, 7", "1; 7", True),
+        ("1, 7", "7; 1", False),
+        ("1, 3, 5", "5; 3; 1", True),
+        ("1-2-3", "3-2-1", True),
+    ],
+)
+def test_only_three_or_more_ascending_whole_numbers_are_a_set(key_text: str, given: str, ok: bool) -> None:
+    assert grade(build_key("input", ans(key_text)), value=given) is ok

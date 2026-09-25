@@ -113,7 +113,7 @@ earns no XP.
 
 **If the send fails.** When the answer sent at zero doesn't get through (a dropped connection, a server error), the
 page tries twice more within about a second and a half. If it still fails, it says **Time's up, and your answer
-didn't reach the server.** with a **Send my answer again** button; the server's clock decides whether it still
+didn't go through.** with a **Send my answer again** button; the server's clock decides whether it still
 counts.
 
 **Offline.** Without a connection a banner says **You're offline. The page carries on when the connection is back.**
@@ -146,8 +146,14 @@ daily questions, a mock run or a live quiz, and refuses to open one by its link 
 
 - Single or multiple choice: tick the options ("select all that apply" when several can be right).
 - Numbers: a decimal point or a comma both work (`3.5` or `3,5`, no space after the comma: `3, 5` reads as two
-  values).
+  values), and so do `.5` and `3.5e-3`. Type just the number, in the unit the question asks for: no units, no `%`,
+  no thousands separators (`2778`, not `2,778`; a comma with exactly three digits after it is asked about).
+- A number is right when it rounds to the official answer at the precision the answer is given with (`82.9`
+  accepts `82.94`; 0.1 % either way when that's more). A whole number (a count, "round to the nearest one", a binary
+  string) accepts only what rounds to it, and an official answer of zero accepts only zero.
 - Several values: separate them with semicolons, in the order the question asks, e.g. `12.5; 40`.
+- An answer the app can't read (`3.5 mm`, `46%`, one value where two are asked) isn't graded: it's refused with a
+  message saying what to type, and your try isn't used, so fix it and send it again before the clock runs out.
 - Text: capital letters and spaces don't matter.
 - On a phone, typed answers open the ordinary keyboard: switch it to numbers (**123** on an iPhone). A number pad
   would leave out the minus sign (iPhone) and the semicolon.
@@ -157,8 +163,8 @@ daily questions, a mock run or a live quiz, and refuses to open one by its link 
 
 While your rank still gets them (Mingo I to Jefe V), a question you can be graded on offers **Hint (a right answer
 earns half)**. A hint never gives the answer away: on a single choice it greys out all but two options; on a
-multiple choice it says how many options are right; on a number it gives a range; on a list of values, how many and
-the first; on a text, its length and first letter. Some questions have no hint. One hint per question, before you
+multiple choice it says how many options are right; on a number it gives a range (the answer isn't in its middle);
+on a list of values, how many and a range for the first; on a text, its length and first letter. Some questions have no hint. One hint per question, before you
 answer. It halves the XP of a right answer (and the LP in daily and
 mock questions). Hints end at DT I.
 

@@ -109,7 +109,7 @@ Everything under `src/ifs_tests/` (empty `__init__.py` files left out).
 | `services/errors.py` | `UserError`: message, HTTP status and per-field messages |
 | `services/accounts.py` | Invites, registration, first admin, sign-in and lockout, password reset and change, profile, admin changes (under `ADMIN_LOCK`), audit helper |
 | `services/privacy.py` | Data export, account deletion, alumni, the nightly retention purge ([ADR 0006](adr/0006-personal-data.md)). An export reads only the columns it shows, in batches, and each process prepares at most two at once (`export_slot`, held by the routes until the JSON is written) |
-| `services/questions.py` | Questions as players see them (options, quiz labels, documents), `check` (grading a new answer), `explain` (the official answer around a stored result, never re-graded), and answer secrecy (`running`, `running_for`, `not_running`) |
+| `services/questions.py` | Questions as players see them (options, quiz labels, documents), `check` (grading a new answer; a typed answer the grader can't read is refused with a 400 before anything is recorded, `domain/grading.unreadable`), `explain` (the official answer around a stored result, never re-graded), and answer secrecy (`running`, `running_for`, `not_running`) |
 | `services/practice.py` | Practice areas, next question, one question by ID, answering |
 | `services/daily.py` | Choosing the day's questions (`ensure_daily`), start, answer, closing abandoned ones |
 | `services/mock.py` | Mock runs: start, advance, time-outs, answer, summary |

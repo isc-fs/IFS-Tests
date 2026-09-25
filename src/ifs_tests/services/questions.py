@@ -31,7 +31,7 @@ from ..db.models import (
     quiz_events,
 )
 from ..domain.daily import madrid_day
-from ..domain.grading import grade
+from ..domain.grading import grade, unreadable
 from .errors import UserError
 
 if TYPE_CHECKING:
@@ -197,7 +197,8 @@ def check(db: DB, q: Question, options: list[int] | None, value: str | None, uns
     """Grade a new answer and return everything needed to explain it. Never call before the player answered.
     `unsure` is "I'm not sure": no answer, marked not right, the official answer shown. An option FS-Quiz
     removed is refused like any unknown one, even if it was on screen; answers that picked it earlier still
-    show it (`show`)."""
+    show it (`show`). A typed answer the grader can't read (units, a thousands comma) is refused before anything
+    is recorded, so the player can fix it while the clock runs."""
     choices = db.scalars(
         select(AnswerOption.id).where(AnswerOption.question_id == q.id, AnswerOption.retired.is_(False))
     ).all()
@@ -206,6 +207,8 @@ def check(db: DB, q: Question, options: list[int] | None, value: str | None, uns
     key = db.get(AnswerKey, q.id)
     k = key.effective if key else None
     passed = unsure and q.graded
+    if q.graded and not passed and (problem := unreadable(k, value)):
+        raise UserError(problem, fields={"value": problem})
     correct = (False if passed else grade(k, options=options, value=value)) if q.graded else None
     return explain(db, q, correct, passed)
 

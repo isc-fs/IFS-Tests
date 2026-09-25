@@ -193,3 +193,16 @@ def test_practice_never_shows_a_question_still_running_for_the_player(
     assert player.post("/api/mock/quizzes/9002/start").status_code == 200
     assert player.get(f"/api/practice/questions/{bank[90002]}").status_code == 409  # later in the mock run
     assert player.get(f"/api/practice/questions/{bank[90004]}").status_code == 200
+
+
+def test_an_answer_the_grader_cannot_read_is_refused_and_can_be_fixed(
+    player: TestClient, db: Session, bank: dict[int, int]
+) -> None:
+    url = f"/api/practice/questions/{bank[90012]}/answer"
+    for typed in ("2778 N", "2,778"):
+        r = player.post(url, json={"value": typed})
+        assert r.status_code == 400, r.text
+        assert r.json()["fields"]["value"] == r.json()["detail"]
+    assert "no units" in player.post(url, json={"value": "2778 N"}).json()["detail"]
+    assert db.scalar(select(func.count()).select_from(Attempt)) == 0
+    assert player.post(url, json={"value": "2778"}).json()["correct"] is True

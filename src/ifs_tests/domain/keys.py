@@ -23,10 +23,12 @@ Key = dict[str, Any]
 
 _JUNK = {0x200B: None, 0x200C: None, 0x200D: None, 0xFEFF: None, 0xA0: " ", 0x202F: " ", 0x2009: " "}
 _DASHES = {0x2212: "-", 0x2013: "-", 0x2014: "-"}
-_NUMBER = re.compile(r"^[+-]?\d+(?:[.,]\d+)?$")
+_NUMBER = re.compile(r"^[+-]?(?:\d+(?:[.,](\d+))?|\.(\d+))(?:e([+-]?\d+))?$", re.IGNORECASE)
+_THOUSANDS = re.compile(r"^[+-]?[1-9]\d{0,2},\d{3}$")
 _RANGE = re.compile(r"^([+-]?\d+(?:[.,]\d+)?)\s*-\s*([+-]?\d+(?:[.,]\d+)?)$")
 _SEQUENCE = re.compile(r"^\d+(?:-\d+){2,}$")
 _OR = re.compile(r"\sor\s", re.IGNORECASE)  # no quantifiers: linear on long runs of spaces
+_UNIT = re.compile(r"^[+-]?(?:\d+(?:[.,]\d+)?|\.\d+)\s*(?:[^\W\d_]|[%°])")  # 12.5 kW, 46%, 3.8 to 3.9
 MAX_TEXT = 24
 
 
@@ -35,15 +37,23 @@ def clean(text: str) -> str:
 
 
 def number(text: str) -> dict[str, Any] | None:
-    """'82,9' -> {'v': 82.9, 'd': 1}: the value and how many decimals it was given with."""
+    """'82,9' -> {'v': 82.9, 'd': 1}: the value and how many decimals it was given with. Also '.23' and
+    '2.3e-1'."""
     text = clean(text)
     if re.search(r",\s", text):
         return None
     text = text.replace(" ", "")
-    if not _NUMBER.match(text):
+    m = _NUMBER.match(text)
+    if not m:
         return None
-    decimals = len(re.split(r"[.,]", text)[1]) if re.search(r"[.,]", text) else 0
-    return {"v": float(text.replace(",", ".")), "d": decimals}
+    decimals = len(m.group(1) or m.group(2) or "") - int(m.group(3) or 0)
+    return {"v": float(text.replace(",", ".")), "d": max(decimals, 0)}
+
+
+def ambiguous(text: str) -> bool:
+    """'64,107': a decimal comma or a thousands separator? Only a player's answer is asked; keys are read with
+    a decimal comma, as FS-Quiz writes them."""
+    return bool(_THOUSANDS.match(clean(text).replace(" ", "")))
 
 
 def split_values(text: str, expected: int | None = None) -> list[str]:
@@ -70,12 +80,22 @@ def numbers(text: str, expected: int | None = None) -> list[dict[str, Any]] | No
     return [p for p in parts if p is not None]
 
 
-def value_range(text: str) -> dict[str, float] | None:
+def range_ends(text: str) -> tuple[str, str] | None:
     m = _RANGE.match(clean(text).replace(" ", ""))
-    if not m:
+    return (m.group(1), m.group(2)) if m else None
+
+
+def value_range(text: str) -> dict[str, float] | None:
+    ends = range_ends(text)
+    if not ends:
         return None
-    lo, hi = (float(x.replace(",", ".")) for x in m.groups())
+    lo, hi = (float(x.replace(",", ".")) for x in ends)
     return {"lo": min(lo, hi), "hi": max(lo, hi)}
+
+
+def alternatives(text: str) -> list[str]:
+    """'118 or 122' -> ['118', '122']: answers any of which is right."""
+    return [t.strip() for t in _OR.split(text or "")]
 
 
 def normal_text(text: str) -> str:
@@ -91,12 +111,14 @@ def _alternative(qtype: str, text: str) -> tuple[str, Any] | None:
     if n := number(text):
         return "number", n
     if ns := numbers(text):
-        # Ascending whole numbers read as "which of these" sets, where order doesn't matter.
+        # Three or more ascending whole numbers read as a "which of these" set, where order doesn't matter. A pair
+        # answers two things in the order the question asks ("1, 7": days for one deadline, then the other).
         whole = all(x["d"] == 0 for x in ns)
         ascending = all(a["v"] < b["v"] for a, b in zip(ns, ns[1:], strict=False))
-        return "numbers", {"values": ns, "ordered": not (whole and ascending)}
+        return "numbers", {"values": ns, "ordered": not (whole and ascending and len(ns) >= 3)}
     short = clean(text)
-    if 0 < len(short) <= MAX_TEXT and "," not in short:
+    # A number with a unit isn't a code: players typing the number would be marked wrong.
+    if 0 < len(short) <= MAX_TEXT and "," not in short and not _UNIT.match(short):
         return "text", normal_text(short)
     return None
 
@@ -119,11 +141,11 @@ def build_key(qtype: str, answers: list[dict[str, Any]], option_ids: list[int] |
             "options": [ids[i] for i in correct],
         }
     if qtype in ("input", "input-range"):
-        texts = [t.strip() for i in correct for t in _OR.split(answers[i]["text"] or "")]
-        alternatives = [_alternative(qtype, t) for t in texts]
-        kinds = {a[0] for a in alternatives if a}
-        if None not in alternatives and len(kinds) == 1:
-            return {"kind": kinds.pop(), "accept": [a[1] for a in alternatives if a]}
+        texts = [t for i in correct for t in alternatives(answers[i]["text"])]
+        read = [_alternative(qtype, t) for t in texts]
+        kinds = {a[0] for a in read if a}
+        if None not in read and len(kinds) == 1:
+            return {"kind": kinds.pop(), "accept": [a[1] for a in read if a]}
     return {"kind": "self"}
 
 
