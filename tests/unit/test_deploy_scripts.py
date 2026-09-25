@@ -99,9 +99,8 @@ def test_refresh_bank_passes_allow_mass_removal_to_the_push(tmp_path: Path) -> N
     assert done.returncode == 0, done.stderr
     assert len(docker) == 1 and docker[0].endswith("run --rm api ifs-tests push --allow-mass-removal")
     done, docker = run(tmp_path, "refresh-bank.sh", "staging", "--allow-mass-removal")
-    assert done.returncode == 0, done.stderr
-    assert "ifs-tests mirror --refresh --images" in docker[0]
-    assert docker[1].endswith("ifs-tests push --allow-mass-removal")
+    # never on a mirror fetched in the same run: that's the broken-mirror case the guard is for
+    assert done.returncode != 0 and "needs --no-mirror" in done.stderr and docker == []
 
 
 @pytest.mark.parametrize("args", [["staging", "--force"], ["staging", "--no-mirror", "--no-mirror"]])
@@ -113,7 +112,7 @@ def test_refresh_bank_refuses_unknown_options(tmp_path: Path, args: list[str]) -
 
 def test_refresh_bank_checks_the_env_file_with_allow_mass_removal_too(tmp_path: Path) -> None:
     server(tmp_path, mode=0o644)
-    done, docker = run(tmp_path, "refresh-bank.sh", "staging", "--allow-mass-removal")
+    done, docker = run(tmp_path, "refresh-bank.sh", "staging", "--no-mirror", "--allow-mass-removal")
     assert done.returncode != 0 and "must be chmod 600" in done.stderr and docker == []
 
 

@@ -21,7 +21,16 @@ from .questions import Checked, check, explain, running
 LOCK = 0x1F5DA11  # pg advisory lock key for choosing the day's questions
 
 
-def ensure_daily(db: DB, day: date) -> dict[str, int]:
+def _running_since(db: DB, day: date, area: str | None) -> datetime:
+    """When the day's question in `area` started running for players: when it was drawn (a reviewer's
+    redraw included), never before that day's midnight. Rows drawn before `drawn_at` existed: midnight."""
+    drawn = db.scalar(
+        select(DailyQuestion.drawn_at).where(DailyQuestion.day == day, DailyQuestion.area == area)
+    )
+    return max(madrid_midnight(day), drawn) if drawn else madrid_midnight(day)
+
+
+def ensure_daily(db: DB, day: date, now: datetime) -> dict[str, int]:
     """Choose the day's questions once; concurrent callers wait for the first and reuse its choice.
     A chosen question that a reviewer hid (or that stopped being gradable) is replaced for everyone who
     hasn't started it yet; people who did keep theirs."""
@@ -49,8 +58,10 @@ def ensure_daily(db: DB, day: date) -> dict[str, int]:
         if qid is not None:
             db.execute(
                 insert(DailyQuestion)
-                .values(day=day, area=area, question_id=qid)
-                .on_conflict_do_update(index_elements=["day", "area"], set_={"question_id": qid})
+                .values(day=day, area=area, question_id=qid, drawn_at=now)
+                .on_conflict_do_update(
+                    index_elements=["day", "area"], set_={"question_id": qid, "drawn_at": now}
+                )
             )
             chosen[area] = qid
     db.commit()
@@ -137,7 +148,7 @@ class Status:
 def status(db: DB, user: User, now: datetime) -> Status:
     close_expired(db, now, user.id)
     day = rules.madrid_day(now)
-    chosen = ensure_daily(db, day)
+    chosen = ensure_daily(db, day, now)
     today: dict[str | None, Attempt] = {
         a.area: a
         for a in db.scalars(
@@ -182,7 +193,7 @@ def start(db: DB, user: User, area: str, now: datetime) -> tuple[Question, Attem
         if existing.submitted_at:
             raise UserError("You've already answered today's question for this area.", 409)
         return db.get_one(Question, existing.question_id), existing
-    qid = ensure_daily(db, day).get(area)
+    qid = ensure_daily(db, day, now).get(area)
     if qid is None:
         raise UserError("There's no daily question for this area today.", 404)
     q = db.get_one(Question, qid)
@@ -259,7 +270,7 @@ def answer(
             .returning(Attempt.id)
         ).first()
         if recorded:  # only the request that recorded the answer earns the XP
-            hidden = madrid_midnight(a.day)  # running for the player since: see xp._hidden_mock
+            hidden = _running_since(db, a.day, a.area)  # see xp._hidden_mock
             repeat = xp.last_seen(db, user.id, q.id, now, other_than=a.id, hidden_since=hidden) is not None
             granted = xp.grant(
                 db,
@@ -291,7 +302,9 @@ def close_expired(db: DB, now: datetime, user_id: int | None = None) -> int:
     """Close daily questions left to run out: late and wrong, like an answer sent after the time.
     Otherwise closing the tab on a hard question would dodge the XP a wrong answer costs."""
     stmt = (
-        select(Attempt.id, Attempt.question_id, Attempt.user_id, Attempt.created_at, Attempt.day)
+        select(
+            Attempt.id, Attempt.question_id, Attempt.user_id, Attempt.created_at, Attempt.day, Attempt.area
+        )
         .where(
             Attempt.mode == "daily", Attempt.submitted_at.is_(None), Attempt.deadline_at < now - rules.GRACE
         )
@@ -300,7 +313,7 @@ def close_expired(db: DB, now: datetime, user_id: int | None = None) -> int:
     if user_id is not None:
         stmt = stmt.where(Attempt.user_id == user_id)
     closed = 0
-    for attempt_id, question_id, owner, started, day in db.execute(stmt).all():
+    for attempt_id, question_id, owner, started, day, area in db.execute(stmt).all():
         xp.lock(db, owner)
         q = db.get_one(Question, question_id)
         correct = False if q.graded else None
@@ -311,7 +324,7 @@ def close_expired(db: DB, now: datetime, user_id: int | None = None) -> int:
             .returning(Attempt.id)
         ).first()
         if recorded:
-            hidden = madrid_midnight(day or rules.madrid_day(started))
+            hidden = _running_since(db, day or rules.madrid_day(started), area)
             repeat = (
                 xp.last_seen(db, owner, q.id, now, other_than=attempt_id, hidden_since=hidden) is not None
             )

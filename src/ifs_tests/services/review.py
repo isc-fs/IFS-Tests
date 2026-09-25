@@ -220,7 +220,7 @@ def set_answer(
         shown = "\n".join(o.text for o in picked)
     else:
         text = (value or "").strip()
-        parsed = grading.correction(q.type, text)
+        parsed = grading.correction(q.type, text, keys.decimal_comma(q.text))
         if parsed is None:
             raise UserError(
                 "That can't be graded automatically.",
