@@ -6,6 +6,7 @@ from __future__ import annotations
 import csv
 import io
 import random
+import re
 import threading
 import time
 from collections import defaultdict
@@ -885,14 +886,22 @@ def _score(
         room.reveals.append(Reveal(p, shown, questions[p].table_id, explain(db, q, None), answers[p]))
 
 
+_NUMBER = re.compile(r"[+-]?\d+(?:[.,]\d+)?(?:[eE][+-]?\d+)?")
+
+
 def _cell(value: object) -> str:
-    """Spreadsheets run a cell starting with = + - @ as a formula; names and answers come from players."""
+    """Spreadsheets run a cell starting with = + - @ as a formula; names and answers come from players. A plain
+    number (a typed answer of -12.5) is no formula and stays as it is."""
     text = str(value)
-    return "'" + text if text[:1] in ("=", "+", "-", "@", "\t", "\r") else text
+    if text[:1] in ("=", "+", "-", "@", "\t", "\r") and not _NUMBER.fullmatch(text):
+        return "'" + text
+    return text
 
 
 def results_csv(db: DB, user: User, code: str) -> str:
-    """One row per table answer (or per question nobody answered), as the Excel sheet had them."""
+    """One row per table answer (or per question nobody answered), as the Excel sheet had them. For Excel as the
+    team has it (Spanish): ";" between cells, its list separator, and a byte order mark so it reads UTF-8. A
+    "sep=" line would split the cells in any locale but makes Excel ignore the mark, garbling the accents."""
     s = _session(db, code)
     if not _runs(user, s):
         raise UserError("Only the host downloads the results.", 403)
@@ -917,7 +926,8 @@ def results_csv(db: DB, user: User, code: str) -> str:
     )
     official = {q.id: explain(db, q, None).official or "" for q in {row[1] for row in rows}}
     out = io.StringIO()
-    w = csv.writer(out)
+    out.write("\ufeff")
+    w = csv.writer(out, delimiter=";")
     w.writerow(
         [
             "question",
@@ -934,7 +944,8 @@ def results_csv(db: DB, user: User, code: str) -> str:
     for pos, q, owner, a, captain in rows:
         row = [q.text[:120], tables.get(owner, "every table"), "", "", ""]
         if a is not None:
-            sent = a.answer.get("value") or ", ".join(
+            # One option a line, as the official answer lists them.
+            sent = a.answer.get("value") or "\n".join(
                 texts.get(o, "?") for o in a.answer.get("options") or []
             )
             row[2:] = [tables.get(a.table_id, ""), captain or "", "not sure" if a.passed else sent]

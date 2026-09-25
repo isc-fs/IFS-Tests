@@ -176,7 +176,7 @@ No session needed; the CSRF header still is.
 | `POST /api/live/sessions/{code}/end` | host | Finish now |
 | `PUT /api/live/sessions/{code}/proposal` | seated player | Suggest an answer to the captain of the table answering |
 | `POST /api/live/sessions/{code}/answer` | captain of the answering table | Send the table's one answer |
-| `GET /api/live/sessions/{code}/results.csv` | host | Results as CSV, one row per table answer (or per question nobody answered), with the columns `question`, `text`, `for table`, `answered by`, `captain`, `answer`, `official answer`, `right`, `points`; cells that a spreadsheet would run as formulas are escaped |
+| `GET /api/live/sessions/{code}/results.csv` | host | Results as CSV, one row per table answer (or per question nobody answered), with the columns `question`, `text`, `for table`, `answered by`, `captain`, `answer`, `official answer`, `right`, `points`; UTF-8 with a byte order mark, `;` between cells (Excel in Spanish); cells that a spreadsheet would run as formulas are escaped, plain numbers aren't |
 | `GET /api/live/sessions/{code}/events` | its host or a player | Server-Sent Events stream of version numbers (below) |
 
 ### Outside the routers

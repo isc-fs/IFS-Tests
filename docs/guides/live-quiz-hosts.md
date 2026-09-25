@@ -187,10 +187,16 @@ Press **Download the results (CSV)** for a spreadsheet. Only the host gets this 
 | `for table` | The table the question went to, or "every table" |
 | `answered by` | The table that sent this answer (empty if nobody answered) |
 | `captain` | Who sent it |
-| `answer` | The answer sent, or "not sure" for a pass |
+| `answer` | The answer sent, or "not sure" for a pass; several options one a line, like the official answer |
 | `official answer` | The answer it was graded against |
 | `right` | yes or no (empty for an ungraded question or no answer) |
 | `points` | Speed points |
+
+The file is made for Excel set to Spanish: cells are separated by `;` and it starts with a UTF-8 byte order mark, so
+a double click opens it in columns with the accents right. Excel set to English (comma as its list separator) shows
+each row in one column: open it with **Data › From Text/CSV** and pick the semicolon, or use Google Sheets or
+LibreOffice, which detect it. A name or answer starting with `=`, `+`, `-` or `@` gets a `'` in front so the
+spreadsheet doesn't run it as a formula; a plain number such as `-12.5` is left as it is.
 
 ## What players earn
 
