@@ -1,12 +1,12 @@
 import { type ReactNode, useEffect, useId, useRef, useState } from 'react'
 import type { AnswerIn, Feedback, HintOut, PlayQuestion } from '../api/types.gen'
-import { errorMessage, fieldErrors, ME_KEY, queryClient, useMe, useOnline } from '../lib/api'
+import { errorMessage, ME_KEY, queryClient, useMe, useOnline } from '../lib/api'
 import { AREAS, TOPICS } from '../lib/areas'
 import { changes, lp, numeral, TOP, tierOf } from '../lib/rank'
 import { BONUS_NAMES, xp } from '../lib/xp'
 import { Emblem } from './Emblem'
 import { QuestionDocs } from './QuestionDocs'
-import { Field, Form, Notice } from './Form'
+import { Field, Form, Notice, useFieldErrors } from './Form'
 import { ReportProblem } from './ReportProblem'
 
 const HINTS: Record<string, string> = {
@@ -283,6 +283,8 @@ export function QuestionCard({
     onAnswer(choice ? { options: chosen } : kind === 'self' ? {} : { value })
   }, [expired, answered, choice, chosen, kind, value, onAnswer])
 
+  const { errors: refused, touch } = useFieldErrors(error)
+
   const submit = () => {
     if (kind === 'self') return onAnswer({})
     const empty = choice ? chosen.length === 0 : !value.trim()
@@ -312,7 +314,7 @@ export function QuestionCard({
           <img src={src} alt="Figure for this question (opens full size)" />
         </a>
       ))}
-      <Form onSubmit={submit} error={missing} className="stack">
+      <Form onSubmit={submit} error={missing ?? error} className="stack">
         {choice && (
           <fieldset className="choices" aria-describedby={missing ? `${legend}-missing` : undefined}>
             <legend>{kind === 'choice-many' ? `${answerLabel}: select all that apply` : answerLabel}</legend>
@@ -368,9 +370,10 @@ export function QuestionCard({
             onChange={(e) => {
               setValue(e.target.value)
               setMissing(undefined)
+              touch('value')
             }}
             hint={formatHint(question)}
-            error={missing ?? fieldErrors(error).value}
+            error={missing ?? refused.value}
           />
         )}
         {expired && !answered && !stuck && <Notice tone="error">Time's up. Sending your answer…</Notice>}
