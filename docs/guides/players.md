@@ -103,7 +103,9 @@ gets the same three. New questions appear at midnight, Madrid time.
    **Back to today's questions** returns to the list; **See the question** reopens an answered one.
 
 If you leave while the clock runs, the area shows **Continue** and the clock keeps running: it is the server's,
-not your browser's.
+not your browser's. A question started just before midnight stays yours after midnight: the area shows
+**Continue** until you answer it or its time runs out, and an answer in time counts for the day you started it
+(your streak included). The new day's question for that area appears after.
 
 **Late answers.** The server allows 3 seconds of grace after the clock. An answer that arrives later is recorded
 but counted as wrong. A question you never answer is closed as out of time: it costs LP like a wrong answer and

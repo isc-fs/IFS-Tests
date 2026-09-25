@@ -158,7 +158,8 @@ see a notice on the Admin page when questions changed.
 You never see the answer to a question you still have to answer yourself. For you, a question is "running" when it
 is:
 
-- one of today's daily questions you haven't answered yet (any of the three areas, opened or not);
+- one of today's daily questions you haven't answered yet (any of the three areas, opened or not), or yesterday's
+  one you opened before midnight and are still answering;
 - a question of a mock run you have open, not yet answered in that run;
 - the open question of a live quiz you are playing in, or any question of a live rehearsal you are in, until it
   ends.

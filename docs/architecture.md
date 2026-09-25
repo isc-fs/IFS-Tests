@@ -211,7 +211,7 @@ FS-Quiz answers are public on fs-quiz.eu, so the goal is narrower: the server ne
 
 - **Keys live apart.** Correct answers are only in `answer_keys`; nothing that serialises a question touches that table. Responses are explicit schemas.
 - **Answers travel only in responses meant for them:** the player's own submission (practice, daily, mock), a finished mock run, a live question once revealed, and the reviewer tools. `tests/api/test_security.py` walks every response schema in the OpenAPI document and fails if an answer field (`official`, `correct_options`, `feedback`, …) appears anywhere else.
-- **"Running" questions** are defined in one place, `running` in `src/ifs_tests/services/questions.py`: today's daily questions the player hasn't answered, the unanswered questions of their open mock runs, and the open question of a live quiz they play in (every question of it, in a rehearsal that reveals at the end). `running_for` checks one question; `not_running` raises 409. They are used by:
+- **"Running" questions** are defined in one place, `running` in `src/ifs_tests/services/questions.py`: today's daily questions the player hasn't answered and any daily they started and haven't answered (one started before midnight), the unanswered questions of their open mock runs, and the open question of a live quiz they play in (every question of it, in a rehearsal that reveals at the end). `running_for` checks one question; `not_running` raises 409. They are used by:
 
 | Place | What happens to a running question |
 |---|---|

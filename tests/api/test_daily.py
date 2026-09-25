@@ -254,6 +254,37 @@ def test_a_question_started_before_midnight_can_be_answered_after(
     assert player.post("/api/daily/rules/start").status_code == 200  # a new day, a new question
 
 
+def test_a_daily_started_before_midnight_stays_its_days_until_its_deadline(
+    player: TestClient, db: Session, clock: Clock
+) -> None:
+    clock.now = datetime(2026, 9, 29, 10, 0, tzinfo=UTC)
+    login(player, "marta@alu.comillas.edu", PASSWORD)
+    play(player, db, "elec")
+    next_day(player, clock)
+    play(player, db, "elec")  # a two-day streak so far
+    clock.now = datetime(2026, 10, 1, 21, 59, 30, tzinfo=UTC)  # 23:59:30 in Madrid
+    login(player, "marta@alu.comillas.edu", PASSWORD)
+    started = player.post("/api/daily/mech/start").json()
+    qid = started["question"]["id"]
+    clock.advance(seconds=50)  # 00:00:20 on 2 October, the clock still running
+    status = player.get("/api/daily").json()
+    mech = next(a for a in status["areas"] if a["area"] == "mech")
+    assert (status["day"], mech["state"], mech["deadline_at"]) == (
+        "2026-10-02",
+        "started",
+        started["deadline_at"],
+    )
+    assert player.post("/api/daily/mech/start").json()["attempt_id"] == started["attempt_id"]  # Continue
+    assert player.get(f"/api/practice/questions/{qid}").status_code == 409  # still secret
+    assert player.post(f"/api/practice/questions/{qid}/hint").status_code == 409
+    assert player.post(f"/api/practice/questions/{qid}/answer", json={"unsure": True}).status_code == 409
+    r = player.post(f"/api/daily/attempts/{started['attempt_id']}/answer", json=right_answer(db, qid)).json()
+    assert (r["late"], r["streak"]) == (False, 3)
+    status = player.get("/api/daily").json()
+    assert status["streak"] == 3
+    assert next(a for a in status["areas"] if a["area"] == "mech")["state"] == "new"  # the new day's question
+
+
 def test_attempts_belong_to_their_player(
     player: TestClient, app_client: TestClient, new_client: NewClient
 ) -> None:
