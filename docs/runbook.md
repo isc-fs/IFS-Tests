@@ -307,6 +307,22 @@ database runs without JIT compilation (`jit=off` in `deploy/compose.yaml`): late
 area boards' sums on every view, which took two thirds of their time (with JIT on, those boards stayed at 2.5–3.3 s
 in the last row).
 
+A data export holds one member's whole history in memory. Measured with the red team's `perf/export_mem.py` (the
+heaviest members' exports, 8.6 MB of JSON each at three seasons) on the api container (512 MiB; 176 MiB at rest):
+
+| | Previous release | This release |
+|---|---|---|
+| 6 exports, one season: peak / held 20 s later | 292 / 284 MiB | 227 / 214 MiB |
+| 6 exports, three seasons: peak / held | 494 / 415 MiB, 2.2 s each at worst | 303 / 247 MiB, 1.1 s |
+| 12 at once, three seasons | 512 MiB (the limit), 282 MiB pushed to swap | 325 / 246 MiB; 4 served, 8 told to try again (429) |
+
+An export now reads only the columns it shows, in batches, each question's text once, and writes the JSON straight
+to bytes. Each api process prepares at most two at once and answers 429 ("Another download is being prepared. Try
+again in a minute.") to more, because Nginx lets one address send a burst of 80 to that path. The api also has
+`memswap_limit` equal to its memory limit: if it ever goes past it, the kernel stops a worker (uvicorn starts a new
+one; its live streams reconnect) instead of the whole api slowing down in swap. Exports are rare: if members ever see
+that 429 in normal use, raise `EXPORTS_AT_ONCE` in `services/privacy.py` and check the memory with the probe.
+
 ---
 
 ## 6. Incidents

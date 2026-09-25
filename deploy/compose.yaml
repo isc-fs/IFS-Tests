@@ -28,6 +28,8 @@ services:
   api:
     <<: *app
     mem_limit: 512m
+    # No swap on any host: past the limit a worker restarts instead of every request slowing down in swap.
+    memswap_limit: 512m
     cpus: 1.0
     # /readyz queries the database as app_rt, so a wrong APP_PASSWORD or a database outage shows as unhealthy
     # (the image's own check, /healthz, only says the process is up).

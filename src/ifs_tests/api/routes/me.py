@@ -20,6 +20,7 @@ from ..schemas import (
     Progress,
     RankOut,
     Step,
+    export_json,
 )
 from .auth import clear_cookie
 
@@ -101,11 +102,13 @@ def change_password(
     accounts.change_password(db, user, body.current_password, body.new_password, keep, now)
 
 
-@router.get("/export")
-def export_my_data(user: Member, db: Db, now: Now, response: Response) -> Export:
+@router.get("/export", response_model=Export)
+def export_my_data(user: Member, db: Db, now: Now) -> Response:
+    with privacy.export_slot():  # written out inside the slot: the JSON is the other big copy
+        body = export_json(privacy.export(db, user, now))
     # Names can hold any Latin letter; headers only Latin-1, so the file name carries the date alone.
-    response.headers["Content-Disposition"] = f'attachment; filename="mingoquiz-export-{now.date()}.json"'
-    return Export.model_validate(privacy.export(db, user, now))
+    disposition = f'attachment; filename="mingoquiz-export-{now.date()}.json"'
+    return Response(body, media_type="application/json", headers={"Content-Disposition": disposition})
 
 
 @router.post("/delete", status_code=204)

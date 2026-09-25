@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -35,6 +38,20 @@ from . import live
 from .accounts import AccountError, _active_admin_ids, _record_failure, audit
 
 NOT_CONFIRMED = "Your password is wrong."
+EXPORTS_AT_ONCE = 2  # per api process
+_exporting = threading.BoundedSemaphore(EXPORTS_AT_ONCE)
+
+
+@contextmanager
+def export_slot() -> Iterator[None]:
+    """Hold one of the process's export slots while an export is prepared and written out: each holds a
+    member's whole history in memory, and a burst of downloads would take the api past its memory limit."""
+    if not _exporting.acquire(blocking=False):
+        raise AccountError("Another download is being prepared. Try again in a minute.", 429)
+    try:
+        yield
+    finally:
+        _exporting.release()
 
 
 def export(db: DB, user: User, now: datetime) -> dict[str, Any]:
@@ -47,33 +64,59 @@ def export(db: DB, user: User, now: datetime) -> dict[str, Any]:
     )
     running = set(db.scalars(select(LiveSession.id).where(LiveSession.state != "finished")))
 
-    def hidden(a: Attempt) -> bool:
-        return a.session_id in open_runs or a.live_session_id in running
-
-    attempts = [
-        {
-            "question_id": q.id,
-            "question": q.text,
-            "mode": a.mode,
-            "area": a.area,
-            "answer": a.answer,
-            "correct": None if hidden(a) else a.correct,
-            "passed": a.passed,
-            "hint_used": a.hint_used,
-            "xp": 0 if hidden(a) else a.xp,
-            "lp": 0.0 if hidden(a) else a.lp,
-            "late": a.late,
-            "day": a.day,
-            "started_at": a.created_at,
-            "submitted_at": a.submitted_at,
-        }
-        for a, q in db.execute(
-            select(Attempt, Question)
-            .join(Question, Question.id == Attempt.question_id)
-            .where(Attempt.user_id == user.id)
-            .order_by(Attempt.created_at, Attempt.id)
-        ).tuples()
-    ]
+    # Only the columns the file shows, in batches, and each question's text once: a member's whole history
+    # as ORM rows took tens of MiB per download (PERF-04).
+    texts = {
+        qid: text
+        for qid, text in db.execute(
+            select(Question.id, Question.text).where(
+                Question.id.in_(select(Attempt.question_id).where(Attempt.user_id == user.id))
+            )
+        )
+    }
+    rows = db.execute(
+        select(
+            Attempt.question_id,
+            Attempt.mode,
+            Attempt.area,
+            Attempt.answer,
+            Attempt.correct,
+            Attempt.passed,
+            Attempt.hint_used,
+            Attempt.xp,
+            Attempt.lp,
+            Attempt.late,
+            Attempt.day,
+            Attempt.created_at,
+            Attempt.submitted_at,
+            Attempt.session_id,
+            Attempt.live_session_id,
+        )
+        .where(Attempt.user_id == user.id)
+        .order_by(Attempt.created_at, Attempt.id)
+        .execution_options(yield_per=1000)
+    )
+    attempts = []
+    for a in rows:
+        hidden = a.session_id in open_runs or a.live_session_id in running
+        attempts.append(
+            {
+                "question_id": a.question_id,
+                "question": texts[a.question_id],
+                "mode": a.mode,
+                "area": a.area,
+                "answer": a.answer,
+                "correct": None if hidden else a.correct,
+                "passed": a.passed,
+                "hint_used": a.hint_used,
+                "xp": 0 if hidden else a.xp,
+                "lp": 0.0 if hidden else a.lp,
+                "late": a.late,
+                "day": a.day,
+                "started_at": a.created_at,
+                "submitted_at": a.submitted_at,
+            }
+        )
     mock_runs = [
         {
             "quiz_id": m.quiz_id,

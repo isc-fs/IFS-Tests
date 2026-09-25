@@ -1,14 +1,16 @@
 from __future__ import annotations
 
+import json
 import threading
 import time
+import tracemalloc
 from collections.abc import Callable
 from datetime import date, timedelta
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine, func, inspect, select, update
+from sqlalchemy import Engine, func, inspect, select, text, update
 from sqlalchemy.orm import Session, sessionmaker
 
 from ifs_tests.db.models import Attempt, AuditLog, Base, Invite, LiveAnswer, LiveSession, StreakFreeze, User
@@ -481,3 +483,90 @@ def test_deleting_an_account_locked_meanwhile_is_refused(
     assert refused.value.status == 429
     db.expire_all()
     assert db.get(User, uid) is not None
+
+
+# Capacity (PERF-04): a download holds one member's whole history in memory.
+
+
+def long_history(db: Session, user_id: int, times: int) -> int:
+    """`times` practice answers to every question of the bank, like several seasons of play."""
+    db.execute(
+        text("""
+        INSERT INTO attempts (user_id, question_id, mode, answer, correct, created_at, area, xp, lp)
+        SELECT :uid, q.id, 'practice', '{"options": [], "value": "12.5", "unsure": false}', true,
+               now() - interval '1 hour' * g, q.area, 10, 0
+        FROM questions q CROSS JOIN generate_series(1, :times) g
+        """),
+        {"uid": user_id, "times": times},
+    )
+    db.commit()
+    return count(db, Attempt, Attempt.user_id == user_id)
+
+
+def test_an_export_holds_the_history_once_not_as_database_rows(
+    app_client: TestClient,
+    admin: User,
+    new_client: NewClient,
+    db: Session,
+    bank: dict[int, int],
+    clock: Clock,
+) -> None:
+    login(app_client)
+    marta = new_client()
+    uid = member(app_client, marta, "marta@alu.comillas.edu", "Marta")["id"]
+    assert long_history(db, uid, 200) > 2000
+    user = db.get(User, uid)
+    assert user
+    privacy.export(db, user, clock.now)  # compiles and caches the statements first
+    db.rollback()
+    tracemalloc.start()
+    try:
+        answers = privacy.export(db, user, clock.now)["answers"]
+        peak = tracemalloc.get_traced_memory()[1]
+    finally:
+        tracemalloc.stop()
+    size = len(json.dumps(answers, default=str))
+    # About three bytes per byte of JSON; loading every attempt with its question took eight.
+    assert peak < 4 * size, f"{peak / size:.1f} bytes of memory per byte of JSON"
+
+
+def test_a_process_prepares_two_exports_at_once_and_turns_more_away(
+    app_client: TestClient, admin: User, new_client: NewClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    login(app_client)
+    members = []
+    for name in ("Marta", "Leo", "Pau"):
+        c = new_client()
+        member(app_client, c, f"{name.lower()}@alu.comillas.edu", name)
+        members.append(c)
+    preparing = threading.Semaphore(0)
+    finish = threading.Event()
+    real = privacy.export
+
+    def slow(*args: Any) -> dict[str, Any]:
+        preparing.release()
+        assert finish.wait(10)
+        return real(*args)
+
+    monkeypatch.setattr(privacy, "export", slow)
+    answers: list[tuple[int, Any]] = []
+
+    def download(c: TestClient) -> None:
+        r = c.get("/api/me/export")
+        answers.append((r.status_code, r.json().get("detail")))
+
+    threads = [threading.Thread(target=download, args=(c,)) for c in members]
+    for t in threads:
+        t.start()
+    assert preparing.acquire(timeout=10) and preparing.acquire(timeout=10)
+    third_started = preparing.acquire(timeout=2)
+    finish.set()
+    for t in threads:
+        t.join(15)
+    assert not third_started
+    assert sorted(answers, key=lambda a: a[0]) == [
+        (200, None),
+        (200, None),
+        (429, "Another download is being prepared. Try again in a minute."),
+    ]
+    assert members[2].get("/api/me/export").status_code == 200

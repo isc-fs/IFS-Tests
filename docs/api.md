@@ -76,7 +76,7 @@ No session needed; the CSRF header still is.
 | `GET /api/me` | The signed-in user with rank, account level, streak and training wheels (`progress`) |
 | `PATCH /api/me` | Change display name, vertical, sub-departments or leaderboard opt-out; only the fields sent |
 | `POST /api/me/password` | Change password (needs the current one); ends the other sessions |
-| `GET /api/me/export` | Everything stored about the caller, as a JSON download |
+| `GET /api/me/export` | Everything stored about the caller, as a JSON download. 429 while the process is already preparing two downloads (`privacy.EXPORTS_AT_ONCE`) |
 | `POST /api/me/delete` | Delete the account after confirming the password; clears the cookie |
 
 ### `/api/admin` (`api/routes/admin.py`): `Admin`
@@ -86,7 +86,7 @@ No session needed; the CSRF header still is.
 | `GET /api/admin/users` | All accounts, alphabetically |
 | `PATCH /api/admin/users/{user_id}` | Change email, role, status or position; only the fields sent (not your own role or status; never the last active admin). A new email is validated as at sign-up (400 "Enter a valid email address.", 409 "An account with this email already exists.", both as field errors on `email`) and audited as `user.email` without the addresses. A position change first applies a season reset still pending |
 | `DELETE /api/admin/users/{user_id}` | Delete someone else's account |
-| `GET /api/admin/users/{user_id}/export` | Someone's data export, for a person who can't sign in; audited |
+| `GET /api/admin/users/{user_id}/export` | Someone's data export, for a person who can't sign in; audited; the same 429 as `/api/me/export` |
 | `POST /api/admin/alumni` | Mark a list of accounts as alumni (season rollover) |
 | `POST /api/admin/users/{user_id}/reset-link` | Create a 24-hour password reset link |
 | `POST /api/admin/users/{user_id}/revoke-sessions` | Sign someone out everywhere |
