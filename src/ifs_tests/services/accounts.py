@@ -355,6 +355,13 @@ def _active_admin_ids(db: DB, lock: bool = True) -> list[int]:
     return list(db.scalars(stmt))
 
 
+def check_still_admin(actor: User, admins: list[int]) -> None:
+    """After taking the admin lock: another admin may have demoted or deleted the actor since their request
+    was signed in."""
+    if actor.id not in admins:
+        raise AccountError("Only an active admin can do this.", 403)
+
+
 UNKNOWN_POSITION = "Unknown position on the team."
 
 
@@ -419,8 +426,9 @@ def update_user(
     if status is not None and status not in STATUSES:
         raise AccountError("Unknown status.")
     now = now or datetime.now(UTC)
-    # Lock every active admin row first, so two admins demoting each other can't both succeed.
+    # The admin lock first, so two admins demoting each other can't both succeed.
     admins = _active_admin_ids(db)
+    check_still_admin(actor, admins)
     user = db.get(User, user_id, with_for_update=True, populate_existing=True)
     if user is None:
         raise AccountError("No such user.", 404)

@@ -32,7 +32,7 @@ from ..db.models import (
 from ..domain import accounts as rules
 from ..domain import rank as rank_rules
 from . import live
-from .accounts import AccountError, _active_admin_ids, _record_failure, audit
+from .accounts import AccountError, _active_admin_ids, _record_failure, audit, check_still_admin
 
 NOT_CONFIRMED = "Your password is wrong."
 
@@ -306,6 +306,7 @@ def delete_user(db: DB, actor: User, user_id: int, now: datetime) -> None:
     if user_id == actor.id:
         raise AccountError("Delete your own account from your profile.", 403)
     locked = _lock(db, user_id)
+    check_still_admin(actor, locked.admins)
     if locked.user is None:
         raise AccountError("No such user.", 404)
     _guard_last_admin(locked.admins, locked.user)
@@ -319,8 +320,7 @@ def delete_user(db: DB, actor: User, user_id: int, now: datetime) -> None:
 def mark_alumni(db: DB, actor: User, user_ids: list[int], now: datetime) -> int:
     """Season rollover: people who left the team. Signed out, off the boards, deleted in a year."""
     # Admin rows first, as every admin change: the acting admin must still be one, and stays one.
-    if actor.id not in _active_admin_ids(db):
-        raise AccountError("Only an active admin can do this.", 403)
+    check_still_admin(actor, _active_admin_ids(db))
     ids = set(user_ids) - {actor.id}
     users = db.scalars(
         select(User).where(User.id.in_(ids), User.status != "alumni").order_by(User.id).with_for_update()

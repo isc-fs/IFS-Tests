@@ -14,7 +14,7 @@ import pytest
 from sqlalchemy import Engine, func, select, text, update
 from sqlalchemy.orm import Session, sessionmaker
 
-from ifs_tests.db.models import Attempt, MockSession, Question, User
+from ifs_tests.db.models import Attempt, AuditLog, MockSession, Question, User
 from ifs_tests.domain import rank as rank_rules
 from ifs_tests.services import accounts, daily, live, maintenance, mock, practice, privacy
 from ifs_tests.services import xp as xp_service
@@ -541,3 +541,55 @@ def test_position_change_vs_answers(db: Session, app_engine: Engine, daily_playe
         assert final is not None and lp is not None
         placed = rank_rules.placement("technical_director")
         assert any(abs(final - v) < 0.011 for v in (placed, placed + lp)), (final, lp)
+
+
+def signed_in_then(engine: Engine, jobs: list[tuple[int, Callable[[Session, User], Any]]]) -> list[Any]:
+    """Each job's actor is loaded first, as the request's session check does, then they all act at once."""
+    barrier = threading.Barrier(len(jobs))
+    out: list[Any] = [None] * len(jobs)
+
+    def go(i: int) -> None:
+        actor_id, act = jobs[i]
+        with sessionmaker(engine, expire_on_commit=False)() as s:
+            me = s.get_one(User, actor_id)
+            s.commit()
+            barrier.wait()
+            try:
+                out[i] = act(s, me)
+            except Exception as e:  # noqa: BLE001
+                s.rollback()
+                out[i] = e
+
+    threads = [threading.Thread(target=go, args=(i,)) for i in range(len(jobs))]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(60)
+    return out
+
+
+@pytest.mark.parametrize("action", ["demote", "delete"])
+def test_two_of_three_admins_acting_on_each_other_at_once(
+    db: Session, app_engine: Engine, action: str
+) -> None:
+    """With three admins the last-admin rule doesn't stop it: the one who acts second is no admin by then."""
+    a, b = (u.id for u in mk(db, 3, "boss", role="admin")[:2])
+
+    def act(target: int) -> Callable[[Session, User], Any]:
+        if action == "demote":
+            return lambda s, me: accounts.update_user(s, me, target, role="member", now=NOW)
+        return lambda s, me: privacy.delete_user(s, me, target, NOW)
+
+    results = signed_in_then(app_engine, [(a, act(b)), (b, act(a))])
+    assert not unexpected(results), results
+    refused = [r for r in results if isinstance(r, accounts.AccountError)]
+    assert len(refused) == 1 and refused[0].status == 403, results
+    db.expire_all()
+    left = db.scalars(
+        select(User.id).where(User.id.in_([a, b]), User.role == "admin", User.status == "active")
+    ).all()
+    assert len(left) == 1
+    actors = set(
+        db.scalars(select(AuditLog.actor_id).where(AuditLog.action.in_(["user.update", "user.delete"])))
+    )
+    assert actors == set(left)  # the change is by the admin who is still one
