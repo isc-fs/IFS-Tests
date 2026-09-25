@@ -241,7 +241,7 @@ One run through a past quiz. **Personal data.**
 | `season` | Season (start year) the run started in |
 | `counted` | The first run of this quiz this season: moves LP. Replays earn XP only |
 | `position` | Questions answered so far |
-| `started_at`, `finished_at` | Null `finished_at` = still open |
+| `started_at`, `finished_at` | Null `finished_at` = still open. A run ended early (by its player, or by the nightly job after 2 days untouched) is finished too; its summary lists the questions it reached |
 
 Partial unique index **`uq_mock_sessions_open`** on (`user_id`, `quiz_id`) `WHERE finished_at IS NULL`: one open run per player and quiz; `services/mock.start` inserts with `ON CONFLICT DO NOTHING` and returns the open run.
 

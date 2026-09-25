@@ -59,10 +59,12 @@ def test_aids_come_off_one_at_a_time_and_stakes_only_grow() -> None:
 @pytest.mark.parametrize("points", [0, 300, 700, 1100, 1500, 2500])
 @pytest.mark.parametrize("difficulty", [1, 3, 5])
 @pytest.mark.parametrize("options", [2, 4, 5])
-def test_blind_guessing_never_pays(points: float, difficulty: int, options: int) -> None:
+@pytest.mark.parametrize("miss_streak", [0, 3, 10])
+def test_blind_guessing_never_pays(points: float, difficulty: int, options: int, miss_streak: int) -> None:
     p = 1 / options
-    right = lp_award(True, points, difficulty, "daily", options=options).amount
-    wrong = lp_award(False, points, difficulty, "daily", options=options).amount
+    kw: dict[str, Any] = {"options": options, "miss_streak": miss_streak}
+    right = lp_award(True, points, difficulty, "daily", **kw).amount
+    wrong = lp_award(False, points, difficulty, "daily", **kw).amount
     assert p * right + (1 - p) * wrong <= 0.01
 
 
@@ -112,15 +114,34 @@ def test_a_bad_run_is_cushioned_and_the_way_back_pays_more() -> None:
     for _ in range(3):
         miss = next_miss_streak(miss, False, False, False)
     assert miss == 3
-    fresh, down = lp_award(False, 700, 3, "daily"), lp_award(False, 700, 3, "daily", miss_streak=3)
+    typed: dict[str, Any] = {"area": "mech", "answer_kind": "number", "options": 0}
+    fresh, down = (
+        lp_award(False, 700, 3, "daily", **typed),
+        lp_award(False, 700, 3, "daily", miss_streak=3, **typed),
+    )
     assert down.cushioned and down.amount == pytest.approx(fresh.amount / 2, abs=0.01)
-    back = lp_award(True, 700, 3, "daily", miss_streak=3)
+    back = lp_award(True, 700, 3, "daily", miss_streak=3, **typed)
     assert back.comeback and back.amount == pytest.approx(
-        lp_award(True, 700, 3, "daily").amount * 1.5, abs=0.01
+        lp_award(True, 700, 3, "daily", **typed).amount * 1.5, abs=0.01
     )
     assert next_miss_streak(miss, True, False, False) == 0
     assert next_miss_streak(miss, False, True, False) == miss  # a pass leaves it alone
     assert next_miss_streak(miss, None, False, False) == miss
+
+
+@pytest.mark.parametrize("points", [0, 50, 550, 1050, 1550])
+@pytest.mark.parametrize("options", [2, 4])
+def test_on_a_single_choice_a_bad_run_shrinks_until_a_blind_guess_still_loses(
+    points: float, options: int
+) -> None:
+    def lp(correct: bool, miss_streak: int) -> float:
+        return lp_award(correct, points, 3, "daily", options=options, miss_streak=miss_streak).amount
+
+    right, wrong, back, cushioned = lp(True, 0), lp(False, 0), lp(True, 3), lp(False, 3)
+    # Still a comeback and a cushion, at most the full ones.
+    assert right < back <= right * 1.5 + 0.01 and wrong < cushioned <= wrong / 2 + 0.01
+    guess = right / options + wrong * (1 - 1 / options)
+    assert back / options + cushioned * (1 - 1 / options) <= guess / 2 + 0.01  # at least half the usual loss
 
 
 def test_placement_and_the_season_reset() -> None:
@@ -251,13 +272,16 @@ def test_pacing_matches_the_design() -> None:
 @pytest.mark.parametrize("points", [0, 300, 550, 1050, 1450, 2000])
 @pytest.mark.parametrize("difficulty", [1, 3, 5])
 @pytest.mark.parametrize("hint", [False, True])
+@pytest.mark.parametrize("miss_streak", [0, 3, 10])
 def test_not_sure_never_costs_more_than_a_blind_guess_and_a_hinted_guess_never_pays(
-    options: int, points: float, difficulty: int, hint: bool
+    options: int, points: float, difficulty: int, hint: bool, miss_streak: int
 ) -> None:
     def lp(correct: bool, **kw: Any) -> float:
-        return lp_award(correct, points, difficulty, "daily", options=options, hint=hint, **kw).amount
+        return lp_award(
+            correct, points, difficulty, "daily", options=options, hint=hint, miss_streak=miss_streak, **kw
+        ).amount
 
     n = min(options, 2) if hint else options
     guess = lp(True) / n + lp(False) * (1 - 1 / n)
     assert guess <= 0.01
-    assert guess - 0.01 <= lp(False, passed=True) <= 0
+    assert guess - 0.01 <= lp(False, passed=True) < 0  # and "I'm not sure" never costs nothing

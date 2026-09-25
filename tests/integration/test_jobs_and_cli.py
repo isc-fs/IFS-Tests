@@ -36,6 +36,7 @@ def test_maintenance_removes_only_stale_rows_and_is_idempotent(db: Session, cloc
     quiet = {
         "dailies_closed": 0,
         "mock_questions_closed": 0,
+        "mock_runs_ended": 0,
         "live_sessions_finished": 0,
         "live_answers_shared": 0,
         "difficulty_changed": 0,

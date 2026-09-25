@@ -57,12 +57,13 @@ Workstreams run in parallel, each owning its files; G starts once A–F have mer
 | DOM-01 / BANK-12 number hints give the answer | P2 | B, fix/12 | | Open | |
 | BANK-07 upstream solution drops a correction | P2 | C bank pipeline, fix/13 | | Fixed | `graded_hash` (migration 0020): `test_a_new_solution_image_or_time_keeps_the_correction_and_difficulty`; red-team `test_solution_only_change.py` keeps the correction and difficulty 5 |
 | BANK-08 upstream deletions don't propagate | P2 | C, fix/13 | | Fixed | `tests/unit/test_mirror.py`, `test_a_quiz_deleted_upstream_leaves_play_but_not_history`; red-team `mirror_probe.py` 121 → 119 quizzes; mass-removal guard |
-| PLAY-05 abandoned mock run blocks dailies | P1 | D play and time rules, fix/14 | | Open | |
-| PLAY-03 daily started before midnight vanishes | P2 | D, fix/14 | | Open | |
-| DOM-03 / PLAY-01 mock summary counts late as right | P2 | D, fix/14 | | Open | |
-| DOM-02 blind guess pays in a bad run | P2 | D, fix/14 | | Open | |
-| PLAY-02 mock clocks clamped to 60–600 s | P2 | D, fix/14 | | Open | |
-| DOM-04 / PLAY-04 freeze only applied at 03:00 | P3 | D, fix/14 | | Open | |
+| PLAY-05 abandoned mock run blocks dailies | P1 | D play and time rules, fix/14 | | Fixed | `POST /api/mock/sessions/{id}/end` + nightly end of runs untouched for 2 days (API tests); probe: forgotten run ended on day 3, dailies served again |
+| PLAY-03 daily started before midnight vanishes | P2 | D, fix/14 | | Fixed | `test_a_daily_started_before_midnight_stays_its_days_until_its_deadline`; probe: practice 200 → 409, daily pays in full |
+| DOM-05 rested XP counts a played day as away (Low) | P3 | D, fix/14 | | Fixed | `played_on` for rested XP; probe banked 150 → 0 |
+| DOM-03 / PLAY-01 mock summary counts late as right | P2 | D, fix/14 | | Fixed | `test_mock.py` now expects 4 right and best 4 (it asserted the bug) |
+| DOM-02 blind guess pays in a bad run | P2 | D, fix/14 | | Fixed (rules change: TDs to confirm) | property tests over miss streaks 0/3/10 (100 failures before); probe at 50 pts: guess +2.10 → −2.01 |
+| PLAY-02 mock clocks clamped to 60–600 s | P2 | D, fix/14 | | Fixed | probe: run allows 1280 s = listed total (was 720 vs 1280) |
+| DOM-04 / PLAY-04 freeze only applied at 03:00 | P3 | D, fix/14 | | Fixed | freezes applied on read and score; probe: streak 9 with bonus at 00:30 |
 | ACC-02 undoing a position change loses LP | P2 | E admin, CSV, scripts, fix/15 | | Fixed | `users.position_lifts` (migration 0022); `test_undoing_a_mistaken_raise_keeps_what_was_earned`; probe 130→350→130 loses 0 (was 80); lower-then-raise still loses by ADR 0007 |
 | LIVE-06 results CSV garbled in Spanish Excel | P2 | E, fix/15 | | Fixed | `test_the_results_open_in_a_spanish_excel` (BOM, `;`, `-12.5` unescaped); not checked in a real Excel |
 | DOC-01 (rest) refresh-bank.sh `.env` checks | P2 | E, fix/15 | | Fixed | `tests/unit/test_deploy_scripts.py` runs the real script against a stub docker |

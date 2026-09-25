@@ -66,6 +66,34 @@ def freeze_earned(kept: set[date], played: set[date], yesterday: date) -> bool:
     return yesterday in played and streak(kept, yesterday) % FREEZE_EVERY == 0
 
 
+@dataclass(frozen=True)
+class Freezes:
+    spent: list[date]  # days a freeze saved
+    held: int
+    earned_on: date | None
+    earned: int
+
+
+def settle(
+    played: set[date], kept: set[date], held: int, earned_on: date | None, today: date, nights: int
+) -> Freezes:
+    """The last `nights` days before today, oldest first: spend a freeze on a day missed mid-streak, then give
+    one when a played day brought the streak to a multiple of 7. The nightly job stores the result; anything
+    reading the streak before it runs applies the same freezes from midnight."""
+    saved, spent, earned = set(kept), [], 0
+    for back in range(nights, 0, -1):
+        day = today - timedelta(days=back)
+        if held > 0 and freeze_needed(saved, day):
+            saved.add(day)
+            spent.append(day)
+            held -= 1
+        if freeze_earned(saved, played, day) and (earned_on is None or earned_on < day) and held < FREEZE_CAP:
+            held += 1
+            earned_on = day
+            earned += 1
+    return Freezes(spent, held, earned_on, earned)
+
+
 def streak(days: set[date], today: date) -> int:
     """Consecutive days with an on-time daily answer, ending today (or yesterday, if today is still open)."""
     day = today if today in days else today - timedelta(days=1)

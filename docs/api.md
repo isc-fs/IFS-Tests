@@ -126,6 +126,7 @@ No session needed; the CSRF header still is.
 | `POST /api/mock/quizzes/{quiz_id}/start` | Start a run, or return the one already open |
 | `GET /api/mock/sessions/{session_id}` | The run: the current question with its deadline, or the summary once finished |
 | `POST /api/mock/sessions/{session_id}/answer` | Answer the question on screen and move on |
+| `POST /api/mock/sessions/{session_id}/end` | End the run early: the question on screen counts as out of time, the ones not reached aren't scored; returns the summary |
 | `POST /api/mock/sessions/{session_id}/attempts/{attempt_id}/hint` | A hint on the running question |
 
 ### `/api/review` (`api/routes/review.py`): `Reviewer`

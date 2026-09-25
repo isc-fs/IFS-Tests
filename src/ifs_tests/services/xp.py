@@ -28,11 +28,13 @@ def streak_days(db: DB, user_id: int, now: datetime) -> int:
     return streaks.days(db, user_id, now)
 
 
-def rested(db: DB, bank: int, topped_up: date | None, user_id: int, now: datetime) -> int:
-    """Rested XP as it stands today: the bank, plus what the full days away since the last scored answer added
-    to it. (A daily started and abandoned, or a mock question shown, isn't playing.)"""
-    today = daily_rules.madrid_day(now)
-    if topped_up == today:
+def rested(
+    db: DB, bank: int, topped_up: date | None, user_id: int, now: datetime, day: date | None = None
+) -> int:
+    """Rested XP as it stands on `day` (today by default): the bank, plus what the full days away since the last
+    scored answer added to it. (A daily started and abandoned, or a mock question shown, isn't playing.)"""
+    today = day or daily_rules.madrid_day(now)
+    if topped_up is not None and topped_up >= today:
         return bank
     if topped_up is not None:
         return rules.rested_bank(bank, (today - topped_up).days - 1)
@@ -171,13 +173,16 @@ def grant(
     passed: bool = False,
     ranked: bool = True,
     season_at: datetime | None = None,
+    played_on: date | None = None,
 ) -> Grant:
     """Score one answer in both currencies: LP for the rank, XP for the account level. The caller stores
     `xp` and `lp` on the attempt and commits. Live answers are a table's: XP only, and they leave the
     player's combo and bad run alone. `ranked=False` (a mock replay) moves no LP either. Only first-time
     daily and mock answers count towards a bad run, so it can't be staged with cheap practice misses. Practice
     earns XP only (rank.K). `season_at` is when the play started (a daily's start, a mock run's): an answer
-    belongs to that season's rank, as on the leaderboard, unless the player has already moved on to the next."""
+    belongs to that season's rank, as on the leaderboard, unless the player has already moved on to the next.
+    `played_on` is the day the question was shown: a daily started at 23:59 and answered after midnight played
+    its own day, for rested XP."""
     state = lock(db, user_id)
     season = rank_rules.season_of(season_at or now)
     if season < state.rank_season:
@@ -206,7 +211,8 @@ def grant(
     )
     if not ranked:
         lp = rank_rules.Lp(0.0)
-    bank = rested(db, state.rested_xp, state.rested_on, user_id, now)
+    day = played_on or daily_rules.madrid_day(now)
+    bank = rested(db, state.rested_xp, state.rested_on, user_id, now, day)
     earned = rules.xp_award(
         correct,
         question.difficulty,
@@ -241,7 +247,7 @@ def grant(
     if answered:  # a question left to run out (closed by the nightly job) isn't playing: the rested days stay
         values |= {
             "rested_xp": bank - earned.bonuses.get("rested", 0),
-            "rested_on": daily_rules.madrid_day(now),
+            "rested_on": max(day, state.rested_on or day),
         }
     xp_after = db.execute(
         update(User).where(User.id == user_id).values(values).returning(User.xp)

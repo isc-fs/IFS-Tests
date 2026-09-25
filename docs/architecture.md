@@ -71,7 +71,7 @@ Everything under `src/ifs_tests/` (empty `__init__.py` files left out).
 | `api/routes/admin.py` | `/api/admin`: users, invites, reset links, sessions, alumni, exports and deletion on someone's behalf, audit log, bank summary |
 | `api/routes/practice.py` | `/api/practice`: areas, next question, answer, hint |
 | `api/routes/daily.py` | `/api/daily`: today's status, start, answer, review, hint |
-| `api/routes/mock.py` | `/api/mock`: quiz list, start a run, run state, answer, hint |
+| `api/routes/mock.py` | `/api/mock`: quiz list, start a run, run state, answer, hint, end a run early |
 | `api/routes/review.py` | `/api/review` (reviewer queues, question edits, answer corrections, reports) and `/api/questions/{id}/report` (any member) |
 | `api/routes/leaderboard.py` | `/api/leaderboard`: boards by area and period, vertical board |
 | `api/routes/learning.py` | `/api/learning/{topic}`: formulas and reading for a topic |
@@ -115,7 +115,7 @@ Everything under `src/ifs_tests/` (empty `__init__.py` files left out).
 | `services/mock.py` | Mock runs: start, advance, time-outs, answer, summary |
 | `services/live.py` | Live quiz sessions end to end: seating, routing (and, in the lobby, how often each table would get a question: `domain/live.reach`), answers and proposals, the state view shared per version (`Room`), what the event streams watch (`watch`), sharing XP after questions close, finishing abandoned sessions, the results CSV |
 | `services/xp.py` | Scoring one answer in both currencies under the player's row lock (`lock`, `grant`), difficulty recalibration |
-| `services/streaks.py` | Streak days and the nightly streak-freeze job |
+| `services/streaks.py` | Streak days (with the freezes due applied from midnight) and the nightly streak-freeze job that stores them |
 | `services/season.py` | The 1 September rank reset |
 | `services/hints.py` | Hints for practice, daily and mock questions; the `hint_salt` server secret |
 | `services/learning.py` | Learning panels filtered by the player's division |
@@ -198,7 +198,7 @@ Two uvicorn workers, many threads and the scheduler all write to the same rows. 
 | **Account deletion:** hosted live sessions (`FOR NO KEY UPDATE`, id order), then `ADMIN_LOCK`, then the user row (`FOR UPDATE`). | `services/privacy._lock` | The same order as answering and as admin changes. |
 | **Admin changes queue on a Postgres advisory lock**, `pg_advisory_xact_lock(ADMIN_LOCK)` with `ADMIN_LOCK = 7_000_001`, taken before reading who the active admins are. | `services/accounts._active_admin_ids`, used by `update_user`, `privacy._lock`, `mark_alumni`; then `accounts.check_still_admin` | Two admins demoting or deleting each other can't leave zero admins, and the one who acts second, who is no longer an active admin by then, is refused (403) rather than acting as an admin who was just demoted or deleted (with three admins both used to succeed). An advisory lock rather than locking admin rows, because an admin playing a live quiz has their row locked by sharing. |
 | **The daily pick** takes `pg_advisory_xact_lock(0x1F5DA11)` and re-reads the choice before writing. | `services/daily.ensure_daily` | The scheduler and the first visitors of the day get the same question. |
-| **Nightly jobs do one player per transaction** (one attempt, one mock question, one live session or live answer, one player's rank or freezes). | `daily.close_expired`, `mock.close_expired`, `live.finish_abandoned`, `live.share`, `season.rollover`, `streaks.nightly` | The job never holds many player rows at once, so it can't deadlock with a live quiz sharing XP to a room. `privacy.purge` is the exception: its deletions commit together at the end of `maintenance.run`. |
+| **Nightly jobs do one player per transaction** (one attempt, one mock question or run, one live session or live answer, one player's rank or freezes). | `daily.close_expired`, `mock.close_expired`, `mock.end_stale`, `live.finish_abandoned`, `live.share`, `season.rollover`, `streaks.nightly` | The job never holds many player rows at once, so it can't deadlock with a live quiz sharing XP to a room. `privacy.purge` is the exception: its deletions commit together at the end of `maintenance.run`. |
 | **Idempotent writes** use conditional updates and unique indexes: `UPDATE ... WHERE submitted_at IS NULL RETURNING`, `INSERT ... ON CONFLICT DO NOTHING` on the partial unique indexes for daily attempts and open mock runs. | daily and mock start and answer, live answers and joins | A double submit or a retry returns the stored result; only the request that recorded the answer grants XP. |
 | **Bank import locks every FS-Quiz question** (`FOR UPDATE`); reviewer edits lock the one question. | `services/bank.import_bank`, `services/review._question` | A reviewer's change during an import isn't overwritten by stale values. |
 | **Sign-in and password checks hash with no transaction open**, then lock the user row (`FOR UPDATE`) only to record the outcome. | `services/accounts.login`, `change_password`, `reset_password`, `privacy.delete_self` | Argon2 takes tens of milliseconds and 19 MiB; holding a connection or lock meanwhile would starve the pool. Parallel wrong guesses still each count. |
@@ -211,7 +211,7 @@ FS-Quiz answers are public on fs-quiz.eu, so the goal is narrower: the server ne
 
 - **Keys live apart.** Correct answers are only in `answer_keys`; nothing that serialises a question touches that table. Responses are explicit schemas.
 - **Answers travel only in responses meant for them:** the player's own submission (practice, daily, mock), a finished mock run, a live question once revealed, and the reviewer tools. `tests/api/test_security.py` walks every response schema in the OpenAPI document and fails if an answer field (`official`, `correct_options`, `feedback`, …) appears anywhere else.
-- **"Running" questions** are defined in one place, `running` in `src/ifs_tests/services/questions.py`: today's daily questions the player hasn't answered, the unanswered questions of their open mock runs, and the open question of a live quiz they play in (every question of it, in a rehearsal that reveals at the end). `running_for` checks one question; `not_running` raises 409. They are used by:
+- **"Running" questions** are defined in one place, `running` in `src/ifs_tests/services/questions.py`: today's daily questions the player hasn't answered and any daily they started and haven't answered (one started before midnight), the unanswered questions of their open mock runs, and the open question of a live quiz they play in (every question of it, in a rehearsal that reveals at the end). `running_for` checks one question; `not_running` raises 409. They are used by:
 
 | Place | What happens to a running question |
 |---|---|

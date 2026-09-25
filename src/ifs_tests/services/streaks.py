@@ -31,11 +31,31 @@ def kept(db: DB, user_id: int) -> set[date]:
     )
 
 
-def days(db: DB, user_id: int, now: datetime) -> int:
-    return rules.streak(kept(db, user_id), rules.madrid_day(now))
-
-
 CATCH_UP = 3  # nights a missed job can catch up on
+
+
+def _settle(db: DB, user_id: int, now: datetime) -> tuple[set[date], rules.Freezes]:
+    u = db.execute(select(User.streak_freezes, User.freeze_earned_on).where(User.id == user_id)).one()
+    saved = kept(db, user_id)
+    due = rules.settle(
+        played(db, user_id), saved, u.streak_freezes, u.freeze_earned_on, rules.madrid_day(now), CATCH_UP
+    )
+    return saved | set(due.spent), due
+
+
+def current(db: DB, user_id: int, now: datetime) -> set[date]:
+    """The streak's days as they stand now: a freeze due for a day missed is spent from midnight, not only once
+    the nightly job has stored it."""
+    return _settle(db, user_id, now)[0]
+
+
+def held(db: DB, user_id: int, now: datetime) -> int:
+    """Freezes held now, after those due."""
+    return _settle(db, user_id, now)[1].held
+
+
+def days(db: DB, user_id: int, now: datetime) -> int:
+    return rules.streak(current(db, user_id, now), rules.madrid_day(now))
 
 
 def nightly(db: DB, now: datetime) -> dict[str, int]:
@@ -43,8 +63,7 @@ def nightly(db: DB, now: datetime) -> dict[str, int]:
     anyone whose streak reached a multiple of 7 that day. Idempotent (a freeze day is stored once, an earning
     day too), so a night the job didn't run is caught up. One player per transaction, locked on its own: a
     live quiz sharing XP to many players at once can't deadlock with it."""
-    today = rules.madrid_day(now)
-    first = today - timedelta(days=CATCH_UP)
+    first = rules.madrid_day(now) - timedelta(days=CATCH_UP)
     recent = select(Attempt.user_id).where(Attempt.mode == "daily", Attempt.day >= first - timedelta(days=1))
     ids = db.scalars(
         select(User.id)
@@ -55,21 +74,16 @@ def nightly(db: DB, now: datetime) -> dict[str, int]:
     used = earned = 0
     for uid in ids:
         u = db.get_one(User, uid, with_for_update={"key_share": True}, populate_existing=True)
-        mine, saved = played(db, uid), kept(db, uid)
-        for back in range(CATCH_UP, 0, -1):
-            day = today - timedelta(days=back)
-            if u.streak_freezes > 0 and rules.freeze_needed(saved, day):
-                db.add(StreakFreeze(user_id=uid, day=day))
-                u.streak_freezes -= 1
-                saved.add(day)
-                used += 1
-            if (
-                rules.freeze_earned(saved, mine, day)
-                and (u.freeze_earned_on is None or u.freeze_earned_on < day)
-                and u.streak_freezes < rules.FREEZE_CAP
-            ):
-                u.streak_freezes += 1
-                u.freeze_earned_on = day
-                earned += 1
+        due = rules.settle(
+            played(db, uid),
+            kept(db, uid),
+            u.streak_freezes,
+            u.freeze_earned_on,
+            rules.madrid_day(now),
+            CATCH_UP,
+        )
+        db.add_all(StreakFreeze(user_id=uid, day=day) for day in due.spent)
+        u.streak_freezes, u.freeze_earned_on = due.held, due.earned_on
+        used, earned = used + len(due.spent), earned + due.earned
         db.commit()
     return {"freezes_used": used, "freezes_earned": earned}

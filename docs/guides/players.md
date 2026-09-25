@@ -103,7 +103,9 @@ gets the same three. New questions appear at midnight, Madrid time.
    **Back to today's questions** returns to the list; **See the question** reopens an answered one.
 
 If you leave while the clock runs, the area shows **Continue** and the clock keeps running: it is the server's,
-not your browser's.
+not your browser's. A question started just before midnight stays yours after midnight: the area shows
+**Continue** until you answer it or its time runs out, and an answer in time counts for the day you started it
+(your streak included). The new day's question for that area appears after.
 
 **Late answers.** The server allows 3 seconds of grace after the clock. An answer that arrives later is recorded
 but counted as wrong. A question you never answer is closed as out of time: it costs LP like a wrong answer and
@@ -121,8 +123,8 @@ clock decides whether the answer arrived in time.
 **Streak.** Each day with at least one daily question answered on time (right, wrong or "I'm not sure") extends
 your streak. Each day of streak after the first adds 5 % XP to right answers, up to +50 %.
 
-**Freezes.** Every 7 days of streak earns a streak freeze; you can hold 2. If you miss a day, the nightly job uses
-one and your streak survives. Your level card shows how many you hold.
+**Freezes.** Every 7 days of streak earns a streak freeze; you can hold 2. If you miss a day, one is used from
+midnight and your streak survives. Your level card shows how many you hold.
 
 A daily question that is also running in one of your mock runs or live quizzes can't be started until you answer
 it there.
@@ -200,20 +202,28 @@ have up to 20 waiting.
 ## Mock quizzes
 
 **Mock** (top menu) replays past registration quizzes one question at a time, each on the time it had in the real
-quiz. You see your results only at the end.
+quiz (a question FS-Quiz gives no time gets 2 minutes for single choice, 2 min 30 s for multiple choice, 4 minutes
+for typed answers). You see your results only at the end.
 
 1. Filter by **Class** (EV, CV, DV) or type in **Event or year**.
-2. Each quiz shows its number of questions, its total time, your best score, and the bar to beat: what the last
-   team to get a slot achieved, when FS-Quiz records it.
+2. Each quiz shows its number of questions, its total time (the sum of its questions' clocks), your best score,
+   and the bar to beat: what the last team to get a slot achieved, when FS-Quiz records it.
 3. Press **Start**.
 4. Answer each question before its clock runs out. Hints, "I'm not sure" and learning aids work as in practice.
    A sent answer can't be changed.
-5. At the end you see "*n* of *m* right", the LP and XP the run earned, the bar to beat, and **Your answers**: each
-   question with its verdict (right, wrong, not sure, out of time, not graded) and its official answer.
+5. At the end you see "*n* of *m* right" (a right answer sent after the clock counts as wrong), the LP and XP the
+   run earned, the bar to beat, and **Your answers**: each question with its verdict (right, wrong, not sure, out
+   of time, not graded) and its official answer.
 
 **Leaving and resuming.** Leave whenever you like: the quiz shows **Continue** on the list. Only the question on
 screen has a running clock. If its time runs out while you're away, it is closed as out of time (wrong, no XP); the
 next question starts its clock when you come back. You can have one open run per quiz.
+
+**Ending a run early.** **End this run** (below the question) stops the run after you confirm. The question on
+screen counts as out of time, like one left to run out; the questions you haven't reached aren't scored and count as
+not right in "*n* of *m* right". The run counts as your run of that quiz for the season, so running it again is a
+replay. A run you leave untouched for 2 days is ended for you by the nightly job the same way. While a run is open,
+its questions are held back from your daily questions and practice, so end a run you won't finish.
 
 **First runs and replays.** Your first run of a quiz each season moves your rank. Starting it again later is a
 replay: XP only. A question you have already answered today earns no XP again.
@@ -273,7 +283,8 @@ MingoQuiz keeps two separate scores. Home and Profile show both cards. The full 
   and late ones lose it; a hard question pays more and costs less. "I'm not sure" costs at most half a wrong answer.
   A hint halves the win. Practice, replays and live quizzes never move LP.
 - Your rank card says what a daily question is worth at your rank, warns you when one wrong answer would drop you a
-  division, and shows **Rough patch** after 3 wrong in a row: losses halve and your next right answer pays 1.5×.
+  division, and shows **Rough patch** after 3 wrong in a row: losses are cushioned (up to half) and your next
+  right answer pays extra (up to 1.5×). On a single choice both are smaller, so guessing blind never pays.
 - You can drop a division. If you do, the help of the one below comes back.
 - Rank doesn't decay: not playing never costs LP.
 
@@ -338,7 +349,7 @@ out of time: LP lost as for a wrong answer, no XP.
 
 **My rank dropped.** Wrong, late or "not sure" answers to daily questions or a first mock run; a question left to run
 out; the 1 September reset; or an admin lowering your position. The help of the lower division comes back while
-you're there. After 3 wrong in a row your losses halve.
+you're there. After 3 wrong in a row your losses are cushioned (up to half).
 
 **Practice doesn't move my rank.** By design: practice and live quizzes earn XP only. Daily questions and first mock
 runs move LP.
@@ -349,7 +360,7 @@ runs move LP.
 once a day.
 
 **I can't start today's daily question.** It is also in a mock run or live quiz you haven't finished; answer it
-there first.
+there first, or end the mock run (**End this run**).
 
 **Practice says a question is running elsewhere.** Same rule: a question you still have to answer in your daily
 questions, a mock run or a live quiz can't be opened, practised or hinted at until you do.
