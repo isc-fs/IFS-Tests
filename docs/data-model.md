@@ -156,7 +156,7 @@ The rulebooks, handbooks and other documents a quiz was based on. Linked, never 
 | `topic` | A topic of that area (`bank/topics.AREAS`), or null |
 | `difficulty` | 1–5, set on import and recalibrated nightly |
 | `answer_kind` | How the answer is entered: `choice-one`, `choice-many`, `number`, `numbers`, `range`, `text`, or `self` (reveal only). Safe to show before answering |
-| `graded` | Answers can be scored automatically; daily questions, mock quizzes and live quizzes use graded ones only |
+| `graded` | Answers can be scored automatically; daily questions and live quizzes use graded ones only. Mock runs ask every playable question of the quiz, ungraded ones too (the player compares with the official answer; it earns XP only), so a quiz's "graded" count can be lower than its questions, even 0 |
 | `playable` | Served to players: `NOT images_missing AND NOT excluded` |
 | `images_missing` | An image referenced by the question isn't in the media directory yet |
 | `excluded`, `exclusion_note` | Hidden, and why: by a reviewer, or by the import when FS-Quiz says it removed the question (the note then starts with "FS-Quiz") |

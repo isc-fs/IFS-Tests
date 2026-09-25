@@ -32,8 +32,10 @@ order: **Invite a member**, **Members**, **New season: who left the team?** (fol
    - **Vertical**: **Let them choose**, or a vertical (Management, Mechanical, Tractive System, Electronics,
      Driverless, Business, Board). A vertical set here isn't asked on the join form; they can still change it later
      in their profile.
-   - **Who it's for**: required, up to 80 characters, for example their name. Only admins see it; it isn't written
-     to the activity log, and it is deleted 30 days after the invite is used or expires.
+   - **Who it's for**: required, up to 80 characters, for example their name. Admins see it under **Open invites**,
+     and once the link is used the person it was for sees it in their data export, like everything stored about
+     them ([ADR 0006](../adr/0006-personal-data.md)): write nothing you wouldn't show them. It isn't written to the
+     activity log, and it is deleted 30 days after the invite is used or expires.
 2. Press **Create link**. The link appears once, selected: "Invite for *note*. Send it privately: it works once and
    expires *date*." Press **Copy** and send it through a private channel.
 

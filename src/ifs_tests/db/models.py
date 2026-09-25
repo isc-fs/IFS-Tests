@@ -283,7 +283,8 @@ class Question(Base):
     difficulty: Mapped[int] = mapped_column(server_default="3")
     # How the answer is entered; safe to show before answering. "self" = reveal only.
     answer_kind: Mapped[str] = mapped_column(String(16))
-    # Whether answers can be scored automatically. Daily questions and mock quizzes only use graded ones.
+    # Whether answers can be scored automatically. Daily questions and live quizzes only use graded ones; mock
+    # runs ask ungraded ones too.
     graded: Mapped[bool] = mapped_column(server_default="false")
     # Served to players only when true: no image missing and not excluded by a reviewer.
     playable: Mapped[bool] = mapped_column(server_default="true")
