@@ -26,6 +26,7 @@ def run(db: DB, now: datetime) -> dict[str, int]:
         "resets": cast(CursorResult[Any], resets).rowcount,
         "dailies_closed": daily.close_expired(db, now),
         "mock_questions_closed": mock.close_expired(db, now),
+        "mock_runs_ended": mock.end_stale(db, now),
         "live_sessions_finished": live.finish_abandoned(db, now),
         "live_answers_shared": live.share_pending(db, now),
         "difficulty_changed": xp.recalibrate(db),

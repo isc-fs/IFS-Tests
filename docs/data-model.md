@@ -70,6 +70,7 @@ One row per member. **Personal data.**
 | `rank_points` | Rank, `numeric(8,2)`: 100 points per division, 0 = Mingo I, 1500+ = the top title; floor 0 |
 | `rank_season` | Season (start year) the rank belongs to; 0 = placed by the migration, no reset due |
 | `rank_best` | Highest division reached this season (only a new one plays the promotion) |
+| `position_lifts` | `jsonb`, null until an admin changes their position: `{"season": 2026, "member": 220.0, …}`, the LP each raise gave per position crossed that season, which a lower position takes back ([game rules](game-rules.md#24-placement-by-position)); ignored once the season is over |
 | `combo`, `miss_streak` | Right answers in a row (XP combo) and wrong ones in a row (LP cushion); capped at 99 |
 | `rested_xp`, `rested_on` | Banked rested XP and the Madrid day it was last topped up |
 | `streak_freezes`, `freeze_earned_on` | Streak freezes held (0–2) and the streak day that last earned one |
@@ -134,6 +135,7 @@ A past registration quiz.
 | `status` | FS-Quiz status, e.g. `complete`, `missing_correct_answer`, `unpublished` |
 | `information` | Free text from FS-Quiz |
 | `last_qualifier` | JSON from FS-Quiz describing the last team that got a slot; drives the "bar to beat" (`domain/mock.bar_to_beat`) |
+| `retired` | FS-Quiz no longer publishes it: not offered for mock runs or live quizzes again. The row and its `quiz_questions` stay, so finished runs still show their questions. Cleared if FS-Quiz publishes it again |
 
 `quiz_events` links quizzes and events (both `ON DELETE CASCADE`).
 
@@ -155,21 +157,22 @@ The rulebooks, handbooks and other documents a quiz was based on. Linked, never 
 | `topic` | A topic of that area (`bank/topics.AREAS`), or null |
 | `difficulty` | 1–5, set on import and recalibrated nightly |
 | `answer_kind` | How the answer is entered: `choice-one`, `choice-many`, `number`, `numbers`, `range`, `text`, or `self` (reveal only). Safe to show before answering |
-| `graded` | Answers can be scored automatically; daily questions, mock quizzes and live quizzes use graded ones only |
+| `graded` | Answers can be scored automatically; daily questions and live quizzes use graded ones only. Mock runs ask every playable question of the quiz, ungraded ones too (the player compares with the official answer; it earns XP only), so a quiz's "graded" count can be lower than its questions, even 0 |
 | `playable` | Served to players: `NOT images_missing AND NOT excluded` |
 | `images_missing` | An image referenced by the question isn't in the media directory yet |
 | `excluded`, `exclusion_note` | Hidden, and why: by a reviewer, or by the import when FS-Quiz says it removed the question (the note then starts with "FS-Quiz") |
 | `labels_reviewed` | A reviewer confirmed area and topic; re-imports keep them |
 | `source_hash` | SHA-256 of the FS-Quiz content (type, text, time, answers, images, solutions); an unchanged hash skips the question on re-import |
-| `key_changed_at` | Set when a re-import changed the official answer, dropped a correction or touched a hidden question: the reviewers' "changed" queue |
-| `upstream_note` | FS-Quiz's sentence saying the question was removed from its quiz, as last seen on import (`domain/upstream.py`). A new note hides the question once; the same note on later imports doesn't hide it again |
+| `graded_hash` | SHA-256 of what is graded (type; options by FS-Quiz answer ID and which are correct, or the typed answers). A change drops a reviewer's correction and resets difficulty; any other change keeps them. Null for rows loaded before migration 0020, until the next `push` fills it |
+| `key_changed_at`, `upstream_change` | When and why a re-import put the question in the reviewers' "changed" queue: `answer` (what is graded changed; any correction was dropped), `wording` (the text of the question or an option changed; the correction stays), `content` (a hidden question changed), `removed` (FS-Quiz deleted it) or `back` (published again after that). Cleared when a reviewer confirms they checked it |
+| `upstream_note` | FS-Quiz's sentence saying the question was removed from its quiz, as last seen on import (`domain/upstream.py`), or `Deleted from FS-Quiz.` when the bank no longer has it at all. A new note hides the question once; the same note on later imports doesn't hide it again |
 | `created_at`, `updated_at` | |
 
 ### `answer_options`
 
 The choices of a choice question: `question_id` (→ `questions`, `ON DELETE CASCADE`, indexed), `position`, `text`, `fsquiz_id` (FS-Quiz's answer ID; null only for rows loaded before migration 0017, until the next `push` fills it) and `retired`. Which options are correct is **not** here.
 
-An option's `id` is stable: `attempts.answer`, `live_answers.answer` and choice keys point at it. A re-import updates options in place, matched by `fsquiz_id` (or by text for rows without one), and never deletes them: an option FS-Quiz removed becomes `retired`, which players are never offered again but which still shows in the answers that picked it.
+An option's `id` is stable: `attempts.answer`, `live_answers.answer` and choice keys point at it. A re-import updates options in place, matched by `fsquiz_id` (or by text for rows without one), and never deletes them: an option FS-Quiz removed becomes `retired`, which players are never offered again and can't pick in a new answer, but which still shows in the answers that picked it.
 
 ### `answer_keys`
 
@@ -217,7 +220,7 @@ One answer to one question, in any mode. **Personal data.** The largest table.
 | `live_session_id` | Live quiz → `live_sessions`, `ON DELETE CASCADE`, indexed |
 | `points` | Season points of an early design (migration 0005). Unused since 0008; always written as 0 |
 
-Indexes: `ix_attempts_user_question` (`user_id`, `question_id`), which also serves every per-user query; and the **partial unique index `uq_attempts_daily`** on (`user_id`, `day`, `area`) `WHERE mode = 'daily'`: one daily attempt per player, day and area. `services/daily.start` relies on it with `INSERT ... ON CONFLICT DO NOTHING`; the predicate must be written as the literal `text("mode = 'daily'")`, because a bound parameter stops Postgres matching the partial index once psycopg prepares the statement.
+Indexes: `ix_attempts_user_question` (`user_id`, `question_id`), which also serves most per-user queries; **`ix_attempts_lp_day`** on (`user_id`, the Madrid day an answer's LP belongs to: `coalesce(day, date(timezone('Europe/Madrid', created_at)))`) `WHERE lp != 0 AND mode IN ('daily', 'practice')` (migration 0019), through which the leaderboards read each member's play in a period instead of all history (`models.LP_DAY` and `models.RANKED_PLAY` are the expression and predicate, written with literals for the same reason as below; a mock run's LP goes by the run's `started_at` instead, through `ix_mock_sessions_user_id` and `ix_attempts_session_id`); and the **partial unique index `uq_attempts_daily`** on (`user_id`, `day`, `area`) `WHERE mode = 'daily'`: one daily attempt per player, day and area. `services/daily.start` relies on it with `INSERT ... ON CONFLICT DO NOTHING`; the predicate must be written as the literal `text("mode = 'daily'")`, because a bound parameter stops Postgres matching the partial index once psycopg prepares the statement.
 
 ### `practice_hints`
 
@@ -238,7 +241,7 @@ One run through a past quiz. **Personal data.**
 | `season` | Season (start year) the run started in |
 | `counted` | The first run of this quiz this season: moves LP. Replays earn XP only |
 | `position` | Questions answered so far |
-| `started_at`, `finished_at` | Null `finished_at` = still open |
+| `started_at`, `finished_at` | Null `finished_at` = still open. A run ended early (by its player, or by the nightly job after 2 days untouched) is finished too; its summary lists the questions it reached |
 
 Partial unique index **`uq_mock_sessions_open`** on (`user_id`, `quiz_id`) `WHERE finished_at IS NULL`: one open run per player and quiz; `services/mock.start` inserts with `ON CONFLICT DO NOTHING` and returns the open run.
 
@@ -326,6 +329,10 @@ The migration 0002 revokes `UPDATE`, `DELETE` and `TRUNCATE` on `audit_log` from
 
 Alembic's current revision: the newest file in `migrations/versions/` (the table under [Migrations](#migrations) lists them).
 
+### `deploy_migrations`
+
+Only on the server, outside Alembic and the models: `deploy/deploy.sh` creates it (as `migrator`) and, after each migration step, records every migration of the deployed image, `revision` (primary key) and `fingerprint` (16 hex characters of a SHA-256 of the migration's code without comments, docstrings or layout). A revision alone can't tell a migration from an edited one under the same number; with this record a deploy refuses an image whose migration under an applied number has other code, and a roll back is allowed to skip migrations only when the database recorded the image's whole chain and the revision it is at ([runbook](runbook.md#22-when-a-deploy-fails)). It is part of every dump, so a restore brings back the record that matches the restored schema.
+
 ## Personal data
 
 [ADR 0006](adr/0006-personal-data.md) sets the rules; `services/privacy.py` implements them. AGENTS.md requires anything new stored about a person to appear in `services/privacy.export` and to go when the account is deleted (a cascading foreign key or a step in `privacy._delete`).
@@ -376,6 +383,9 @@ Retention: alumni and disabled accounts are deleted 365 days after `left_at`; th
 | 0016 | The function `purge_audit_log(before)` for the nightly audit purge, executable by `app_rt` ([`audit_log`](#audit_log)) |
 | 0017 | Stable options: `answer_options.fsquiz_id` and `retired`; `questions.upstream_note`. Expand only: the previous release ignores the new columns, and the next `ifs-tests push` fills `fsquiz_id` |
 | 0018 | `live_tables.proposals`, a counter per table so a proposal wakes only that table's screens. Expand only |
+| 0019 | `ix_attempts_lp_day`, an index on each member's answers by the day their LP counts, so the leaderboards read a period's play instead of the whole history. Index only |
+| 0020 | `questions.graded_hash` and `upstream_change`: a new solution, image or wording upstream keeps a reviewer's correction; `quizzes.retired` for quizzes FS-Quiz deleted. Expand only: the previous release ignores them, and the next `ifs-tests push` fills `graded_hash` |
+| 0021 | `users.position_lifts`, so a correction of position takes back only what a raise gave. Expand only: the previous release ignores it |
 
 ### Expand/contract
 
@@ -383,6 +393,7 @@ Retention: alumni and disabled accounts are deleted 365 days after `left_at`; th
 
 - **Expand** in one release: add tables and nullable (or defaulted) columns, widen checks, backfill. Never rename or drop something the running release uses.
 - **Contract** in a later release, once no deployed image uses the old column: drop it.
+- **Never edit a migration once it has run anywhere** (staging included): the database keeps its revision number, so the edited version would never run there. Write a new migration instead. `deploy.sh` refuses such an image ([`deploy_migrations`](#deploy_migrations)); reformatting or rewording comments is fine, the fingerprint ignores them.
 
 Example: 0014 added `account_xp` and left `xp` in place, because the release before ADR 0007 still wrote lifetime XP there during the deploy; the model maps the old column as `legacy_xp` so SQLAlchemy keeps it in the schema. `tests/integration/test_migrations.py` checks upgrade → downgrade → upgrade and that the models and migrations produce the same schema.
 

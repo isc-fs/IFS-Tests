@@ -12,6 +12,7 @@ from starlette.staticfiles import StaticFiles
 
 from .. import __version__
 from ..auth.passwords import HashingBusy
+from ..db.models import Base
 from ..services.errors import UserError
 from ..settings import Settings, get_settings
 from .deps import Db
@@ -75,10 +76,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def readyz(db: Db) -> JSONResponse:
         # Through the app's own role and pool, so a wrong password or a dead database shows up here.
         try:
-            db.execute(text("SELECT 1"))
+            missing = _missing_columns(db)
         except SQLAlchemyError as e:
             log.warning("readyz: database unavailable: %s", getattr(e, "orig", None) or e)
             return JSONResponse({"status": "unavailable"}, status_code=503)
+        if missing:
+            log.warning("readyz: the database lacks columns this code maps: %s", ", ".join(missing))
+            return JSONResponse({"status": "schema out of date"}, status_code=503)
         return JSONResponse({"status": "ok"})
 
     methods = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"]
@@ -90,6 +94,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.mount("/media", ImmutableStatic(directory=settings.media_dir, check_dir=False), name="media")
     _mount_spa(app, settings.web_dist)
     return app
+
+
+def _missing_columns(db: Db) -> list[str]:
+    """The mapped columns the database lacks: a schema behind the code (a migration not applied, or a rewritten
+    one) fails every request that touches them. Extra tables and columns are fine: during a deploy the previous
+    release runs on the newer schema (expand/contract). One catalogue query, readable by any role."""
+    have = set(
+        db.execute(
+            text(
+                "SELECT c.relname, a.attname FROM pg_attribute a JOIN pg_class c ON c.oid = a.attrelid"
+                " WHERE c.relnamespace = current_schema()::regnamespace AND c.relkind IN ('r', 'p')"
+                " AND a.attnum > 0 AND NOT a.attisdropped"
+            )
+        ).tuples()
+    )
+    return [
+        f"{t.name}.{c.name}"
+        for t in Base.metadata.sorted_tables
+        for c in t.columns
+        if (t.name, c.name) not in have
+    ]
 
 
 def _not_found() -> None:

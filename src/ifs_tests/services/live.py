@@ -6,14 +6,15 @@ from __future__ import annotations
 import csv
 import io
 import random
+import re
 import threading
 import time
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timedelta
 from typing import Any, Literal
 
-from sqlalchemy import delete, func, or_, select, update
+from sqlalchemy import Select, delete, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DB
@@ -62,14 +63,19 @@ def create(db: DB, host: User, config: dict[str, Any], now: datetime) -> LiveSes
 
 
 def _check_config(db: DB, config: dict[str, Any]) -> None:
-    if config["questions"] == "quiz" and db.get(Quiz, config.get("quiz_id") or 0) is None:
-        raise UserError("That quiz doesn't exist.", 404)
+    if config["questions"] == "quiz":
+        quiz = db.get(Quiz, config.get("quiz_id") or 0)
+        if quiz is None or quiz.retired:
+            raise UserError("That quiz doesn't exist.", 404)
 
 
 def _session(db: DB, code: str, lock: bool = False) -> LiveSession:
     stmt = select(LiveSession).where(LiveSession.code == code.upper())
     # populate_existing: a locked read must see what another request committed, not this session's cache.
-    s = db.scalar(stmt.with_for_update().execution_options(populate_existing=True) if lock else stmt)
+    # FOR NO KEY UPDATE: requests on a session still queue, but the foreign-key checks of other writes (deleting
+    # a player nulls their table's captain) aren't blocked; FOR UPDATE let those deadlock with a proposal.
+    lock_stmt = stmt.with_for_update(key_share=True).execution_options(populate_existing=True)
+    s = db.scalar(lock_stmt if lock else stmt)
     if s is None:
         raise UserError("No live quiz with that code.", 404)
     return s
@@ -157,7 +163,7 @@ def finish_abandoned(db: DB, now: datetime) -> int:
         s = db.scalar(
             select(LiveSession)
             .where(LiveSession.id == sid, LiveSession.state != "finished")
-            .with_for_update()
+            .with_for_update(key_share=True)
             .execution_options(populate_existing=True)
         )
         if s is not None:
@@ -175,7 +181,7 @@ def lock_hosted(db: DB, host_id: int) -> list[LiveSession]:
         select(LiveSession)
         .where(LiveSession.host_id == host_id, LiveSession.state != "finished")
         .order_by(LiveSession.id)
-        .with_for_update()
+        .with_for_update(key_share=True)
         .execution_options(populate_existing=True)
     )
     return list(db.scalars(stmt))
@@ -388,19 +394,47 @@ def remove(db: DB, host: User, code: str, user_id: int) -> None:
     db.commit()
 
 
-def _pick(db: DB, config: dict[str, Any]) -> list[Question]:
-    base = select(Question).where(Question.playable, Question.graded)
+def _pool(config: dict[str, Any], *columns: Any) -> Select[Any]:
+    """The questions a session picks from: a past quiz's in order, or those of the chosen areas and topics."""
+    base = select(*columns).where(Question.playable, Question.graded)
     if config["questions"] == "quiz":
-        stmt = (
+        return (
             base.join(QuizQuestion, QuizQuestion.question_id == Question.id)
             .where(QuizQuestion.quiz_id == config["quiz_id"])
             .order_by(QuizQuestion.position)
         )
-        return list(db.scalars(stmt))
     areas, topics = config.get("areas") or [], config.get("topics") or []
     if areas or topics:
         base = base.where(or_(Question.area.in_(areas), Question.topic.in_(topics)))
-    return list(db.scalars(base.order_by(func.random()).limit(config["count"])))
+    return base
+
+
+def _pick(db: DB, config: dict[str, Any]) -> list[Question]:
+    stmt = _pool(config, Question)
+    if config["questions"] != "quiz":
+        stmt = stmt.order_by(func.random()).limit(config["count"])
+    return list(db.scalars(stmt))
+
+
+def _routing(db: DB, s: LiveSession) -> tuple[list[tuple[int, list[str]]], int | None]:
+    """The tables that answer (those with a captain) and their topics, and the catch-all: the chosen table,
+    else the biggest, which has the widest mix of people."""
+    tables = [t for t in _tables(db, s) if t.captain_id is not None]
+    if not tables:
+        return [], None
+    sizes = Counter(p.table_id for p in _players(db, s).values())
+    catch_all = next((t.id for t in tables if t.catch_all), max(tables, key=lambda t: sizes[t.id]).id)
+    return [(t.id, list(t.topics)) for t in tables], catch_all
+
+
+def _reach(db: DB, s: LiveSession) -> dict[int, float]:
+    """In the lobby of a specialists quiz: how often each table would get a question (rules.reach)."""
+    if s.state != "lobby" or s.config["routing"] != "owners":
+        return {}
+    owners, catch_all = _routing(db, s)
+    pool = list(db.scalars(_pool(s.config, Question.topic)))
+    count = len(pool) if s.config["questions"] == "quiz" else s.config["count"]
+    return rules.reach(pool, count, owners, catch_all, random.Random(s.id))
 
 
 def _budget(config: dict[str, Any], q: Question) -> int | None:
@@ -447,16 +481,12 @@ def advance(db: DB, host: User, code: str, now: datetime, seen: tuple[str, int] 
 
 
 def _start(db: DB, s: LiveSession, now: datetime) -> None:
-    tables = [t for t in _tables(db, s) if t.captain_id is not None]
-    if not tables:
+    owners, catch_all = _routing(db, s)
+    if not owners:
         raise UserError("Seat people at a table with a captain first.", 409)
     questions = _pick(db, s.config)
     if not questions:
         raise UserError("No questions match these settings.", 409)
-    owners = [(t.id, list(t.topics)) for t in tables]
-    # Questions no table owns go to the chosen table, else the biggest: it has the widest mix of people.
-    sizes = {t.id: len([p for p in _players(db, s).values() if p.table_id == t.id]) for t in tables}
-    catch_all = next((t.id for t in tables if t.catch_all), max(tables, key=lambda t: sizes[t.id]).id)
     if s.config["routing"] == "owners":
         routed = rules.route([q.topic for q in questions], owners, catch_all)
     else:
@@ -632,6 +662,7 @@ class TableView:
     answered: bool
     right: int = 0
     points: int = 0
+    reach: float | None = None  # lobby of a specialists quiz: how often it would get a question
 
 
 @dataclass(frozen=True)
@@ -808,6 +839,7 @@ def _build(db: DB, s: LiveSession) -> Room:
     questions = {
         lq.position: lq for lq in db.scalars(select(LiveQuestion).where(LiveQuestion.session_id == s.id))
     }
+    reach = _reach(db, s)
     answers: dict[int, dict[int, Sent]] = defaultdict(dict)
     for a in db.execute(
         select(
@@ -835,6 +867,7 @@ def _build(db: DB, s: LiveSession) -> Room:
                 t.catch_all,
                 seated[t.id],
                 t.id in answers[s.position],
+                reach=reach.get(t.id, 0.0) if reach else None,
             )
             for t in _tables(db, s)
         ],
@@ -885,14 +918,22 @@ def _score(
         room.reveals.append(Reveal(p, shown, questions[p].table_id, explain(db, q, None), answers[p]))
 
 
+_NUMBER = re.compile(r"[+-]?\d+(?:[.,]\d+)?(?:[eE][+-]?\d+)?")
+
+
 def _cell(value: object) -> str:
-    """Spreadsheets run a cell starting with = + - @ as a formula; names and answers come from players."""
+    """Spreadsheets run a cell starting with = + - @ as a formula; names and answers come from players. A plain
+    number (a typed answer of -12.5) is no formula and stays as it is."""
     text = str(value)
-    return "'" + text if text[:1] in ("=", "+", "-", "@", "\t", "\r") else text
+    if text[:1] in ("=", "+", "-", "@", "\t", "\r") and not _NUMBER.fullmatch(text):
+        return "'" + text
+    return text
 
 
 def results_csv(db: DB, user: User, code: str) -> str:
-    """One row per table answer (or per question nobody answered), as the Excel sheet had them."""
+    """One row per table answer (or per question nobody answered), as the Excel sheet had them. For Excel as the
+    team has it (Spanish): ";" between cells, its list separator, and a byte order mark so it reads UTF-8. A
+    "sep=" line would split the cells in any locale but makes Excel ignore the mark, garbling the accents."""
     s = _session(db, code)
     if not _runs(user, s):
         raise UserError("Only the host downloads the results.", 403)
@@ -917,7 +958,8 @@ def results_csv(db: DB, user: User, code: str) -> str:
     )
     official = {q.id: explain(db, q, None).official or "" for q in {row[1] for row in rows}}
     out = io.StringIO()
-    w = csv.writer(out)
+    out.write("\ufeff")
+    w = csv.writer(out, delimiter=";")
     w.writerow(
         [
             "question",
@@ -934,7 +976,8 @@ def results_csv(db: DB, user: User, code: str) -> str:
     for pos, q, owner, a, captain in rows:
         row = [q.text[:120], tables.get(owner, "every table"), "", "", ""]
         if a is not None:
-            sent = a.answer.get("value") or ", ".join(
+            # One option a line, as the official answer lists them.
+            sent = a.answer.get("value") or "\n".join(
                 texts.get(o, "?") for o in a.answer.get("options") or []
             )
             row[2:] = [tables.get(a.table_id, ""), captain or "", "not sure" if a.passed else sent]

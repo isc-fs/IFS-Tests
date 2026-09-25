@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator, model_validator
 
 from ..db.models import Position, Role, Status, Vertical
 
@@ -174,6 +174,9 @@ class AdminUser(Out):
     position: Position
     xp: int
     rank_points: float
+    rank_by_position: dict[Position, float] = Field(
+        description="Their rank points if moved to each position: shown before a change is saved"
+    )
     leaderboard_opt_out: bool
     last_seen: datetime | None
     created_at: datetime
@@ -208,6 +211,9 @@ class ExportAccount(BaseModel):
     rank_points: float
     rank_season: int = Field(description="The season the rank points belong to; 0 if never placed")
     best_division: str = Field(description="The highest division reached in that season")
+    position_lifts: dict[str, int | float] | None = Field(
+        description="The LP each raise of position gave this season, which a lower position takes back"
+    )
     right_in_a_row: int
     wrong_in_a_row: int
     rested_xp: int
@@ -339,6 +345,14 @@ class Export(BaseModel):
     sign_ins: list[ExportSignIn]
     account_history: list[ExportHistory]
     actions: list[ExportAction]
+
+
+_export = TypeAdapter(Export)
+
+
+def export_json(data: dict[str, Any]) -> bytes:
+    """The export file: checked against `Export` and written straight to bytes, as FastAPI would."""
+    return _export.dump_json(_export.validate_python(data))
 
 
 class UserPatch(In):
@@ -521,9 +535,9 @@ class MockQuiz(BaseModel):
     held_on: date | None
     questions: int
     graded: int
-    total_time_s: int | None
+    total_time_s: int | None = Field(description="What a run allows: the sum of its questions' clocks")
     bar_to_beat: str | None
-    best: int | None = Field(description="Most correct answers in a finished run")
+    best: int | None = Field(description="Most right answers in time in a finished run")
     open_session: int | None
 
 
@@ -539,8 +553,9 @@ class MockItem(BaseModel):
 
 
 class MockSummary(BaseModel):
-    correct: int
-    graded: int
+    correct: int = Field(description="Right answers sent in time: a late one is scored as wrong")
+    graded: int = Field(description="Graded questions in the run, those not reached included")
+    unreached: int = Field(description="Questions not reached because the run was ended early: not scored")
     xp: int
     lp: float
     counted: bool
@@ -618,6 +633,11 @@ class ReviewQuestion(BaseModel):
     excluded: bool
     exclusion_note: str | None
     key_changed_at: datetime | None
+    upstream_change: Literal["answer", "wording", "content", "removed", "back"] | None = Field(
+        description="Why it is in the changed-upstream queue: its answer or options changed (any correction was "
+        "removed), the wording of the question or an option changed (the correction stays), a hidden question "
+        "changed, FS-Quiz deleted it, or it is back after being deleted"
+    )
     official: str | None
     correction: str | None
     options: list[ReviewOption]
@@ -777,6 +797,11 @@ class LiveTableOut(BaseModel):
     answered: bool = Field(description="Has sent its answer to the current question")
     right: int = Field(description="Right answers so far, once they may be shown")
     points: int
+    reach: float | None = Field(
+        default=None,
+        description="In the lobby of a specialists quiz: the share of draws of this quiz's questions in which "
+        "the table gets at least one (0 without a captain); null otherwise",
+    )
 
 
 class Proposal(BaseModel):

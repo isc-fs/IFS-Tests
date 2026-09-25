@@ -31,6 +31,14 @@ const QUEUES: [Queue, string][] = [
 const when = (iso: string) =>
   new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
 
+const UPSTREAM: Record<NonNullable<ReviewQuestion['upstream_change']>, string> = {
+  answer: 'FS-Quiz changed its answer or its options. Any correction was removed.',
+  wording: 'FS-Quiz reworded the question or an option. Any correction stays: check it still fits.',
+  content: 'FS-Quiz changed this hidden question: it may have been fixed.',
+  removed: 'FS-Quiz deleted this question, so it is hidden. Past results keep it.',
+  back: 'FS-Quiz published this question again after deleting it, so it is shown again.',
+}
+
 function ReviewersOnly({ children }: { children: React.ReactNode }) {
   const { data: me } = useMe()
   if (me?.role === 'member') {
@@ -291,8 +299,9 @@ function Detail() {
         <section className="panel stack" aria-labelledby="changed-title">
           <h2 id="changed-title">Changed upstream</h2>
           <p>
-            FS-Quiz changed this question or its answer on {when(q.key_changed_at)}. Any correction was removed. Check
-            the answer, correct it if needed, then confirm.
+            {when(q.key_changed_at)}:{' '}
+            {q.upstream_change ? UPSTREAM[q.upstream_change] : 'FS-Quiz changed this question or its answer.'} Check the
+            answer, correct it if needed, then confirm.
           </p>
           <ErrorNotice error={acknowledge.error} />
           <button

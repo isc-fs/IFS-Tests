@@ -10,10 +10,10 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from ifs_tests.db.models import Attempt, LiveSession, User
+from ifs_tests.db.models import Attempt, LiveAnswer, LiveQuestion, LiveSession, Question, User
 from ifs_tests.domain.rank import placement
 from ifs_tests.domain.xp import xp_award
-from ifs_tests.services import maintenance
+from ifs_tests.services import live, maintenance
 from ifs_tests.services.questions import running
 
 from ..conftest import Clock
@@ -77,6 +77,10 @@ def advance(room: dict[str, Any], code: str) -> None:
 
 def send(c: TestClient, code: str, body: dict[str, Any]) -> int:
     return int(c.post(f"/api/live/sessions/{code}/answer", json=body).status_code)
+
+
+def results(raw: bytes) -> list[list[str]]:
+    return list(csv.reader(io.StringIO(raw.decode("utf-8-sig")), delimiter=";"))
 
 
 def wrong(db: Session, qid: int) -> dict[str, Any]:
@@ -217,6 +221,16 @@ def test_proposals_reach_the_captain_of_the_table_that_answers(room: dict[str, A
     assert state(room["Marta"], code)["proposals"] == []  # another table's proposals stay at that table
 
 
+def test_the_lobby_says_which_tables_the_questions_would_reach(room: dict[str, Any]) -> None:
+    code = lobby(room, topics=["hv"], areas=[], count=1, routing="owners")
+    reach = {t["name"]: t["reach"] for t in state(room["Tere"], code)["tables"]}
+    assert reach == {"Aerodynamics": 0.0, "Batteries": 1.0}  # only battery questions: Aero gets none
+    advance(room, code)
+    assert {t["reach"] for t in state(room["Tere"], code)["tables"]} == {None}  # a prediction for the lobby
+    everyone = lobby(room, topics=["hv"], areas=[], count=1, routing="all")
+    assert {t["reach"] for t in state(room["Tere"], everyone)["tables"]} == {None}
+
+
 def test_specialists_each_question_goes_to_the_table_owning_its_topic(
     room: dict[str, Any], db: Session, bank: dict[int, int]
 ) -> None:
@@ -345,12 +359,66 @@ def test_the_host_downloads_the_results_as_a_safe_csv(room: dict[str, Any], db: 
     send(room["Leo"], code, right_answer(db, qid))
     r = room["Tere"].get(f"/api/live/sessions/{code}/results.csv")
     assert r.status_code == 200 and r.headers["content-type"].startswith("text/csv")
-    rows = list(csv.reader(io.StringIO(r.text)))
+    rows = results(r.content)
     assert rows[0][:5] == ["question", "text", "for table", "answered by", "captain"]
     assert rows[0][5:8] == ["answer", "official answer", "right"]
     assert any(row[3] == "'=HYPERLINK(1)" and row[7] == "yes" and row[6] for row in rows[1:])
     assert not any(row[5].isdigit() for row in rows[1:])  # option text, not database ids
     assert room["Ana"].get(f"/api/live/sessions/{code}/results.csv").status_code == 403
+
+
+def test_the_results_open_in_a_spanish_excel(room: dict[str, Any], db: Session, bank: dict[int, int]) -> None:
+    """Excel set to Spanish splits a CSV on ";" and reads it as UTF-8 only after a byte order mark."""
+    code = lobby(room, areas=["rules"], count=1)
+    t = tables(room, code)
+    for table, name in (("Aerodynamics", "Aerodinámica ñ"), ("Batteries", "-12.5")):
+        r = room["Tere"].patch(f"/api/live/sessions/{code}/tables/{t[table]['id']}", json={"name": name})
+        assert r.status_code == 204
+    advance(room, code)
+    qid = state(room["Leo"], code)["question"]["id"]
+    send(room["Leo"], code, right_answer(db, qid))
+    send(room["Pau"], code, wrong(db, qid))
+    assert room["Tere"].post(f"/api/live/sessions/{code}/end").status_code == 204
+    # Make it a multiple choice answered with both right options, to compare how the two columns join them.
+    many = bank[90003]
+    s = db.scalars(select(LiveSession).where(LiveSession.code == code)).one()
+    db.execute(update(LiveQuestion).where(LiveQuestion.session_id == s.id).values(question_id=many))
+    db.execute(
+        update(LiveAnswer)
+        .where(LiveAnswer.session_id == s.id, LiveAnswer.table_id == t["Aerodynamics"]["id"])
+        .values(answer=right_answer(db, many), passed=False)
+    )
+    db.commit()
+
+    raw = room["Tere"].get(f"/api/live/sessions/{code}/results.csv").content
+    assert raw.startswith(b"\xef\xbb\xbf") and "Aerodinámica ñ".encode() in raw
+    rows = results(raw)
+    assert rows[0] == [
+        *("question", "text", "for table", "answered by", "captain"),
+        *("answer", "official answer", "right", "points"),
+    ]
+    by_table = {row[3]: row for row in rows[1:]}
+    assert "-12.5" in by_table  # a plain number is not a formula: no quote in front
+    aero = by_table["Aerodinámica ñ"]
+    assert "\n" in aero[5] and aero[5] == aero[6]  # both columns join the options the same way
+
+
+@pytest.mark.parametrize(
+    ("text", "cell"),
+    [
+        ("-12.5", "-12.5"),
+        ("+3", "+3"),
+        ("-1,5e3", "-1,5e3"),
+        ("-1+2", "'-1+2"),
+        ("-12.5 mm", "'-12.5 mm"),
+        ("=SUM(A1)", "'=SUM(A1)"),
+        ("@cmd", "'@cmd"),
+        ("+HYPERLINK(1)", "'+HYPERLINK(1)"),
+        ("Aerodinámica", "Aerodinámica"),
+    ],
+)
+def test_only_what_a_spreadsheet_would_run_is_escaped(text: str, cell: str) -> None:
+    assert live._cell(text) == cell
 
 
 def test_the_events_stream_announces_the_version(
@@ -531,7 +599,7 @@ def test_a_session_ended_in_the_lobby_still_shows_and_exports(room: dict[str, An
     assert room["Tere"].post(f"/api/live/sessions/{code}/end").status_code == 204
     s = state(room["Ana"], code)
     assert (s["state"], s["total"], s["room_asked"], s["reveals"]) == ("finished", 0, 0, [])
-    rows = list(csv.reader(io.StringIO(room["Tere"].get(f"/api/live/sessions/{code}/results.csv").text)))
+    rows = results(room["Tere"].get(f"/api/live/sessions/{code}/results.csv").content)
     assert len(rows) == 1  # the header only
     for path in ("advance", "tables/auto", "end"):
         assert room["Tere"].post(f"/api/live/sessions/{code}/{path}").status_code == 409
@@ -722,3 +790,18 @@ def test_the_nightly_job_finishes_an_abandoned_rehearsal_and_shares_its_xp(
     assert all(a.xp > 0 for a in rows)
     assert qid not in running(db, room["Ana_id"], clock.now, daily=False)
     assert maintenance.run(db, clock.now)["live_sessions_finished"] == 0
+
+
+def test_a_captains_answer_the_grader_cannot_read_is_refused_and_can_be_fixed(
+    room: dict[str, Any], db: Session
+) -> None:
+    db.execute(update(Question).where(Question.fsquiz_id == 90012).values(area="rules"))  # 2778
+    db.execute(update(Question).where(Question.fsquiz_id == 90008).values(playable=False))
+    db.commit()
+    code = lobby(room, areas=["rules"], count=1)
+    advance(room, code)
+    assert state(room["Leo"], code)["question"]["answer_kind"] == "number"
+    r = room["Leo"].post(f"/api/live/sessions/{code}/answer", json={"value": "2778 N"})
+    assert r.status_code == 400 and "no units" in r.json()["detail"]
+    assert not any(t["answered"] for t in state(room["Ana"], code)["tables"])
+    assert send(room["Leo"], code, {"value": "2778"}) == 204

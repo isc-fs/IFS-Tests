@@ -13,9 +13,10 @@ from sqlalchemy.orm import Session
 from ifs_tests.bank.mirror import load_bank
 from ifs_tests.bank.sample import SAMPLE_DIR
 from ifs_tests.db.models import Attempt, DailyQuestion, Question, User
+from ifs_tests.domain.daily import madrid_day
 from ifs_tests.domain.rank import lp_award, placement
 from ifs_tests.domain.xp import xp_award
-from ifs_tests.services import daily
+from ifs_tests.services import daily, maintenance
 from ifs_tests.services.bank import import_bank
 
 from ..conftest import Clock
@@ -254,6 +255,77 @@ def test_a_question_started_before_midnight_can_be_answered_after(
     assert player.post("/api/daily/rules/start").status_code == 200  # a new day, a new question
 
 
+def test_a_daily_started_before_midnight_stays_its_days_until_its_deadline(
+    player: TestClient, db: Session, clock: Clock
+) -> None:
+    clock.now = datetime(2026, 9, 29, 10, 0, tzinfo=UTC)
+    login(player, "marta@alu.comillas.edu", PASSWORD)
+    play(player, db, "elec")
+    next_day(player, clock)
+    play(player, db, "elec")  # a two-day streak so far
+    clock.now = datetime(2026, 10, 1, 21, 59, 30, tzinfo=UTC)  # 23:59:30 in Madrid
+    login(player, "marta@alu.comillas.edu", PASSWORD)
+    started = player.post("/api/daily/mech/start").json()
+    qid = started["question"]["id"]
+    clock.advance(seconds=50)  # 00:00:20 on 2 October, the clock still running
+    status = player.get("/api/daily").json()
+    mech = next(a for a in status["areas"] if a["area"] == "mech")
+    assert (status["day"], mech["state"], mech["deadline_at"]) == (
+        "2026-10-02",
+        "started",
+        started["deadline_at"],
+    )
+    assert player.post("/api/daily/mech/start").json()["attempt_id"] == started["attempt_id"]  # Continue
+    assert player.get(f"/api/practice/questions/{qid}").status_code == 409  # still secret
+    assert player.post(f"/api/practice/questions/{qid}/hint").status_code == 409
+    assert player.post(f"/api/practice/questions/{qid}/answer", json={"unsure": True}).status_code == 409
+    r = player.post(f"/api/daily/attempts/{started['attempt_id']}/answer", json=right_answer(db, qid)).json()
+    assert (r["late"], r["streak"]) == (False, 3)
+    status = player.get("/api/daily").json()
+    assert status["streak"] == 3
+    assert next(a for a in status["areas"] if a["area"] == "mech")["state"] == "new"  # the new day's question
+
+
+def test_a_daily_answered_just_after_midnight_counts_its_own_day_as_played(
+    player: TestClient, db: Session, clock: Clock
+) -> None:
+    clock.now = datetime(2026, 10, 5, 10, 0, tzinfo=UTC)
+    login(player, "marta@alu.comillas.edu", PASSWORD)
+    play(player, db, "mech")
+    clock.now = datetime(2026, 10, 6, 21, 59, tzinfo=UTC)  # 23:59 on 6 October in Madrid
+    login(player, "marta@alu.comillas.edu", PASSWORD)
+    started = player.post("/api/daily/mech/start").json()
+    clock.advance(seconds=90)  # answered on 7 October, in time
+    r = player.post(
+        f"/api/daily/attempts/{started['attempt_id']}/answer",
+        json=right_answer(db, started["question"]["id"]),
+    ).json()
+    assert r["late"] is False and "rested" not in r["feedback"]["bonuses"]
+    assert player.get("/api/me").json()["progress"]["account"]["rested_xp"] == 0  # 6 October was played
+
+
+def test_a_freeze_saves_the_streak_from_midnight_not_from_the_nightly_job(
+    player: TestClient, db: Session, clock: Clock
+) -> None:
+    for _ in range(8):  # 1 to 8 October
+        play(player, db, "mech")
+        next_day(player, clock)
+    clock.now = datetime(2026, 10, 9, 1, 0, tzinfo=UTC)  # 03:00 on 9 October: the 7-day streak earns a freeze
+    assert maintenance.run(db, clock.now)["freezes_earned"] == 1
+    clock.now = datetime(2026, 10, 9, 22, 30, tzinfo=UTC)  # 00:30 on 10 October: 9 October was missed
+    login(player, "marta@alu.comillas.edu", PASSWORD)
+    account = player.get("/api/me").json()["progress"]["account"]
+    assert (account["streak"], account["streak_freezes"]) == (9, 0)  # the freeze is spent from midnight
+    assert player.get("/api/daily").json()["streak"] == 9
+    r = play(player, db, "elec")
+    assert r["streak"] == 10 and r["feedback"]["bonuses"]["streak"] > 0
+    clock.now = datetime(2026, 10, 10, 1, 0, tzinfo=UTC)  # the 03:00 job records the same freeze, once
+    assert maintenance.run(db, clock.now)["freezes_used"] == 1
+    assert maintenance.run(db, clock.now)["freezes_used"] == 0
+    account = player.get("/api/me").json()["progress"]["account"]
+    assert (account["streak"], account["streak_freezes"]) == (10, 0)
+
+
 def test_attempts_belong_to_their_player(
     player: TestClient, app_client: TestClient, new_client: NewClient
 ) -> None:
@@ -287,3 +359,23 @@ def test_starting_keeps_working_once_the_connection_has_prepared_the_insert(
         db.add(u)
         db.commit()
         daily.start(db, u, "mech", clock.now)
+
+
+def test_an_answer_the_grader_cannot_read_is_refused_and_can_be_fixed_in_time(
+    player: TestClient, db: Session, clock: Clock, bank: None
+) -> None:
+    q = db.scalars(select(Question).where(Question.fsquiz_id == 90002)).one()  # 0.32, in mech
+    db.add(DailyQuestion(day=madrid_day(clock.now), area=q.area, question_id=q.id))
+    db.commit()
+    started = player.post(f"/api/daily/{q.area}/start").json()
+    assert started["question"]["id"] == q.id
+    url = f"/api/daily/attempts/{started['attempt_id']}/answer"
+    clock.now = datetime.fromisoformat(started["deadline_at"])
+    clock.advance(seconds=2)  # past the clock, within the grace
+    refused = player.post(url, json={"value": "0.32 mm"})
+    assert refused.status_code == 400 and "no units" in refused.json()["detail"]
+    db.expire_all()
+    assert db.get_one(Attempt, started["attempt_id"]).submitted_at is None
+    assert points(db) == MINGO
+    r = player.post(url, json={"value": ".32"}).json()
+    assert (r["feedback"]["correct"], r["late"]) == (True, False)

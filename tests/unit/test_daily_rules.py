@@ -89,3 +89,16 @@ def test_streak_freezes_save_a_missed_day_and_come_every_seven_days() -> None:
     assert not freeze_earned(
         week, week - {d - timedelta(days=1)}, d - timedelta(days=1)
     )  # a freeze earns none
+
+
+def test_settling_freezes_twice_changes_nothing() -> None:
+    """Reads apply the freezes due from midnight; the nightly job stores the same ones later."""
+    from ifs_tests.domain.daily import settle
+
+    d = date(2026, 10, 10)
+    played = {d - timedelta(days=i) for i in range(2, 10)}  # 8 days, then yesterday missed
+    first = settle(played, played, 1, d - timedelta(days=3), d, 3)
+    assert (first.spent, first.held, first.earned) == ([d - timedelta(days=1)], 0, 0)
+    again = settle(played, played | set(first.spent), first.held, first.earned_on, d, 3)
+    assert (again.spent, again.held, again.earned) == ([], 0, 0)
+    assert streak(played | set(first.spent), d) == 9

@@ -7,7 +7,7 @@ from fastapi import APIRouter, Request, Response
 from ...db.models import User
 from ...domain import rank as rank_rules
 from ...domain import xp as xp_rules
-from ...services import accounts, live, privacy, xp
+from ...services import accounts, live, privacy, streaks, xp
 from ..deps import AppSettings, Db, Member, Now
 from ..schemas import (
     AccountOut,
@@ -20,6 +20,7 @@ from ..schemas import (
     Progress,
     RankOut,
     Step,
+    export_json,
 )
 from .auth import clear_cookie
 
@@ -76,7 +77,7 @@ def _me(db: Db, user: User, now: datetime) -> Me:
             first_wins_left=max(0, xp_rules.FIRST_WINS - xp.first_wins(db, user.id, now)),
             streak=streak,
             streak_bonus=round(xp_rules.streak_bonus(streak) * 100),
-            streak_freezes=user.streak_freezes,
+            streak_freezes=streaks.held(db, user.id, now),
             rested_xp=xp.rested(db, user.rested_xp, user.rested_on, user.id, now),
         ),
     )
@@ -101,11 +102,13 @@ def change_password(
     accounts.change_password(db, user, body.current_password, body.new_password, keep, now)
 
 
-@router.get("/export")
-def export_my_data(user: Member, db: Db, now: Now, response: Response) -> Export:
+@router.get("/export", response_model=Export)
+def export_my_data(user: Member, db: Db, now: Now) -> Response:
+    with privacy.export_slot():  # written out inside the slot: the JSON is the other big copy
+        body = export_json(privacy.export(db, user, now))
     # Names can hold any Latin letter; headers only Latin-1, so the file name carries the date alone.
-    response.headers["Content-Disposition"] = f'attachment; filename="mingoquiz-export-{now.date()}.json"'
-    return Export.model_validate(privacy.export(db, user, now))
+    disposition = f'attachment; filename="mingoquiz-export-{now.date()}.json"'
+    return Response(body, media_type="application/json", headers={"Content-Disposition": disposition})
 
 
 @router.post("/delete", status_code=204)

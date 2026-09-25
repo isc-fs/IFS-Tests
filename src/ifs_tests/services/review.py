@@ -22,12 +22,17 @@ from ..db.models import (
     Report,
     User,
 )
-from ..domain import keys
+from ..domain import grading, keys
 from .accounts import audit
 from .errors import UserError
 from .mock import labels
 from .questions import running_for
 
+RANGE_HELP = "Use a range like 11.7-12.1, no units; write or between ranges when any of them is right."
+TYPED_HELP = (
+    "Use a number (82.9: no units, % or thousands separators), a range like 11.7-12.1, values separated by ; "
+    "(518.4; 604.8) or a short code; write or between answers when any of them is right (118 or 122)."
+)
 Queue = Literal["all", "reports", "changed", "unclassified", "ungraded", "excluded"]
 PAGE = 30
 
@@ -171,7 +176,7 @@ def update(db: DB, reviewer: User, question_id: int, changes: dict[str, Any], no
         q.exclusion_note = (note or None) if q.excluded else None
     acknowledged = bool(changes.get("acknowledge_change")) and q.key_changed_at is not None
     if acknowledged:
-        q.key_changed_at = None
+        q.key_changed_at = q.upstream_change = None
     _serve(q)
     after = {k: getattr(q, k) for k in before}
     diff = {k: [before[k], after[k]] for k in before if before[k] != after[k]}
@@ -215,13 +220,11 @@ def set_answer(
         shown = "\n".join(o.text for o in picked)
     else:
         text = (value or "").strip()
-        parsed = keys.build_key("input", [{"text": text, "is_correct": True}]) if text else None
-        if parsed is None or parsed["kind"] == "self":
+        parsed = grading.correction(q.type, text)
+        if parsed is None:
             raise UserError(
                 "That can't be graded automatically.",
-                fields={
-                    "value": "Use a number, a range like 11.7-12.1, values separated by ; or a short code."
-                },
+                fields={"value": RANGE_HELP if q.type == "input-range" else TYPED_HELP},
             )
         override, shown = parsed, keys.clean(text)
         q.answer_kind = override["kind"]

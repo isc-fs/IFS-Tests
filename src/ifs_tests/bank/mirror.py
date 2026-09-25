@@ -3,7 +3,9 @@
 One call to /event/all lists every quiz; one call per quiz to /quiz/{id}
 returns its questions with answers, images and solutions embedded. Raw
 responses are cached under data/fsquiz/raw so re-runs only fetch what is
-missing.
+missing. The bank holds only what FS-Quiz publishes now: quizzes it no longer
+lists are left out, and cached files it answers 404 for are deleted, so the
+import can retire them.
 """
 
 from __future__ import annotations
@@ -53,6 +55,7 @@ def mirror(
             _dump(path, api.quiz(qid))
             log(f"  quiz {qid}")
         except NotFound:
+            path.unlink(missing_ok=True)
             log(f"  quiz {qid}: not found (unpublished?)")
 
     for name, fetch in (("documents", api.documents), ("last_qualifiers", api.last_qualifiers)):
@@ -60,7 +63,7 @@ def mirror(
         if refresh or not path.exists():
             _dump(path, fetch())
 
-    quizzes = [_load(p) for p in sorted((raw / "quiz").glob("*.json"))]
+    quizzes = [_load(p) for p in (raw / "quiz" / f"{i}.json" for i in quiz_ids) if p.exists()]
     seen = {int(q["question_id"]) for quiz in quizzes for q in quiz.get("questions") or []}
 
     # Optional: find questions that exist in the bank but in no published quiz.
@@ -68,15 +71,17 @@ def mirror(
     if question_index:
         index = api.questions()
         _dump(raw / "question_index.json", index)
-        for q in index:
-            qid = int(q["question_id"])
-            if qid in seen:
-                continue
+        listed = {int(q["question_id"]) for q in index}
+        for stale in (raw / "question").glob("*.json"):
+            if int(stale.stem) not in listed:
+                stale.unlink()
+        for qid in sorted(listed - seen):
             path = raw / "question" / f"{qid}.json"
             if refresh or not path.exists():
                 try:
                     _dump(path, api.question(qid))
                 except NotFound:
+                    path.unlink(missing_ok=True)
                     continue
             orphans.append(_load(path))
         log(f"{len(index)} questions in the index, {len(orphans)} outside any published quiz")

@@ -26,11 +26,12 @@ Nothing to do: the `scheduler` container runs these in Madrid time (`src/ifs_tes
 | | Invite and reset links | Deletes links used or expired more than 30 days ago | `invites`, `resets` | `maintenance.py` |
 | | Abandoned daily questions | Closes dailies left to run out as late and wrong (0 XP, LP as a wrong answer) | `dailies_closed` | `close_expired` in `src/ifs_tests/services/daily.py` |
 | | Abandoned mock questions | Charges mock questions left to run out the same way; the run stays open | `mock_questions_closed` | `close_expired` in `src/ifs_tests/services/mock.py` |
+| | Forgotten mock runs | Ends runs nobody has touched for 2 days (`STALE_AFTER` in `src/ifs_tests/domain/mock.py`), as if their player had ended them: the questions not reached aren't scored and stop being held back from the daily question and practice | `mock_runs_ended` | `end_stale` in `src/ifs_tests/services/mock.py` |
 | | Abandoned live quizzes | Finishes sessions still open a day after they were created (the host never ended them) and shares their XP | `live_sessions_finished` | `finish_abandoned` in `src/ifs_tests/services/live.py` |
 | | Live quiz XP | Shares any table answer's XP that a crash left unshared | `live_answers_shared` | `share_pending` in `src/ifs_tests/services/live.py` |
 | | Difficulty | Recalibrates graded questions from success rates ([game rules](game-rules.md#4-question-difficulty)) | `difficulty_changed` | `recalibrate` in `src/ifs_tests/services/xp.py` |
 | | Season rollover | Applies the 1 September rank reset to active members still placed in an earlier season; 0 on every other night | `ranks_reset` | `rollover` in `src/ifs_tests/services/season.py` |
-| | Streak freezes | Spends freezes on missed days and awards new ones, catching up on up to 3 missed nights | `freezes_used`, `freezes_earned` | `nightly` in `src/ifs_tests/services/streaks.py` |
+| | Streak freezes | Stores the freezes spent on missed days and awards new ones, catching up on up to 3 missed nights (reads apply the same freezes from midnight, so nobody waits for this job) | `freezes_used`, `freezes_earned` | `nightly` in `src/ifs_tests/services/streaks.py` |
 | | Alumni deletion | Deletes alumni and disabled accounts 365 days after they stopped being active (inactive accounts with no date get one now) | `alumni_deleted` | `purge` in `src/ifs_tests/services/privacy.py` |
 | | Audit log | Deletes audit entries older than two years, through the database function `purge_audit_log` (migration 0016) | `audit_purged` | same |
 | 03:30 | Backup | Dumps the database, pings `BACKUP_HEARTBEAT_URL` if set, and deletes dumps older than 14 days | `backup:` lines | `deploy/db/backup.sh` |
@@ -64,7 +65,7 @@ The registration quizzes run over the winter (FSG's is usually in January). FS-Q
 
 1. **Maintainer: refresh the bank** on staging, then prod: `deploy/refresh-bank.sh staging`, check Admin → Question bank, then `deploy/refresh-bank.sh prod` ([runbook 2.3](runbook.md#23-question-bank)). The script always re-fetches every quiz, the rulebook and handbook list and the last qualifiers' results (`mirror --refresh`), so changes to quizzes already mirrored arrive too; images already downloaded are kept. That is about 130 requests per environment, one a second: run it once a season, not more, since the FS-Quiz author asks users to avoid unnecessary queries.
 2. **Reviewers: work the queues** in Review:
-   - **Changed upstream**: FS-Quiz changed a question or its answer; any local correction was dropped. Check it and correct again if needed.
+   - **Changed upstream**: FS-Quiz changed a question's answer or options (any local correction was dropped), its wording (the correction stays), or a hidden question, or deleted it. Check it and correct again if needed.
    - **Unclassified**: new questions whose topic the keyword tagger couldn't guess. Set area and topic.
    - **Not graded**: questions the app can't grade automatically; a typed correction can make them gradable.
 3. **Technical Directors: check the new rules.** Questions show later editions of the rulebooks and handbooks they were based on. If a rule changed, hide or correct the affected questions, and check the formulas and reading panels (`src/ifs_tests/content/learning.json`) still hold; a developer changes that file.

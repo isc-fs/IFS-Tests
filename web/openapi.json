@@ -1456,6 +1456,51 @@
     }
    }
   },
+  "/api/mock/sessions/{session_id}/end": {
+   "post": {
+    "tags": [
+     "mock"
+    ],
+    "summary": "End Mock",
+    "description": "End the run early: the question on screen counts as out of time; the ones not reached aren't scored.",
+    "operationId": "end_mock",
+    "parameters": [
+     {
+      "name": "session_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "maximum": 2147483647,
+       "minimum": 1,
+       "title": "Session Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/MockState"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/api/mock/sessions/{session_id}/attempts/{attempt_id}/hint": {
    "post": {
     "tags": [
@@ -2877,6 +2922,17 @@
       "type": "number",
       "title": "Rank Points"
      },
+     "rank_by_position": {
+      "additionalProperties": {
+       "type": "number"
+      },
+      "propertyNames": {
+       "$ref": "#/components/schemas/Position"
+      },
+      "type": "object",
+      "title": "Rank By Position",
+      "description": "Their rank points if moved to each position: shown before a change is saved"
+     },
      "leaderboard_opt_out": {
       "type": "boolean",
       "title": "Leaderboard Opt Out"
@@ -2935,6 +2991,7 @@
      "position",
      "xp",
      "rank_points",
+     "rank_by_position",
      "leaderboard_opt_out",
      "last_seen",
      "created_at",
@@ -3602,6 +3659,28 @@
       "title": "Best Division",
       "description": "The highest division reached in that season"
      },
+     "position_lifts": {
+      "anyOf": [
+       {
+        "additionalProperties": {
+         "anyOf": [
+          {
+           "type": "integer"
+          },
+          {
+           "type": "number"
+          }
+         ]
+        },
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Position Lifts",
+      "description": "The LP each raise of position gave this season, which a lower position takes back"
+     },
      "right_in_a_row": {
       "type": "integer",
       "title": "Right In A Row"
@@ -3720,6 +3799,7 @@
      "rank_points",
      "rank_season",
      "best_division",
+     "position_lifts",
      "right_in_a_row",
      "wrong_in_a_row",
      "rested_xp",
@@ -5192,6 +5272,18 @@
      "points": {
       "type": "integer",
       "title": "Points"
+     },
+     "reach": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Reach",
+      "description": "In the lobby of a specialists quiz: the share of draws of this quiz's questions in which the table gets at least one (0 without a captain); null otherwise"
      }
     },
     "type": "object",
@@ -5435,7 +5527,8 @@
         "type": "null"
        }
       ],
-      "title": "Total Time S"
+      "title": "Total Time S",
+      "description": "What a run allows: the sum of its questions' clocks"
      },
      "bar_to_beat": {
       "anyOf": [
@@ -5458,7 +5551,7 @@
        }
       ],
       "title": "Best",
-      "description": "Most correct answers in a finished run"
+      "description": "Most right answers in time in a finished run"
      },
      "open_session": {
       "anyOf": [
@@ -5548,11 +5641,18 @@
     "properties": {
      "correct": {
       "type": "integer",
-      "title": "Correct"
+      "title": "Correct",
+      "description": "Right answers sent in time: a late one is scored as wrong"
      },
      "graded": {
       "type": "integer",
-      "title": "Graded"
+      "title": "Graded",
+      "description": "Graded questions in the run, those not reached included"
+     },
+     "unreached": {
+      "type": "integer",
+      "title": "Unreached",
+      "description": "Questions not reached because the run was ended early: not scored"
      },
      "xp": {
       "type": "integer",
@@ -5589,6 +5689,7 @@
     "required": [
      "correct",
      "graded",
+     "unreached",
      "xp",
      "lp",
      "counted",
@@ -6433,6 +6534,25 @@
       ],
       "title": "Key Changed At"
      },
+     "upstream_change": {
+      "anyOf": [
+       {
+        "type": "string",
+        "enum": [
+         "answer",
+         "wording",
+         "content",
+         "removed",
+         "back"
+        ]
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Upstream Change",
+      "description": "Why it is in the changed-upstream queue: its answer or options changed (any correction was removed), the wording of the question or an option changed (the correction stays), a hidden question changed, FS-Quiz deleted it, or it is back after being deleted"
+     },
      "official": {
       "anyOf": [
        {
@@ -6515,6 +6635,7 @@
      "excluded",
      "exclusion_note",
      "key_changed_at",
+     "upstream_change",
      "official",
      "correction",
      "options",

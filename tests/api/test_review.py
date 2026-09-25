@@ -152,7 +152,7 @@ def test_correcting_a_typed_answer_changes_how_it_is_entered(
     assert cleared["answer_kind"] == "self"
 
 
-def test_an_upstream_change_drops_the_correction_and_asks_again(
+def test_an_answer_changed_upstream_drops_the_correction_and_asks_again(
     reviewer: TestClient, db: Session, clock: Clock, tmp_path: Path, bank: dict[int, int]
 ) -> None:
     qid = bank[90002]
@@ -162,15 +162,29 @@ def test_an_upstream_change_drops_the_correction_and_asks_again(
     assert reviewer.get(f"/api/review/questions/{qid}").json()["correction"] == "0.321"
 
     changed = copy.deepcopy(load_bank(SAMPLE_DIR))
-    next(q for q in changed["questions"] if q["question_id"] == 90002)["text"] += " Round to 3 decimals."
+    next(q for q in changed["questions"] if q["question_id"] == 90002)["answers"][0]["text"] = "0.33"
     clock.advance(hours=1)
     report = import_bank(db, changed, SAMPLE_DIR / "img", tmp_path, clock.now)
     assert report.key_changed == 1
     d = reviewer.get(f"/api/review/questions/{qid}").json()
-    assert d["correction"] is None and d["key_changed_at"] is not None
+    assert d["correction"] is None and d["key_changed_at"] is not None and d["upstream_change"] == "answer"
     assert [r["id"] for r in page(reviewer, queue="changed")["rows"]] == [qid]
     ok = reviewer.patch(f"/api/review/questions/{qid}", json={"acknowledge_change": True}).json()
     assert ok["key_changed_at"] is None and page(reviewer)["queues"]["changed"] == 0
+
+
+def test_a_reworded_question_keeps_the_correction_and_asks_to_check_it(
+    reviewer: TestClient, db: Session, clock: Clock, tmp_path: Path, bank: dict[int, int]
+) -> None:
+    qid = bank[90002]
+    reviewer.put(f"/api/review/questions/{qid}/answer", json={"value": "0.321"})
+    changed = copy.deepcopy(load_bank(SAMPLE_DIR))
+    next(q for q in changed["questions"] if q["question_id"] == 90002)["text"] += " Round to 3 decimals."
+    clock.advance(hours=1)
+    import_bank(db, changed, SAMPLE_DIR / "img", tmp_path, clock.now)
+    d = reviewer.get(f"/api/review/questions/{qid}").json()
+    assert (d["correction"], d["upstream_change"]) == ("0.321", "wording")
+    assert [r["id"] for r in page(reviewer, queue="changed")["rows"]] == [qid]
 
 
 def test_players_report_problems_and_reviewers_resolve_them(
@@ -343,3 +357,26 @@ def test_a_correction_can_accept_either_of_two_values(
     assert (fixed["answer_kind"], fixed["correction"]) == ("number", "2778 or 2800")
     ok = player.post(f"/api/practice/questions/{qid}/answer", json={"value": "2800"}).json()
     assert ok["correct"] is True
+
+
+def test_a_correction_is_read_for_the_questions_own_type(
+    reviewer: TestClient, player: TestClient, bank: dict[int, int]
+) -> None:
+    rng = bank[90005]  # a range question: 3.8-3.9
+    for bad in ("3.8 to 3.9", "12 V", "3.85"):
+        r = reviewer.put(f"/api/review/questions/{rng}/answer", json={"value": bad})
+        assert r.status_code == 400 and "11.7-12.1" in r.json()["fields"]["value"], (bad, r.text)
+    fixed = reviewer.put(f"/api/review/questions/{rng}/answer", json={"value": "3.80-3.90"}).json()
+    assert fixed["answer_kind"] == "range"
+    assert (
+        player.post(f"/api/practice/questions/{rng}/answer", json={"value": "3.85"}).json()["correct"] is True
+    )
+    typed = bank[90012]
+    r = reviewer.put(f"/api/review/questions/{typed}/answer", json={"value": "12.5 kW"})
+    assert r.status_code == 400 and "no units" in r.json()["fields"]["value"]
+    either = reviewer.put(f"/api/review/questions/{typed}/answer", json={"value": "118 or 122"}).json()
+    assert (either["answer_kind"], either["correction"]) == ("number", "118 or 122")  # Q635
+    assert (
+        player.post(f"/api/practice/questions/{typed}/answer", json={"value": "122"}).json()["correct"]
+        is True
+    )

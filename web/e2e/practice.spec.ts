@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { ADMIN, signIn } from './helpers'
+import { ADMIN, signIn, typeAnAnswer } from './helpers'
 
 test('practise a few questions from the bank', async ({ page }) => {
   await signIn(page, ADMIN.email, ADMIN.password)
@@ -13,7 +13,7 @@ test('practise a few questions from the bank', async ({ page }) => {
     const box = card.getByRole('checkbox')
     if (await radio.count()) await radio.first().check()
     else if (await box.count()) await box.first().check()
-    else if (await card.getByLabel('Your answer').count()) await card.getByLabel('Your answer').fill('1')
+    else if (await card.getByLabel('Your answer').count()) await typeAnAnswer(card)
     await card.getByRole('button', { name: /Check answer|Show the official answer/ }).click()
     const next = card.getByRole('button', { name: 'Next question' })
     await expect(next).toBeFocused()

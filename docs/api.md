@@ -78,7 +78,7 @@ No session needed; the CSRF header still is.
 | `GET /api/me` | The signed-in user with rank, account level, streak and training wheels (`progress`) |
 | `PATCH /api/me` | Change display name, vertical, sub-departments or leaderboard opt-out; only the fields sent |
 | `POST /api/me/password` | Change password (needs the current one); ends the other sessions |
-| `GET /api/me/export` | Everything stored about the caller, as a JSON download |
+| `GET /api/me/export` | Everything stored about the caller, as a JSON download. 429 while the process is already preparing two downloads (`privacy.EXPORTS_AT_ONCE`) |
 | `POST /api/me/delete` | Delete the account after confirming the password; clears the cookie |
 
 ### `/api/admin` (`api/routes/admin.py`): `Admin`
@@ -88,7 +88,7 @@ No session needed; the CSRF header still is.
 | `GET /api/admin/users` | All accounts, alphabetically |
 | `PATCH /api/admin/users/{user_id}` | Change email, role, status or position; only the fields sent (not your own role or status; never the last active admin). A new email is validated as at sign-up (400 "Enter a valid email address.", 409 "An account with this email already exists.", both as field errors on `email`) and audited as `user.email` without the addresses. A position change first applies a season reset still pending |
 | `DELETE /api/admin/users/{user_id}` | Delete someone else's account |
-| `GET /api/admin/users/{user_id}/export` | Someone's data export, for a person who can't sign in; audited |
+| `GET /api/admin/users/{user_id}/export` | Someone's data export, for a person who can't sign in; audited; the same 429 as `/api/me/export` |
 | `POST /api/admin/alumni` | Mark a list of accounts as alumni (season rollover) |
 | `POST /api/admin/users/{user_id}/reset-link` | Create a 24-hour password reset link |
 | `POST /api/admin/users/{user_id}/revoke-sessions` | Sign someone out everywhere |
@@ -114,7 +114,7 @@ No session needed; the CSRF header still is.
 |---|---|
 | `GET /api/daily` | Today's state per area, streak, XP and LP today; closes the caller's abandoned daily questions |
 | `POST /api/daily/{area}/start` | Start the clock (`area` is `mech`, `elec` or `rules`); reveals the question and the deadline with the server's clock. Returns the running attempt if already started |
-| `POST /api/daily/attempts/{attempt_id}/answer` | Submit once; a retry returns the stored result |
+| `POST /api/daily/attempts/{attempt_id}/answer` | Submit once; a retry returns the stored result. A typed answer the grader can't read (units, `%`, `2,778`, one value for a list) is refused with 400 and a `value` field error saying what to type, before anything is recorded; the same holds for every answer route |
 | `GET /api/daily/{area}/review` | Today's answered question with its result |
 | `POST /api/daily/attempts/{attempt_id}/hint` | A hint on the running daily question |
 
@@ -126,6 +126,7 @@ No session needed; the CSRF header still is.
 | `POST /api/mock/quizzes/{quiz_id}/start` | Start a run, or return the one already open |
 | `GET /api/mock/sessions/{session_id}` | The run: the current question with its deadline, or the summary once finished |
 | `POST /api/mock/sessions/{session_id}/answer` | Answer the question on screen and move on |
+| `POST /api/mock/sessions/{session_id}/end` | End the run early: the question on screen counts as out of time, the ones not reached aren't scored; returns the summary |
 | `POST /api/mock/sessions/{session_id}/attempts/{attempt_id}/hint` | A hint on the running question |
 
 ### `/api/review` (`api/routes/review.py`): `Reviewer`
@@ -178,7 +179,7 @@ No session needed; the CSRF header still is.
 | `POST /api/live/sessions/{code}/end` | host | Finish now |
 | `PUT /api/live/sessions/{code}/proposal` | seated player | Suggest an answer to the captain of the table answering |
 | `POST /api/live/sessions/{code}/answer` | captain of the answering table | Send the table's one answer |
-| `GET /api/live/sessions/{code}/results.csv` | host | Results as CSV, one row per table answer (or per question nobody answered), with the columns `question`, `text`, `for table`, `answered by`, `captain`, `answer`, `official answer`, `right`, `points`; cells that a spreadsheet would run as formulas are escaped |
+| `GET /api/live/sessions/{code}/results.csv` | host | Results as CSV, one row per table answer (or per question nobody answered), with the columns `question`, `text`, `for table`, `answered by`, `captain`, `answer`, `official answer`, `right`, `points`; UTF-8 with a byte order mark, `;` between cells (Excel in Spanish); cells that a spreadsheet would run as formulas are escaped, plain numbers aren't |
 | `GET /api/live/sessions/{code}/events` | its host or a player | Server-Sent Events stream of version numbers (below) |
 
 ### Outside the routers
@@ -186,7 +187,7 @@ No session needed; the CSRF header still is.
 | Path | Purpose |
 |---|---|
 | `GET`/`HEAD /healthz` | `{"status": "ok", "version": ...}`. Liveness: process only, never touches the database; the image's own health check and uptime probes use it. Not in the OpenAPI document |
-| `GET`/`HEAD /readyz` | Readiness: runs `SELECT 1` through the app's own database role and pool. `{"status": "ok"}`, or 503 `{"status": "unavailable"}` (the cause goes to the api log, never the response). No auth. Used by the api's health check in `deploy/compose.yaml` and by `deploy.sh`'s smoke test. Not in the OpenAPI document |
+| `GET`/`HEAD /readyz` | Readiness: one catalogue query through the app's own database role and pool, checking that every table and column the code maps exists (extra ones from a newer release are fine). `{"status": "ok"}`; 503 `{"status": "unavailable"}` when the database can't be reached, or 503 `{"status": "schema out of date"}` when a mapped column is missing (the cause, with the columns, goes to the api log, never the response). No auth. Used by the api's health check in `deploy/compose.yaml` and by `deploy.sh`'s smoke test. Not in the OpenAPI document |
 | `GET /media/{name}` | Question and solution images, cached for a year (names are content hashes) |
 | `GET /assets/*` | The SPA's built files, cached for a year |
 | any other `GET` | The SPA's `index.html` (`no-cache`), so client-side routes load |

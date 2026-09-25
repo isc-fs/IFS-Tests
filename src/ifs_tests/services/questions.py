@@ -31,7 +31,7 @@ from ..db.models import (
     quiz_events,
 )
 from ..domain.daily import madrid_day
-from ..domain.grading import grade
+from ..domain.grading import grade, unreadable
 from .errors import UserError
 
 if TYPE_CHECKING:
@@ -196,21 +196,28 @@ def explain(db: DB, q: Question, correct: bool | None, passed: bool = False) -> 
 def check(db: DB, q: Question, options: list[int] | None, value: str | None, unsure: bool = False) -> Checked:
     """Grade a new answer and return everything needed to explain it. Never call before the player answered.
     `unsure` is "I'm not sure": no answer, marked not right, the official answer shown. An option FS-Quiz
-    removed while the question was on screen is still accepted (and graded against the current key)."""
-    choices = db.scalars(select(AnswerOption.id).where(AnswerOption.question_id == q.id)).all()
+    removed is refused like any unknown one, even if it was on screen; answers that picked it earlier still
+    show it (`show`). A typed answer the grader can't read (units, a thousands comma) is refused before anything
+    is recorded, so the player can fix it while the clock runs."""
+    choices = db.scalars(
+        select(AnswerOption.id).where(AnswerOption.question_id == q.id, AnswerOption.retired.is_(False))
+    ).all()
     if options and not set(options) <= set(choices):
         raise UserError("Pick one of the listed answers.")
     key = db.get(AnswerKey, q.id)
     k = key.effective if key else None
     passed = unsure and q.graded
+    if q.graded and not passed and (problem := unreadable(k, value)):
+        raise UserError(problem, fields={"value": problem})
     correct = (False if passed else grade(k, options=options, value=value)) if q.graded else None
     return explain(db, q, correct, passed)
 
 
 def running(db: DB, user_id: int, now: datetime, *, daily: bool = True) -> set[int]:
-    """The questions `user_id` still has to answer in a scored mode: today's daily questions, the questions
-    of their open mock runs, and the open question (every question, in a rehearsal) of a live quiz they play
-    in. Their answers must not reach them another way first."""
+    """The questions `user_id` still has to answer in a scored mode: today's daily questions (and one they
+    started before midnight and haven't answered), the questions of their open mock runs, and the open question
+    (every question, in a rehearsal) of a live quiz they play in. Their answers must not reach them another way
+    first."""
     day = madrid_day(now)
 
     def answered(question_id: Any, *where: Any) -> Any:
@@ -224,6 +231,9 @@ def running(db: DB, user_id: int, now: datetime, *, daily: bool = True) -> set[i
     today = select(DailyQuestion.question_id).where(
         DailyQuestion.day == day,
         ~answered(DailyQuestion.question_id, Attempt.mode == "daily", Attempt.day == day),
+    )
+    started = select(Attempt.question_id).where(
+        Attempt.user_id == user_id, Attempt.mode == "daily", Attempt.submitted_at.is_(None)
     )
     in_run = (
         select(QuizQuestion.question_id)
@@ -248,7 +258,7 @@ def running(db: DB, user_id: int, now: datetime, *, daily: bool = True) -> set[i
             ),
         )
     )
-    return set(db.scalars(union(today, in_run, in_live) if daily else union(in_run, in_live)))
+    return set(db.scalars(union(today, started, in_run, in_live) if daily else union(in_run, in_live)))
 
 
 def running_for(db: DB, user_id: int, question_id: int, now: datetime) -> bool:

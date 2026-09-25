@@ -58,8 +58,8 @@ Each answer moves the rank Elo-style against the question's rating. In plain wor
 1. **Question rating** from its difficulty d (1–5): `Q = 650 + 170 × (d − 3)`, so 310, 480, 650, 820, 990.
 2. **Expected score** of a player with rank points R: `E = g + (1 − g) × 1 / (1 + e^(−(R − Q)/600))`, where the guess floor `g = 1/options` on a single-choice question (0 for everything else). The floor makes a blind guess break even at every rank.
 3. **K** by mode (below), multiplied by the repeat and softening factors.
-4. **Right** (in time, not passed): `+K × (1 − E)`, halved if a hint was taken, ×1.5 on a comeback.
-5. **Wrong or late**: `−K × E × stakes`, halved while cushioned.
+4. **Right** (in time, not passed): `+K × (1 − E)`, halved if a hint was taken, up to ×1.5 on a comeback (2.3).
+5. **Wrong or late**: `−K × E × stakes`, cut by up to half while cushioned (2.3).
 6. **"I'm not sure"** before the clock runs out: half a wrong answer, and on a single choice never more than a blind guess would lose on average: `min(½ × wrong, (1 − 1/options) × wrong − right/options)`, floored at 0. A pass after the clock ran out counts as a late wrong answer.
 7. The result is rounded to two decimals, added to the rank points, and the total floored at 0.
 
@@ -91,6 +91,13 @@ A hint on a single choice makes a wrong answer cost *more* than without it (the 
 
 After **3 wrong answers in a row**, losses are halved (cushioned) and the next right answer pays ×1.5 (comeback). Both end with the bad run.
 
+On a **single choice** the full cushion and comeback would make a blind guess pay (+2.10 LP on average at 50 points with 4 options), and "I'm not sure", capped at what a blind guess loses, would cost nothing. So there the cushion and the comeback shrink together, by the share `t` (`bad_run` in `src/ifs_tests/domain/rank.py`), until a blind guess still loses on average at least `CUSHION` (half) of what it loses outside a bad run:
+
+- right `× (1 + t × 0.5)`, wrong `× (1 − t × 0.5)`, with `t = min(1, ½ × ((n − 1) × wrong − right) / (½ × right + ½ × (n − 1) × wrong))` for `n` options (two after a hint), where right and wrong are the sizes of the answer's usual LP;
+- "I'm not sure" then costs half the cushioned wrong answer, capped at what a blind guess loses on average as in 2.2, and never nothing.
+
+`t` is about 0.3 at Mingo I, 0.6 at Jefe I and 0.9 at the top on a difficulty-3 rules question with 4 options: the comeback pays ×1.16, ×1.31 and ×1.46 there. Multiple choice and typed answers, where a blind guess all but never lands, keep the full cushion and comeback.
+
 Only answers that "count towards the run" move the counter: first-time daily and mock answers in a counted run, that is mode daily or mock, not a repeat this season, not already answered today, not a mock replay. Everything else gets no cushion and doesn't touch the counter, so a bad run can't be staged with cheap misses.
 
 How the counter moves (`next_miss_streak`): a right answer in time resets it to 0; a wrong or late answer adds 1; "I'm not sure" in time and an ungraded question leave it alone. It is stored in `users.miss_streak`, capped at 99 (`COUNTER_CAP` in `src/ifs_tests/services/xp.py`).
@@ -118,8 +125,9 @@ Placement is a start, not a floor: a Technical Director who answers badly falls 
 
 **When an admin changes a position** (`_set_position` in `src/ifs_tests/services/accounts.py`):
 
-- To a **higher** position: rank points become at least the new placement. Nobody loses what they earned above it.
-- To a **lower** position (a correction): the head start is taken back, `rank points − (old placement − new placement)`, floored at 0. What they earned stays.
+- To a **higher** position: rank points become at least the new placement. Nobody loses what they earned above it. The LP the raise gave is recorded per position crossed (`users.position_lifts`, this season only).
+- To a **lower** position (a correction): the head start is taken back, floored at 0, and what they earned stays. For each position given up, the head start is what the raise to it gave, or, for a position held since sign-up or since before this season's reset, the whole gap to the placement below. So undoing a mistaken raise puts them back exactly: Mingo at 130 raised to Returning member (350) and put back is at 130 again, plus or minus what they answered in between. The rule is `reposition` in `src/ifs_tests/domain/rank.py`.
+- A lower then a raise is not an exact undo: the raise lifts to the placement, as any raise does (a Technical Director at 1,100 corrected to Department Head is at 600, and raised back is at 1,050). The admin page shows the effect before saving.
 - Either way the promotion fanfare doesn't play for the new division: they were placed there, not promoted.
 - If the 1 September reset is still pending for them (placed in an earlier season, no answer or nightly job since), it is applied first, then the new position.
 
@@ -156,7 +164,7 @@ Learning aids follow the division the player stands in *now*, including after a 
 
 The rulebook, handbook and other documents of the quizzes a question came from are shown at every rank: they are the material of the real quiz, not a training wheel.
 
-A hint is generated from the answer key: two options left on a single choice, how many options are right on a multiple choice, a range holding a number without being centred on it, the count and first value of a list, the length and first letter of a text. One per question, before answering. No hint is given when it would give the answer away (see `src/ifs_tests/domain/hints.py`). Hints are drawn with a server secret (the `hint_salt` row in the `settings` table), so nobody can compute them from the public bank.
+A hint is generated from the answer key: two options left on a single choice, how many options are right on a multiple choice, a range holding a number 10–40 % in from one end (so neither its ends nor its middle are right), a range holding a range with its middle outside it, the count of a list and a range for its first value, the length and first letter of a text. Numbers in a hint are written the way the answer field reads them (a decimal point, no thousands separators), so one can be typed back as it is. One per question, before answering. No hint is given when it would give the answer away (see `src/ifs_tests/domain/hints.py`). Hints are drawn with a server secret (the `hint_salt` row in the `settings` table), so nobody can compute them from the public bank.
 
 ---
 
@@ -203,9 +211,9 @@ Bonuses are shares of the base, **added** to it, never multiplied together. Each
 
 The combo counts right answers across practice, daily and mock (not live). A wrong, late or passed answer resets it; an ungraded one leaves it. Live answers get no first-win and no combo, and leave the combo alone; streak, critical and rested still apply.
 
-**Rested XP:** each full Madrid day with no scored answer banks 150 rested XP, up to 450. It counts from the last scored answer, so a daily question left to run out doesn't spend the days away.
+**Rested XP:** each full Madrid day with no scored answer banks 150 rested XP, up to 450. It counts from the last scored answer, so a daily question left to run out doesn't spend the days away. An answer plays the day its question was shown: a daily started at 23:59 and answered at 00:01 played the day before, not the new one (`played_on` in `grant`, `src/ifs_tests/services/xp.py`).
 
-**Streak and freezes:** the daily streak is the number of consecutive Madrid days with an on-time daily answer in any area (right, wrong or "not sure"), ending today, or yesterday while today is still open. Every 7 days of streak earns a **freeze** (hold at most 2). The nightly job spends one on a missed day while the streak was alive the day before, so two freezes can bridge two missed days. The job catches up on up to 3 nights it missed. Code: `src/ifs_tests/domain/daily.py` and `src/ifs_tests/services/streaks.py`.
+**Streak and freezes:** the daily streak is the number of consecutive Madrid days with an on-time daily answer in any area (right, wrong or "not sure"), ending today, or yesterday while today is still open. Every 7 days of streak earns a **freeze** (hold at most 2). One is spent on a missed day while the streak was alive the day before, so two freezes can bridge two missed days. It is spent from midnight: whatever reads the streak (the rank card, the daily page, the streak bonus of an answer at 00:30) applies the freezes due over the last 3 days (`settle` in `src/ifs_tests/domain/daily.py`), and the nightly job stores the same ones, so it doesn't matter which comes first. The job catches up on up to 3 nights it missed. Code: `src/ifs_tests/domain/daily.py` and `src/ifs_tests/services/streaks.py`.
 
 | Constant | Value | File |
 |---|---|---|
@@ -265,6 +273,7 @@ Worked values (computed): a single choice with no time budget and 17 of 20 right
 - If a reviewer or a bank reload hides today's question (or it stops being gradable), it is replaced for everyone who hasn't started it; people who did keep theirs.
 - **Clock:** the real quiz's time budget, otherwise 120 s for single choice, 150 s for multiple choice, 240 s for typed answers; always clamped to 60–600 s. Three seconds of grace. A late answer counts as wrong.
 - **One try.** A daily left to run out is closed as late when the player next opens the daily page, or by the nightly job: 0 XP, and LP as a wrong answer.
+- **Started before midnight:** a daily belongs to the day it was started, until its own deadline. One started at 23:59 stays on the daily page after midnight (in place of the new day's question for that area, which appears once it is answered or has run out), can be answered in time, and then counts for its day: the streak, the leaderboard and rested XP. Until then it is still running for the player, so practice and the review tools keep its answer back (`_carried` in `src/ifs_tests/services/daily.py`, `running` in `src/ifs_tests/services/questions.py`).
 
 | Constant | Value | File |
 |---|---|---|
@@ -274,6 +283,19 @@ Worked values (computed): a single choice with no time budget and 17 of 20 right
 | `MIN_BUDGET`, `MAX_BUDGET` | 60, 600 s | same |
 | `GRACE` | 3 s | same |
 | `LOCK` | advisory lock key | `src/ifs_tests/services/daily.py` |
+
+### Mock runs
+
+- A run replays one past quiz, one question at a time, in the quiz's order. A question's clock starts when it is shown; one left to run out is closed as out of time (0 XP, LP as a wrong answer) when its player comes back or by the nightly job.
+- **Clock:** the time the question had in the real quiz, not clamped like the daily question's (real quizzes give from 10 s to 20 min). A time FS-Quiz doesn't give falls back to the daily defaults for the kind of answer (120 s, 150 s, 240 s); a time outside 10 s to 1 hour is treated as bad data and clamped into it (`budget` in `src/ifs_tests/domain/mock.py`). The quiz list's total time is the sum of those same clocks, so the list and the run agree.
+- **"*n* of *m* right"** and **your best** on the quiz list count right answers sent in time. A right answer sent late is scored as wrong (LP and XP), so it isn't counted as right either.
+- **Ending a run early** (`end` in `src/ifs_tests/services/mock.py`): the question on screen is closed as out of time, as if its clock had run out, because it has been seen; the questions not reached are not scored at all and count as not right in the summary ("*n* of *m* right" counts every graded question of the run). An ended run is finished: it was the player's run of that quiz for the season, so the next one is a replay.
+- **Forgotten runs:** the nightly job ends a run nobody has touched for 2 days the same way (`end_stale`). While a run is open its questions are held back from the daily question and practice (see `running` in `src/ifs_tests/services/questions.py`), so a forgotten run must not hold them forever.
+
+| Constant | Value | File |
+|---|---|---|
+| `STALE_AFTER` | 2 days since the last question was shown (or the run started) | `src/ifs_tests/domain/mock.py` |
+| `MIN_TIME`, `MAX_TIME` | 10 s, 3,600 s | same |
 
 ---
 
@@ -345,7 +367,7 @@ The same player at 550 points (Jefe I) on other daily questions:
 | Rules, single choice, difficulty 3, repeat this season | +3.05 | −4.23 |
 | Same question in a counted mock run (K 20) | +8.12 | −11.28 |
 
-A bad run at 550 on difficulty-3 rules questions: −16.92, −16.77, −16.63 (now 499.68, Mingo V, 3 misses in a row), then a fourth wrong is cushioned at −7.98, and the next right answer pays +19.09 with the comeback (instead of about +12.7) and ends the run.
+A bad run at 550 on difficulty-3 rules questions (single choice, 4 options): −16.92, −16.77, −16.63 (now 499.68, Mingo V, 3 misses in a row), then a fourth wrong is cushioned at −11.32 (instead of −15.96), and the next right answer, at 488.36, pays +16.44 with the comeback (instead of +12.76) and ends the run. On a typed or multiple-choice question the cushion and comeback are the full half and ×1.5.
 
 ### 8.2 XP for one answer with bonuses
 

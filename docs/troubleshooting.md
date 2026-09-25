@@ -201,9 +201,10 @@ These look like bugs to users and reviewers. They aren't; point people here or t
 
 ### A deploy fails with `FAIL readyz` and rolls back
 
-- **Symptom:** `deploy.sh` prints `application not healthy after 1m30s`, then `FAIL readyz 200 (database reachable as app_rt)`, then `rolling back to <previous>`. `curl -s https://<host>/readyz` answers 503 `{"status":"unavailable"}`, and the api's log has `readyz: database unavailable: ...` (the scheduler's: `database unavailable: ...`).
+- **Symptom:** `deploy.sh` prints `application not healthy after 1m30s`, then `FAIL readyz 200 (database reachable as app_rt, schema as the code maps it)`, then `rolling back to <previous>`. `curl -s https://<host>/readyz` answers 503 `{"status":"unavailable"}`, and the api's log has `readyz: database unavailable: ...` (the scheduler's: `database unavailable: ...`).
 - **Cause:** the app can't open a connection as `app_rt`. Almost always `APP_PASSWORD` in `/srv/quiz/<env>/.env` doesn't match the role's password in Postgres (an edit to `.env`, or a [rotation](runbook.md#7-secrets-rotation) done in only one of the two places); otherwise the `db` container is down.
 - **Fix:** make the two agree (`\password app_rt` in the superuser shell, or correct the `.env`) and deploy the tag again. The rollback uses the same `.env`, so until then the previous tag fails the same way. Before `/readyz` existed this deploy passed its smoke test and every request returned 500.
+- **Other cause:** `/readyz` answers 503 `{"status":"schema out of date"}` and the api's log has `readyz: the database lacks columns this code maps: users.account_xp, ...`. The database is at a revision whose schema isn't the one this code expects: usually a migration that was edited after it had been applied somewhere (the database keeps the old version under the same number). `deploy.sh` refuses such an image when the database recorded the migration it applied (`migration(s) NNNN in <tag> differ`, [runbook 2.2](runbook.md#22-when-a-deploy-fails)), so this is mostly a database migrated before that record existed, or by hand. Never edit an applied migration; write a new one. Before this check the deploy passed and every sign-in returned 500.
 
 ### `restore.sh` refuses a dump "which <tag> doesn't know"
 

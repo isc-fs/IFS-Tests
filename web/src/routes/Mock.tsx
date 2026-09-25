@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import {
   answerMockMutation,
+  endMockMutation,
   mockQuizzesOptions,
   mockStateOptions,
   mockStateQueryKey,
@@ -31,6 +32,9 @@ function verdict(item: MockItem): string {
   if (f.correct === null) return 'not graded'
   return f.correct ? 'right' : 'wrong'
 }
+const END_RUN =
+  "End this run? The question on screen counts as out of time. Questions you haven't reached aren't scored, " +
+  'and running this quiz again this season is a replay (XP only).'
 const minutes = (s: number) => `${Math.round(s / 60)} min`
 
 function QuizRow({ quiz, onStart, busy }: { quiz: MockQuiz; onStart: () => void; busy: boolean }) {
@@ -137,6 +141,12 @@ function Summary({ summary }: { summary: MockSummary }) {
           Now {rank.title} · {Math.floor(rank.lp)} LP · Level {me.progress.account.level}
         </p>
       )}
+      {summary.unreached > 0 && (
+        <p className="muted">
+          You ended this run early: {summary.unreached === 1 ? '1 question' : `${summary.unreached} questions`} not
+          reached, not scored.
+        </p>
+      )}
       {summary.bar_to_beat && <p className="muted">{summary.bar_to_beat}</p>}
       <p>
         <Link to="/mock">Back to the quizzes</Link>
@@ -150,14 +160,12 @@ export function MockRun() {
   const key = mockStateQueryKey({ path: { session_id: id } })
   const state = useQuery({ ...mockStateOptions({ path: { session_id: id } }), retry: false })
   const [expired, setExpired] = useState(false)
-  const send = useMutation({
-    ...answerMockMutation(),
-    ...resend,
-    onSuccess: (next: MockState) => {
-      setExpired(false)
-      queryClient.setQueryData(key, next)
-    },
-  })
+  const show = (next: MockState) => {
+    setExpired(false)
+    queryClient.setQueryData(key, next)
+  }
+  const send = useMutation({ ...answerMockMutation(), ...resend, onSuccess: show })
+  const end = useMutation({ ...endMockMutation(), onSuccess: show })
   const expire = useCallback(() => setExpired(true), [])
   const s = state.data
 
@@ -196,7 +204,19 @@ export function MockRun() {
               }
             />
           </LearningAids>
-          <ErrorNotice error={send.error} />
+          <ErrorNotice error={send.error ?? end.error} />
+          <p>
+            <button
+              type="button"
+              className="secondary"
+              disabled={send.isPending || end.isPending}
+              onClick={() => {
+                if (window.confirm(END_RUN)) end.mutate({ path: { session_id: s.session_id } })
+              }}
+            >
+              End this run
+            </button>
+          </p>
         </>
       )}
       {s.summary && (

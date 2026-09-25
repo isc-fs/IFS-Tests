@@ -1,7 +1,9 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { expect, test } from 'vitest'
+import { afterEach, expect, test, vi } from 'vitest'
 import { ADMIN, MEMBER, progress, renderApp, session } from '../test/render'
+
+afterEach(() => vi.unstubAllGlobals())
 
 const QUESTION = {
   id: 7,
@@ -65,7 +67,7 @@ test('a rough patch says the game has your back', async () => {
   me.progress.rank.miss_streak = 3
   renderApp('/', { 'GET /api/me': { body: me } })
   expect(await screen.findByRole('region', { name: 'Your rank: Jefe II' })).toHaveTextContent(
-    'Rough patch: losses are halved and your next right answer pays 1.5×.',
+    'Rough patch: losses are cushioned (up to half) and your next right answer pays extra (up to 1.5×).',
   )
 })
 
@@ -173,7 +175,7 @@ test('a wrong answer loses LP but still earns some XP; a drop and a rough patch 
   await userEvent.click(screen.getByRole('button', { name: 'Check answer' }))
   expect(await screen.findByText('−4 LP')).toHaveClass('loss')
   expect(screen.getByText('+5 XP')).toHaveClass('gain')
-  expect(screen.getByText('Loss halved: rough patch')).toBeInTheDocument()
+  expect(screen.getByText('Loss cushioned: rough patch')).toBeInTheDocument()
   expect(screen.getByText('Down to Mingo V · formulas are back')).toBeInTheDocument()
   expect(screen.queryByText(/Promoted/)).toBeNull()
 })
@@ -228,10 +230,12 @@ test('newcomers choose where they are on the team when they join', async () => {
 })
 
 test("admins can change someone's position", async () => {
+  vi.stubGlobal('confirm', () => true) // it asks first, showing the rank it leads to (Admin.test.tsx)
+  const rank_by_position = { mingo: 137, member: 350, department_head: 550, technical_director: 1050 }
   const users = [
     { ...ADMIN, status: 'active', last_seen: null, created_at: '2026-09-01T00:00:00Z', locked_until: null },
     { ...MEMBER, status: 'active', last_seen: null, created_at: '2026-09-02T00:00:00Z', locked_until: null },
-  ]
+  ].map((u) => ({ ...u, rank_by_position }))
   const { sent } = renderApp('/admin', {
     'GET /api/me': { body: ADMIN },
     'GET /api/admin/users': { body: users },

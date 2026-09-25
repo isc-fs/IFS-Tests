@@ -16,11 +16,11 @@ Terms you'll meet in MingoQuiz and its docs, in alphabetical order. Each links t
 | **Captain** | The one member of a live quiz table who sends the table's answer; the others propose. By default the member with the most rank points, and the same when a captain is moved or removed. [Hosts' guide](guides/live-quiz-hosts.md#seating) |
 | **Catch-all table** | In a live quiz with specialist routing, the table that answers questions whose topic no table owns |
 | **Combo** | XP bonus: +10 % per right answer in a row before this one, up to +50 %. [Game rules 3.2](game-rules.md#32-bonuses-on-right-answers) |
-| **Comeback** | After 3 wrong answers in a row, the next right one pays ×1.5 LP. [Game rules 2.3](game-rules.md#23-cushion-and-comeback) |
+| **Comeback** | After 3 wrong answers in a row, the next right one pays up to ×1.5 LP (less on a single choice, so a blind guess never pays). [Game rules 2.3](game-rules.md#23-cushion-and-comeback) |
 | **Compose project** | The set of containers of one environment, `quiz-prod` or `quiz-staging`, defined by `deploy/compose.yaml`. [Runbook](runbook.md) |
 | **Critical** | XP bonus: a 5 % chance of +100 % on a right answer, fixed per player, question and day |
 | **CSRF** | Cross-site request forgery: another site making your browser send a request to MingoQuiz. Blocked by the SameSite cookie, an Origin check and an `X-CSRF` header. [Security](security.md) |
-| **Cushion** | After 3 wrong answers in a row, LP losses are halved until the next right answer. [Game rules 2.3](game-rules.md#23-cushion-and-comeback) |
+| **Cushion** | After 3 wrong answers in a row, LP losses are cut by up to half (less on a single choice) until the next right answer. [Game rules 2.3](game-rules.md#23-cushion-and-comeback) |
 | **Daily question** | One question per area per Madrid day, the same for everyone, one try against the clock; the main way to move your rank. [Game rules 5](game-rules.md#5-the-daily-question) |
 | **Department Head** | A position: someone who leads a sub-department. Placed at Jefe I |
 | **Difficulty** | A question's rating from 1 to 5, set from its answer type and time budget and recalibrated nightly from how people did. [Game rules 4](game-rules.md#4-question-difficulty) |

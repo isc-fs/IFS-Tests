@@ -22,6 +22,7 @@ import { ErrorNotice, Field, Form, Notice, SelectField, useFieldErrors } from '.
 import { Page } from '../components/Page'
 import { queryClient, saveJson, useMe } from '../lib/api'
 import { AREAS } from '../lib/areas'
+import { lpIn, numeral, TOP, tierOf } from '../lib/rank'
 import { POSITION_NAMES } from '../lib/xp'
 
 const day = (iso: string) =>
@@ -185,6 +186,15 @@ const CONFIRM: Partial<Record<string, (u: AdminUser) => string>> = {
   admin: (u) => `Make ${u.display_name} an admin? Admins can invite people and change anyone's role.`,
 }
 
+const rankAt = (points: number) => {
+  const d = Math.min(Math.floor(Math.max(points, 0) / 100), TOP)
+  return `${d >= TOP ? 'the top' : `${tierOf(d)} ${numeral(d)}`}, ${lpIn(points)} LP`
+}
+
+/** A new position moves the rank (ADR 0007): the admin sees by how much before it's saved. */
+const askPosition = (u: AdminUser, p: Position) =>
+  `Change ${u.display_name}'s position to ${POSITION_NAMES[p]}? Their rank goes from ${rankAt(u.rank_by_position[u.position] ?? u.rank_points)} to ${rankAt(u.rank_by_position[p] ?? u.rank_points)}.`
+
 const matches = (u: AdminUser, q: string) =>
   [u.display_name, u.email, u.vertical ?? '', u.role, u.status].some((s) => s.toLowerCase().includes(q))
 
@@ -212,8 +222,8 @@ function Members({ selfId }: { selfId: number }) {
   })
 
   const change = (u: AdminUser, body: { role?: Role; status?: Status; position?: Position }) => {
-    const ask = CONFIRM[body.role ?? body.status ?? '']
-    if (ask && !window.confirm(ask(u))) return
+    const ask = body.position ? askPosition(u, body.position) : CONFIRM[body.role ?? body.status ?? '']?.(u)
+    if (ask && !window.confirm(ask)) return
     setChanged('')
     update.mutate({ path: { user_id: u.id }, body })
   }

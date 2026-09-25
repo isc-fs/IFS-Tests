@@ -1,6 +1,8 @@
 """Load the mirrored FS-Quiz bank (bank.json) into the database. Safe to run again: unchanged questions are
 skipped, changed ones are updated in place (options keep their IDs, so answers already given stay valid), a
-changed official answer is flagged for review, and questions FS-Quiz says it removed are hidden."""
+change to what is graded drops a reviewer's correction and is flagged for review, a change of wording is
+flagged but keeps the correction (a new solution or image is neither), questions FS-Quiz says it removed are hidden, and quizzes and questions it deleted are
+retired: no longer played, kept for history."""
 
 from __future__ import annotations
 
@@ -15,7 +17,7 @@ from typing import Any
 
 from PIL import UnidentifiedImageError
 from PIL.Image import DecompressionBombError
-from sqlalchemy import delete, func, insert, select
+from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.dialects.postgresql import insert as upsert
 from sqlalchemy.orm import Session as DB
 
@@ -39,6 +41,9 @@ from ..domain import xp as xp_rules
 
 log = logging.getLogger(__name__)
 CHOICE = ("single-choice", "multi-choice")
+GONE = "Deleted from FS-Quiz."
+# A mirror missing more of the bank than this is more likely broken than FS-Quiz deleting that much at once.
+MAX_RETIRED = 0.25
 
 
 @dataclass
@@ -47,15 +52,32 @@ class ImportReport:
     updated: int = 0
     unchanged: int = 0
     key_changed: int = 0
+    reworded: int = 0
     ungraded: int = 0
     missing_images: int = 0
     rekeyed: int = 0
     hidden: int = 0
+    retired: int = 0
+    restored: int = 0
+    not_retired: int = 0  # deleted upstream, but too many at once: see MAX_RETIRED
+
+
+def _digest(content: object) -> str:
+    return hashlib.sha256(json.dumps(content, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 
 
 def source_hash(q: dict[str, Any]) -> str:
-    content = {k: q[k] for k in ("type", "text", "time", "answers", "images", "solutions")}
-    return hashlib.sha256(json.dumps(content, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+    return _digest({k: q[k] for k in ("type", "text", "time", "answers", "images", "solutions")})
+
+
+def graded_hash(q: dict[str, Any]) -> str:
+    """What decides whether an answer is right: the type, which options there are and which are correct, or
+    the typed answers. Not the wording of the question or its options, their order, solutions, images or time."""
+    if q["type"] in CHOICE:
+        answers = sorted([a["answer_id"] or 0, a["is_correct"]] for a in q["answers"])
+    else:
+        answers = sorted([keys.clean(a["text"] or ""), a["is_correct"]] for a in q["answers"])
+    return _digest({"type": q["type"], "answers": answers})
 
 
 class _Media:
@@ -87,6 +109,7 @@ def _upsert_events_and_quizzes(db: DB, bank: dict[str, Any]) -> None:
             "status": q["status"],
             "information": q.get("information"),
             "last_qualifier": q.get("last_qualifier"),
+            "retired": False,
         }
         db.execute(upsert(Quiz).values(row).on_conflict_do_update(index_elements=["id"], set_=row))
     ids = [q["quiz_id"] for q in bank["quizzes"]]
@@ -163,6 +186,26 @@ def _rekey(db: DB, q: Question, raw: dict[str, Any], current: list[AnswerOption]
     return True
 
 
+def _answer_changed(q: Question, raw: dict[str, Any], key: AnswerKey, current: list[AnswerOption]) -> bool:
+    if q.graded_hash is not None:
+        return q.graded_hash != graded_hash(raw)
+    # Loaded before the graded hash was kept: judge by the type, options and official answer stored.
+    ids = {o.fsquiz_id for o in current if not o.retired}
+    wanted = {a["answer_id"] for a in raw["answers"]} if raw["type"] in CHOICE else set()
+    return q.type != raw["type"] or ids != wanted or key.display != keys.display(raw["type"], raw["answers"])
+
+
+def _reworded(q: Question, raw: dict[str, Any], current: list[AnswerOption]) -> bool:
+    """The question's text or an option's text changed: the meaning may have, so a reviewer should look."""
+    if q.text != (raw["text"] or ""):
+        return True
+    texts = {o.fsquiz_id: o.text for o in current if not o.retired and o.fsquiz_id is not None}
+    answers = raw["answers"] if raw["type"] in CHOICE else []
+    return any(
+        texts.get(a["answer_id"], keys.clean(a["text"] or "")) != keys.clean(a["text"] or "") for a in answers
+    )
+
+
 def _write_question(
     db: DB,
     q: Question,
@@ -171,9 +214,11 @@ def _write_question(
     now: datetime,
     current: list[AnswerOption],
     previous: AnswerKey | None,
-) -> bool:
-    """Bring a question up to date with `raw`. Returns whether it needs a reviewer's eyes again:
-    its official answer changed, or a reviewer's override had to be dropped because the question changed."""
+) -> str | None:
+    """Bring a question up to date with `raw`. Returns why it needs a reviewer's eyes again, if it does:
+    "answer" when what is graded changed (a reviewer's correction is dropped, difficulty starts again),
+    "wording" when the text of the question or an option changed (the correction stays), or "content" when a
+    hidden question changed (it may have been fixed)."""
     images = [media(p) for p in raw["images"]]
     q.images = [i for i in images if i]
     q.images_missing = not all(images)
@@ -182,37 +227,52 @@ def _write_question(
     fresh = q.id is None
     if not fresh and previous is not None and q.source_hash == source_hash(raw):
         # Same content (only images or media were missing): keep options, keys and overrides as they are.
+        q.graded_hash = graded_hash(raw)
         _rekey(db, q, raw, current, previous)
         _write_solutions(db, q, raw, media)
-        return False
+        return None
 
+    answer_changed = previous is None or _answer_changed(q, raw, previous, current)
+    reworded = _reworded(q, raw, current)
     if not q.labels_reviewed:
         area, topic, _ = topics.tag(raw)
         q.area, q.topic = area, topic or None
-    q.type, q.text, q.time_s = raw["type"], raw["text"] or "", raw["time"]
-    q.source_hash = source_hash(raw)
-    q.answer_kind = keys.answer_kind(raw["type"], keys.build_key(raw["type"], raw["answers"]))
-    q.difficulty = xp_rules.difficulty(q.answer_kind, q.time_s)  # nightly recalibration refines it
+    q.text, q.time_s = raw["text"] or "", raw["time"]
+    q.source_hash, q.graded_hash = source_hash(raw), graded_hash(raw)
+    if answer_changed:
+        q.type = raw["type"]
+        q.answer_kind = keys.answer_kind(raw["type"], keys.build_key(raw["type"], raw["answers"]))
+        q.difficulty = xp_rules.difficulty(q.answer_kind, q.time_s)  # nightly recalibration refines it
     if fresh:
         db.add(q)
         db.flush()
     key = keys.build_key(raw["type"], raw["answers"], _sync_options(db, q, raw, current))
     shown = keys.display(raw["type"], raw["answers"])
 
-    changed = False
+    why = None
     if previous is None:
         previous = AnswerKey(question_id=q.id, key=key, display=shown)
         db.add(previous)
     else:
-        # A hidden question that changed upstream may have been fixed: ask a reviewer to look again.
-        changed = previous.display != shown or previous.override is not None or q.excluded
+        if answer_changed:
+            why = "answer"
+            previous.override = previous.override_display = None
+        elif reworded:
+            why = "wording"
+        elif q.excluded:
+            why = "content"
         previous.key, previous.display = key, shown
-        previous.override = previous.override_display = None
     _serve_key(q, previous)
-    if changed:
-        q.key_changed_at = now
     _write_solutions(db, q, raw, media)
-    return changed
+    return why
+
+
+def _flag(q: Question, why: str, now: datetime) -> None:
+    """Put a question in the reviewers' "Changed upstream" queue, saying why. A dropped correction stays the
+    reason over a milder one until a reviewer has checked it."""
+    if not (why in ("wording", "content") and q.key_changed_at is not None and q.upstream_change == "answer"):
+        q.upstream_change = why
+    q.key_changed_at = now
 
 
 def _hide_removed(q: Question, note: str | None) -> bool:
@@ -226,12 +286,43 @@ def _hide_removed(q: Question, note: str | None) -> bool:
     return True
 
 
+def _retire(q: Question, now: datetime) -> bool:
+    """Hide a question FS-Quiz deleted, once: a reviewer who shows it again isn't overruled by later imports,
+    and one already hidden keeps its reason."""
+    if q.upstream_note == GONE:
+        return False
+    q.upstream_note = GONE
+    if q.excluded:
+        return False
+    q.excluded, q.exclusion_note, q.playable = True, GONE, False
+    _flag(q, "removed", now)
+    return True
+
+
+def _restore(q: Question, now: datetime) -> bool:
+    """A question FS-Quiz deleted is back: show it again if it is hidden only because it was gone."""
+    if q.upstream_note != GONE:
+        return False
+    q.upstream_note = None
+    if not (q.excluded and q.exclusion_note == GONE):
+        return False
+    q.excluded, q.exclusion_note = False, None
+    q.playable = not q.images_missing
+    _flag(q, "back", now)
+    return True
+
+
 def _all_in(media_dir: Path, names: list[str]) -> bool:
     return all((media_dir / n).is_file() for n in names)
 
 
 def import_bank(
-    db: DB, bank: dict[str, Any], image_dir: Path | None, media_dir: Path, now: datetime
+    db: DB,
+    bank: dict[str, Any],
+    image_dir: Path | None,
+    media_dir: Path,
+    now: datetime,
+    allow_mass_removal: bool = False,
 ) -> ImportReport:
     report = ImportReport()
     media = _Media(image_dir, media_dir)
@@ -261,6 +352,7 @@ def import_bank(
             and q.id not in lost_solution_media
         ):
             report.unchanged += 1
+            q.graded_hash = q.graded_hash or graded_hash(raw)
             if _rekey(db, q, raw, options[q.id], answer_keys[q.id]):
                 q.updated_at = now
                 report.rekeyed += 1
@@ -271,8 +363,24 @@ def import_bank(
             else:
                 report.updated += 1
             current = options[q.id] if q.id is not None else []
-            report.key_changed += _write_question(db, q, raw, media, now, current, answer_keys.get(q.id))
+            why = _write_question(db, q, raw, media, now, current, answer_keys.get(q.id))
+            if why:
+                _flag(q, why, now)
+                report.reworded += why == "wording"
+                report.key_changed += why != "wording"
+        report.restored += _restore(q, now)
         report.hidden += _hide_removed(q, removed.get(raw["question_id"]))
+
+    listed = {raw["question_id"] for raw in bank["questions"]}
+    gone = [q for fid, q in existing.items() if fid not in listed and q.upstream_note != GONE]
+    here = sum(1 for q in existing.values() if q.upstream_note != GONE)
+    if len(gone) > MAX_RETIRED * here and not allow_mass_removal:
+        log.warning("%d of %d questions are missing from the bank: none retired", len(gone), here)
+        report.not_retired = len(gone)
+    else:
+        report.retired = sum(_retire(q, now) for q in gone)
+        quizzes = [q["quiz_id"] for q in bank["quizzes"]]
+        db.execute(update(Quiz).where(Quiz.id.not_in(quizzes)).values(retired=True))
 
     ids = [q["quiz_id"] for q in bank["quizzes"]]
     db.execute(delete(QuizQuestion).where(QuizQuestion.quiz_id.in_(ids)))

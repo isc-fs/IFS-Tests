@@ -1,5 +1,6 @@
 """Mock quiz: replay a past quiz one question at a time, each on its real clock, results at the end.
-A question's clock starts when it is shown; one left to run out while away is closed as late."""
+A question's clock starts when it is shown; one left to run out while away is closed as late. A run can be
+ended early: the question on screen is charged as out of time, the ones not reached aren't scored."""
 
 from __future__ import annotations
 
@@ -7,7 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy import case, func, select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session as DB
 
@@ -59,22 +60,17 @@ class QuizInfo:
 
 
 def quizzes(db: DB, user: User) -> list[QuizInfo]:
-    counts = db.execute(
-        select(
-            QuizQuestion.quiz_id,
-            func.count(),
-            func.count(case((Question.graded, 1))),
-            func.sum(Question.time_s),
-            func.count(Question.time_s),
-        )
+    stats: dict[int, tuple[int, int, int]] = {}
+    for quiz_id, graded, time_s, kind in db.execute(
+        select(QuizQuestion.quiz_id, Question.graded, Question.time_s, Question.answer_kind)
         .join(Question, Question.id == QuizQuestion.question_id)
         .where(Question.playable)
-        .group_by(QuizQuestion.quiz_id)
-    )
-    stats = {qid: (n, graded, total, timed) for qid, n, graded, total, timed in counts}
+    ):
+        n, g, total = stats.get(quiz_id, (0, 0, 0))
+        stats[quiz_id] = (n + 1, g + graded, total + rules.budget(time_s, kind))
     right = (
         select(Attempt.session_id, func.count().label("n"))
-        .where(Attempt.correct.is_(True), Attempt.session_id.is_not(None))
+        .where(Attempt.correct.is_(True), Attempt.late.is_not(True), Attempt.session_id.is_not(None))
         .group_by(Attempt.session_id)
         .subquery()
     )
@@ -92,21 +88,23 @@ def quizzes(db: DB, user: User) -> list[QuizInfo]:
     )
     open_: dict[int, int] = {qid: sid for qid, sid in running}
     rows = db.scalars(
-        select(Quiz).order_by(Quiz.held_on.desc().nulls_last(), Quiz.year.desc(), Quiz.id)
+        select(Quiz)
+        .where(Quiz.retired.is_(False))
+        .order_by(Quiz.held_on.desc().nulls_last(), Quiz.year.desc(), Quiz.id)
     ).all()
     names = labels(db, [q for q in rows if q.id in stats])
     out = []
     for quiz in rows:
         if quiz.id not in stats:
             continue
-        n, graded, total, timed = stats[quiz.id]
+        n, graded, total = stats[quiz.id]
         out.append(
             QuizInfo(
                 quiz=quiz,
                 label=names[quiz.id],
                 questions=n,
                 graded=graded,
-                total_time_s=total if timed == n else None,
+                total_time_s=total,
                 best=best.get(quiz.id),
                 open_session=open_.get(quiz.id),
             )
@@ -117,7 +115,7 @@ def quizzes(db: DB, user: User) -> list[QuizInfo]:
 def start(db: DB, user: User, quiz_id: int, now: datetime) -> MockSession:
     """Start a run, or return the one already open for this quiz."""
     quiz = db.get(Quiz, quiz_id)
-    if quiz is None or not _questions(db, quiz_id):
+    if quiz is None or quiz.retired or not _questions(db, quiz_id):
         raise UserError("That quiz isn't available.", 404)
     season = rules.season(timing.madrid_day(now))
     played = db.scalar(
@@ -164,7 +162,8 @@ class Item:
 @dataclass
 class Summary:
     correct: int
-    graded: int
+    graded: int  # the questions not reached count, as in the real quiz
+    unreached: int
     xp: int
     lp: float
     counted: bool
@@ -216,7 +215,7 @@ def _advance(db: DB, s: MockSession, now: datetime) -> tuple[Question, Attempt] 
                 created_at=now,
                 session_id=s.id,
                 area=q.area,
-                deadline_at=now + timedelta(seconds=timing.budget(q.time_s, q.answer_kind)),
+                deadline_at=now + timedelta(seconds=rules.budget(q.time_s, q.answer_kind)),
             )
             db.add(a)
             db.flush()
@@ -279,6 +278,49 @@ def close_expired(db: DB, now: datetime) -> int:
     return closed
 
 
+def _end(db: DB, s: MockSession, now: datetime) -> None:
+    attempts = _attempts(db, s)
+    for a in attempts.values():
+        if a.submitted_at is None:
+            _time_out(db, s, db.get_one(Question, a.question_id), a, now)
+    s.position = len(attempts)
+    s.finished_at = now
+
+
+def end(db: DB, user: User, session_id: int, now: datetime) -> State:
+    """End a run early. Ending it again changes nothing."""
+    s = _session(db, user, session_id)
+    if s.finished_at is None:
+        _end(db, s, now)
+        db.commit()
+    return state(db, user, session_id, now)
+
+
+def end_stale(db: DB, now: datetime) -> int:
+    """Nightly: end runs nobody has touched for a while, so a forgotten run stops holding back its questions
+    (from the daily question and practice)."""
+    # Answering shows the next question, so the last one shown is the last time its player was there.
+    touched = func.coalesce(func.max(Attempt.created_at), MockSession.started_at)
+    rows = db.execute(
+        select(MockSession.id, MockSession.user_id)
+        .outerjoin(Attempt, Attempt.session_id == MockSession.id)
+        .where(MockSession.finished_at.is_(None))
+        .group_by(MockSession.id)
+        .having(touched < now - rules.STALE_AFTER)
+        .order_by(MockSession.user_id, MockSession.id)
+    ).all()
+    db.commit()
+    ended = 0
+    for session_id, owner in rows:
+        xp.lock(db, owner)
+        s = db.get_one(MockSession, session_id, with_for_update=True, populate_existing=True)
+        if s.finished_at is None:
+            _end(db, s, now)
+            ended += 1
+        db.commit()  # one run per transaction: player, then run, the order answering takes
+    return ended
+
+
 def _summary(db: DB, s: MockSession, now: datetime) -> Summary:
     attempts = _attempts(db, s)
     questions = _run(db, s, attempts)
@@ -293,11 +335,13 @@ def _summary(db: DB, s: MockSession, now: datetime) -> Summary:
         # level 0: a summary item carries its own XP and LP, not where the player stands now
         checked.score = xp.Grant(xp=a.xp if a else 0, lp=a.lp if a else 0.0, level=0)
         items.append(Item(q, checked, bool(a and a.late), answer))
-    correct = sum(1 for i in items if i.checked.correct)
+    correct = sum(1 for i in items if i.checked.correct and not i.late)  # right but late scores as wrong
+    unreached = [q for q in _questions(db, s.quiz_id) if q.id not in attempts]
     quiz = db.get_one(Quiz, s.quiz_id)
     return Summary(
         correct=correct,
-        graded=sum(1 for q in questions if q.graded),
+        graded=sum(1 for q in questions + unreached if q.graded),
+        unreached=len(unreached),
         xp=sum(a.xp for a in attempts.values()),
         lp=round(sum(a.lp for a in attempts.values()), 2),
         counted=s.counted,
@@ -368,6 +412,7 @@ def answer(
                 again_today=xp.answered_today(db, user.id, q.id, now, other_than=a.id),
                 ranked=s.counted,
                 season_at=s.started_at,
+                played_on=timing.madrid_day(a.created_at),
             )
             db.execute(update(Attempt).where(Attempt.id == a.id).values(xp=granted.xp, lp=granted.lp))
         db.commit()

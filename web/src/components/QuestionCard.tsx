@@ -10,8 +10,8 @@ import { Field, Form, Notice } from './Form'
 import { ReportProblem } from './ReportProblem'
 
 const HINTS: Record<string, string> = {
-  number: 'A number. Decimal point or comma both work.',
-  range: 'A number. Decimal point or comma both work.',
+  number: 'A number, without units, % or thousands separators. Decimal point or comma both work.',
+  range: 'A number, without units, % or thousands separators. Decimal point or comma both work.',
   text: "Capital letters and spaces don't matter.",
 }
 
@@ -88,8 +88,8 @@ function Earned({ feedback: f }: { feedback: Feedback }) {
             {name === 'combo' ? `Combo: ${combo} in a row` : (BONUS_NAMES[name] ?? name)} +{amount} XP
           </span>
         ))}
-        {f.comeback && <span className="bonus">Comeback: 1.5× LP</span>}
-        {f.cushioned && <span className="bonus quiet">Loss halved: rough patch</span>}
+        {f.comeback && <span className="bonus">Comeback: extra LP</span>}
+        {f.cushioned && <span className="bonus quiet">Loss cushioned: rough patch</span>}
         {f.rose && <span className="bonus quiet">Back to {divisionName(division)}</span>}
         {f.demoted && (
           <span className="bonus quiet">
@@ -379,7 +379,7 @@ export function QuestionCard({
         )}
         {stuck && (
           <>
-            <Notice tone="error">Time's up, and your answer didn't reach the server.</Notice>
+            <Notice tone="error">Time's up, and your answer didn't go through.</Notice>
             <div className="answer-actions">
               <button type="button" onClick={() => onAnswer(entered)}>
                 Send my answer again

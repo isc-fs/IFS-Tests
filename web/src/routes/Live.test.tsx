@@ -319,6 +319,34 @@ test('specialists mode warns about tables that would get no question', async () 
   expect(screen.getByText(/^Sponsorship owns no topic in this quiz, so it gets no questions/)).toBeInTheDocument()
 })
 
+test('specialists mode warns about tables a thin topic will rarely reach, until the tables change', async () => {
+  const seat = (id: number, name: string, reach: number) => ({
+    ...table,
+    id,
+    name,
+    topics: ['dv'],
+    member_ids: [id],
+    captain_id: id,
+    reach,
+  })
+  const lobby = {
+    ...base,
+    role: 'host',
+    config: { ...base.config, routing: 'owners', areas: ['elec'], count: 60 },
+    players: [2, 3, 4].map((id) => ({ user_id: id, name: `P${id}`, table_id: id })),
+    tables: [seat(2, 'Driverless', 0.56), seat(3, 'Integration', 0.18), seat(4, 'Pipeline', 0.04)],
+  }
+  at('/live/ABC234', HOST, lobby)
+  expect(
+    await screen.findByText(
+      /^Likely to get no question: Integration \(a question in 18 % of draws\), Pipeline \(a question in 4 % of draws\)\./,
+    ),
+  ).toBeInTheDocument()
+  expect(screen.queryByText(/Driverless \(a question/)).not.toBeInTheDocument()
+  await userEvent.click(within(screen.getByRole('group', { name: 'Pipeline' })).getByLabelText('Electronics'))
+  expect(screen.queryByText(/^Likely to get no question/)).not.toBeInTheDocument() // a prediction for saved tables
+})
+
 test('the stream wakes the screen; polling and the stream stop once the quiz is over', async () => {
   const streams: { onopen?: () => void; onmessage?: () => void; closed: boolean }[] = []
   vi.stubGlobal(

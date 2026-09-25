@@ -35,7 +35,7 @@ The sample bank is twelve made-up questions and three quizzes (`src/ifs_tests/ba
    docker compose run --rm api alembic upgrade head
    docker compose run --rm api ifs-tests push --sample
    ```
-   The push prints `ImportReport(added=12, updated=0, unchanged=0, key_changed=0, ungraded=2, missing_images=0, rekeyed=0, hidden=0)`.
+   The push prints `ImportReport(added=12, updated=0, unchanged=0, key_changed=0, ungraded=2, missing_images=0, rekeyed=0, hidden=0, retired=0, restored=0, not_retired=0)`.
 4. Create the first admin. It prompts for the password twice (at least 10 characters, not a common one, not containing your email or name):
    ```bash
    docker compose exec api ifs-tests create-admin --email admin@example.com --name "Local Admin"
@@ -248,7 +248,7 @@ Policy (expand/contract, and the list of pending contract steps) is in [data-mod
    uv run ruff format migrations
    ```
    Revisions are numbered `0001`, `0002`, …: use the next number after the newest file in `ls migrations/versions/` (`0017` while `0016` is the newest). Without `--rev-id` Alembic invents a random one. The generated file isn't ruff-formatted, hence the second command.
-3. Review it by hand. Autogenerate misses data moves, server-side defaults on existing rows, `CHECK` constraint changes and anything the app needs backfilled. Make it **expand only** if the release before yours uses what you are changing: add the new column or table, backfill with `op.execute`, and leave the old one until a later release drops it. Write a `downgrade()` that undoes it.
+3. Review it by hand, and fix it now: once a migration has run on staging or prod, never edit it, write a new one ([data-model.md](data-model.md#expandcontract)). Autogenerate misses data moves, server-side defaults on existing rows, `CHECK` constraint changes and anything the app needs backfilled. Make it **expand only** if the release before yours uses what you are changing: add the new column or table, backfill with `op.execute`, and leave the old one until a later release drops it. Write a `downgrade()` that undoes it.
 4. Apply and check:
    ```bash
    uv run alembic upgrade head

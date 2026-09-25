@@ -20,7 +20,9 @@ from sqlalchemy import (
     String,
     Table,
     Text,
+    and_,
     func,
+    literal_column,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -134,6 +136,9 @@ class User(Base):
     rank_season: Mapped[int] = mapped_column(SmallInteger, server_default="0")
     # The highest division reached this season: only reaching a new one plays the promotion.
     rank_best: Mapped[int] = mapped_column(SmallInteger, server_default="0")
+    # The LP each raise of position gave this season, per position crossed ({"season": 2026, "member": 220}):
+    # a lower position takes back only that (domain/rank.py `reposition`).
+    position_lifts: Mapped[dict[str, Any] | None]
     # Right answers in a row (the XP combo) and wrong ones in a row (the LP cushion), across modes but live.
     combo: Mapped[int] = mapped_column(SmallInteger, server_default="0")
     miss_streak: Mapped[int] = mapped_column(SmallInteger, server_default="0")
@@ -238,6 +243,8 @@ class Quiz(Base):
     status: Mapped[str] = mapped_column(String(32))
     information: Mapped[str | None] = mapped_column(Text)
     last_qualifier: Mapped[dict[str, Any] | None]
+    # FS-Quiz no longer publishes it: not offered again, kept for the runs that played it.
+    retired: Mapped[bool] = mapped_column(server_default="false")
 
 
 class Document(Base):
@@ -280,7 +287,8 @@ class Question(Base):
     difficulty: Mapped[int] = mapped_column(server_default="3")
     # How the answer is entered; safe to show before answering. "self" = reveal only.
     answer_kind: Mapped[str] = mapped_column(String(16))
-    # Whether answers can be scored automatically. Daily questions and mock quizzes only use graded ones.
+    # Whether answers can be scored automatically. Daily questions and live quizzes only use graded ones; mock
+    # runs ask ungraded ones too.
     graded: Mapped[bool] = mapped_column(server_default="false")
     # Served to players only when true: no image missing and not excluded by a reviewer.
     playable: Mapped[bool] = mapped_column(server_default="true")
@@ -290,7 +298,12 @@ class Question(Base):
     # Set once a reviewer confirmed area and topic; re-imports keep them.
     labels_reviewed: Mapped[bool] = mapped_column(server_default="false")
     source_hash: Mapped[str] = mapped_column(String(64))
+    # What decides whether an answer is right (type, which options, which are correct, typed answers). Null
+    # for rows loaded before migration 0020, until the next import fills it.
+    graded_hash: Mapped[str | None] = mapped_column(String(64))
     key_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Why it is in the "changed upstream" queue: answer, wording, content (of a hidden question), removed, back.
+    upstream_change: Mapped[str | None] = mapped_column(String(16))
     # FS-Quiz's own note that the question was removed from its quiz, as last seen on import.
     upstream_note: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -510,6 +523,18 @@ Index(
     unique=True,
     postgresql_where=Attempt.mode == "daily",
 )
+
+# The Madrid day a daily or practice answer's LP belongs to, and those answers that moved someone's rank: the
+# leaderboards read only a period's rows through this index (a mock run's LP goes by the run's start instead).
+# Literals, not bound parameters, so every plan can match the index's expression and predicate.
+LP_DAY = func.coalesce(
+    Attempt.day, func.date(func.timezone(literal_column("'Europe/Madrid'"), Attempt.created_at))
+)
+RANKED_PLAY = and_(
+    Attempt.lp != literal_column("0"),
+    Attempt.mode.in_([literal_column("'daily'"), literal_column("'practice'")]),
+)
+Index("ix_attempts_lp_day", Attempt.user_id, LP_DAY, postgresql_where=RANKED_PLAY)
 
 
 class DailyQuestion(Base):
