@@ -3,6 +3,7 @@ it halves the XP (domain/xp.py). The seed makes a question's hint the same every
 
 from __future__ import annotations
 
+import math
 import random
 from dataclasses import dataclass, field
 
@@ -16,9 +17,20 @@ class Hint:
     removed_options: list[int] = field(default_factory=list)
 
 
-def _fmt(x: float) -> str:
-    s = f"{x:.3g}"
-    return f"{x:,.0f}" if "e" in s else s
+def _fmt(x: float, up: bool) -> str:
+    """Three significant figures, rounded away from the answer, written the way the answer field reads numbers:
+    a decimal point, no thousands separators, no exponent."""
+    if x == 0:
+        return "0"
+    exponent = math.floor(math.log10(abs(x))) - 2
+    digits = (math.ceil if up else math.floor)(round(x / 10.0**exponent, 6))
+    decimals = max(-exponent, 0)
+    text = f"{digits * 10.0**exponent:.{decimals}f}"
+    return text.rstrip("0").rstrip(".") if "." in text else text
+
+
+def _between(lo: float, hi: float) -> str:
+    return f"Between {_fmt(lo, up=False)} and {_fmt(hi, up=True)}."
 
 
 def _around(v: float, rng: random.Random) -> tuple[float, float]:
@@ -52,14 +64,14 @@ def hint(key: Key | None, options: list[int], seed: int) -> Hint | None:
         if _too_tight(first):
             return None
         lo, hi = _around(first["v"], rng)
-        return Hint(f"Between {_fmt(lo)} and {_fmt(hi)}.")
+        return Hint(_between(lo, hi))
     if key["kind"] == "range":
         lo, _ = _around(first["lo"], rng)
         _, hi = _around(first["hi"], rng)
-        return Hint(f"Between {_fmt(lo)} and {_fmt(hi)}.")
+        return Hint(_between(lo, hi))
     if key["kind"] == "numbers":
         values = first["values"]
-        return Hint(f"{len(values)} values; the first is {_fmt(values[0]['v'])}.")
+        return Hint(f"{len(values)} values; the first is {_fmt(values[0]['v'], up=False)}.")
     text = str(first)
     if len(text) <= 2:
         return None

@@ -4,8 +4,9 @@ import re
 
 import pytest
 
-from ifs_tests.domain.grading import grade
+from ifs_tests.domain.grading import grade, unreadable
 from ifs_tests.domain.hints import hint
+from ifs_tests.domain.keys import number
 
 
 def test_single_choice_keeps_two_options_one_of_them_right() -> None:
@@ -78,3 +79,16 @@ def test_a_small_number_still_gets_a_range_wider_than_the_grading_tolerance() ->
         assert h is not None
         lo, hi = (float(x) for x in re.findall(r"-?\d[\d,]*(?:\.\d+)?", h.text)[:2])
         assert not (grade(key, value=str(lo)) and grade(key, value=str(hi)))
+
+
+# UI-02: a hint's numbers are typed back as they're printed, and the field reads a comma as a decimal comma.
+@pytest.mark.parametrize("v", [2778.0, 64107.0, 1_250_000.0, -10368.0, 0.000015, 0.713, 518.4])
+def test_hint_numbers_read_back_as_printed(v: float) -> None:
+    key = {"kind": "number", "accept": [{"v": v, "d": 0 if v.is_integer() else 6}]}
+    for seed in range(50):
+        h = hint(key, [], seed)
+        assert h is not None and "," not in h.text and "e" not in h.text.lower().replace("between", "")
+        for printed in re.findall(r"-?\d+(?:\.\d+)?", h.text):
+            assert unreadable(key, printed) is None
+            parsed = number(printed)
+            assert parsed is not None and parsed["v"] == float(printed)
