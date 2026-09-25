@@ -117,6 +117,13 @@ V1 re-ran everything on `dev` after #78: all six items verified, no regressions.
 Not changed: the leaderboard's area and 7-day sums can be up to 30 s old (R-2's cache, documented); simulations that
 move a fake clock days ahead in seconds see that as board errors, and with the cache off they find none.
 
+V2 re-ran its checks on `dev` after #78: R-1 verified in daily, practice, mock and live, desktop and phone, in time,
+at zero and offline; R-2 verified (late-season boards p95 12–24 ms against 500–614 ms uncached, byte-identical,
+staleness as documented). Its Low gap, closed in fix/22: after a refused "Check answer" focus stayed on the button, so
+a screen reader announced nothing; focus now moves to the field, and the message goes once the player edits
+("a typed answer the server cannot read shows why on the field" in `QuestionCard.test.tsx`; removing either
+change fails it).
+
 ## Low and Info
 
 Not scheduled yet: see the report's sections 4.1–4.9. When one is picked up, add its row here.
