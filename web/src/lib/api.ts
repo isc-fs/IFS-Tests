@@ -30,6 +30,12 @@ client.interceptors.response.use((response, request) => {
   return response
 })
 
+// Nginx's rate limit answers 429 with its own HTML page, which has no `detail` to show.
+export const TOO_MANY = 'Too many requests from this network right now. Wait a minute and try again.'
+client.interceptors.error.use((error, response) =>
+  response?.status === 429 && !(error as ApiError | null)?.detail ? { detail: TOO_MANY } : error,
+)
+
 export function consumeSessionEnded(): boolean {
   const ended = sessionEnded
   sessionEnded = false

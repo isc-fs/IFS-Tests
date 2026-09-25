@@ -65,3 +65,9 @@ test('a used link explains itself and offers sign in', async () => {
   expect(await screen.findByRole('alert')).toHaveTextContent('invalid, used or expired')
   expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/login')
 })
+
+test("Nginx's rate limit during a room's sign-up says to wait, not that something broke", async () => {
+  renderApp('/invite#tok', { ...signedOut, ...openInvite(null), 'POST /auth/register': { status: 429 } })
+  await fill('m@alu.comillas.edu', 'Marta', 'endurance lap brake bias')
+  expect(await screen.findByText(/Too many requests from this network right now\. Wait a minute/)).toBeInTheDocument()
+})

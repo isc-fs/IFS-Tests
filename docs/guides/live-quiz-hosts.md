@@ -126,7 +126,7 @@ Under **Tables**:
      runs the routing rule on 100 draws of these settings from the bank (or on the past quiz itself, which gives 0 %
      or 100 %) and names every seated table that gets a question in fewer than half of them. It happens when a
      topic has few questions and several tables share it: the real bank has only 8 Driverless questions, so after
-     **Seat by sub-department**, with 60 Mechanical and Electronics questions, Driverless gets one in about half the
+     **Seat by sub-department**, with 60 questions from the Mechanical and Electrical areas, Driverless gets one in about half the
      draws, Integration in about 1 in 5 and Pipeline almost never. Give those tables another topic, seat the people
      at one Driverless table, or ask more questions. The warning disappears while you edit the tables and comes
      back, updated, when you save them.
@@ -238,6 +238,9 @@ seated gets the XP of the answers their table sent.
 
 If the host's account is deleted, every session they were still hosting is finished at once. Players get their XP,
 the results stay, and the session shows "Hosted by a former member".
+
+If a player's account is deleted during a quiz, they leave their table as if you had removed them: a table they
+captained gets its best-ranked member as captain, and every screen shows the change.
 
 ## FAQ
 

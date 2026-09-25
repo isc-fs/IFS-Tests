@@ -124,6 +124,24 @@ a screen reader announced nothing; focus now moves to the field, and the message
 ("a typed answer the server cannot read shows why on the field" in `QuestionCard.test.tsx`; removing either
 change fails it).
 
+## Extensive end-to-end (2026-09-25)
+
+Three testers who fixed nothing ran `dev` ab5202d on production-like stacks: the real `deploy.sh`, the
+`deploy/compose.yaml` limits, Nginx with `deploy/nginx/quiz.conf` and TLS, the real bank loaded with
+`refresh-bank.sh --no-mirror`. Reports are kept with the evidence.
+
+| Run | Result |
+|---|---|
+| E3 operations | Every step passed: script guards; deploy 0022 → 0023 with dump and fingerprints, data identical; failing deploys (rollback; wrong app password stays down until fixed, as the runbook says); rollback onto 0023 and an edited migration refused; restore (runbook order, newer and truncated dumps refused, privileges as a fresh install); nine simulated nights including the 1 September reset; bank refresh with an edit, a deletion and the guard; backups and rotation. OPS-01/02/03/04/05/14 and DOC-01 confirmed; OPS-05 deployed end to end for the first time |
+| E2 live meeting | 80 players, a host and a projector through Nginx: routing, proposals, captains, removals, a member deleted mid-answer, results, CSV, XP once, LP 0, no answer seen early (about 23,000 states), no deadlocks or lock waits over 1 s. p95: state 15–21 ms, captain's answer 21–28 ms, proposal 21–25 ms. Two failures, fixed in fix/23 (below) |
+
+| Failure | Fix | Proof |
+|---|---|---|
+| F1: deleting a captain's account mid-quiz left their table with no captain (it couldn't answer) and every screen showing the deleted captain | after the deletion commits, each quiz still going that they played in gives captainless tables their best-ranked member and moves its version, as removing a player does; the deletion itself still never waits for a session | `test_deleting_a_captain_mid_question_hands_their_table_to_the_next_member` (without the step: the version doesn't move); the deletion races, 24 rounds |
+| F2: a room of 81 signing up at a meeting from one address: 19 % refused (429), then sign-ins refused too; the page said "Something went wrong" | sign-up (`/auth/invites/lookup`, `/auth/register`) gets its own Nginx limit, 60 a minute with a burst of 180; the web app shows Nginx's 429 as "Too many requests from this network right now. Wait a minute and try again." | real Nginx: 81 sign-ups then 80 sign-ins, before 81 + 80 refused, after 0; guessing still capped (150 sign-ins: 69 refused; 250 sign-ups: 68 refused); `Invite.test.tsx` (without the interceptor it fails) |
+
+Also in fix/23: the hosts' guide example names the Mechanical and Electrical areas (it said "Electronics", a topic).
+
 ## Low and Info
 
 Not scheduled yet: see the report's sections 4.1–4.9. When one is picked up, add its row here.

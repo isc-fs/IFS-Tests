@@ -438,6 +438,22 @@ def test_a_player_deleted_while_their_captain_answers_does_not_block_the_end(
     assert [a.user_id for a in db.scalars(select(Attempt).where(Attempt.mode == "live"))] == [room["Leo_id"]]
 
 
+def test_deleting_a_captain_mid_question_hands_their_table_to_the_next_member(
+    room: dict[str, Any],  # noqa: F811
+    app_client: TestClient,
+    db: Session,
+) -> None:
+    code = lobby(room, areas=["rules"], count=2)
+    advance(room, code)
+    before = state(room["Ana"], code)
+    aero = next(t for t in before["tables"] if t["captain_id"] == room["Leo_id"])
+    assert app_client.delete(f"/api/admin/users/{room['Leo_id']}").status_code == 204
+    after = state(room["Ana"], code)
+    assert after["version"] > before["version"]  # every screen refetches
+    assert next(t for t in after["tables"] if t["id"] == aero["id"])["captain_id"] == room["Ana_id"]
+    assert send(room["Ana"], code, right_answer(db, before["question"]["id"])) == 204
+
+
 def test_deleting_a_host_waits_for_a_captain_answering_and_screens_see_the_end(
     room: dict[str, Any],  # noqa: F811
     db: Session,
