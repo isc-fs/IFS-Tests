@@ -333,13 +333,19 @@ def test_three_wrong_in_a_row_cushion_the_losses_until_a_comeback(
     assert (third["cushioned"], progress(c)["rank"]["miss_streak"]) == (False, 3)
     points = third["rank_points"]
     fourth = daily(c, db, "elec", "wrong")
+    # Up to half off and 1.5x back: less on a single choice, where more would make a blind guess pay.
     halved = lp(db, fourth["qid"], False, points, "daily", miss_streak=3)
-    assert halved == approx(lp(db, fourth["qid"], False, points, "daily") / 2, abs=0.02)
+    full = lp(db, fourth["qid"], False, points, "daily")
+    assert full < halved <= full / 2 + 0.02
     assert (fourth["cushioned"], fourth["lp"]) == (True, approx(halved))
     points = fourth["rank_points"]
     back = daily(c, db, "rules", "right")
     boosted = lp(db, back["qid"], True, points, "daily", miss_streak=4)
-    assert boosted == approx(lp(db, back["qid"], True, points, "daily") * 1.5, abs=0.02)
+    assert (
+        lp(db, back["qid"], True, points, "daily")
+        < boosted
+        <= lp(db, back["qid"], True, points, "daily") * 1.5
+    )
     assert (back["comeback"], back["cushioned"], back["lp"]) == (True, False, approx(boosted))
     assert progress(c)["rank"]["miss_streak"] == 0
 

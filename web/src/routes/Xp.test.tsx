@@ -65,7 +65,7 @@ test('a rough patch says the game has your back', async () => {
   me.progress.rank.miss_streak = 3
   renderApp('/', { 'GET /api/me': { body: me } })
   expect(await screen.findByRole('region', { name: 'Your rank: Jefe II' })).toHaveTextContent(
-    'Rough patch: losses are halved and your next right answer pays 1.5×.',
+    'Rough patch: losses are cushioned (up to half) and your next right answer pays extra (up to 1.5×).',
   )
 })
 
@@ -173,7 +173,7 @@ test('a wrong answer loses LP but still earns some XP; a drop and a rough patch 
   await userEvent.click(screen.getByRole('button', { name: 'Check answer' }))
   expect(await screen.findByText('−4 LP')).toHaveClass('loss')
   expect(screen.getByText('+5 XP')).toHaveClass('gain')
-  expect(screen.getByText('Loss halved: rough patch')).toBeInTheDocument()
+  expect(screen.getByText('Loss cushioned: rough patch')).toBeInTheDocument()
   expect(screen.getByText('Down to Mingo V · formulas are back')).toBeInTheDocument()
   expect(screen.queryByText(/Promoted/)).toBeNull()
 })

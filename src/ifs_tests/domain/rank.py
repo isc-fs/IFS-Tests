@@ -38,7 +38,8 @@ PASS = 0.5  # "I'm not sure" costs half a wrong answer (never more than a blind 
 # anyone climb forever
 SOFTEN = {"choice-one": 1.0, "choice-many": 0.75}  # typed answers 0.5: a slip in a sum isn't not knowing
 TYPED = 0.5
-# Back on your feet: after this many wrong in a row, losses halve and the next right answer pays 1.5x.
+# Back on your feet: after this many wrong in a row, losses halve and the next right answer pays 1.5x (less on a
+# single choice, where that would make a blind guess pay: see bad_run).
 CUSHION_AFTER, CUSHION, COMEBACK = 3, 0.5, 1.5
 
 # Where each position on the team is placed: its division, 50 LP in so one slip doesn't demote on day one.
@@ -138,6 +139,19 @@ def expected(points: float, difficulty: int, answer_kind: str, options: int) -> 
     return guess + (1 - guess) / (1 + math.exp(-(points - rating) / SCALE))
 
 
+def bad_run(gain: float, loss: float, answer_kind: str, options: int) -> float:
+    """How much of the cushion and comeback a bad run gets, from 0 to 1. All of it, except on a single choice:
+    there a blind guess must still lose on average at least CUSHION of what it loses outside a bad run, so the
+    comeback and the cushion shrink together until it does (a blind guess never pays, and "I'm not sure" never
+    costs nothing)."""
+    if answer_kind != "choice-one" or options < 2:
+        return 1.0
+    misses = options - 1  # a blind guess: one right for every `misses` wrong
+    short = misses * loss - gain  # what it loses on average, times options; positive at any sane rank
+    moved = (COMEBACK - 1) * gain + (1 - CUSHION) * misses * loss  # how much a full bad run shifts that
+    return max(0.0, min(1.0, (1 - CUSHION) * short / moved))
+
+
 @dataclass(frozen=True)
 class Lp:
     amount: float
@@ -171,20 +185,22 @@ def lp_award(
         options = min(options, 2)
     k = K[mode] * (REPEAT if repeat else 1)
     e = expected(points, difficulty, answer_kind, options)
-    down = miss_streak >= CUSHION_AFTER
     # Slips in a sum aren't not knowing a rule, and typed answers play harder than their rating: both ways.
     k *= 1.0 if area == "rules" else SOFTEN.get(answer_kind, TYPED)
-    gain = k * (1 - e) * (HINT if hint else 1) * (COMEBACK if down else 1)
+    gain = k * (1 - e) * (HINT if hint else 1)
+    loss = k * e * DIVISION_TABLE[division_of(points)].stakes
+    down = bad_run(gain, loss, answer_kind, options) if miss_streak >= CUSHION_AFTER else 0.0
+    gain *= 1 + down * (COMEBACK - 1)
+    loss *= 1 - down * (1 - CUSHION)
     if correct and not late and not passed:
         if again_today:
             return Lp(0.0)
-        return Lp(round(gain, 2), comeback=down and gain > 0)
-    loss = k * e * DIVISION_TABLE[division_of(points)].stakes * (CUSHION if down else 1)
+        return Lp(round(gain, 2), comeback=down > 0 and gain > 0)
     if passed and not late:
         loss *= PASS
         if answer_kind == "choice-one" and options > 1:
             loss = min(loss, max(0.0, (1 - 1 / options) * loss / PASS - gain / options))
-    return Lp(-round(loss, 2), cushioned=down and loss > 0)
+    return Lp(-round(loss, 2), cushioned=down > 0 and loss > 0)
 
 
 def next_miss_streak(miss_streak: int, correct: bool | None, passed: bool, late: bool) -> int:

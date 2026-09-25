@@ -270,7 +270,8 @@ MingoQuiz keeps two separate scores. Home and Profile show both cards. The full 
   and late ones lose it; a hard question pays more and costs less. "I'm not sure" costs at most half a wrong answer.
   A hint halves the win. Practice, replays and live quizzes never move LP.
 - Your rank card says what a daily question is worth at your rank, warns you when one wrong answer would drop you a
-  division, and shows **Rough patch** after 3 wrong in a row: losses halve and your next right answer pays 1.5×.
+  division, and shows **Rough patch** after 3 wrong in a row: losses are cushioned (up to half) and your next
+  right answer pays extra (up to 1.5×). On a single choice both are smaller, so guessing blind never pays.
 - You can drop a division. If you do, the help of the one below comes back.
 - Rank doesn't decay: not playing never costs LP.
 
@@ -335,7 +336,7 @@ out of time: LP lost as for a wrong answer, no XP.
 
 **My rank dropped.** Wrong, late or "not sure" answers to daily questions or a first mock run; a question left to run
 out; the 1 September reset; or an admin lowering your position. The help of the lower division comes back while
-you're there. After 3 wrong in a row your losses halve.
+you're there. After 3 wrong in a row your losses are cushioned (up to half).
 
 **Practice doesn't move my rank.** By design: practice and live quizzes earn XP only. Daily questions and first mock
 runs move LP.

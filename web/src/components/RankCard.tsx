@@ -67,7 +67,8 @@ export function RankCard({ me, road = true }: { me: Me; road?: boolean }) {
         )}
         {r.miss_streak >= 3 && (
           <li>
-            <strong>Rough patch:</strong> losses are halved and your next right answer pays 1.5×.
+            <strong>Rough patch:</strong> losses are cushioned (up to half) and your next right answer pays extra (up to
+            1.5×).
           </li>
         )}
         <li>

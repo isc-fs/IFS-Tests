@@ -58,8 +58,8 @@ Each answer moves the rank Elo-style against the question's rating. In plain wor
 1. **Question rating** from its difficulty d (1–5): `Q = 650 + 170 × (d − 3)`, so 310, 480, 650, 820, 990.
 2. **Expected score** of a player with rank points R: `E = g + (1 − g) × 1 / (1 + e^(−(R − Q)/600))`, where the guess floor `g = 1/options` on a single-choice question (0 for everything else). The floor makes a blind guess break even at every rank.
 3. **K** by mode (below), multiplied by the repeat and softening factors.
-4. **Right** (in time, not passed): `+K × (1 − E)`, halved if a hint was taken, ×1.5 on a comeback.
-5. **Wrong or late**: `−K × E × stakes`, halved while cushioned.
+4. **Right** (in time, not passed): `+K × (1 − E)`, halved if a hint was taken, up to ×1.5 on a comeback (2.3).
+5. **Wrong or late**: `−K × E × stakes`, cut by up to half while cushioned (2.3).
 6. **"I'm not sure"** before the clock runs out: half a wrong answer, and on a single choice never more than a blind guess would lose on average: `min(½ × wrong, (1 − 1/options) × wrong − right/options)`, floored at 0. A pass after the clock ran out counts as a late wrong answer.
 7. The result is rounded to two decimals, added to the rank points, and the total floored at 0.
 
@@ -90,6 +90,13 @@ A hint on a single choice makes a wrong answer cost *more* than without it (the 
 ### 2.3 Cushion and comeback
 
 After **3 wrong answers in a row**, losses are halved (cushioned) and the next right answer pays ×1.5 (comeback). Both end with the bad run.
+
+On a **single choice** the full cushion and comeback would make a blind guess pay (+2.10 LP on average at 50 points with 4 options), and "I'm not sure", capped at what a blind guess loses, would cost nothing. So there the cushion and the comeback shrink together, by the share `t` (`bad_run` in `src/ifs_tests/domain/rank.py`), until a blind guess still loses on average at least `CUSHION` (half) of what it loses outside a bad run:
+
+- right `× (1 + t × 0.5)`, wrong `× (1 − t × 0.5)`, with `t = min(1, ½ × ((n − 1) × wrong − right) / (½ × right + ½ × (n − 1) × wrong))` for `n` options (two after a hint), where right and wrong are the sizes of the answer's usual LP;
+- "I'm not sure" then costs half the cushioned wrong answer, capped at what a blind guess loses on average as in 2.2, and never nothing.
+
+`t` is about 0.3 at Mingo I, 0.6 at Jefe I and 0.9 at the top on a difficulty-3 rules question with 4 options: the comeback pays ×1.16, ×1.31 and ×1.46 there. Multiple choice and typed answers, where a blind guess all but never lands, keep the full cushion and comeback.
 
 Only answers that "count towards the run" move the counter: first-time daily and mock answers in a counted run, that is mode daily or mock, not a repeat this season, not already answered today, not a mock replay. Everything else gets no cushion and doesn't touch the counter, so a bad run can't be staged with cheap misses.
 
@@ -357,7 +364,7 @@ The same player at 550 points (Jefe I) on other daily questions:
 | Rules, single choice, difficulty 3, repeat this season | +3.05 | −4.23 |
 | Same question in a counted mock run (K 20) | +8.12 | −11.28 |
 
-A bad run at 550 on difficulty-3 rules questions: −16.92, −16.77, −16.63 (now 499.68, Mingo V, 3 misses in a row), then a fourth wrong is cushioned at −7.98, and the next right answer pays +19.09 with the comeback (instead of about +12.7) and ends the run.
+A bad run at 550 on difficulty-3 rules questions (single choice, 4 options): −16.92, −16.77, −16.63 (now 499.68, Mingo V, 3 misses in a row), then a fourth wrong is cushioned at −11.32 (instead of −15.96), and the next right answer, at 488.36, pays +16.44 with the comeback (instead of +12.76) and ends the run. On a typed or multiple-choice question the cushion and comeback are the full half and ×1.5.
 
 ### 8.2 XP for one answer with bonuses
 
