@@ -1,6 +1,6 @@
 import { type ReactNode, useEffect, useId, useRef, useState } from 'react'
 import type { AnswerIn, Feedback, HintOut, PlayQuestion } from '../api/types.gen'
-import { errorMessage, ME_KEY, queryClient, useMe } from '../lib/api'
+import { errorMessage, ME_KEY, queryClient, useMe, useOnline } from '../lib/api'
 import { AREAS, TOPICS } from '../lib/areas'
 import { changes, lp, numeral, TOP, tierOf } from '../lib/rank'
 import { BONUS_NAMES, xp } from '../lib/xp'
@@ -196,6 +196,7 @@ export function QuestionCard({
   question,
   feedback,
   pending,
+  failed,
   onAnswer,
   next,
   clock,
@@ -212,6 +213,8 @@ export function QuestionCard({
   question: PlayQuestion
   feedback?: Feedback
   pending?: boolean
+  /** The last send failed (the page says why). Once time is up, the player can then send again. */
+  failed?: boolean
   onAnswer: (answer: AnswerIn) => void
   next?: ReactNode
   /** Shown next to the question while it is open. */
@@ -247,6 +250,7 @@ export function QuestionCard({
   const [hint, setHint] = useState<HintOut>()
   const [hintError, setHintError] = useState<string>()
   const { data: me } = useMe()
+  const online = useOnline()
   const gradable = question.graded && question.answer_kind !== 'self'
   const hintable = !!onHint && !!me?.progress?.rank.aids.hint && gradable
   const unsure = allowUnsure && gradable
@@ -257,7 +261,9 @@ export function QuestionCard({
   const kind = question.answer_kind
   const choice = kind.startsWith('choice')
   const answered = !!feedback
-  const locked = answered || !!expired
+  // Time's up and the send failed even after its retries: the player sends again, and may fix what they typed.
+  const stuck = !!expired && !answered && !!failed && !pending
+  const locked = answered || (!!expired && !stuck)
 
   useEffect(() => {
     if (feedback) after.current?.querySelector<HTMLElement>('button')?.focus()
@@ -266,6 +272,7 @@ export function QuestionCard({
     if (focusOnShow) text.current?.focus()
   }, [focusOnShow])
 
+  const entered: AnswerIn = choice ? { options: chosen } : kind === 'self' ? {} : { value }
   const sent = useRef(false)
   useEffect(() => {
     if (!expired || answered || sent.current) return
@@ -345,8 +352,13 @@ export function QuestionCard({
         {!choice && kind !== 'self' && (
           <Field
             label={answerLabel}
-            inputMode={kind === 'text' ? 'text' : 'decimal'}
+            // Not a number pad: iOS's has no minus sign, and lists need a semicolon. The keyboard follows the
+            // kind, never the answer, so it can't hint at the answer's sign.
+            inputMode="text"
             autoComplete="off"
+            autoCapitalize="off"
+            autoCorrect="off"
+            spellCheck={false}
             value={value}
             readOnly={locked}
             maxLength={200}
@@ -358,7 +370,26 @@ export function QuestionCard({
             error={missing}
           />
         )}
-        {expired && !answered && <Notice tone="error">Time's up. Sending your answer…</Notice>}
+        {expired && !answered && !stuck && <Notice tone="error">Time's up. Sending your answer…</Notice>}
+        {pending && !online && (
+          <Notice tone="info">
+            Your answer goes as soon as the connection is back.
+            {clock && " The clock keeps running: the server's clock decides whether it arrived in time."}
+          </Notice>
+        )}
+        {stuck && (
+          <>
+            <Notice tone="error">Time's up, and your answer didn't reach the server.</Notice>
+            <div className="answer-actions">
+              <button type="button" onClick={() => onAnswer(entered)}>
+                Send my answer again
+              </button>
+            </div>
+            <p className="muted answer-note">
+              The server's clock decides whether it still counts: up to 3 seconds after the end is in time.
+            </p>
+          </>
+        )}
         {!answered && !expired && (
           <div className="answer-actions">
             <button type="submit" disabled={pending}>

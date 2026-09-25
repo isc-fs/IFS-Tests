@@ -1,5 +1,7 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { Link, NavLink, useLocation } from 'react-router'
+import { useOnline } from '../lib/api'
+import { Notice } from './Form'
 
 export const APP_NAME = 'MingoQuiz'
 
@@ -41,8 +43,14 @@ export function Page({
 }
 
 export function Shell({ children }: { children: ReactNode }) {
+  const online = useOnline()
   return (
     <div className="shell isc-light">
+      {!online && (
+        <Notice tone="error" className="notice error offline">
+          You're offline. The page carries on when the connection is back.
+        </Notice>
+      )}
       {children}
       <footer className="footer">
         <p>

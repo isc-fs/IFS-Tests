@@ -45,12 +45,51 @@ const dt = { ...MEMBER, rank_points: 1050, progress: progress(1050) }
 test('a Mingo gets useful formulas on one side of the question and reading on the other', async () => {
   renderApp('/practice', api(MEMBER))
   const formulas = (await screen.findByText('Useful formulas: vehicle dynamics')).closest('details') as HTMLElement
-  expect(within(formulas).getByText('Static axle loads')).toBeInTheDocument()
+  expect(await within(formulas).findByText('Static axle loads')).toBeInTheDocument()
   expect(within(formulas).getByText('F_f = m · g · b / L')).toBeInTheDocument()
   const reading = screen.getByText('Learn more').closest('details') as HTMLElement
   const link = within(reading).getByRole('link', { name: 'Weight transfer (Wikipedia)' })
   expect(link).toHaveAttribute('target', '_blank')
   expect(screen.getByRole('article')).toBeInTheDocument()
+})
+
+test('an answer and a hint given before the aids load survive them loading', async () => {
+  let release = () => {}
+  const held = new Promise<void>((r) => (release = r))
+  renderApp(
+    '/practice',
+    api(MEMBER, {
+      'GET /api/learning/dynamics': async () => (await held, { body: LEARNING }),
+      'POST /api/practice/questions/7/hint': { body: { text: 'Not the heaviest.', removed_options: [73] } },
+    }),
+  )
+  await userEvent.click(await screen.findByRole('radio', { name: '0.837 m' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Hint (a right answer earns half)' }))
+  expect(await screen.findByText(/Not the heaviest\./)).toBeInTheDocument()
+  const card = screen.getByRole('article')
+  expect(screen.getByText('Useful formulas: vehicle dynamics')).toBeInTheDocument()
+  release()
+  expect(await screen.findByText('Static axle loads')).toBeInTheDocument()
+  expect(screen.getByRole('article')).toBe(card)
+  expect(screen.getByRole('radio', { name: '0.837 m' })).toBeChecked()
+  expect(screen.getByText(/Not the heaviest\./)).toBeInTheDocument()
+  expect(screen.getByRole('radio', { name: '1.020 m' })).toBeDisabled()
+})
+
+test('a typed answer survives the aids loading', async () => {
+  let release = () => {}
+  const held = new Promise<void>((r) => (release = r))
+  renderApp(
+    '/practice',
+    api(MEMBER, {
+      'GET /api/practice/next': { body: { ...QUESTION, answer_kind: 'number', options: [] } },
+      'GET /api/learning/dynamics': async () => (await held, { body: LEARNING }),
+    }),
+  )
+  await userEvent.type(await screen.findByLabelText('Your answer'), '0.84')
+  release()
+  expect(await screen.findByText('Static axle loads')).toBeInTheDocument()
+  expect(screen.getByLabelText('Your answer')).toHaveValue('0.84')
 })
 
 test('from Jefe on there are no panels, and nothing is fetched for them', async () => {

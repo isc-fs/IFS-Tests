@@ -1,4 +1,5 @@
-import { QueryClient, useQuery } from '@tanstack/react-query'
+import { onlineManager, QueryClient, useQuery } from '@tanstack/react-query'
+import { useSyncExternalStore } from 'react'
 import { client } from '../api/client.gen'
 import { me } from '../api/sdk.gen'
 import type { Me } from '../api/types.gen'
@@ -42,6 +43,10 @@ async function fetchMe(): Promise<Me | null> {
   return data
 }
 
+/** Whether the browser has a connection. Without one, TanStack pauses requests and sends them when it's back. */
+export const useOnline = () =>
+  useSyncExternalStore(onlineManager.subscribe.bind(onlineManager), () => onlineManager.isOnline())
+
 /** The signed-in user, `null` when signed out. Other failures (500, offline) are errors, not sign-outs. */
 export function useMe() {
   return useQuery({ queryKey: ME_KEY, queryFn: fetchMe, staleTime: 60_000, retryDelay: 500 })
@@ -65,6 +70,16 @@ export function errorMessage(error: unknown): string {
   if (Array.isArray(detail) && detail[0]?.msg) return String(detail[0].msg)
   if (error instanceof Error) return error.message
   return 'Something went wrong. Try again.'
+}
+
+/** A dropped connection or a proxy's error page: unlike the API's own refusals, it carries no `detail`. */
+export const transient = (error: unknown) => !(error as ApiError | null)?.detail
+
+/** For answers the server takes once and repeats back (daily, mock, a table's answer): a failed send is tried
+ * twice more within about 1.5 s, inside the 3 s of grace after a clock runs out. */
+export const resend = {
+  retry: (count: number, error: unknown) => count < 2 && transient(error),
+  retryDelay: (count: number) => 500 * 2 ** count,
 }
 
 /** Messages the server attached to specific form fields, if any. */

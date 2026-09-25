@@ -15,7 +15,7 @@ import { ErrorNotice, Notice } from '../components/Form'
 import { LearningAids } from '../components/LearningAids'
 import { Page } from '../components/Page'
 import { QuestionCard } from '../components/QuestionCard'
-import { ME_KEY, queryClient, useMe } from '../lib/api'
+import { ME_KEY, queryClient, resend, useMe } from '../lib/api'
 import { lp } from '../lib/rank'
 import { xp } from '../lib/xp'
 
@@ -152,6 +152,7 @@ export function MockRun() {
   const [expired, setExpired] = useState(false)
   const send = useMutation({
     ...answerMockMutation(),
+    ...resend,
     onSuccess: (next: MockState) => {
       setExpired(false)
       queryClient.setQueryData(key, next)
@@ -184,6 +185,7 @@ export function MockRun() {
               focusOnShow={s.position > 0}
               question={current.question}
               pending={send.isPending}
+              failed={send.isError}
               expired={expired}
               clock={<Countdown deadline={current.deadline_at} serverNow={current.server_now} onExpire={expire} />}
               onAnswer={(body) =>
