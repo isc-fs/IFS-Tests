@@ -5,6 +5,7 @@ import { MEMBER, renderApp } from '../test/render'
 
 const area = (a: string, state: string, extra = {}) => ({
   area: a,
+  day: '2026-10-01',
   budget_s: 120,
   state,
   deadline_at: null,
@@ -58,10 +59,11 @@ const api = (play: unknown) => ({
   'GET /api/daily': { body: STATUS },
   'POST /api/daily/mech/start': { body: play },
   'POST /api/daily/attempts/99/answer': {
-    body: { question: QUESTION, feedback: FEEDBACK, late: false, xp: 60, lp: 15, streak: 3 },
+    body: { day: '2026-10-01', question: QUESTION, feedback: FEEDBACK, late: false, xp: 60, lp: 15, streak: 3 },
   },
   'GET /api/daily/elec/review': {
     body: {
+      day: '2026-10-01',
       question: { ...QUESTION, area: 'elec' },
       feedback: FEEDBACK,
       answer: { options: [50], value: null },
@@ -131,4 +133,29 @@ test("a finished question that can't be loaded says so", async () => {
   })
   await userEvent.click(await screen.findByRole('button', { name: 'See the Electrical question' }))
   expect(await screen.findByText("Answer today's question first.")).toBeInTheDocument()
+})
+
+test("yesterday's question answered after midnight stays reviewable until today's is started", async () => {
+  const { sent } = renderApp('/daily', {
+    ...api(timed(120)),
+    'GET /api/daily': {
+      body: {
+        ...STATUS,
+        day: '2026-10-02',
+        xp_today: 0,
+        lp_today: 0,
+        areas: [area('mech', 'done', { correct: true, xp: 60, lp: 15 }), area('elec', 'new', { day: '2026-10-02' })],
+      },
+    },
+    'GET /api/daily/mech/review': {
+      body: { day: '2026-10-01', question: QUESTION, feedback: FEEDBACK, late: false, xp: 60, lp: 15, streak: 3 },
+    },
+  })
+  expect(await screen.findByText("Yesterday's question. Correct: +15 LP, +60 XP.")).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: "See yesterday's Mechanical question" }))
+  expect(await screen.findByText("Yesterday's answer")).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: "Back to today's questions" }))
+  await userEvent.click(await screen.findByRole('button', { name: "Start today's Mechanical question" }))
+  expect(await screen.findByText(QUESTION.text)).toBeInTheDocument()
+  expect(sent('POST /api/daily/mech/start')).toHaveLength(1)
 })

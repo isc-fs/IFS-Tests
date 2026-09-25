@@ -112,10 +112,10 @@ No session needed; the CSRF header still is.
 
 | Method and path | Purpose |
 |---|---|
-| `GET /api/daily` | Today's state per area, streak, XP and LP today; closes the caller's abandoned daily questions |
+| `GET /api/daily` | Today's state per area, streak, XP and LP today; closes the caller's abandoned daily questions. Each area has its `day`: the day before for a question started before midnight, still running or answered since midnight, until the new day's question in that area is started |
 | `POST /api/daily/{area}/start` | Start the clock (`area` is `mech`, `elec` or `rules`); reveals the question and the deadline with the server's clock. Returns the running attempt if already started |
 | `POST /api/daily/attempts/{attempt_id}/answer` | Submit once; a retry returns the stored result. A typed answer the grader can't read (units, `%`, `2,778`, one value for a list) is refused with 400 and a `value` field error saying what to type, before anything is recorded; the same holds for every answer route |
-| `GET /api/daily/{area}/review` | Today's answered question with its result |
+| `GET /api/daily/{area}/review` | Today's answered question with its result and `day`; before today's question in that area is started, the one from the day before answered (or run out) since midnight. 409 otherwise |
 | `POST /api/daily/attempts/{attempt_id}/hint` | A hint on the running daily question |
 
 ### `/api/mock` (`api/routes/mock.py`): `Member`

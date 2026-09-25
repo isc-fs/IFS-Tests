@@ -280,7 +280,50 @@ def test_a_daily_started_before_midnight_stays_its_days_until_its_deadline(
     assert (r["late"], r["streak"]) == (False, 3)
     status = player.get("/api/daily").json()
     assert status["streak"] == 3
-    assert next(a for a in status["areas"] if a["area"] == "mech")["state"] == "new"  # the new day's question
+    mech = next(a for a in status["areas"] if a["area"] == "mech")
+    assert (mech["state"], mech["day"]) == ("done", "2026-10-01")  # its result, until the new day's starts
+
+
+def test_a_daily_carried_past_midnight_can_be_reviewed_until_the_new_days_question_starts(
+    player: TestClient, db: Session, clock: Clock
+) -> None:
+    clock.now = datetime(2026, 10, 1, 21, 59, 30, tzinfo=UTC)  # 23:59:30 in Madrid
+    login(player, "marta@alu.comillas.edu", PASSWORD)
+    started = player.post("/api/daily/mech/start").json()
+    abandoned = player.post("/api/daily/elec/start").json()
+    qid = started["question"]["id"]
+    clock.advance(seconds=50)  # 00:00:20 on 2 October
+    r = player.post(f"/api/daily/attempts/{started['attempt_id']}/answer", json=right_answer(db, qid)).json()
+
+    status = player.get("/api/daily").json()  # a reload: the result is still there
+    mech = next(a for a in status["areas"] if a["area"] == "mech")
+    assert (status["day"], mech["day"], mech["state"], mech["correct"]) == (
+        "2026-10-02",
+        "2026-10-01",
+        "done",
+        True,
+    )
+    assert (mech["xp"], mech["lp"], status["xp_today"], status["lp_today"]) == (r["xp"], r["lp"], 0, 0)
+    review = player.get("/api/daily/mech/review")
+    assert review.status_code == 200, review.text
+    assert (review.json()["question"]["id"], review.json()["day"], review.json()["xp"]) == (
+        qid,
+        "2026-10-01",
+        r["xp"],
+    )
+
+    today = player.post("/api/daily/mech/start").json()
+    assert today["attempt_id"] != started["attempt_id"]
+    mech = next(a for a in player.get("/api/daily").json()["areas"] if a["area"] == "mech")
+    assert (mech["state"], mech["day"]) == ("started", "2026-10-02")
+    assert player.get("/api/daily/mech/review").status_code == 409  # today's comes first now
+    player.post(f"/api/daily/attempts/{today['attempt_id']}/answer", json={"unsure": True})
+    assert player.get("/api/daily/mech/review").json()["day"] == "2026-10-02"
+
+    clock.advance(minutes=15)  # yesterday's elec question ran out after midnight
+    elec = next(a for a in player.get("/api/daily").json()["areas"] if a["area"] == "elec")
+    assert (elec["state"], elec["day"], elec["late"]) == ("done", "2026-10-01", True)
+    assert player.get("/api/daily/elec/review").json()["question"]["id"] == abandoned["question"]["id"]
 
 
 def test_a_daily_answered_just_after_midnight_counts_its_own_day_as_played(

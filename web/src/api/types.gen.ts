@@ -319,6 +319,12 @@ export type DailyArea = {
      */
     area: string;
     /**
+     * Day
+     *
+     * The day the question belongs to: the day before for one started before midnight, whose result stays until the new day's question in its area is started
+     */
+    day: string;
+    /**
      * Budget S
      */
     budget_s: number;
@@ -358,6 +364,12 @@ export type DailyArea = {
  * DailyResult
  */
 export type DailyResult = {
+    /**
+     * Day
+     *
+     * The day the question belongs to
+     */
+    day: string;
     question: PlayQuestion;
     feedback: Feedback;
     /**
