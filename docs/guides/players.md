@@ -166,7 +166,8 @@ earns half)**. A hint never gives the answer away: on a single choice it greys o
 multiple choice it says how many options are right; on a number it gives a range (the answer isn't in its middle);
 on a list of values, how many and a range for the first; on a text, its length and first letter. Some questions have no hint. One hint per question, before you
 answer. It halves the XP of a right answer (and the LP in daily and
-mock questions). Hints end at DT I.
+mock questions). In daily and mock questions a wrong answer after a hint also costs more LP, because the hint made a
+guess more likely to land (on a typed answer, as much as a coin flip). Hints end at DT I.
 
 ### "I'm not sure"
 
@@ -287,10 +288,11 @@ MingoQuiz keeps two separate scores. Home and Profile show both cards. The full 
   which has a title that depends on your vertical, revealed when you reach DT V. 100 LP per division.
 - **What moves LP:** daily questions and your first run of each mock quiz each season. Right answers win LP, wrong
   and late ones lose it; a hard question pays more and costs less. "I'm not sure" costs at most half a wrong answer.
-  A hint halves the win. Practice, replays and live quizzes never move LP.
+  A hint halves the win, and a wrong answer after one costs more. Practice, replays and live quizzes never move LP.
 - Your rank card says what a daily question is worth at your rank, warns you when one wrong answer would drop you a
   division, and shows **Rough patch** after 3 wrong in a row: losses are cushioned (up to half) and your next
-  right answer pays extra (up to 1.5×). On a single choice both are smaller, so guessing blind never pays.
+  right answer pays extra (up to 1.5×). Wherever a blind guess could land (a choice question, or a typed answer
+  after a hint) both are smaller, so guessing blind never pays.
 - You can drop a division. If you do, the help of the one below comes back.
 - Rank doesn't decay: not playing never costs LP.
 

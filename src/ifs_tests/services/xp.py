@@ -12,7 +12,7 @@ from typing import Any
 from sqlalchemy import Row, case, func, select, update
 from sqlalchemy.orm import Session as DB
 
-from ..db.models import AnswerOption, Attempt, MockSession, Question, User
+from ..db.models import AnswerKey, AnswerOption, Attempt, MockSession, Question, User
 from ..domain import daily as daily_rules
 from ..domain import leaderboard as board_rules
 from ..domain import rank as rank_rules
@@ -106,11 +106,15 @@ def last_seen(
     return db.scalar(stmt)
 
 
-def _options(db: DB, question: Question) -> int:
-    if question.answer_kind != "choice-one":
-        return 0
+def _options(db: DB, question: Question) -> tuple[int, int]:
+    """A choice question's live options, and how many are right (what a hint on a multiple choice says)."""
+    if question.answer_kind not in ("choice-one", "choice-many"):
+        return 0, 0
     offered = AnswerOption.question_id == question.id, AnswerOption.retired.is_(False)
-    return db.scalar(select(func.count()).where(*offered)) or 0
+    key = db.get(AnswerKey, question.id)
+    k = key.effective if key else None
+    right = len(k["options"]) if k and k["kind"] == "choice" else 0
+    return db.scalar(select(func.count()).where(*offered)) or 0, right
 
 
 def answered_today(
@@ -216,7 +220,7 @@ def grant(
     live = mode == "live"
     right = bool(correct) and not late and not passed
     run = mode in ("daily", "mock") and ranked and not repeat and not again_today
-    options = _options(db, question)
+    options, right_options = _options(db, question)
     lp = rank_rules.lp_award(
         correct,
         points,
@@ -225,6 +229,7 @@ def grant(
         area=question.area,
         answer_kind=question.answer_kind,
         options=options,
+        right_options=right_options,
         hint=hint,
         repeat=repeat,
         late=late,

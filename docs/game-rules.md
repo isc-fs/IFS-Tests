@@ -56,11 +56,11 @@ The top title depends on the member's vertical: **Gigante Noble** for Mechanical
 Each answer moves the rank Elo-style against the question's rating. In plain words: getting right a question that people at your rank usually get right earns little; getting it wrong costs a lot. The reverse holds for hard questions.
 
 1. **Question rating** from its difficulty d (1–5): `Q = 650 + 170 × (d − 3)`, so 310, 480, 650, 820, 990.
-2. **Expected score** of a player with rank points R: `E = g + (1 − g) × 1 / (1 + e^(−(R − Q)/600))`, where the guess floor `g = 1/options` on a single-choice question (0 for everything else). The floor makes a blind guess break even at every rank.
+2. **Expected score** of a player with rank points R: `E = g + (1 − g) × 1 / (1 + e^(−(R − Q)/600))`, where the guess floor `g` is how often a blind guess lands given what the player sees (`guess` in `src/ifs_tests/domain/rank.py`): `1/options` on a single choice (½ after a hint: two options left); `1/(2^options − 1)` on a multiple choice, one of its non-empty sets of options (after a hint, which says how many are right, `1/C(options, right)`); 0 on a typed answer (number, list, range, text), and ½ after a hint (`TYPED_HINT_GUESS`: a hint leaves at most a coin flip; the best informed guess inside a number hint measured on the real bank lands 34 % of the time). The floor makes a blind guess break even at every rank.
 3. **K** by mode (below), multiplied by the repeat and softening factors.
 4. **Right** (in time, not passed): `+K × (1 − E)`, halved if a hint was taken, up to ×1.5 on a comeback (2.3).
 5. **Wrong or late**: `−K × E × stakes`, cut by up to half while cushioned (2.3).
-6. **"I'm not sure"** before the clock runs out: half a wrong answer, and on a single choice never more than a blind guess would lose on average: `min(½ × wrong, (1 − 1/options) × wrong − right/options)`, floored at 0. A pass after the clock ran out counts as a late wrong answer.
+6. **"I'm not sure"** before the clock runs out: half a wrong answer, and never more than a blind guess would lose on average: `min(½ × wrong, (1 − g) × wrong − g × right)`, floored at 0. A pass after the clock ran out counts as a late wrong answer.
 7. The result is rounded to two decimals, added to the rank points, and the total floored at 0.
 
 What changes the formula:
@@ -72,12 +72,12 @@ What changes the formula:
 | **Same day**: already answered today (Madrid), in any mode, graded or not | Right: 0 LP. Wrong: charged as usual | Once a day pays |
 | **Daily after an ended mock run**: its question was closed unanswered in the run while it was the day's daily | Neither repeat nor same day: pays in full | Its answer stayed hidden (§3.1) |
 | **Mock replay**: a quiz the player already ran this season | No LP at all (XP only) | The run is marked not `counted` in `src/ifs_tests/services/mock.py` |
-| **Hint** | Gain halved; on a single choice the guess floor becomes ½ (two options left) | So a hinted guess never pays either |
+| **Hint** | Gain halved; the guess floor becomes what the hint leaves (½ on a single choice or a typed answer, `1/C(options, right)` on a multiple choice) | So a hinted guess never pays either |
 | **Answer kind, outside the rules area** | Multiple choice K × 0.75, typed answers (number, list, range, text) K × 0.5, single choice × 1 | A slip in a sum isn't not knowing, and typed answers play harder than their rating. Both ways |
 | **Rules area** | Always K × 1 | You know the rule or you don't |
 | **Ungraded question** | 0 LP | Nothing to grade against |
 
-A hint on a single choice makes a wrong answer cost *more* than without it (the player was more likely to get it right with two options left). That is deliberate: it keeps a hinted guess from paying.
+A hint makes a wrong answer cost *more* than without it (the player was more likely to get it right with the hint). That is deliberate: it keeps a hinted guess from paying. It weighs most on typed answers, which have no guess floor without a hint: a difficulty-4 mech number at 550 points pays +9.16 / −5.55 without a hint and +2.29 / −9.90 with one.
 
 | Constant | Value | File |
 |---|---|---|
@@ -85,6 +85,7 @@ A hint on a single choice makes a wrong answer cost *more* than without it (the 
 | `K` | daily 30, mock 20, practice 0, live 0 | same |
 | `REPEAT` | 0.25 | same |
 | `HINT` | 0.5 (of the gain) | same |
+| `TYPED_HINT_GUESS` | 0.5 (the guess floor of a typed answer after a hint) | same |
 | `PASS` | 0.5 (of a wrong answer) | same |
 | `SOFTEN`, `TYPED` | choice-one 1.0, choice-many 0.75; typed 0.5 | same |
 
@@ -92,12 +93,12 @@ A hint on a single choice makes a wrong answer cost *more* than without it (the 
 
 After **3 wrong answers in a row**, losses are halved (cushioned) and the next right answer pays ×1.5 (comeback). Both end with the bad run.
 
-On a **single choice** the full cushion and comeback would make a blind guess pay (+2.10 LP on average at 50 points with 4 options), and "I'm not sure", capped at what a blind guess loses, would cost nothing. So there the cushion and the comeback shrink together, by the share `t` (`bad_run` in `src/ifs_tests/domain/rank.py`), until a blind guess still loses on average at least `CUSHION` (half) of what it loses outside a bad run:
+Wherever a blind guess can land (the guess floor `g` of 2.2 is above 0: any choice question, and a typed answer after a hint) the full cushion and comeback would make it pay: +2.10 LP on average at 50 points on a 4-option single choice, +3.33 on a 3-option multiple choice with its hint, +3.46 on a small typed whole number guessed inside its hint range. And "I'm not sure", capped at what a blind guess loses, would cost nothing. So there the cushion and the comeback shrink together, by the share `t` (`bad_run` in `src/ifs_tests/domain/rank.py`), until a blind guess still loses on average at least `CUSHION` (half) of what it loses outside a bad run:
 
-- right `× (1 + t × 0.5)`, wrong `× (1 − t × 0.5)`, with `t = min(1, ½ × ((n − 1) × wrong − right) / (½ × right + ½ × (n − 1) × wrong))` for `n` options (two after a hint), where right and wrong are the sizes of the answer's usual LP;
+- right `× (1 + t × 0.5)`, wrong `× (1 − t × 0.5)`, with `t = min(1, ½ × ((1 − g) × wrong − g × right) / (g × ½ × right + (1 − g) × ½ × wrong))`, where right and wrong are the sizes of the answer's usual LP (for a single choice with `n` options, `g = 1/n`);
 - "I'm not sure" then costs half the cushioned wrong answer, capped at what a blind guess loses on average as in 2.2, and never nothing.
 
-`t` is about 0.3 at Mingo I, 0.6 at Jefe I and 0.9 at the top on a difficulty-3 rules question with 4 options: the comeback pays ×1.16, ×1.31 and ×1.46 there. Multiple choice and typed answers, where a blind guess all but never lands, keep the full cushion and comeback.
+`t` is about 0.3 at Mingo I, 0.6 at Jefe I and 0.9 at the top on a difficulty-3 rules question with 4 options: the comeback pays ×1.16, ×1.31 and ×1.46 there. On a 4-option multiple choice it is ×1.34, ×1.43 and ×1.49; on a hinted typed answer ×1.24, ×1.33 and ×1.47. A typed answer without a hint, where a blind guess can't land (`g` = 0), keeps the full cushion and comeback: `t` = 1. The property tests in `tests/unit/test_rank_rules.py` check every kind, with and without a hint, at every rank and miss streak: a blind guess never pays, and "I'm not sure" never costs more than one, nor nothing.
 
 Only answers that "count towards the run" move the counter: first-time daily and mock answers in a counted run, that is mode daily or mock, not a repeat this season, not already answered today, not a mock replay. Everything else gets no cushion and doesn't touch the counter, so a bad run can't be staged with cheap misses.
 
@@ -364,13 +365,15 @@ The same player at 550 points (Jefe I) on other daily questions:
 |---|---|---|
 | Rules, single choice, difficulty 1 | +9.03 | −19.92 |
 | Rules, single choice, difficulty 5 | +15.20 | −14.06 |
-| Elec, multiple choice (5 options), difficulty 3 | +12.19 | −9.80 |
+| Elec, multiple choice (5 options), difficulty 3 | +11.79 | −10.17 |
+| Elec, multiple choice (5 options, 2 right), difficulty 3, with a hint | +5.48 | −10.96 |
 | Mech, typed number, difficulty 4 | +9.16 | −5.55 ("not sure": −2.77) |
+| Mech, typed number, difficulty 4, with a hint | +2.29 | −9.90 ("not sure": −3.80) |
 | Rules, single choice, difficulty 3, with a hint | +4.06 | −20.78 ("not sure": −8.36) |
 | Rules, single choice, difficulty 3, repeat this season | +3.05 | −4.23 |
 | Same question in a counted mock run (K 20) | +8.12 | −11.28 |
 
-A bad run at 550 on difficulty-3 rules questions (single choice, 4 options): −16.92, −16.77, −16.63 (now 499.68, Mingo V, 3 misses in a row), then a fourth wrong is cushioned at −11.32 (instead of −15.96), and the next right answer, at 488.36, pays +16.44 with the comeback (instead of +12.76) and ends the run. On a typed or multiple-choice question the cushion and comeback are the full half and ×1.5.
+A bad run at 550 on difficulty-3 rules questions (single choice, 4 options): −16.92, −16.77, −16.63 (now 499.68, Mingo V, 3 misses in a row), then a fourth wrong is cushioned at −11.32 (instead of −15.96), and the next right answer, at 488.36, pays +16.44 with the comeback (instead of +12.76) and ends the run. On a typed answer without a hint the cushion and comeback are the full half and ×1.5.
 
 ### 8.2 XP for one answer with bonuses
 

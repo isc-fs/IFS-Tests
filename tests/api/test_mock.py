@@ -20,7 +20,7 @@ from ifs_tests.services import maintenance
 from ifs_tests.services.bank import import_bank
 
 from ..conftest import Clock
-from .helpers import PASSWORD, login, member, options, right_answer
+from .helpers import PASSWORD, login, member, right_answer, shape
 
 pytestmark = pytest.mark.integration
 NewClient = Callable[[], TestClient]
@@ -383,10 +383,7 @@ def _daily_right(player: TestClient, db: Session, q: Question) -> dict[str, Any]
 
 def _full_daily_lp(db: Session, q: Question, **kw: Any) -> float:
     points = db.scalars(select(User.rank_points).where(User.display_name == "Marta")).one()
-    n = len(options(db, q.id)) if q.answer_kind == "choice-one" else 0
-    return rank_rules.lp_award(
-        True, points, 3, "daily", area=q.area, answer_kind=q.answer_kind, options=n, **kw
-    ).amount
+    return rank_rules.lp_award(True, points, 3, "daily", **shape(db, q.id), **kw).amount
 
 
 def test_ending_a_run_frees_the_daily_on_screen_and_it_pays_in_full(player: TestClient, db: Session) -> None:

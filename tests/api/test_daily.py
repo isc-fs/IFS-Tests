@@ -20,7 +20,7 @@ from ifs_tests.services import daily, maintenance
 from ifs_tests.services.bank import import_bank
 
 from ..conftest import Clock
-from .helpers import PASSWORD, login, member, options, right_answer
+from .helpers import PASSWORD, login, member, right_answer, shape
 
 pytestmark = pytest.mark.integration
 NewClient = Callable[[], TestClient]
@@ -32,10 +32,7 @@ MINGO = placement("mingo")
 def lp(db: Session, qid: int, points: float, correct: bool | None, **kw: Any) -> float:
     """The LP a daily answer to `qid` moves from `points`."""
     q = db.get_one(Question, qid)
-    n = len(options(db, qid)) if q.answer_kind == "choice-one" else 0
-    return lp_award(
-        correct, points, q.difficulty, "daily", area=q.area, answer_kind=q.answer_kind, options=n, **kw
-    ).amount
+    return lp_award(correct, points, q.difficulty, "daily", **shape(db, qid), **kw).amount
 
 
 @pytest.fixture

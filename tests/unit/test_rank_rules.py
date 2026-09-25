@@ -72,7 +72,7 @@ def test_right_answers_pay_more_low_down_and_wrong_ones_cost_more_up_high() -> N
     assert swing(50) == (16.45, -10.84)
     low, high = swing(50), swing(1400)
     assert low[0] > high[0] and low[1] > high[1]
-    assert expected(0, 5, "choice-one", 4) < expected(1500, 1, "choice-one", 4)
+    assert expected(0, 5, 0.25) < expected(1500, 1, 0.25)
 
 
 def test_slips_cost_less_than_not_knowing_and_passing_costs_half() -> None:
@@ -98,11 +98,11 @@ def test_modes_repeats_hints_and_what_moves_nothing() -> None:
     # A hint leaves a single choice a two-way guess, and halves what's left to win.
     two_way = lp_award(True, 300, 3, "daily", options=2).amount
     assert lp_award(True, 300, 3, "daily", hint=True).amount == pytest.approx(two_way / 2, abs=0.01)
-    assert lp_award(
-        True, 300, 3, "daily", answer_kind="numbers", area="mech", hint=True
-    ).amount == pytest.approx(
-        lp_award(True, 300, 3, "daily", answer_kind="numbers", area="mech").amount / 2, abs=0.01
-    )
+    # A hint on a typed answer leaves at most a coin flip too: a two-way guess on a typed answer, gain halved.
+    typed: dict[str, Any] = {"answer_kind": "numbers", "area": "mech"}
+    hinted = lp_award(True, 300, 3, "daily", hint=True, **typed).amount
+    unhinted = lp_award(True, 300, 3, "daily", **typed).amount
+    assert hinted == pytest.approx(unhinted * (1 - 0.5) / 2, abs=0.01)
     assert lp_award(True, 300, 3, "live").amount == lp_award(False, 300, 3, "live").amount == 0
     assert lp_award(None, 300, 3, "daily").amount == 0  # ungraded
     assert lp_award(True, 300, 3, "daily", again_today=True).amount == 0
@@ -285,3 +285,82 @@ def test_not_sure_never_costs_more_than_a_blind_guess_and_a_hinted_guess_never_p
     guess = lp(True) / n + lp(False) * (1 - 1 / n)
     assert guess <= 0.01
     assert guess - 0.01 <= lp(False, passed=True) < 0  # and "I'm not sure" never costs nothing
+
+
+# What a blind guess faces, per kind of question: (answer kind, area, options, right options, hint, how often the
+# best blind guess lands). A hint on a multiple choice says how many options are right; one on a number gives a
+# range, where the best informed guess measured on the real bank lands 34 % of the time (DOM-01).
+GUESSES = [
+    ("choice-one", "rules", 4, 1, False, 1 / 4),
+    ("choice-one", "mech", 3, 1, True, 1 / 2),
+    ("choice-many", "elec", 3, 1, False, 1 / 7),
+    ("choice-many", "rules", 4, 2, False, 1 / 15),
+    ("choice-many", "elec", 3, 1, True, 1 / 3),
+    ("choice-many", "rules", 4, 1, True, 1 / 4),
+    ("choice-many", "mech", 4, 2, True, 1 / 6),
+    ("choice-many", "mech", 5, 4, True, 1 / 5),
+    ("number", "mech", 0, 0, False, 0.0),
+    ("number", "mech", 0, 0, True, 0.34),
+    ("numbers", "rules", 0, 0, True, 0.5),
+    ("text", "elec", 0, 0, True, 0.5),
+]
+
+
+@pytest.mark.parametrize(("kind", "area", "options", "right_options", "hint", "p"), GUESSES)
+@pytest.mark.parametrize("points", [0, 50, 350, 550, 1050, 1450, 2000])
+@pytest.mark.parametrize("difficulty", [1, 3, 5])
+@pytest.mark.parametrize("miss_streak", [0, 2, 3, 10])
+@pytest.mark.parametrize("mode", ["daily", "mock"])
+def test_no_blind_guess_pays_on_any_kind_of_question_at_any_miss_streak(
+    kind: str,
+    area: str,
+    options: int,
+    right_options: int,
+    hint: bool,
+    p: float,
+    points: float,
+    difficulty: int,
+    miss_streak: int,
+    mode: str,
+) -> None:
+    def lp(correct: bool, **kw: Any) -> float:
+        return lp_award(
+            correct,
+            points,
+            difficulty,
+            mode,
+            area=area,
+            answer_kind=kind,
+            options=options,
+            right_options=right_options,
+            hint=hint,
+            miss_streak=miss_streak,
+            **kw,
+        ).amount
+
+    guess = p * lp(True) + (1 - p) * lp(False)
+    assert guess <= 0.01
+    assert guess - 0.01 <= lp(False, passed=True) < 0  # "I'm not sure" never costs more, nor nothing
+
+
+@pytest.mark.parametrize("points", [0, 550, 1450])
+def test_a_bad_run_still_cushions_real_answers(points: float) -> None:
+    """Back on your feet (ADR 0007): where a blind guess can't land, the full cushion and comeback."""
+    typed: dict[str, Any] = {"area": "mech", "answer_kind": "number", "options": 0}
+    assert lp_award(True, points, 3, "daily", miss_streak=3, **typed).amount == pytest.approx(
+        1.5 * lp_award(True, points, 3, "daily", **typed).amount, abs=0.01
+    )
+    for kind, options in (("choice-one", 4), ("choice-many", 4), ("number", 0)):
+        kw: dict[str, Any] = {
+            "area": "mech",
+            "answer_kind": kind,
+            "options": options,
+            "hint": kind != "number",
+        }
+        fresh, down = (
+            lp_award(False, points, 3, "daily", **kw),
+            lp_award(False, points, 3, "daily", miss_streak=3, **kw),
+        )
+        back = lp_award(True, points, 3, "daily", miss_streak=3, **kw)
+        assert down.cushioned and fresh.amount < down.amount < 0
+        assert back.comeback and back.amount > lp_award(True, points, 3, "daily", **kw).amount
