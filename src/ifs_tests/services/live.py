@@ -69,7 +69,10 @@ def _check_config(db: DB, config: dict[str, Any]) -> None:
 def _session(db: DB, code: str, lock: bool = False) -> LiveSession:
     stmt = select(LiveSession).where(LiveSession.code == code.upper())
     # populate_existing: a locked read must see what another request committed, not this session's cache.
-    s = db.scalar(stmt.with_for_update().execution_options(populate_existing=True) if lock else stmt)
+    # FOR NO KEY UPDATE: requests on a session still queue, but the foreign-key checks of other writes (deleting
+    # a player nulls their table's captain) aren't blocked; FOR UPDATE let those deadlock with a proposal.
+    lock_stmt = stmt.with_for_update(key_share=True).execution_options(populate_existing=True)
+    s = db.scalar(lock_stmt if lock else stmt)
     if s is None:
         raise UserError("No live quiz with that code.", 404)
     return s
@@ -157,7 +160,7 @@ def finish_abandoned(db: DB, now: datetime) -> int:
         s = db.scalar(
             select(LiveSession)
             .where(LiveSession.id == sid, LiveSession.state != "finished")
-            .with_for_update()
+            .with_for_update(key_share=True)
             .execution_options(populate_existing=True)
         )
         if s is not None:
@@ -175,7 +178,7 @@ def lock_hosted(db: DB, host_id: int) -> list[LiveSession]:
         select(LiveSession)
         .where(LiveSession.host_id == host_id, LiveSession.state != "finished")
         .order_by(LiveSession.id)
-        .with_for_update()
+        .with_for_update(key_share=True)
         .execution_options(populate_existing=True)
     )
     return list(db.scalars(stmt))

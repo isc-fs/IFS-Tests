@@ -414,8 +414,12 @@ def test_one_player_every_mode_at_once(db: Session, app_engine: Engine, daily_pl
 # 6. Live: several tables answering with feedback each, overlapping deletions and host ending
 
 
+# Repeated: deleting players while their tables propose deadlocked about 1 run in 6 when sessions were locked FOR
+# UPDATE (the deletion's foreign-key check queued behind requests waiting for the session). Eight rounds make a
+# regression all but certain to fail.
+@pytest.mark.parametrize("round_", range(8))
 def test_live_many_tables_each_feedback_with_deletion_and_end(
-    db: Session, app_engine: Engine, daily_player: User
+    db: Session, app_engine: Engine, daily_player: User, round_: int
 ) -> None:
     actor = mk(db, 1, "actor", role="admin")[0]
     host = mk(db, 1, "host", position="technical_director")[0]
