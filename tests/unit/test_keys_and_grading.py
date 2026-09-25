@@ -4,7 +4,7 @@ from typing import Any
 
 import pytest
 
-from ifs_tests.domain.grading import grade, tolerance, unreadable
+from ifs_tests.domain.grading import correction, grade, tolerance, unreadable
 from ifs_tests.domain.keys import answer_kind, build_key, display, number, split_values
 
 
@@ -288,3 +288,48 @@ def test_a_list_whose_accepted_answers_differ_in_length_does_not_reveal_how_many
 )
 def test_what_is_never_refused(key: dict[str, Any] | None, given: str | None) -> None:
     assert unreadable(key, given) is None
+
+
+# BANK-06 / UI-03: a reviewer's correction is read for the question's own type, and players must be able to type
+# it back and be graded right.
+@pytest.mark.parametrize(
+    ("qtype", "text", "kind"),
+    [
+        ("input-range", "3.8-3.9", "range"),
+        ("input-range", "3.8-3.9 or 4.1-4.2", "range"),
+        ("input", "118 or 122", "number"),
+        ("input", "82.9", "number"),
+        ("input", "70-80", "range"),
+        ("input", "518.4; 604.8", "numbers"),
+        ("input", "Qxc8", "text"),
+        ("input", "6/7", "text"),
+        ("drag_sort", "12; 24; 60; 600", "numbers"),  # a drag-sort's correction is typed like an input's
+    ],
+)
+def test_corrections_that_players_can_be_graded_against(qtype: str, text: str, kind: str) -> None:
+    key = correction(qtype, text)
+    assert key is not None and key["kind"] == kind
+
+
+@pytest.mark.parametrize(
+    ("qtype", "text"),
+    [
+        ("input-range", "3.8 to 3.9"),
+        ("input-range", "12 V"),
+        ("input-range", "3.85"),  # a range question takes a range
+        ("input", "12.5 kW"),
+        ("input", "3.5mm"),
+        ("input", "46%"),
+        ("input", "3.8 to 3.9"),
+        ("input", "1,500"),  # players typing 1,500 would be asked whether they mean 1.5 or 1500
+        ("input", "lowest, then the others"),
+        ("input", ""),
+    ],
+)
+def test_corrections_players_could_not_be_graded_against_are_refused(qtype: str, text: str) -> None:
+    assert correction(qtype, text) is None
+
+
+def test_a_number_with_a_unit_is_no_text_key() -> None:
+    assert build_key("input", ans("12.5 kW")) == {"kind": "self"}
+    assert build_key("input", ans("Qxc8"))["kind"] == "text"  # type: ignore[index]

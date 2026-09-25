@@ -28,6 +28,7 @@ _THOUSANDS = re.compile(r"^[+-]?[1-9]\d{0,2},\d{3}$")
 _RANGE = re.compile(r"^([+-]?\d+(?:[.,]\d+)?)\s*-\s*([+-]?\d+(?:[.,]\d+)?)$")
 _SEQUENCE = re.compile(r"^\d+(?:-\d+){2,}$")
 _OR = re.compile(r"\sor\s", re.IGNORECASE)  # no quantifiers: linear on long runs of spaces
+_UNIT = re.compile(r"^[+-]?(?:\d+(?:[.,]\d+)?|\.\d+)\s*(?:[^\W\d_]|[%°])")  # 12.5 kW, 46%, 3.8 to 3.9
 MAX_TEXT = 24
 
 
@@ -79,12 +80,22 @@ def numbers(text: str, expected: int | None = None) -> list[dict[str, Any]] | No
     return [p for p in parts if p is not None]
 
 
-def value_range(text: str) -> dict[str, float] | None:
+def range_ends(text: str) -> tuple[str, str] | None:
     m = _RANGE.match(clean(text).replace(" ", ""))
-    if not m:
+    return (m.group(1), m.group(2)) if m else None
+
+
+def value_range(text: str) -> dict[str, float] | None:
+    ends = range_ends(text)
+    if not ends:
         return None
-    lo, hi = (float(x.replace(",", ".")) for x in m.groups())
+    lo, hi = (float(x.replace(",", ".")) for x in ends)
     return {"lo": min(lo, hi), "hi": max(lo, hi)}
+
+
+def alternatives(text: str) -> list[str]:
+    """'118 or 122' -> ['118', '122']: answers any of which is right."""
+    return [t.strip() for t in _OR.split(text or "")]
 
 
 def normal_text(text: str) -> str:
@@ -105,7 +116,8 @@ def _alternative(qtype: str, text: str) -> tuple[str, Any] | None:
         ascending = all(a["v"] < b["v"] for a, b in zip(ns, ns[1:], strict=False))
         return "numbers", {"values": ns, "ordered": not (whole and ascending)}
     short = clean(text)
-    if 0 < len(short) <= MAX_TEXT and "," not in short:
+    # A number with a unit isn't a code: players typing the number would be marked wrong.
+    if 0 < len(short) <= MAX_TEXT and "," not in short and not _UNIT.match(short):
         return "text", normal_text(short)
     return None
 
@@ -128,11 +140,11 @@ def build_key(qtype: str, answers: list[dict[str, Any]], option_ids: list[int] |
             "options": [ids[i] for i in correct],
         }
     if qtype in ("input", "input-range"):
-        texts = [t.strip() for i in correct for t in _OR.split(answers[i]["text"] or "")]
-        alternatives = [_alternative(qtype, t) for t in texts]
-        kinds = {a[0] for a in alternatives if a}
-        if None not in alternatives and len(kinds) == 1:
-            return {"kind": kinds.pop(), "accept": [a[1] for a in alternatives if a]}
+        texts = [t for i in correct for t in alternatives(answers[i]["text"])]
+        read = [_alternative(qtype, t) for t in texts]
+        kinds = {a[0] for a in read if a}
+        if None not in read and len(kinds) == 1:
+            return {"kind": kinds.pop(), "accept": [a[1] for a in read if a]}
     return {"kind": "self"}
 
 

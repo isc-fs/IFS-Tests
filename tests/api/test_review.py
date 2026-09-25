@@ -343,3 +343,26 @@ def test_a_correction_can_accept_either_of_two_values(
     assert (fixed["answer_kind"], fixed["correction"]) == ("number", "2778 or 2800")
     ok = player.post(f"/api/practice/questions/{qid}/answer", json={"value": "2800"}).json()
     assert ok["correct"] is True
+
+
+def test_a_correction_is_read_for_the_questions_own_type(
+    reviewer: TestClient, player: TestClient, bank: dict[int, int]
+) -> None:
+    rng = bank[90005]  # a range question: 3.8-3.9
+    for bad in ("3.8 to 3.9", "12 V", "3.85"):
+        r = reviewer.put(f"/api/review/questions/{rng}/answer", json={"value": bad})
+        assert r.status_code == 400 and "11.7-12.1" in r.json()["fields"]["value"], (bad, r.text)
+    fixed = reviewer.put(f"/api/review/questions/{rng}/answer", json={"value": "3.80-3.90"}).json()
+    assert fixed["answer_kind"] == "range"
+    assert (
+        player.post(f"/api/practice/questions/{rng}/answer", json={"value": "3.85"}).json()["correct"] is True
+    )
+    typed = bank[90012]
+    r = reviewer.put(f"/api/review/questions/{typed}/answer", json={"value": "12.5 kW"})
+    assert r.status_code == 400 and "no units" in r.json()["fields"]["value"]
+    either = reviewer.put(f"/api/review/questions/{typed}/answer", json={"value": "118 or 122"}).json()
+    assert (either["answer_kind"], either["correction"]) == ("number", "118 or 122")  # Q635
+    assert (
+        player.post(f"/api/practice/questions/{typed}/answer", json={"value": "122"}).json()["correct"]
+        is True
+    )

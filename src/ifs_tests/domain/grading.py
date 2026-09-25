@@ -90,3 +90,19 @@ def grade(key: keys.Key | None, options: list[int] | None = None, value: str | N
         elif key["kind"] == "text" and keys.normal_text(text) == alternative:
             return True
     return False
+
+
+def correction(qtype: str, text: str) -> keys.Key | None:
+    """A reviewer's typed answer as the key of a question of type `qtype`, or None when players couldn't be graded
+    against it: it doesn't read as that type's answer, or one of its answers typed back by a player would be
+    refused or marked wrong. A drag-sort's correction is typed like an input's (players then type the order)."""
+    key = keys.build_key(
+        "input-range" if qtype == "input-range" else "input", [{"text": text, "is_correct": True}]
+    )
+    if key is None or key["kind"] == "self":
+        return None
+    for alternative in keys.alternatives(text):
+        typed = keys.range_ends(alternative) if key["kind"] == "range" else (alternative,)
+        if not typed or any(unreadable(key, t) or not grade(key, value=t) for t in typed):
+            return None
+    return key

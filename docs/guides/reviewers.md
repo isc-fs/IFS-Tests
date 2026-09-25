@@ -99,9 +99,11 @@ which table answers it in a specialist live quiz.
 automatically: players only see the official answer. Give a correct answer to grade it."
 
 - On a choice question, tick **The correct option** (single choice) or **All correct options** (multiple choice).
-- On a typed question, fill **Accepted answer**: a number (`82.9`), a range (`11.7-12.1`), values separated by `;`
-  (`518.4; 604.8`) or a short code. Write `or` between answers when any of them is right (`118 or 122`). Anything
-  else is refused with "That can't be graded automatically."
+- On a typed question, fill **Accepted answer**: a number (`82.9`: no units, `%` or thousands separators), a range
+  (`11.7-12.1`), values separated by `;` (`518.4; 604.8`) or a short code. A range question takes only ranges. Write
+  `or` between answers when any of them is right (`118 or 122`, `3.8-3.9 or 4.1-4.2`). A drag-sort takes a typed
+  answer too (players then type the order). Anything else is refused with "That can't be graded automatically." and
+  what to write instead, and so is an answer players couldn't type back and be marked right (`12.5 kW`, `3,000`).
 - A choice question with a single option isn't graded (it can't be got wrong) and can't be corrected into grading:
   "A question with a single option can't be graded." Leave it ungraded, or hide it.
 
