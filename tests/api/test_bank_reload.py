@@ -177,3 +177,22 @@ def test_a_quiz_deleted_upstream_leaves_play_but_not_history(
     assert len(finished["items"]) == 3
     changed = app_client.get("/api/review/questions", params={"queue": "changed"}).json()
     assert [r["id"] for r in changed["rows"]] == [gone.id]
+
+
+def test_an_option_removed_upstream_is_refused_on_a_new_answer(
+    setup: tuple[dict[str, Any], Path, TestClient], db: Session, clock: Clock
+) -> None:
+    bank, media, c = setup
+    run = c.post("/api/mock/quizzes/9002/start").json()  # first question: 90001, on screen
+    shown = {o["text"]: o["id"] for o in run["current"]["question"]["options"]}
+
+    raw(bank, 90001)["answers"] = [a for a in raw(bank, 90001)["answers"] if a["text"] != "0.837 m"]
+    clock.advance(seconds=20)
+    import_bank(db, copy.deepcopy(bank), SAMPLE_DIR / "img", media, clock.now)
+
+    url = f"/api/mock/sessions/{run['session_id']}/answer"
+    body = {"attempt_id": run["current"]["attempt_id"]}
+    r = c.post(url, json={**body, "options": [shown["0.837 m"]]})
+    assert r.status_code == 400 and r.json()["detail"] == "Pick one of the listed answers.", r.text
+    r = c.post(url, json={**body, "options": [shown["0.713 m"]]})
+    assert r.status_code == 200 and r.json()["current"] is not None
