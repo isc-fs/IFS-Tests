@@ -40,7 +40,7 @@ Also closed by these PRs: OPS-02, OPS-04, OPS-14, the restore part of DOC-01 (#5
 
 ## Medium
 
-Workstreams run in parallel, each owning its files; G starts once A–F have merged.
+Workstreams run in parallel, each owning its files; G starts once A–F have merged. A–F and fix/17 were checked together on top of `dev` and merged through one integration PR (fix/18) so CI tested exactly the combined tree.
 
 | Finding | P | Workstream / branch | PR | Status | Proof |
 |---|---|---|---|---|---|
@@ -74,10 +74,17 @@ Workstreams run in parallel, each owning its files; G starts once A–F have mer
 | PERF-03 leaderboard scans all history | P2 | F capacity, fix/16 | | Fixed | index `ix_attempts_lp_day` (migration 0019), `jit=off`; `test_the_boards_read_this_seasons_play_not_the_whole_history`; red-team burst at 3 seasons: p95 2.8–3.2 s → 11–24 ms |
 | PERF-04 exports can run out of memory | P2 | F, fix/16 | | Fixed | batched export, ≤2 per process (429), `memswap_limit`; exports byte-identical; 12 at once: no swap (was 512 MiB + 282 swapped) |
 | DOM-05 rested XP counts a played day as away (Low) | P3 | D, fix/14 | | Fixed | `played_on` for rested XP; probe banked 150 → 0 |
-| GATE-02 surviving mutants (late right, repeat misses) | P2 | G tests, fix/17 | | Open | |
-| GATE-03 grace untested on closing paths | P2 | G, fix/17 | | Open | |
-| GATE-04 mock time-out on an ungraded question untested | P2 | G, fix/17 | | Open | |
-| GATE-05 missing boundary rows | P2 | G, fix/17 | | Open | |
+| GATE-02 surviving mutants (late right, repeat misses) | P2 | G tests, fix/19 | | Open | |
+| GATE-03 grace untested on closing paths | P2 | G, fix/19 | | Open | |
+| GATE-04 mock time-out on an ungraded question untested | P2 | G, fix/19 | | Open | |
+| GATE-05 missing boundary rows | P2 | G, fix/19 | | Open | |
+
+## Found while fixing
+
+| Finding | Sev | Branch / PR | Status | Proof |
+|---|---|---|---|---|
+| Deadlock between deleting a player and a live proposal (introduced by fix/9's proposal counter; the race test failed now and then) | High | fix/17, #70 | Fixed | Postgres' own deadlock report (the deletion's FK check `FOR KEY SHARE` on the session queued behind `FOR UPDATE` waiters); live sessions now locked `FOR NO KEY UPDATE`; race test looped 40 times: 7 failed / 43 deadlocks before, 0 / 0 after; the race test now runs 8 rounds and fails 2–3 of 8 with `FOR UPDATE` put back |
+| A typed answer refused at time zero (BANK-04 with UI-01) | — | fix/12, #64 | Fixed | `QuestionCard.test.tsx`: refused at zero, fixed, sent again; keeping the field read-only fails the test |
 
 ## Low and Info
 

@@ -383,6 +383,7 @@ Retention: alumni and disabled accounts are deleted 365 days after `left_at`; th
 | 0016 | The function `purge_audit_log(before)` for the nightly audit purge, executable by `app_rt` ([`audit_log`](#audit_log)) |
 | 0017 | Stable options: `answer_options.fsquiz_id` and `retired`; `questions.upstream_note`. Expand only: the previous release ignores the new columns, and the next `ifs-tests push` fills `fsquiz_id` |
 | 0018 | `live_tables.proposals`, a counter per table so a proposal wakes only that table's screens. Expand only |
+| 0019 | `ix_attempts_lp_day`, an index on each member's answers by the day their LP counts, so the leaderboards read a period's play instead of the whole history. Index only |
 | 0020 | `questions.graded_hash` and `upstream_change`: a new solution, image or wording upstream keeps a reviewer's correction; `quizzes.retired` for quizzes FS-Quiz deleted. Expand only: the previous release ignores them, and the next `ifs-tests push` fills `graded_hash` |
 | 0021 | `users.position_lifts`, so a correction of position takes back only what a raise gave. Expand only: the previous release ignores it |
 
