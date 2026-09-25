@@ -45,11 +45,12 @@ Workstreams run in parallel, each owning its files; G starts once A–F have mer
 | UI-05 offline shows nothing | P2 | A, fix/11 | | Open | |
 | BANK-09 iPhone can't type `-` or `;` | P2 | A, fix/11 | | Open | |
 | LIVE-05 / UI-04 removed player frozen | P3 | A, fix/11 | | Open | |
-| BANK-04 / DOM-11 units or `%` graded wrong | P1 | B grading and hints, fix/12 | | Open | |
-| UI-02 hint thousands separator | P1 | B, fix/12 | | Open | |
-| BANK-06 / UI-03 correction changes the question type | P1 | B, fix/12 | | Open | |
-| BANK-05 tolerance accepts wrong exact answers | P2 | B, fix/12 | | Open | |
-| DOM-01 / BANK-12 number hints give the answer | P2 | B, fix/12 | | Open | |
+| BANK-04 / DOM-11 units or `%` graded wrong | P1 | B grading and hints, fix/12 | | Fixed | unreadable answers refused with 400 before anything is recorded (daily, mock, practice, live tests); real-bank probe: units/%/thousands always refused, `.5` and scientific now accepted |
+| UI-02 hint thousands separator | P1 | B, fix/12 | | Fixed | `test_hint_numbers_read_back_as_printed` (was 'Between 1,892 and 3,616.') |
+| BANK-06 / UI-03 correction changes the question type | P1 | B, fix/12 | | Fixed | `test_a_correction_is_read_for_the_questions_own_type`; red-team `test_review_formats`: `12.5 kW`, `3,000` refused |
+| BANK-05 tolerance accepts wrong exact answers | P2 | B, fix/12 | | Fixed | `test_exact_answers`; Q448/Q959/Q984 reject the red team's wrong values; whole bank 990/990 right accepted and 990/990 wrong rejected |
+| DOM-01 / BANK-12 number hints give the answer | P2 | B, fix/12 | | Fixed | red-team `hint_giveaway`: always-right midpoints 4 → 0, Q1070 86 % → 0 %, list hints stating a value 6200 → 0 |
+| Q452 pair order (from the verification) | — | B, fix/12 | | Fixed | a set needs ≥3 ascending whole numbers; applies at the next `ifs-tests push` |
 | BANK-07 upstream solution drops a correction | P2 | C bank pipeline, fix/13 | | Open | |
 | BANK-08 upstream deletions don't propagate | P2 | C, fix/13 | | Open | |
 | PLAY-05 abandoned mock run blocks dailies | P1 | D play and time rules, fix/14 | | Open | |
