@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { newMember } from './helpers'
+import { newMember, typeAnAnswer } from './helpers'
 
 test('score in a mock quiz, find yourself on the leaderboard, then hide', async ({ browser }, info) => {
   const name = `Board ${Date.now().toString(36)}${info.project.name[0]}`
@@ -12,7 +12,7 @@ test('score in a mock quiz, find yourself on the leaderboard, then hide', async 
     const card = page.getByRole('article')
     const choices = card.getByRole('radio').or(card.getByRole('checkbox'))
     if (await choices.count()) await choices.first().check()
-    else await card.getByLabel('Your answer').fill('1')
+    else await typeAnAnswer(card)
     await card.getByRole('button', { name: 'Check answer' }).click()
   }
   const summary = await page.getByText(/ LP and .* XP\./).textContent()

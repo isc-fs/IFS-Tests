@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { ADMIN, newMember, signIn } from './helpers'
+import { ADMIN, newMember, signIn, typeAnAnswer } from './helpers'
 
 test('a host runs a live quiz: players join with the code, one proposes, the captain answers', async ({
   browser,
@@ -37,7 +37,7 @@ test('a host runs a live quiz: players join with the code, one proposes, the cap
   await expect(mate.getByRole('button', { name: /Propose to Table 1/ })).toBeVisible()
   const choices = proposal.getByRole('radio').or(proposal.getByRole('checkbox'))
   if (await choices.count()) await choices.first().check()
-  else await proposal.getByLabel('Your proposal').fill('1')
+  else await typeAnAnswer(proposal, 'Your proposal')
   await mate.getByRole('button', { name: /Propose to Table 1/ }).click()
   await expect(mate.getByText('Proposal sent. The captain decides.')).toBeVisible()
 

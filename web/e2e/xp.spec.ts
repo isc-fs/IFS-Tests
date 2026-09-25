@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { newMember } from './helpers'
+import { newMember, typeAnAnswer } from './helpers'
 
 test('a Department Head is placed at Jefe I; practice raises the account level and leaves the rank alone', async ({
   browser,
@@ -23,7 +23,7 @@ test('a Department Head is placed at Jefe I; practice raises the account level a
     await expect(submit).toBeVisible()
     const choices = question.getByRole('radio').or(question.getByRole('checkbox'))
     if (await choices.count()) await choices.first().check()
-    else if (await question.getByLabel('Your answer').count()) await question.getByLabel('Your answer').fill('1')
+    else if (await question.getByLabel('Your answer').count()) await typeAnAnswer(question)
     await submit.click()
     await expect(question.locator('.earned')).toContainText('XP') // every answer earns some XP
     await question.getByRole('button', { name: 'Next question' }).click()

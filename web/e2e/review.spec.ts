@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { ADMIN, newMember, signIn } from './helpers'
+import { ADMIN, newMember, signIn, typeAnAnswer } from './helpers'
 
 test('a player reports a question; a reviewer finds it, hides it, brings it back and handles the report', async ({
   browser,
@@ -12,7 +12,7 @@ test('a player reports a question; a reviewer finds it, hides it, brings it back
   const text = (await card.locator('.question-text').first().innerText()).slice(0, 40)
   const choices = card.getByRole('radio').or(card.getByRole('checkbox'))
   if (await choices.count()) await choices.first().check()
-  else if (await card.getByLabel('Your answer').count()) await card.getByLabel('Your answer').fill('1')
+  else if (await card.getByLabel('Your answer').count()) await typeAnAnswer(card)
   await card.getByRole('button', { name: /Check answer|Show the official answer/ }).click()
   await card.getByRole('button', { name: 'Report a problem with this question' }).click()
   const message = `Figure missing ${run}`
