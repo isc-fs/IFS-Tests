@@ -124,6 +124,8 @@ def export(db: DB, user: User, now: datetime) -> dict[str, Any]:
             "counted": m.counted,
             "started_at": m.started_at,
             "finished_at": m.finished_at,
+            "unreached": m.unreached,
+            "unreached_graded": m.unreached_graded,
         }
         for m in db.scalars(
             select(MockSession).where(MockSession.user_id == user.id).order_by(MockSession.id)

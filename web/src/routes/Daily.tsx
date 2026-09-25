@@ -38,16 +38,33 @@ function outcome(a: {
 
 function AreaCard({
   area,
+  today,
   onStart,
   onReview,
   busy,
 }: {
   area: DailyArea
+  today: string
   onStart: () => void
   onReview: () => void
   busy: boolean
 }) {
   const name = AREAS[area.area] ?? area.area
+  if (area.state === 'done' && area.day !== today) {
+    // Yesterday's question, started before midnight: its result stays until today's is started.
+    return (
+      <li className="panel stack daily-area">
+        <h2>{name}</h2>
+        <p>Yesterday's question. {outcome(area)}</p>
+        <button type="button" className="secondary" onClick={onReview} aria-label={`See yesterday's ${name} question`}>
+          See the question
+        </button>
+        <button type="button" onClick={onStart} disabled={busy} aria-label={`Start today's ${name} question`}>
+          Start today's question
+        </button>
+      </li>
+    )
+  }
   return (
     <li className="panel stack daily-area">
       <h2>{name}</h2>
@@ -99,6 +116,7 @@ function Play({ play, onDone }: { play: TimedQuestion; onDone: () => void }) {
           feedback={result?.feedback}
           pending={send.isPending}
           failed={send.isError}
+          error={send.error}
           expired={expired}
           clock={<Countdown deadline={play.deadline_at} serverNow={play.server_now} onExpire={expire} />}
           onAnswer={(body) => send.mutate({ path: { attempt_id: play.attempt_id }, body })}
@@ -150,7 +168,12 @@ export default function Daily() {
   }
   if (review) {
     return (
-      <Page title="Daily question" view="review" heading={AREAS[review.question.area]} eyebrow="Today's answer">
+      <Page
+        title="Daily question"
+        view="review"
+        heading={AREAS[review.question.area]}
+        eyebrow={review.day === status.data?.day ? "Today's answer" : "Yesterday's answer"}
+      >
         <QuestionCard
           question={review.question}
           feedback={review.feedback}
@@ -185,6 +208,7 @@ export default function Daily() {
           <AreaCard
             key={a.area}
             area={a}
+            today={s.day}
             busy={start.isPending}
             onStart={() => start.mutate({ path: { area: a.area as Area } })}
             onReview={() => open.mutate(a.area as Area)}

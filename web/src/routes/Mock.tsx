@@ -194,6 +194,7 @@ export function MockRun() {
               question={current.question}
               pending={send.isPending}
               failed={send.isError}
+              error={send.error}
               expired={expired}
               clock={<Countdown deadline={current.deadline_at} serverNow={current.server_now} onExpire={expire} />}
               onAnswer={(body) =>

@@ -93,6 +93,30 @@ def test_refresh_bank_runs_with_a_good_env_file(tmp_path: Path) -> None:
     assert len(docker) == 1 and docker[0].endswith("run --rm api ifs-tests push")
 
 
+def test_refresh_bank_passes_allow_mass_removal_to_the_push(tmp_path: Path) -> None:
+    server(tmp_path)
+    done, docker = run(tmp_path, "refresh-bank.sh", "staging", "--no-mirror", "--allow-mass-removal")
+    assert done.returncode == 0, done.stderr
+    assert len(docker) == 1 and docker[0].endswith("run --rm api ifs-tests push --allow-mass-removal")
+    done, docker = run(tmp_path, "refresh-bank.sh", "staging", "--allow-mass-removal")
+    assert done.returncode == 0, done.stderr
+    assert "ifs-tests mirror --refresh --images" in docker[0]
+    assert docker[1].endswith("ifs-tests push --allow-mass-removal")
+
+
+@pytest.mark.parametrize("args", [["staging", "--force"], ["staging", "--no-mirror", "--no-mirror"]])
+def test_refresh_bank_refuses_unknown_options(tmp_path: Path, args: list[str]) -> None:
+    server(tmp_path)
+    done, docker = run(tmp_path, "refresh-bank.sh", *args)
+    assert done.returncode != 0 and "usage" in done.stderr and docker == []
+
+
+def test_refresh_bank_checks_the_env_file_with_allow_mass_removal_too(tmp_path: Path) -> None:
+    server(tmp_path, mode=0o644)
+    done, docker = run(tmp_path, "refresh-bank.sh", "staging", "--allow-mass-removal")
+    assert done.returncode != 0 and "must be chmod 600" in done.stderr and docker == []
+
+
 def deploy(tmp_path: Path, current: str, recorded: list[str], chain: list[str]) -> tuple[int, str, list[str]]:
     """deploy.sh staging on a database at `current` that recorded `recorded`, with an image whose migrations
     are `chain` (head first), each "<revision> <fingerprint>"."""

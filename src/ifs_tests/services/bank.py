@@ -43,6 +43,7 @@ log = logging.getLogger(__name__)
 CHOICE = ("single-choice", "multi-choice")
 GONE = "Deleted from FS-Quiz."
 # A mirror missing more of the bank than this is more likely broken than FS-Quiz deleting that much at once.
+# Measured against the questions there before the push: new ones arriving at the same time don't dilute it.
 MAX_RETIRED = 0.25
 
 
@@ -331,6 +332,7 @@ def import_bank(
     # Locked, so a reviewer hiding or relabelling a question mid-import isn't undone by stale values.
     locked = db.scalars(select(Question).where(Question.fsquiz_id.is_not(None)).with_for_update())
     existing = {q.fsquiz_id: q for q in locked}
+    here = sum(1 for q in existing.values() if q.upstream_note != GONE)  # before the push adds any
     answer_keys = {k.question_id: k for k in db.scalars(select(AnswerKey))}
     options: dict[int, list[AnswerOption]] = defaultdict(list)
     for o in db.scalars(select(AnswerOption).order_by(AnswerOption.position, AnswerOption.id)):
@@ -373,7 +375,6 @@ def import_bank(
 
     listed = {raw["question_id"] for raw in bank["questions"]}
     gone = [q for fid, q in existing.items() if fid not in listed and q.upstream_note != GONE]
-    here = sum(1 for q in existing.values() if q.upstream_note != GONE)
     if len(gone) > MAX_RETIRED * here and not allow_mass_removal:
         log.warning("%d of %d questions are missing from the bank: none retired", len(gone), here)
         report.not_retired = len(gone)

@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session as DB
 
 from ..db.models import Attempt, DailyQuestion, Question, User
 from ..domain import daily as rules
+from ..domain.leaderboard import madrid_midnight
 from . import hints, streaks, xp
 from .errors import UserError
 from .questions import Checked, check, explain, running
@@ -90,6 +91,22 @@ def _carried(db: DB, user: User, day: date, now: datetime) -> dict[str, Attempt]
     return {a.area: a for a in rows if a.area and a.deadline_at and not rules.is_late(now, a.deadline_at)}
 
 
+def _carried_done(db: DB, user: User, day: date) -> dict[str, Attempt]:
+    """Daily questions from an earlier day answered (or run out) since midnight: their result stays on the page,
+    and can be reviewed, until the new day's question in that area is started."""
+    rows = db.scalars(
+        select(Attempt)
+        .where(
+            Attempt.user_id == user.id,
+            Attempt.mode == "daily",
+            Attempt.day < day,
+            Attempt.submitted_at >= madrid_midnight(day),
+        )
+        .order_by(Attempt.id)
+    )
+    return {a.area: a for a in rows if a.area}
+
+
 def _on_time_days(db: DB, user: User, now: datetime) -> set[date]:
     return streaks.current(db, user.id, now)
 
@@ -97,6 +114,7 @@ def _on_time_days(db: DB, user: User, now: datetime) -> set[date]:
 @dataclass
 class AreaState:
     area: str
+    day: date  # the day the question belongs to: yesterday's for one started before midnight
     budget_s: int
     state: str  # "new", "started" or "done"
     deadline_at: datetime | None
@@ -120,14 +138,14 @@ def status(db: DB, user: User, now: datetime) -> Status:
     close_expired(db, now, user.id)
     day = rules.madrid_day(now)
     chosen = ensure_daily(db, day)
-    mine: dict[str | None, Attempt] = {
+    today: dict[str | None, Attempt] = {
         a.area: a
         for a in db.scalars(
             select(Attempt).where(Attempt.user_id == user.id, Attempt.mode == "daily", Attempt.day == day)
         )
     }
     carried = _carried(db, user, day, now)
-    mine.update(carried)
+    mine = _carried_done(db, user, day) | carried | today
     areas = []
     for area in sorted(set(chosen) | {a for a in mine if a}):
         a = mine.get(area)
@@ -136,6 +154,7 @@ def status(db: DB, user: User, now: datetime) -> Status:
         areas.append(
             AreaState(
                 area=area,
+                day=a.day if a and a.day else day,
                 budget_s=rules.budget(q.time_s, q.answer_kind),
                 state=state,
                 deadline_at=a.deadline_at if a else None,
@@ -151,7 +170,8 @@ def status(db: DB, user: User, now: datetime) -> Status:
     kept = _on_time_days(db, user, now)
     # A day whose question is still running is still open, like today.
     run = max([rules.streak(kept, d) for d in {day} | {a.day for a in carried.values() if a.day}])
-    return Status(day, run, sum(a.xp for a in areas), round(sum(a.lp for a in areas), 2), areas)
+    own = [a for a in areas if a.day == day]  # a carried question's result counts for its own day
+    return Status(day, run, sum(a.xp for a in own), round(sum(a.lp for a in own), 2), areas)
 
 
 def start(db: DB, user: User, area: str, now: datetime) -> tuple[Question, Attempt]:
@@ -168,7 +188,8 @@ def start(db: DB, user: User, area: str, now: datetime) -> tuple[Question, Attem
     q = db.get_one(Question, qid)
     if q.id in running(db, user.id, now, daily=False):
         raise UserError(
-            "This question is running in your mock or live quiz: answer it there first, or end the mock run.",
+            "This question is running in your mock or live quiz: answer it there first (then it pays nothing more "
+            "here today), or end the mock run (it counts as out of time there, and this one still pays in full).",
             409,
         )
     db.execute(
@@ -194,6 +215,7 @@ def start(db: DB, user: User, area: str, now: datetime) -> tuple[Question, Attem
 
 @dataclass
 class Result:
+    day: date
     question: Question
     checked: Checked
     late: bool
@@ -237,7 +259,8 @@ def answer(
             .returning(Attempt.id)
         ).first()
         if recorded:  # only the request that recorded the answer earns the XP
-            repeat = xp.last_seen(db, user.id, q.id, now, other_than=a.id) is not None
+            hidden = madrid_midnight(a.day)  # running for the player since: see xp._hidden_mock
+            repeat = xp.last_seen(db, user.id, q.id, now, other_than=a.id, hidden_since=hidden) is not None
             granted = xp.grant(
                 db,
                 user.id,
@@ -249,7 +272,7 @@ def answer(
                 repeat=repeat,
                 passed=checked.passed,
                 hint=a.hint_used,
-                again_today=xp.answered_today(db, user.id, q.id, now, other_than=a.id),
+                again_today=xp.answered_today(db, user.id, q.id, now, other_than=a.id, hidden_since=hidden),
                 season_at=a.created_at,
                 played_on=a.day,
             )
@@ -268,7 +291,7 @@ def close_expired(db: DB, now: datetime, user_id: int | None = None) -> int:
     """Close daily questions left to run out: late and wrong, like an answer sent after the time.
     Otherwise closing the tab on a hard question would dodge the XP a wrong answer costs."""
     stmt = (
-        select(Attempt.id, Attempt.question_id, Attempt.user_id, Attempt.created_at)
+        select(Attempt.id, Attempt.question_id, Attempt.user_id, Attempt.created_at, Attempt.day)
         .where(
             Attempt.mode == "daily", Attempt.submitted_at.is_(None), Attempt.deadline_at < now - rules.GRACE
         )
@@ -277,7 +300,7 @@ def close_expired(db: DB, now: datetime, user_id: int | None = None) -> int:
     if user_id is not None:
         stmt = stmt.where(Attempt.user_id == user_id)
     closed = 0
-    for attempt_id, question_id, owner, started in db.execute(stmt).all():
+    for attempt_id, question_id, owner, started, day in db.execute(stmt).all():
         xp.lock(db, owner)
         q = db.get_one(Question, question_id)
         correct = False if q.graded else None
@@ -288,7 +311,10 @@ def close_expired(db: DB, now: datetime, user_id: int | None = None) -> int:
             .returning(Attempt.id)
         ).first()
         if recorded:
-            repeat = xp.last_seen(db, owner, q.id, now, other_than=attempt_id) is not None
+            hidden = madrid_midnight(day or rules.madrid_day(started))
+            repeat = (
+                xp.last_seen(db, owner, q.id, now, other_than=attempt_id, hidden_since=hidden) is not None
+            )
             granted = xp.grant(
                 db,
                 owner,
@@ -313,11 +339,15 @@ def review_attempt(db: DB, user: User, a: Attempt, now: datetime) -> Result:
     checked = explain(db, q, a.correct, a.passed)
     run = rules.streak(_on_time_days(db, user, now), a.day) if a.day else 0
     checked.score = xp.stored(db, user.id, a)
-    return Result(q, checked, bool(a.late), a.xp, a.lp, run, a.answer)
+    assert a.day is not None  # noqa: S101 - every daily attempt has its day
+    return Result(a.day, q, checked, bool(a.late), a.xp, a.lp, run, a.answer)
 
 
 def review(db: DB, user: User, area: str, now: datetime) -> Result:
-    a = _attempt(db, user, rules.madrid_day(now), area)
+    """Today's answer in this area; before today's question is started, one from yesterday answered (or run
+    out) since midnight."""
+    day = rules.madrid_day(now)
+    a = _attempt(db, user, day, area) or _carried_done(db, user, day).get(area)
     if a is None or a.submitted_at is None:
         raise UserError("Answer today's question first.", 409)
     return review_attempt(db, user, a, now)

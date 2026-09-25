@@ -4,6 +4,8 @@ appear; people who opted out are never named but still see their own place."""
 
 from __future__ import annotations
 
+import threading
+import time
 from dataclasses import dataclass
 from datetime import date, datetime
 
@@ -71,13 +73,10 @@ def _played(first: date) -> ColumnElement[bool]:
     return or_(_any(_day_play(first)), _any(_mock_play(first)))
 
 
-def _scores(
-    db: DB, period: str, now: datetime, area: str | None = None
-) -> list[tuple[int, str, str | None, bool, float]]:
-    """(id, name, vertical, opted out, LP) of each active member whose rank moved in the period. LP belongs to
-    the day the play started: a daily's own day, a practice answer's day, a mock run's start. So a run begun
-    before midnight on 31 August can't count in two seasons. Each member's sum reads only the period's rows."""
-    first = rules.first_day(period, madrid_day(now))
+def _lp(db: DB, first: date, area: str | None, only: int | None = None) -> dict[int, float]:
+    """LP of each active member whose rank moved since `first` (or of member `only`). LP belongs to the day the
+    play started: a daily's own day, a practice answer's day, a mock run's start. So a run begun before midnight
+    on 31 August can't count in two seasons. Each member's sum reads only the period's rows."""
     sums = []
     for play in (_day_play(first), _mock_play(first)):
         play = play.with_only_columns(func.sum(Attempt.lp))
@@ -88,16 +87,61 @@ def _scores(
                 func.coalesce(Attempt.area, Question.area) == area
             )
         sums.append(play.scalar_subquery())
+    stmt = select(User.id, *sums).where(User.status == "active")
+    if only is not None:
+        stmt = stmt.where(User.id == only)
+    return {
+        i: round((day or 0) + (mock or 0), 2)
+        for i, day, mock in db.execute(stmt).tuples()
+        if day is not None or mock is not None
+    }
+
+
+# Late in a season those sums cost about 20 ms of database time per view, and a room opening the board at once
+# queued behind them. Each worker keeps them for BOARD_TTL; the viewer's own LP, names, opt-outs and who is
+# active are read on every view.
+BOARD_TTL = 30.0
+_sums: dict[tuple[str | None, date], tuple[float, dict[int, float]]] = {}
+_summing = threading.Lock()
+
+
+def _period_lp(db: DB, first: date, area: str | None) -> tuple[dict[int, float], bool]:
+    """Everyone's LP since `first` in `area`, and whether it came from the cache. One sum at a time per worker,
+    so a room of phones opening the board together reads it once."""
+    key = (area, first)
+
+    def cached() -> dict[int, float] | None:
+        hit = _sums.get(key)
+        return hit[1] if hit and time.monotonic() - hit[0] < BOARD_TTL else None
+
+    if (lp := cached()) is not None:
+        return lp, True
+    with _summing:
+        if (lp := cached()) is not None:
+            return lp, True
+        at = time.monotonic()
+        lp = _lp(db, first, area)
+        for k in [k for k, (t, _) in _sums.items() if at - t >= BOARD_TTL]:
+            del _sums[k]
+        _sums[key] = (at, lp)
+        return lp, False
+
+
+def _scores(
+    db: DB, user: User, period: str, now: datetime, area: str | None = None
+) -> list[tuple[int, str, str | None, bool, float]]:
+    """(id, name, vertical, opted out, LP) of each active member whose rank moved in the period. Others' LP may
+    be up to BOARD_TTL old; the viewer's own is always current."""
+    first = rules.first_day(period, madrid_day(now))
+    lp, cached = _period_lp(db, first, area)
+    if cached:
+        lp = {i: x for i, x in lp.items() if i != user.id} | _lp(db, first, area, user.id)
     rows = db.execute(
-        select(User.id, User.display_name, User.vertical, User.leaderboard_opt_out, *sums).where(
-            User.status == "active"
+        select(User.id, User.display_name, User.vertical, User.leaderboard_opt_out).where(
+            User.status == "active", User.id.in_(lp)
         )
     ).tuples()
-    return [
-        (i, name, v, hidden, round((day or 0) + (mock or 0), 2))
-        for i, name, v, hidden, day, mock in rows
-        if day is not None or mock is not None
-    ]
+    return [(i, name, v, hidden, lp[i]) for i, name, v, hidden in rows]
 
 
 def _ranked(db: DB, now: datetime) -> list[tuple[int, str, str | None, bool, float]]:
@@ -112,7 +156,7 @@ def _ranked(db: DB, now: datetime) -> list[tuple[int, str, str | None, bool, flo
 
 
 def board(db: DB, user: User, area: str | None, period: str, now: datetime) -> Board:
-    scores = _ranked(db, now) if area is None and period == "season" else _scores(db, period, now, area)
+    scores = _ranked(db, now) if area is None and period == "season" else _scores(db, user, period, now, area)
     shown = sorted((s for s in scores if not s[3]), key=lambda s: (-s[4], s[1].casefold()))
     ranks = rules.ranks([s[4] for s in shown])
     # Everyone tied at the cut stays, so nobody ranked in the top 50 is missing from it.

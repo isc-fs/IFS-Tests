@@ -5,7 +5,7 @@ from __future__ import annotations
 import threading
 import time
 from collections.abc import Callable
-from datetime import timedelta
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -21,7 +21,7 @@ from ifs_tests.db.models import AnswerOption, Attempt, DailyQuestion, MockSessio
 from ifs_tests.domain import rank as rank_rules
 from ifs_tests.domain import xp as xp_rules
 from ifs_tests.domain.daily import madrid_day
-from ifs_tests.services import accounts, daily, live, mock, practice, privacy, review, streaks
+from ifs_tests.services import accounts, daily, leaderboard, live, mock, practice, privacy, review, streaks
 from ifs_tests.services import bank as bank_service
 from ifs_tests.services import xp as xp_service
 from ifs_tests.services.bank import import_bank
@@ -566,3 +566,34 @@ def test_a_rehearsal_sharing_xp_never_deadlocks_with_the_nightly_streak_job(
         nightly,
     )
     assert not any(isinstance(r, Exception) for r in results), results
+
+
+def test_a_room_opening_a_board_at_once_adds_up_the_lp_once(
+    db: Session, app_engine: Engine, daily_player: User, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    room = [daily_player] + [
+        User(email=f"r{i}@x.com", password_hash="x", display_name=f"R{i}") for i in range(7)
+    ]
+    db.add_all(room[1:])
+    db.commit()
+    for u in room:
+        q, a = daily.start(db, u, "mech", NOW)
+        b = right_answer(db, q.id)
+        daily.answer(db, u, a.id, b.get("options"), b.get("value"), NOW)
+    sums: list[str | None] = []
+    real = leaderboard._lp
+
+    def slow(db: Session, first: date, area: str | None, only: int | None = None) -> dict[int, float]:
+        if only is None:
+            sums.append(area)
+            time.sleep(0.05)  # everyone's sum late in a season
+        return real(db, first, area, only)
+
+    monkeypatch.setattr(leaderboard, "_lp", slow)
+    ids = [u.id for u in room]
+    boards = race(
+        app_engine,
+        *[lambda s, i=i: leaderboard.board(s, s.get_one(User, i), "mech", "season", NOW) for i in ids],
+    )
+    assert sums == ["mech"]
+    assert [(b.players, b.me and b.me.rank) for b in boards] == [(len(room), 1)] * len(room)

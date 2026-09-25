@@ -12,7 +12,7 @@ from typing import Any
 from sqlalchemy import Row, case, func, select, update
 from sqlalchemy.orm import Session as DB
 
-from ..db.models import AnswerOption, Attempt, MockSession, Question, User
+from ..db.models import AnswerKey, AnswerOption, Attempt, MockSession, Question, User
 from ..domain import daily as daily_rules
 from ..domain import leaderboard as board_rules
 from ..domain import rank as rank_rules
@@ -69,12 +69,25 @@ def lock(db: DB, user_id: int) -> Row[Any]:
     return row
 
 
+def _hidden_mock(since: datetime) -> Any:
+    """A mock question closed without an answer (left to run out, or on screen when the run was ended) since
+    `since`, while the question was running for the player as a daily one: the run's summary kept its answer
+    hidden, so the player neither answered it nor saw its answer."""
+    return (Attempt.mode == "mock") & (Attempt.answer == {}) & (Attempt.submitted_at >= since)
+
+
 def last_seen(
-    db: DB, user_id: int, question_id: int, now: datetime, other_than: int | None = None
+    db: DB,
+    user_id: int,
+    question_id: int,
+    now: datetime,
+    other_than: int | None = None,
+    hidden_since: datetime | None = None,
 ) -> datetime | None:
     """When the player last had this question graded this season, in any mode: from then on they have seen
     its answer. A new season starts everyone afresh; a mock answer belongs to the season its run started in,
-    as on the leaderboard."""
+    as on the leaderboard. `hidden_since`: for a daily answer, when its question started running for the
+    player (see `_hidden_mock`)."""
     season_start = board_rules.madrid_midnight(board_rules.first_day("season", daily_rules.madrid_day(now)))
     stmt = (
         select(func.max(Attempt.created_at))
@@ -88,20 +101,32 @@ def last_seen(
     )
     if other_than is not None:
         stmt = stmt.where(Attempt.id != other_than)
+    if hidden_since is not None:
+        stmt = stmt.where(~_hidden_mock(hidden_since))
     return db.scalar(stmt)
 
 
-def _options(db: DB, question: Question) -> int:
-    if question.answer_kind != "choice-one":
-        return 0
+def _options(db: DB, question: Question) -> tuple[int, int]:
+    """A choice question's live options, and how many are right (what a hint on a multiple choice says)."""
+    if question.answer_kind not in ("choice-one", "choice-many"):
+        return 0, 0
     offered = AnswerOption.question_id == question.id, AnswerOption.retired.is_(False)
-    return db.scalar(select(func.count()).where(*offered)) or 0
+    key = db.get(AnswerKey, question.id)
+    k = key.effective if key else None
+    right = len(k["options"]) if k and k["kind"] == "choice" else 0
+    return db.scalar(select(func.count()).where(*offered)) or 0, right
 
 
 def answered_today(
-    db: DB, user_id: int, question_id: int, now: datetime, other_than: int | None = None
+    db: DB,
+    user_id: int,
+    question_id: int,
+    now: datetime,
+    other_than: int | None = None,
+    hidden_since: datetime | None = None,
 ) -> bool:
-    """Whether the player already answered this question today (Madrid), graded or not: once a day pays."""
+    """Whether the player already answered this question today (Madrid), graded or not: once a day pays.
+    `hidden_since` as for `last_seen`."""
     start = board_rules.madrid_midnight(daily_rules.madrid_day(now))
     stmt = select(func.count()).where(
         Attempt.user_id == user_id,
@@ -112,6 +137,8 @@ def answered_today(
     )
     if other_than is not None:
         stmt = stmt.where(Attempt.id != other_than)
+    if hidden_since is not None:
+        stmt = stmt.where(~_hidden_mock(hidden_since))
     return bool(db.scalar(stmt))
 
 
@@ -193,7 +220,7 @@ def grant(
     live = mode == "live"
     right = bool(correct) and not late and not passed
     run = mode in ("daily", "mock") and ranked and not repeat and not again_today
-    options = _options(db, question)
+    options, right_options = _options(db, question)
     lp = rank_rules.lp_award(
         correct,
         points,
@@ -202,6 +229,7 @@ def grant(
         area=question.area,
         answer_kind=question.answer_kind,
         options=options,
+        right_options=right_options,
         hint=hint,
         repeat=repeat,
         late=late,

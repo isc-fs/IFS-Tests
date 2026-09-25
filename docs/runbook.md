@@ -124,7 +124,7 @@ The bank lives in the database; images live in the `media` volume; the raw FS-Qu
 ```bash
 deploy/refresh-bank.sh staging     # then the same for prod
 ```
-It runs `ifs-tests mirror --refresh --images` then `ifs-tests push` with the deployed image. Like the other scripts, it first refuses (and runs nothing) if the `.env` isn't `chmod 600` or its `QUIZ_ENV` isn't the environment you named: the compose project is named after `QUIZ_ENV`, so a mismatch would refresh the other environment. The mirror re-fetches every quiz, the document list (rulebooks and handbooks) and the last qualifiers' results, so corrected questions, new editions and new results arrive, not just new quizzes: about 130 requests, one per second ([fsquiz-api.md](fsquiz-api.md#extraction-strategy)). Images already in the volume are kept; only missing ones are fetched. The push is safe to repeat and never changes past results: options are updated in place (matched by FS-Quiz's answer ID), so finished mock runs, daily reviews and live results keep working; unchanged questions are skipped apart from parsing their answer again; a question whose answer or options changed upstream loses any reviewer correction and is flagged under Admin → Question bank and in the Review "Changed upstream" queue, while a new wording keeps the correction and the difficulty but is flagged too, and a new solution or image changes nothing for reviewers; a question FS-Quiz says it removed from its quiz is hidden once and lands in the Review "Hidden" queue. Quizzes and questions FS-Quiz deleted are retired: no longer played, kept in past results, the questions hidden and flagged in "Changed upstream". The push prints its counts (`rekeyed`: answers a newer release reads differently; `hidden`: questions hidden for a removal note; `retired` and `restored`: questions deleted upstream, or back; `not_retired`: deletions held back because more than a quarter of the bank was missing, with a warning). If `not_retired` is set, check the mirror (`ifs-tests stats`) before anything else; if FS-Quiz really deleted that much, run the push again with `--allow-mass-removal`, from the repository on the server: `IMAGE_TAG=$(cat /srv/quiz/<env>/deployed-tag) docker compose --project-directory deploy -f deploy/compose.yaml --env-file /srv/quiz/<env>/.env run --rm api ifs-tests push --allow-mass-removal`. Images FS-Quiz can't serve are skipped; questions that need a missing image stay hidden until it arrives. The mirror needs outbound HTTPS from the api container (through the `proxy` network).
+It runs `ifs-tests mirror --refresh --images` then `ifs-tests push` with the deployed image. Like the other scripts, it first refuses (and runs nothing) if the `.env` isn't `chmod 600` or its `QUIZ_ENV` isn't the environment you named: the compose project is named after `QUIZ_ENV`, so a mismatch would refresh the other environment. The mirror re-fetches every quiz, the document list (rulebooks and handbooks) and the last qualifiers' results, so corrected questions, new editions and new results arrive, not just new quizzes: about 130 requests, one per second ([fsquiz-api.md](fsquiz-api.md#extraction-strategy)). Images already in the volume are kept; only missing ones are fetched. The push is safe to repeat and never changes past results: options are updated in place (matched by FS-Quiz's answer ID), so finished mock runs, daily reviews and live results keep working; unchanged questions are skipped apart from parsing their answer again; a question whose answer or options changed upstream loses any reviewer correction and is flagged under Admin → Question bank and in the Review "Changed upstream" queue, while a new wording keeps the correction and the difficulty but is flagged too, and a new solution or image changes nothing for reviewers; a question FS-Quiz says it removed from its quiz is hidden once and lands in the Review "Hidden" queue. Quizzes and questions FS-Quiz deleted are retired: no longer played, kept in past results, the questions hidden and flagged in "Changed upstream". The push prints its counts (`rekeyed`: answers a newer release reads differently; `hidden`: questions hidden for a removal note; `retired` and `restored`: questions deleted upstream, or back; `not_retired`: deletions held back because more than a quarter of the bank was missing, with a warning). If `not_retired` is set, check the mirror (`ifs-tests stats`) before anything else; if FS-Quiz really deleted that much, push the mirror already in the volume again, letting it retire them: `deploy/refresh-bank.sh <env> --no-mirror --allow-mass-removal` (same `.env` checks). The quarter is of the questions there before the push, so new questions arriving at the same time don't hide a mass removal. Images FS-Quiz can't serve are skipped; questions that need a missing image stay hidden until it arrives. The mirror needs outbound HTTPS from the api container (through the `proxy` network).
 
 Do this on staging first. Each environment has its own mirror, so each refresh costs FS-Quiz its own requests: don't repeat it without reason ([AGENTS.md](../AGENTS.md), server etiquette).
 
@@ -301,13 +301,35 @@ with other heavy jobs, so compare columns rather than absolute numbers. p95 of t
 | Three seasons, a full season into the current one (August) | 3.7–4.0 s / 3.3–3.6 s | 14–17 ms / 10–11 ms |
 | Area and 7-day boards, one season, September | 195–259 ms | 10–12 ms |
 | Area and 7-day boards, three seasons, September | 2.9–3.1 s | 20–32 ms |
-| Area and 7-day boards, a full season into the current one (worst case: the whole season fell in the 7 days too) | 3.4–4.6 s | 90–183 ms |
+| Area and 7-day boards, a full season into the current one (worst case: the whole season fell in the 7 days too) | 3.4–4.6 s | 90–183 ms in the fix's own run, not reproduced: 0.5–0.8 s in the independent verification with two such boards per member (see below) |
 
 The boards used to add up every answer ever given on each view. Now they read each member's play in the period
 through an index ([data-model](data-model.md#attempts)), so the cost follows the season, not the history. The
 database runs without JIT compilation (`jit=off` in `deploy/compose.yaml`): late in a season Postgres compiled the
 area boards' sums on every view, which took two thirds of their time (with JIT on, those boards stayed at 2.5–3.3 s
 in the last row).
+
+Those sums still grow with the season: at the end of one, a view of an area or 7-day board costs about 15–20 ms of
+database time, so 60 members opening two such boards within 2 s saturate the database's one CPU and the views queue.
+Each api worker now keeps each of those boards' sums for 30 s (`BOARD_TTL` in `services/leaderboard.py`, one sum at a
+time per worker), so a room opening a board adds them up once per worker; every view still reads the viewer's own
+LP, names, opt-outs and who is active. The price is that other members' LP on those boards can be up to 30 s old
+([game-rules](game-rules.md#6-leaderboards)); the ranked board and the vertical board are still read on every view.
+Measured on a local stack with the same limits, the red team's seeded season grown to three (298k answers) and moved
+on so the newest whole year (99k answers) falls in the current season: the end-of-season worst case. The same
+`burst.py`, each burst after 35 s idle so it starts with nothing kept; previous release and this one back to back,
+p95:
+
+| 60 members within 2 s, each opening | Previous release | This release |
+|---|---|---|
+| The mech and elec season boards | 1.4–2.4 s (5 runs), 33–46 s of database time per burst | 12–21 ms (3 runs), 0.2 s |
+| One area season board | 29–36 ms | 16–17 ms |
+| The 7-day board and the mech 7-day board (the whole season in the 7 days) | 25–494 ms | 14–20 ms |
+| Mech, elec and rules season boards and the 7-day board | 1.5–3.6 s | 14–20 ms |
+| The ranked board and the vertical board (unchanged) | 13–15 / 8–10 ms | 15 / 9–10 ms |
+
+Every board as each of the 60 members sees it came out byte for byte the same from both releases, also with 5 of them
+opted out and 2 made alumni.
 
 A data export holds one member's whole history in memory. Measured with the red team's `perf/export_mem.py` (the
 heaviest members' exports, 8.6 MB of JSON each at three seasons) on the api container (512 MiB; 176 MiB at rest):

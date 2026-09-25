@@ -1,6 +1,6 @@
 import { type ReactNode, useEffect, useId, useRef, useState } from 'react'
 import type { AnswerIn, Feedback, HintOut, PlayQuestion } from '../api/types.gen'
-import { errorMessage, ME_KEY, queryClient, useMe, useOnline } from '../lib/api'
+import { errorMessage, fieldErrors, ME_KEY, queryClient, useMe, useOnline } from '../lib/api'
 import { AREAS, TOPICS } from '../lib/areas'
 import { changes, lp, numeral, TOP, tierOf } from '../lib/rank'
 import { BONUS_NAMES, xp } from '../lib/xp'
@@ -197,6 +197,7 @@ export function QuestionCard({
   feedback,
   pending,
   failed,
+  error,
   onAnswer,
   next,
   clock,
@@ -215,6 +216,8 @@ export function QuestionCard({
   pending?: boolean
   /** The last send failed (the page says why). Once time is up, the player can then send again. */
   failed?: boolean
+  /** The last send's error: a refusal the server tied to the answer field (it can't read it) shows there. */
+  error?: unknown
   onAnswer: (answer: AnswerIn) => void
   next?: ReactNode
   /** Shown next to the question while it is open. */
@@ -367,7 +370,7 @@ export function QuestionCard({
               setMissing(undefined)
             }}
             hint={formatHint(question)}
-            error={missing}
+            error={missing ?? fieldErrors(error).value}
           />
         )}
         {expired && !answered && !stuck && <Notice tone="error">Time's up. Sending your answer…</Notice>}

@@ -5,7 +5,15 @@ from typing import Any
 import pytest
 
 from ifs_tests.domain.grading import correction, grade, tolerance, unreadable
-from ifs_tests.domain.keys import MAX_TEXT, answer_kind, build_key, display, number, split_values
+from ifs_tests.domain.keys import (
+    MAX_TEXT,
+    answer_kind,
+    build_key,
+    decimal_comma,
+    display,
+    number,
+    split_values,
+)
 
 
 def ans(*texts: str, correct: bool = True) -> list[dict[str, Any]]:
@@ -393,3 +401,43 @@ def test_a_text_key_is_at_most_max_text_characters() -> None:
 )
 def test_only_three_or_more_ascending_whole_numbers_are_a_set(key_text: str, given: str, ok: bool) -> None:
     assert grade(build_key("input", ans(key_text)), value=given) is ok
+
+
+@pytest.mark.parametrize(
+    ("text", "comma"),
+    [
+        ("Round the answer to three decimal numbers.", True),  # Q864
+        ("Use comma separator\nRound the result to 3 decimal places (n,nnn)", True),  # Q881
+        ("Write with commas instead of dots, without the units of measurement.", True),  # Q1058
+        ("Give the result with a decimal comma.", True),
+        ("How many cells are in series?", False),
+        ("Round to 2 decimal places.", False),
+        ("Separate the values with a comma.", False),
+        ("Round to 13 decimal places.", False),
+    ],
+)
+def test_a_question_asking_for_three_decimals_or_a_decimal_comma_is_told_apart(
+    text: str, comma: bool
+) -> None:
+    assert decimal_comma(text) is comma
+
+
+@pytest.mark.parametrize(
+    ("key_text", "given"),
+    [
+        ("59,988", "59,988"),  # Q864, typed exactly as FS-Quiz writes it
+        ("3,000", "3,000"),  # Q881
+        (
+            "29,87, 133,86, 35,352, 30,996, -5,984, 66,65, 62,41",  # Q1058
+            "29,87, 133,86, 35,352, 30,996, -5,984, 66,65, 62,41",
+        ),
+        ("8.125", "8,125"),
+    ],
+)
+def test_where_the_question_asks_for_three_decimals_a_comma_is_a_decimal_one(
+    key_text: str, given: str
+) -> None:
+    key = build_key("input", ans(key_text))
+    assert unreadable(key, given) is not None  # anywhere else it could be a thousands comma
+    assert unreadable(key, given, decimal_comma=True) is None
+    assert grade(key, value=given) is True

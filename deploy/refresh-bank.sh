@@ -4,6 +4,7 @@
 #   deploy/refresh-bank.sh staging
 #   deploy/refresh-bank.sh prod
 #   deploy/refresh-bank.sh prod --no-mirror   # load the mirror already in the volume, no FS-Quiz requests
+#   deploy/refresh-bank.sh prod --no-mirror --allow-mass-removal   # FS-Quiz really deleted over a quarter
 #
 # Re-fetches every quiz, the document list and the last qualifier results (--refresh), so corrected
 # questions, new rulebook editions and new results arrive too, not just new quizzes: about 125 requests,
@@ -14,8 +15,18 @@ set -euo pipefail
 
 die() { echo "refresh-bank: $*" >&2; exit 1; }
 
-[[ $# -eq 1 || ( $# -eq 2 && $2 == --no-mirror ) ]] || die "usage: $0 <staging|prod> [--no-mirror]"
+usage="usage: $0 <staging|prod> [--no-mirror] [--allow-mass-removal]"
+[[ $# -ge 1 ]] || die "$usage"
 env=$1
+shift
+mirror=1 mass=
+for arg in "$@"; do
+  case $arg in
+    --no-mirror) ((mirror)) || die "$usage"; mirror=0 ;;
+    --allow-mass-removal) [[ -z $mass ]] || die "$usage"; mass=$arg ;;
+    *) die "$usage" ;;
+  esac
+done
 [[ $env =~ ^(staging|prod)$ ]] || die "environment must be staging or prod"
 
 repo=$(cd "$(dirname "$0")/.." && pwd)
@@ -36,5 +47,5 @@ compose() {
     -f "$repo/deploy/compose.yaml" --env-file "$envfile" "$@"
 }
 
-[[ ${2:-} == --no-mirror ]] || compose run --rm --no-deps api ifs-tests mirror --refresh --images
-compose run --rm api ifs-tests push
+((mirror == 0)) || compose run --rm --no-deps api ifs-tests mirror --refresh --images
+compose run --rm api ifs-tests push ${mass:+"$mass"}

@@ -47,9 +47,10 @@ def _thousands(text: str) -> str:
     return f"Is {text} {text.replace(',', '.')} or {text.replace(',', '')}? Type the one you mean."
 
 
-def unreadable(key: keys.Key | None, value: str | None) -> str | None:
+def unreadable(key: keys.Key | None, value: str | None, decimal_comma: bool = False) -> str | None:
     """Why a typed answer can't be graded, said the way the player should fix it; None when it can. An empty
-    answer isn't unreadable: it's no answer, graded wrong (what a clock running out sends)."""
+    answer isn't unreadable: it's no answer, graded wrong (what a clock running out sends). `decimal_comma`:
+    the question asks for three decimals or a decimal comma (keys.decimal_comma), so '59,988' isn't ambiguous."""
     text = keys.clean(value or "")
     if key is None or key["kind"] not in ("number", "numbers", "range") or not text:
         return None
@@ -64,10 +65,10 @@ def unreadable(key: keys.Key | None, value: str | None) -> str | None:
         # The count is shown with the question when every accepted answer agrees on it; otherwise it's secret.
         if len(counts) == 1 and len(parts) not in counts:
             return _list_help(counts)
-        return next((_thousands(p) for p in parts if keys.ambiguous(p)), None)
+        return next((_thousands(p) for p in parts if keys.ambiguous(p) and not decimal_comma), None)
     if keys.number(text) is None:
         return NUMBER_HELP
-    return _thousands(text.replace(" ", "")) if keys.ambiguous(text) else None
+    return _thousands(text.replace(" ", "")) if keys.ambiguous(text) and not decimal_comma else None
 
 
 def grade(key: keys.Key | None, options: list[int] | None = None, value: str | None = None) -> bool | None:

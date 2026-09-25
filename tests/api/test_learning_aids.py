@@ -9,11 +9,11 @@ from pytest import approx
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from ifs_tests.db.models import Attempt, Question, User
+from ifs_tests.db.models import Attempt, User
 from ifs_tests.domain import rank as rank_rules
 from ifs_tests.domain import xp as xp_rules
 
-from .helpers import invite, options, register, right_answer
+from .helpers import invite, register, right_answer, shape
 
 pytestmark = pytest.mark.integration
 NewClient = Callable[[], TestClient]
@@ -33,11 +33,7 @@ def join(
 
 def lp(db: Session, qid: int, points: float, mode: str = "practice", **kwargs: Any) -> float:
     """What a right answer to this question wins at `points`."""
-    q = db.get_one(Question, qid)
-    n = len(options(db, qid)) if q.answer_kind == "choice-one" else 0
-    return rank_rules.lp_award(
-        True, points, 3, mode, area=q.area, answer_kind=q.answer_kind, options=n, **kwargs
-    ).amount
+    return rank_rules.lp_award(True, points, 3, mode, **shape(db, qid), **kwargs).amount
 
 
 def earned(mode: str = "practice", **kwargs: Any) -> int:
@@ -172,3 +168,35 @@ def test_hints_come_back_when_you_drop_out_of_dt(
 
 def test_the_panels_need_a_session(app_client: TestClient) -> None:
     assert app_client.get("/api/learning/dynamics").status_code == 401
+
+
+def test_a_hinted_multiple_choice_is_scored_as_the_guess_the_hint_leaves(
+    signed_in: TestClient, new_client: NewClient, db: Session, bank: dict[int, int]
+) -> None:
+    c = new_client()
+    join(signed_in, c, "Ana")
+    state = c.post("/api/mock/quizzes/9001/start").json()
+    sid = state["session_id"]
+    first = state["current"]["question"]["id"]
+    state = c.post(
+        f"/api/mock/sessions/{sid}/answer",
+        json={"attempt_id": state["current"]["attempt_id"], **right_answer(db, first)},
+    ).json()
+    qid, aid = state["current"]["question"]["id"], state["current"]["attempt_id"]
+    assert qid == bank[90003] and shape(db, qid) == {
+        "area": db.get_one(Attempt, aid).area,
+        "answer_kind": "choice-many",
+        "options": 4,
+        "right_options": 2,
+    }
+    assert "2 of the 4" in c.post(f"/api/mock/sessions/{sid}/attempts/{aid}/hint").json()["text"]
+    wrong = [o["id"] for o in state["current"]["question"]["options"]]  # all four: two too many
+    c.post(f"/api/mock/sessions/{sid}/answer", json={"attempt_id": aid, "options": wrong})
+    points = 50 + db.scalars(select(Attempt.lp).where(Attempt.question_id == first)).one()
+    charged = db.get_one(Attempt, aid, populate_existing=True).lp
+    # one of the six pairs left: a wrong answer costs more than without the hint
+    hinted = rank_rules.lp_award(False, points, 3, "mock", **shape(db, qid), hint=True).amount
+    assert (
+        charged == approx(hinted)
+        and hinted < rank_rules.lp_award(False, points, 3, "mock", **shape(db, qid)).amount
+    )

@@ -490,6 +490,10 @@ class Feedback(BaseModel):
 
 class DailyArea(BaseModel):
     area: str
+    day: date = Field(
+        description="The day the question belongs to: the day before for one started before midnight, whose "
+        "result stays until the new day's question in its area is started"
+    )
     budget_s: int
     state: Literal["new", "started", "done"]
     deadline_at: datetime | None
@@ -518,6 +522,7 @@ class TimedQuestion(BaseModel):
 
 
 class DailyResult(BaseModel):
+    day: date = Field(description="The day the question belongs to")
     question: PlayQuestion
     feedback: Feedback
     answer: KeyIn | None = Field(default=None, description="What you sent")

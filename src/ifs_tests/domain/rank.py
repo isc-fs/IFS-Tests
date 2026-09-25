@@ -38,9 +38,12 @@ PASS = 0.5  # "I'm not sure" costs half a wrong answer (never more than a blind 
 # anyone climb forever
 SOFTEN = {"choice-one": 1.0, "choice-many": 0.75}  # typed answers 0.5: a slip in a sum isn't not knowing
 TYPED = 0.5
-# Back on your feet: after this many wrong in a row, losses halve and the next right answer pays 1.5x (less on a
-# single choice, where that would make a blind guess pay: see bad_run).
+# Back on your feet: after this many wrong in a row, losses halve and the next right answer pays 1.5x (less where a
+# blind guess can land, where that would make it pay: see bad_run).
 CUSHION_AFTER, CUSHION, COMEBACK = 3, 0.5, 1.5
+# A hint on a typed answer (a range, a length and first character) leaves at most a coin flip, as it does on a
+# single choice: the best informed guess measured on the real bank lands 34 % of the time.
+TYPED_HINT_GUESS = 0.5
 
 # Where each position on the team is placed: its division, 50 LP in so one slip doesn't demote on day one.
 PLACEMENT = {"mingo": 0, "member": 3, "department_head": 5, "technical_director": 10}
@@ -150,24 +153,38 @@ def standing(points: float, placed_in: int, position: str, vertical: str | None,
     return rank_of(current_points(points, placed_in, position, now), vertical)
 
 
-def expected(points: float, difficulty: int, answer_kind: str, options: int) -> float:
-    """How likely someone at this rank gets the question right. The guess floor makes a blind guess on a
-    single choice break even at any rank."""
-    guess = 1 / options if answer_kind == "choice-one" and options > 1 else 0.0
+def guess(answer_kind: str, options: int, hint: bool = False, right_options: int = 0) -> float:
+    """How often a blind guess lands, given what the player sees: 1 in `options` on a single choice (two left
+    after a hint), one of the non-empty sets of options on a multiple choice (after a hint, which says how many
+    are right, one of the sets that size), never on a typed answer (at most a coin flip after a hint)."""
+    if answer_kind == "choice-one":
+        n = min(options, 2) if hint else options
+        return 1 / n if n > 1 else 0.0
+    if answer_kind == "choice-many":
+        if options < 2:
+            return 0.0
+        if hint and 0 < right_options <= options:
+            return 1 / math.comb(options, right_options)
+        return 1 / ((1 << options) - 1)
+    return TYPED_HINT_GUESS if hint else 0.0
+
+
+def expected(points: float, difficulty: int, floor: float = 0.0) -> float:
+    """How likely someone at this rank gets the question right. The guess floor (`guess`) makes a blind guess
+    break even at any rank."""
     rating = Q_MID + Q_STEP * (difficulty - 3)
-    return guess + (1 - guess) / (1 + math.exp(-(points - rating) / SCALE))
+    return floor + (1 - floor) / (1 + math.exp(-(points - rating) / SCALE))
 
 
-def bad_run(gain: float, loss: float, answer_kind: str, options: int) -> float:
-    """How much of the cushion and comeback a bad run gets, from 0 to 1. All of it, except on a single choice:
-    there a blind guess must still lose on average at least CUSHION of what it loses outside a bad run, so the
-    comeback and the cushion shrink together until it does (a blind guess never pays, and "I'm not sure" never
-    costs nothing)."""
-    if answer_kind != "choice-one" or options < 2:
-        return 1.0
-    misses = options - 1  # a blind guess: one right for every `misses` wrong
-    short = misses * loss - gain  # what it loses on average, times options; positive at any sane rank
-    moved = (COMEBACK - 1) * gain + (1 - CUSHION) * misses * loss  # how much a full bad run shifts that
+def bad_run(gain: float, loss: float, floor: float) -> float:
+    """How much of the cushion and comeback a bad run gets, from 0 to 1. A blind guess, landing `floor` of the
+    time, must still lose on average at least CUSHION of what it loses outside a bad run, so the comeback and the
+    cushion shrink together until it does (a blind guess never pays, and "I'm not sure" never costs nothing).
+    Where a blind guess can't land (a typed answer without a hint) that leaves all of it."""
+    short = (1 - floor) * loss - floor * gain  # what a blind guess loses on average outside a bad run
+    moved = floor * (COMEBACK - 1) * gain + (1 - floor) * (1 - CUSHION) * loss  # what a full bad run gives it
+    if moved <= 0:
+        return 0.0
     return max(0.0, min(1.0, (1 - CUSHION) * short / moved))
 
 
@@ -187,6 +204,7 @@ def lp_award(
     area: str | None = "rules",
     answer_kind: str = "choice-one",
     options: int = 4,
+    right_options: int = 0,
     hint: bool = False,
     repeat: bool = False,
     late: bool = False,
@@ -196,19 +214,19 @@ def lp_award(
 ) -> Lp:
     """LP for one answer (the defaults describe a rules question). Right: K x (1 - expected); wrong or late:
     K x expected x stakes, softer for typed and multiple-choice slips. "I'm not sure" in time costs half a
-    wrong answer, never more than a blind guess would lose on average. A hint on a single choice leaves it a
-    two-way guess. A question already graded today moves nothing if right; ungraded ones never move LP."""
+    wrong answer, never more than a blind guess would lose on average. `options` (live ones) and `right_options`
+    matter on choice questions: with the hint they set how often a blind guess lands (`guess`). A question
+    already graded today moves nothing if right; ungraded ones never move LP."""
     if correct is None:
         return Lp(0.0)
-    if hint and answer_kind == "choice-one":
-        options = min(options, 2)
+    floor = guess(answer_kind, options, hint, right_options)
     k = K[mode] * (REPEAT if repeat else 1)
-    e = expected(points, difficulty, answer_kind, options)
+    e = expected(points, difficulty, floor)
     # Slips in a sum aren't not knowing a rule, and typed answers play harder than their rating: both ways.
     k *= 1.0 if area == "rules" else SOFTEN.get(answer_kind, TYPED)
     gain = k * (1 - e) * (HINT if hint else 1)
     loss = k * e * DIVISION_TABLE[division_of(points)].stakes
-    down = bad_run(gain, loss, answer_kind, options) if miss_streak >= CUSHION_AFTER else 0.0
+    down = bad_run(gain, loss, floor) if miss_streak >= CUSHION_AFTER else 0.0
     gain *= 1 + down * (COMEBACK - 1)
     loss *= 1 - down * (1 - CUSHION)
     if correct and not late and not passed:
@@ -216,9 +234,8 @@ def lp_award(
             return Lp(0.0)
         return Lp(round(gain, 2), comeback=down > 0 and gain > 0)
     if passed and not late:
-        loss *= PASS
-        if answer_kind == "choice-one" and options > 1:
-            loss = min(loss, max(0.0, (1 - 1 / options) * loss / PASS - gain / options))
+        blind = (1 - floor) * loss - floor * gain  # what a blind guess loses on average
+        loss = min(PASS * loss, max(0.0, blind))
     return Lp(-round(loss, 2), cushioned=down > 0 and loss > 0)
 
 

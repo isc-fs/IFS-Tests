@@ -122,6 +122,7 @@ function Session({ area, topic, onGraded }: Filter & { onGraded: (correct: boole
       {question && (
         <LearningAids question={question}>
           <QuestionCard
+            error={answer.error}
             key={question.id}
             focusOnShow={round > 0}
             question={question}

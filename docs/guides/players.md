@@ -105,7 +105,8 @@ gets the same three. New questions appear at midnight, Madrid time.
 If you leave while the clock runs, the area shows **Continue** and the clock keeps running: it is the server's,
 not your browser's. A question started just before midnight stays yours after midnight: the area shows
 **Continue** until you answer it or its time runs out, and an answer in time counts for the day you started it
-(your streak included). The new day's question for that area appears after.
+(your streak included). Its result then stays in the area as "Yesterday's question", with **See the question**,
+until you press **Start today's question**; its XP and LP count for its own day, not in "Today".
 
 **Late answers.** The server allows 3 seconds of grace after the clock. An answer that arrives later is recorded
 but counted as wrong. A question you never answer is closed as out of time: it costs LP like a wrong answer and
@@ -148,6 +149,10 @@ daily questions, a mock run or a live quiz, and refuses to open one by its link 
 - Numbers: a decimal point or a comma both work (`3.5` or `3,5`, no space after the comma: `3, 5` reads as two
   values), and so do `.5` and `3.5e-3`. Type just the number, in the unit the question asks for: no units, no `%`,
   no thousands separators (`2778`, not `2,778`; a comma with exactly three digits after it is asked about).
+  Where the question asks for three decimals or a decimal comma, that comma is a decimal one: `59,988` is 59.988,
+  as FS-Quiz writes it. A point is always a decimal point: `32.768` is 32.768, not 32768, and is graded as that
+  (the app can't ask which you meant without telling whether the answer is a whole number), so write thousands
+  with nothing or a space: `32768` or `32 768`.
 - A number is right when it rounds to the official answer at the precision the answer is given with (`82.9`
   accepts `82.94`; 0.1 % either way when that's more). A whole number (a count, "round to the nearest one", a binary
   string) accepts only what rounds to it, and an official answer of zero accepts only zero.
@@ -166,7 +171,8 @@ earns half)**. A hint never gives the answer away: on a single choice it greys o
 multiple choice it says how many options are right; on a number it gives a range (the answer isn't in its middle);
 on a list of values, how many and a range for the first; on a text, its length and first letter. Some questions have no hint. One hint per question, before you
 answer. It halves the XP of a right answer (and the LP in daily and
-mock questions). Hints end at DT I.
+mock questions). In daily and mock questions a wrong answer after a hint also costs more LP, because the hint made a
+guess more likely to land (on a typed answer, as much as a coin flip). Hints end at DT I.
 
 ### "I'm not sure"
 
@@ -287,10 +293,11 @@ MingoQuiz keeps two separate scores. Home and Profile show both cards. The full 
   which has a title that depends on your vertical, revealed when you reach DT V. 100 LP per division.
 - **What moves LP:** daily questions and your first run of each mock quiz each season. Right answers win LP, wrong
   and late ones lose it; a hard question pays more and costs less. "I'm not sure" costs at most half a wrong answer.
-  A hint halves the win. Practice, replays and live quizzes never move LP.
+  A hint halves the win, and a wrong answer after one costs more. Practice, replays and live quizzes never move LP.
 - Your rank card says what a daily question is worth at your rank, warns you when one wrong answer would drop you a
   division, and shows **Rough patch** after 3 wrong in a row: losses are cushioned (up to half) and your next
-  right answer pays extra (up to 1.5×). On a single choice both are smaller, so guessing blind never pays.
+  right answer pays extra (up to 1.5×). Wherever a blind guess could land (a choice question, or a typed answer
+  after a hint) both are smaller, so guessing blind never pays.
 - You can drop a division. If you do, the help of the one below comes back.
 - Rank doesn't decay: not playing never costs LP.
 
@@ -365,8 +372,10 @@ runs move LP.
 **I got 0 XP for a right answer.** You had already answered that question today, in some mode. A question pays XP
 once a day.
 
-**I can't start today's daily question.** It is also in a mock run or live quiz you haven't finished; answer it
-there first, or end the mock run (**End this run**).
+**I can't start today's daily question.** It is also in a mock run or live quiz you haven't finished. Either answer
+it there first: a question pays once a day, so the daily then pays nothing (0 XP, 0 LP). Or end the mock run
+(**End this run**): the question on screen counts as out of time in the run, its official answer stays hidden in the
+run's summary until you answer the daily, and the daily then pays in full.
 
 **Practice says a question is running elsewhere.** Same rule: a question you still have to answer in your daily
 questions, a mock run or a live quiz can't be opened, practised or hinted at until you do.

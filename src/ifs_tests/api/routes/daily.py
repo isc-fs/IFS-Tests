@@ -17,6 +17,7 @@ Id = Annotated[int, Path(ge=1, le=2**63 - 1)]
 
 def _result(db: Db, r: daily.Result) -> DailyResult:
     return DailyResult(
+        day=r.day,
         question=play_question(questions.show(db, [r.question], r.answer.get("options") or [])[0]),
         feedback=feedback(r.checked),
         answer=sent(r.answer),

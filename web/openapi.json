@@ -3285,6 +3285,12 @@
       "type": "string",
       "title": "Area"
      },
+     "day": {
+      "type": "string",
+      "format": "date",
+      "title": "Day",
+      "description": "The day the question belongs to: the day before for one started before midnight, whose result stays until the new day's question in its area is started"
+     },
      "budget_s": {
       "type": "integer",
       "title": "Budget S"
@@ -3350,6 +3356,7 @@
     "type": "object",
     "required": [
      "area",
+     "day",
      "budget_s",
      "state",
      "deadline_at",
@@ -3362,6 +3369,12 @@
    },
    "DailyResult": {
     "properties": {
+     "day": {
+      "type": "string",
+      "format": "date",
+      "title": "Day",
+      "description": "The day the question belongs to"
+     },
      "question": {
       "$ref": "#/components/schemas/PlayQuestion"
      },
@@ -3398,6 +3411,7 @@
     },
     "type": "object",
     "required": [
+     "day",
      "question",
      "feedback",
      "late",

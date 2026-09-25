@@ -23,7 +23,7 @@ from ifs_tests.services import live, maintenance, xp
 from ifs_tests.services.bank import import_bank
 
 from ..conftest import Clock
-from .helpers import PASSWORD, invite, login, options, register, right_answer
+from .helpers import PASSWORD, invite, login, options, register, right_answer, shape
 
 pytestmark = pytest.mark.integration
 NewClient = Callable[[], TestClient]
@@ -43,11 +43,7 @@ def set_rank(db: Session, user_id: int, points: float, **values: Any) -> None:
 
 def lp(db: Session, qid: int, correct: bool, points: float, mode: str = "practice", **kwargs: Any) -> float:
     """The LP an answer to this question moves at `points`, from its own area, kind and number of options."""
-    q = db.get_one(Question, qid)
-    n = len(options(db, qid)) if q.answer_kind == "choice-one" else 0
-    return rank_rules.lp_award(
-        correct, points, 3, mode, area=q.area, answer_kind=q.answer_kind, options=n, **kwargs
-    ).amount
+    return rank_rules.lp_award(correct, points, 3, mode, **shape(db, qid), **kwargs).amount
 
 
 def earned(correct: bool | None, mode: str = "practice", **kwargs: Any) -> int:

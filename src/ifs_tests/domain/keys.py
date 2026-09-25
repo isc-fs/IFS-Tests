@@ -28,6 +28,10 @@ _THOUSANDS = re.compile(r"^[+-]?[1-9]\d{0,2},\d{3}$")
 _RANGE = re.compile(r"^([+-]?\d+(?:[.,]\d+)?)\s*-\s*([+-]?\d+(?:[.,]\d+)?)$")
 _SEQUENCE = re.compile(r"^\d+(?:-\d+){2,}$")
 _OR = re.compile(r"\sor\s", re.IGNORECASE)  # no quantifiers: linear on long runs of spaces
+# A question that asks for three decimals, or for a decimal comma, settles "59,988": FS-Quiz writes such keys so.
+_DECIMAL_COMMA = re.compile(
+    r"\b(?:three|3)\s+decimal|\bdecimal\s+comma|\bcommas?\s+instead\s+of\s+(?:dots?|points?)", re.IGNORECASE
+)
 _UNIT = re.compile(r"^[+-]?(?:\d+(?:[.,]\d+)?|\.\d+)\s*(?:[^\W\d_]|[%°])")  # 12.5 kW, 46%, 3.8 to 3.9
 MAX_TEXT = 24
 
@@ -54,6 +58,12 @@ def ambiguous(text: str) -> bool:
     """'64,107': a decimal comma or a thousands separator? Only a player's answer is asked; keys are read with
     a decimal comma, as FS-Quiz writes them."""
     return bool(_THOUSANDS.match(clean(text).replace(" ", "")))
+
+
+def decimal_comma(question: str) -> bool:
+    """The question asks for three decimals or a decimal comma, so a player's '59,988' can only mean 59.988.
+    Read from the question's text, which players see: it says nothing about the key."""
+    return bool(_DECIMAL_COMMA.search(question))
 
 
 def split_values(text: str, expected: int | None = None) -> list[str]:

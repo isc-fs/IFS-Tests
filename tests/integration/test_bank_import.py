@@ -448,3 +448,20 @@ def test_a_mirror_missing_most_of_the_bank_retires_nothing_unless_allowed(
     report = import_bank(db, sample, SAMPLE_DIR / "img", tmp_path, clock.now, allow_mass_removal=True)
     assert (report.retired, report.not_retired) == (4, 0)
     assert db.get_one(Quiz, 9002).retired
+
+
+def test_the_mass_removal_guard_counts_only_the_questions_there_before_the_push(
+    db: Session, clock: Clock, tmp_path: Path, sample: dict[str, Any]
+) -> None:
+    import_bank(db, copy.deepcopy(sample), SAMPLE_DIR / "img", tmp_path, clock.now)
+    drop(sample, quizzes=(9002, 9003))  # a third of the 12 questions gone...
+    fresh = [q for q in copy.deepcopy(load_bank(SAMPLE_DIR))["questions"] if q["type"] == "input"][:4]
+    for i, q in enumerate(fresh):  # ...and as many new ones at once: still a third of what was there
+        q["question_id"] = 99001 + i
+    sample["questions"] += fresh
+    sample["quizzes"].append(
+        {**sample["quizzes"][0], "quiz_id": 9909, "question_ids": [q["question_id"] for q in fresh]}
+    )
+    report = import_bank(db, copy.deepcopy(sample), SAMPLE_DIR / "img", tmp_path, clock.now)
+    assert (report.added, report.retired, report.not_retired) == (4, 0, 4)
+    assert not db.get_one(Quiz, 9002).retired

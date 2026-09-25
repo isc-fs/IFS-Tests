@@ -196,3 +196,52 @@ def test_an_option_removed_upstream_is_refused_on_a_new_answer(
     assert r.status_code == 400 and r.json()["detail"] == "Pick one of the listed answers.", r.text
     r = c.post(url, json={**body, "options": [shown["0.713 m"]]})
     assert r.status_code == 200 and r.json()["current"] is not None
+
+
+def test_questions_deleted_from_a_listed_quiz_leave_its_finished_runs_as_they_were(
+    setup: tuple[dict[str, Any], Path, TestClient], db: Session, clock: Clock
+) -> None:
+    bank, media, c = setup
+    state = c.post("/api/mock/quizzes/9002/start").json()
+    full = state["session_id"]
+    while state["current"]:
+        qid = state["current"]["question"]["id"]
+        body = {"unsure": True} if qid == by_fsquiz(db, 90002).id else right_answer(db, qid)
+        state = c.post(
+            f"/api/mock/sessions/{full}/answer", json={"attempt_id": state["current"]["attempt_id"], **body}
+        ).json()
+    state = c.post("/api/mock/quizzes/9002/start").json()  # a replay, ended on its first question
+    ended = state["session_id"]
+    c.post(f"/api/mock/sessions/{ended}/end")
+
+    def summaries() -> list[tuple[Any, ...]]:
+        out = []
+        for run in (full, ended):
+            s = c.get(f"/api/mock/sessions/{run}").json()["summary"]
+            items = [(i["question"]["id"], i["feedback"]["correct"]) for i in s["items"]]
+            out.append((s["correct"], s["graded"], s["unreached"], s["xp"], s["lp"], items))
+        return out
+
+    before = summaries()
+    assert [s[:3] for s in before] == [(4, 5, 0), (0, 5, 4)]
+    gone, moved = by_fsquiz(db, 90012), by_fsquiz(db, 90008)  # deleted; dropped from 9002, still in 9001
+    bank["questions"] = [q for q in bank["questions"] if q["question_id"] != 90012]
+    quiz = next(z for z in bank["quizzes"] if z["quiz_id"] == 9002)
+    quiz["question_ids"] = [i for i in quiz["question_ids"] if i not in (90008, 90012)]
+    clock.advance(minutes=5)
+    report = import_bank(db, copy.deepcopy(bank), SAMPLE_DIR / "img", media, clock.now)
+    assert report.retired == 1
+
+    assert summaries() == before
+    listed = next(z for z in c.get("/api/mock/quizzes").json() if z["id"] == 9002)
+    assert (listed["questions"], listed["best"]) == (3, 4)
+    state = c.post("/api/mock/quizzes/9002/start").json()
+    served = []
+    while state["current"]:
+        served.append(state["current"]["question"]["id"])
+        state = c.post(
+            f"/api/mock/sessions/{state['session_id']}/answer",
+            json={"attempt_id": state["current"]["attempt_id"], "unsure": True},
+        ).json()
+    assert gone.id not in served and moved.id not in served and len(served) == 3
+    assert (state["summary"]["graded"], state["summary"]["unreached"]) == (3, 0)

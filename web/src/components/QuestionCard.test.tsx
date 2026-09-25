@@ -57,6 +57,12 @@ function daily(secondsLeft: number, failures: number) {
 
 afterEach(() => onlineManager.setOnline(true))
 
+// What the server sends for a typed answer it can't read: the message, also tied to the answer field.
+const REFUSAL = {
+  detail: 'Type the number only: no units, % or thousands separators.',
+  fields: { value: 'Type the number only: no units, % or thousands separators.' },
+}
+
 const start = async () => userEvent.click(await screen.findByRole('button', { name: 'Start the Mechanical question' }))
 
 test('a send at zero that hits a proxy error is sent again by itself', async () => {
@@ -95,7 +101,7 @@ test('a typed answer refused when the time runs out can be fixed and sent again 
     'POST /api/daily/attempts/99/answer': (body) =>
       (body as { value?: string }).value === '3.5'
         ? { body: { ...RESULT, question: typed } }
-        : { status: 400, body: { detail: 'Type the number only: no units, % or thousands separators.' } },
+        : { status: 400, body: REFUSAL },
   })
   await start()
   await userEvent.type(await screen.findByRole('textbox'), '3.5 mm')
@@ -108,6 +114,36 @@ test('a typed answer refused when the time runs out can be fixed and sent again 
   await userEvent.click(screen.getByRole('button', { name: 'Send my answer again' }))
   expect(await screen.findByText(/Correct: \+15 LP, \+60 XP/)).toBeInTheDocument()
   expect(sent('POST /api/daily/attempts/99/answer').map((c) => c.body)).toEqual([{ value: '3.5 mm' }, { value: '3.5' }])
+})
+
+test('a typed answer the server cannot read shows why on the field, in time, and can be fixed', async () => {
+  const typed = { ...QUESTION, answer_kind: 'number', options: [] }
+  const now = Date.now()
+  renderApp('/daily', {
+    ...daily(120, 0),
+    'POST /api/daily/mech/start': {
+      body: {
+        attempt_id: 99,
+        question: typed,
+        server_now: new Date(now).toISOString(),
+        deadline_at: new Date(now + 120_000).toISOString(),
+      },
+    },
+    'POST /api/daily/attempts/99/answer': (body) =>
+      (body as { value?: string }).value === '3.3'
+        ? { body: { ...RESULT, question: typed } }
+        : { status: 400, body: REFUSAL },
+  })
+  await start()
+  const field = await screen.findByRole('textbox')
+  await userEvent.type(field, '3.3 V')
+  await userEvent.click(screen.getByRole('button', { name: 'Check answer' }))
+  expect(await screen.findByText(REFUSAL.detail)).toBeInTheDocument()
+  expect(field).toHaveAttribute('aria-invalid', 'true')
+  await userEvent.clear(field)
+  await userEvent.type(field, '3.3')
+  await userEvent.click(screen.getByRole('button', { name: 'Check answer' }))
+  expect(await screen.findByText(/Correct: \+15 LP, \+60 XP/)).toBeInTheDocument()
 })
 
 test("an answer the server refuses isn't sent again by itself", async () => {
