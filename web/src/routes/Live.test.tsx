@@ -516,3 +516,36 @@ test('a removed player opening the link again sees only why', async () => {
   expect(await screen.findByText('The host removed you from this live quiz.')).toBeInTheDocument()
   expect(screen.queryByText(/Joining/)).toBeNull()
 })
+
+test('the reveal says who the question was for and its figures fit the screen, opening full size', async () => {
+  const closed = {
+    ...open,
+    state: 'closed',
+    room_asked: 1,
+    reveals: [
+      {
+        position: 0,
+        question: { ...QUESTION, images: ['/media/q.png'] },
+        table_id: null,
+        feedback: {
+          correct: null,
+          official: 'Red and yellow',
+          correct_options: [71],
+          solutions: [{ text: 'Rule T 11.9', images: ['/media/s.png'] }],
+        },
+        answers: [],
+      },
+    ],
+  }
+  at('/live/ABC234', { ...MEMBER, id: 2 }, closed)
+  expect(await screen.findByText('For every table.')).toBeInTheDocument()
+  expect(screen.getByText('No table answered in time.')).toBeInTheDocument()
+  for (const [name, src] of [
+    ['Figure for this question (opens full size)', '/media/q.png'],
+    ['Figure for the solution (opens full size)', '/media/s.png'],
+  ]) {
+    const link = screen.getByRole('link', { name })
+    expect(link).toHaveClass('question-image') // the rule that keeps a figure within the screen's width
+    expect(link).toHaveAttribute('href', src)
+  }
+})

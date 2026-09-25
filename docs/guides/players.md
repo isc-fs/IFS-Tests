@@ -248,8 +248,9 @@ and each table answers through its captain. Live quizzes earn XP only; they neve
 ### Joining
 
 1. Scan the QR code on the projector, or go to **Live** and type the six-character **Code**, then **Join**.
-2. You see "You're in." and wait for the host to seat you. Once seated, the page names your table, your captain
-   and your teammates, and the session's settings.
+2. In the lobby you see "You're in." and, until the host seats you, "Waiting for *host* to seat you at a table."
+   Once seated, the page names your table, your captain and your teammates, and the session's settings. If the quiz
+   has already started, you only see the waiting line until you're seated.
 
 You can join until the quiz finishes; latecomers wait until the host seats them.
 

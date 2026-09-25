@@ -29,11 +29,12 @@ def bar_to_beat(last_qualifier: dict[str, Any] | None) -> str | None:
     if not last_qualifier:
         return None
     correct, score, time_s = (last_qualifier.get(k) for k in ("correct_answers", "score", "time_s"))
-    parts = []
+    what = ""
     if correct is not None:
-        parts.append(f"{correct} correct answers")
+        what = f"{correct} correct answers"
     elif score is not None:
-        parts.append(f"a score of {score}")
-    if time_s:
-        parts.append(f"in {time_s // 60} min {time_s % 60:02d} s")
-    return "The last team to get a slot had " + " ".join(parts) + "." if parts else None
+        what = f"a score of {score}"
+    when = f"in {time_s // 60} min {time_s % 60:02d} s" if time_s else ""
+    if what:
+        return f"The last team to get a slot had {what}{' ' + when if when else ''}."
+    return f"The last team to get a slot finished {when}." if when else None

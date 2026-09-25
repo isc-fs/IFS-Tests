@@ -113,7 +113,9 @@ export function Reveal({ s, r }: { s: LiveState; r: LiveReveal }) {
         {r.position + 1}. {q.text}
       </p>
       {q.images.map((src) => (
-        <img key={src} src={src} alt="Figure for this question" className="question-image" />
+        <a key={src} href={src} target="_blank" rel="noreferrer" className="question-image">
+          <img src={src} alt="Figure for this question (opens full size)" />
+        </a>
       ))}
       {q.options.length > 0 && (
         <ul className="choices">
@@ -130,7 +132,7 @@ export function Reveal({ s, r }: { s: LiveState; r: LiveReveal }) {
           <strong>Official answer:</strong> <span className="official">{r.feedback.official}</span>
         </p>
       )}
-      <p className="muted">Answered by {tableName(s, r.table_id)}.</p>
+      <p className="muted">For {tableName(s, r.table_id)}.</p>
       <ul className="live-answers">
         {r.answers.map((a) => (
           <li
@@ -148,7 +150,9 @@ export function Reveal({ s, r }: { s: LiveState; r: LiveReveal }) {
           <h3>Worked solution</h3>
           {sol.text && <p className="question-text">{sol.text}</p>}
           {sol.images.map((src) => (
-            <img key={src} src={src} alt="Figure for the solution" className="question-image" />
+            <a key={src} href={src} target="_blank" rel="noreferrer" className="question-image">
+              <img src={src} alt="Figure for the solution (opens full size)" />
+            </a>
           ))}
         </section>
       ))}
