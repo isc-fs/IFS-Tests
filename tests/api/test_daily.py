@@ -15,7 +15,7 @@ from ifs_tests.bank.sample import SAMPLE_DIR
 from ifs_tests.db.models import Attempt, DailyQuestion, Question, User
 from ifs_tests.domain.rank import lp_award, placement
 from ifs_tests.domain.xp import xp_award
-from ifs_tests.services import daily
+from ifs_tests.services import daily, maintenance
 from ifs_tests.services.bank import import_bank
 
 from ..conftest import Clock
@@ -301,6 +301,28 @@ def test_a_daily_answered_just_after_midnight_counts_its_own_day_as_played(
     ).json()
     assert r["late"] is False and "rested" not in r["feedback"]["bonuses"]
     assert player.get("/api/me").json()["progress"]["account"]["rested_xp"] == 0  # 6 October was played
+
+
+def test_a_freeze_saves_the_streak_from_midnight_not_from_the_nightly_job(
+    player: TestClient, db: Session, clock: Clock
+) -> None:
+    for _ in range(8):  # 1 to 8 October
+        play(player, db, "mech")
+        next_day(player, clock)
+    clock.now = datetime(2026, 10, 9, 1, 0, tzinfo=UTC)  # 03:00 on 9 October: the 7-day streak earns a freeze
+    assert maintenance.run(db, clock.now)["freezes_earned"] == 1
+    clock.now = datetime(2026, 10, 9, 22, 30, tzinfo=UTC)  # 00:30 on 10 October: 9 October was missed
+    login(player, "marta@alu.comillas.edu", PASSWORD)
+    account = player.get("/api/me").json()["progress"]["account"]
+    assert (account["streak"], account["streak_freezes"]) == (9, 0)  # the freeze is spent from midnight
+    assert player.get("/api/daily").json()["streak"] == 9
+    r = play(player, db, "elec")
+    assert r["streak"] == 10 and r["feedback"]["bonuses"]["streak"] > 0
+    clock.now = datetime(2026, 10, 10, 1, 0, tzinfo=UTC)  # the 03:00 job records the same freeze, once
+    assert maintenance.run(db, clock.now)["freezes_used"] == 1
+    assert maintenance.run(db, clock.now)["freezes_used"] == 0
+    account = player.get("/api/me").json()["progress"]["account"]
+    assert (account["streak"], account["streak_freezes"]) == (10, 0)
 
 
 def test_attempts_belong_to_their_player(

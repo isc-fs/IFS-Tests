@@ -31,7 +31,7 @@ Nothing to do: the `scheduler` container runs these in Madrid time (`src/ifs_tes
 | | Live quiz XP | Shares any table answer's XP that a crash left unshared | `live_answers_shared` | `share_pending` in `src/ifs_tests/services/live.py` |
 | | Difficulty | Recalibrates graded questions from success rates ([game rules](game-rules.md#4-question-difficulty)) | `difficulty_changed` | `recalibrate` in `src/ifs_tests/services/xp.py` |
 | | Season rollover | Applies the 1 September rank reset to active members still placed in an earlier season; 0 on every other night | `ranks_reset` | `rollover` in `src/ifs_tests/services/season.py` |
-| | Streak freezes | Spends freezes on missed days and awards new ones, catching up on up to 3 missed nights | `freezes_used`, `freezes_earned` | `nightly` in `src/ifs_tests/services/streaks.py` |
+| | Streak freezes | Stores the freezes spent on missed days and awards new ones, catching up on up to 3 missed nights (reads apply the same freezes from midnight, so nobody waits for this job) | `freezes_used`, `freezes_earned` | `nightly` in `src/ifs_tests/services/streaks.py` |
 | | Alumni deletion | Deletes alumni and disabled accounts 365 days after they stopped being active (inactive accounts with no date get one now) | `alumni_deleted` | `purge` in `src/ifs_tests/services/privacy.py` |
 | | Audit log | Deletes audit entries older than two years, through the database function `purge_audit_log` (migration 0016) | `audit_purged` | same |
 | 03:30 | Backup | Dumps the database, pings `BACKUP_HEARTBEAT_URL` if set, and deletes dumps older than 14 days | `backup:` lines | `deploy/db/backup.sh` |

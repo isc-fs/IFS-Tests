@@ -114,8 +114,8 @@ earns no XP.
 **Streak.** Each day with at least one daily question answered on time (right, wrong or "I'm not sure") extends
 your streak. Each day of streak after the first adds 5 % XP to right answers, up to +50 %.
 
-**Freezes.** Every 7 days of streak earns a streak freeze; you can hold 2. If you miss a day, the nightly job uses
-one and your streak survives. Your level card shows how many you hold.
+**Freezes.** Every 7 days of streak earns a streak freeze; you can hold 2. If you miss a day, one is used from
+midnight and your streak survives. Your level card shows how many you hold.
 
 A daily question that is also running in one of your mock runs or live quizzes can't be started until you answer
 it there.

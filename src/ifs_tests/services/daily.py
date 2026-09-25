@@ -90,8 +90,8 @@ def _carried(db: DB, user: User, day: date, now: datetime) -> dict[str, Attempt]
     return {a.area: a for a in rows if a.area and a.deadline_at and not rules.is_late(now, a.deadline_at)}
 
 
-def _on_time_days(db: DB, user: User) -> set[date]:
-    return streaks.kept(db, user.id)
+def _on_time_days(db: DB, user: User, now: datetime) -> set[date]:
+    return streaks.current(db, user.id, now)
 
 
 @dataclass
@@ -148,7 +148,7 @@ def status(db: DB, user: User, now: datetime) -> Status:
         )
     order = {a: i for i, a in enumerate(rules.AREAS)}
     areas.sort(key=lambda s: order[s.area])
-    kept = _on_time_days(db, user)
+    kept = _on_time_days(db, user, now)
     # A day whose question is still running is still open, like today.
     run = max([rules.streak(kept, d) for d in {day} | {a.day for a in carried.values() if a.day}])
     return Status(day, run, sum(a.xp for a in areas), round(sum(a.lp for a in areas), 2), areas)
@@ -256,7 +256,7 @@ def answer(
             db.execute(update(Attempt).where(Attempt.id == a.id).values(xp=granted.xp, lp=granted.lp))
         db.refresh(a)  # while the player's lock still keeps the account, and so this attempt, in place
         db.commit()
-    result = review_attempt(db, user, a)
+    result = review_attempt(db, user, a, now)
     if (
         granted
     ):  # the request that scored it tells of promotions and bonuses; reloads show the stored XP and LP
@@ -307,11 +307,11 @@ def close_expired(db: DB, now: datetime, user_id: int | None = None) -> int:
     return closed
 
 
-def review_attempt(db: DB, user: User, a: Attempt) -> Result:
+def review_attempt(db: DB, user: User, a: Attempt, now: datetime) -> Result:
     """The stored result of a submitted attempt: retries and reloads never re-grade."""
     q = db.get_one(Question, a.question_id)
     checked = explain(db, q, a.correct, a.passed)
-    run = rules.streak(_on_time_days(db, user), a.day) if a.day else 0
+    run = rules.streak(_on_time_days(db, user, now), a.day) if a.day else 0
     checked.score = xp.stored(db, user.id, a)
     return Result(q, checked, bool(a.late), a.xp, a.lp, run, a.answer)
 
@@ -320,4 +320,4 @@ def review(db: DB, user: User, area: str, now: datetime) -> Result:
     a = _attempt(db, user, rules.madrid_day(now), area)
     if a is None or a.submitted_at is None:
         raise UserError("Answer today's question first.", 409)
-    return review_attempt(db, user, a)
+    return review_attempt(db, user, a, now)
