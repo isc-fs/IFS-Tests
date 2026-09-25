@@ -88,6 +88,24 @@ Workstreams run in parallel, each owning its files; G starts once A–F have mer
 | Deadlock between deleting a player and a live proposal (introduced by fix/9's proposal counter; the race test failed now and then) | High | fix/17, #70 | Fixed | Postgres' own deadlock report (the deletion's FK check `FOR KEY SHARE` on the session queued behind `FOR UPDATE` waiters); live sessions now locked `FOR NO KEY UPDATE`; race test looped 40 times: 7 failed / 43 deadlocks before, 0 / 0 after; the race test now runs 8 rounds and fails 2–3 of 8 with `FOR UPDATE` put back |
 | A typed answer refused at time zero (BANK-04 with UI-01) | — | fix/12, #64 | Fixed | `QuestionCard.test.tsx`: refused at zero, fixed, sent again; keeping the field read-only fails the test |
 
+## Independent verification after merging (2026-09-25)
+
+Two verifiers who fixed nothing re-ran the red team's own probes on `dev` (reports kept with the evidence):
+V1 (play, domain, bank) found 12 verified and 3 partial; V2 (UI, accounts, live, ops, capacity) found everything
+verified, one regression and one leftover. All five were closed in fix/20:
+
+| Gap | Found by | Fix | Proof |
+|---|---|---|---|
+| PLAY-05: after ending a run with today's daily on screen, the daily paid nothing although its answer stayed hidden | V1 | a question closed unanswered while its answer was hidden doesn't count as answered or seen for that daily | `test_ending_a_run_frees_the_daily_on_screen_and_it_pays_in_full`; V1 probe 0 → 75 XP / +16.5 LP |
+| DOM-02: in a bad run a guess still paid on multiple-choice and hinted answers | V1 | the guess floor is how often a blind guess lands given what the player sees, for every kind (rules change: TDs to confirm) | `test_no_blind_guess_pays_on_any_kind_of_question_at_any_miss_streak` (820 failures before); V1 cases +3.33…+1.69 → all negative |
+| BANK-08: deleting one question of a listed quiz rewrote finished runs' summaries | V1 | finished summaries built from their own attempts; unreached counts stored (migration 0022) | `test_questions_deleted_from_a_listed_quiz_leave_its_finished_runs_as_they_were`; V1 probe keeps 17 of 20 |
+| R-1 (regression of BANK-04): a refused typed answer showed no message anywhere | V2 | the card shows the server's field message on the answer field | refusal tests with the real body; removing the fix fails both |
+| R-2 (PERF-03 leftover): late-season area boards p95 0.5–2.4 s under a burst | V2 | a 30 s per-worker cache of members' LP totals (others' LP up to 30 s stale; own view, opt-outs live) | `test_a_room_opening_a_board_adds_up_everyones_lp_once`; burst p95 1.4–2.4 s → 12–21 ms, 540 views byte-identical |
+
+Also in fix/20: a carried daily's result stays reviewable after midnight (PLAY-03 gap); the mass-removal guard counts
+only questions that existed before the push, and `refresh-bank.sh --allow-mass-removal`; decimal commas read where the
+question asks for them (Q864, Q881, Q1058).
+
 ## Low and Info
 
 Not scheduled yet: see the report's sections 4.1–4.9. When one is picked up, add its row here.
