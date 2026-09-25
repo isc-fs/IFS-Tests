@@ -71,7 +71,7 @@ Pure functions from `src/ifs_tests/domain/` (and a few pure helpers elsewhere), 
 | `test_account_xp.py`, `test_daily_rules.py`, `test_mock_rules.py`, `test_live_rules.py`, `test_leaderboard_rules.py`, `test_hints.py` | The rules of each mode |
 | `test_account_rules.py`, `test_passwords.py`, `test_csrf.py` | Email and display-name rules, lockout, password policy, the CSRF guard |
 | `test_scheduler.py` | Jobs run once per Madrid day, including daylight-saving days; the heartbeat is only touched while the database answers |
-| `test_deploy_scripts.py` | `deploy.sh`, `restore.sh` and `refresh-bank.sh` run for real against a fake server root (`QUIZ_ROOT`) and a stub `docker`: each refuses an `.env` that isn't `chmod 600` or names another environment before touching Docker |
+| `test_deploy_scripts.py` | `deploy.sh`, `restore.sh` and `refresh-bank.sh` run for real against a fake server root (`QUIZ_ROOT`) and a stub `docker`: each refuses an `.env` that isn't `chmod 600` or names another environment before touching Docker; `restore.sh` goes on when its terminal is lost, and after a failure tells a rolled-back restore from a loaded one (migrating it, or leaving the app stopped) |
 | `test_client.py`, `test_normalize.py`, `test_learning_content.py` | The FS-Quiz client (with a fake transport, never the network), bank normalisation, the learning content file |
 | `test_docs.py` | Every relative link in `README.md`, `AGENTS.md` and `docs/` resolves, and every repository path a doc names in backticks exists (ADRs exempt from the second check) |
 

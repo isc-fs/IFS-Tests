@@ -4,8 +4,10 @@ records its calls and answers what the test tells it to."""
 from __future__ import annotations
 
 import os
+import signal
 import subprocess
 import sys
+import time
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -15,9 +17,11 @@ DEPLOY = Path(__file__).parents[2] / "deploy"
 
 STUB = """#!/usr/bin/env bash
 echo "$*" >> "$STUB_LOG"
-while IFS='|' read -r pattern code out; do
+[[ -t 0 ]] || cat >> "$STUB_LOG.stdin"
+while IFS='|' read -r pattern code out delay; do
   [[ -z $pattern ]] && continue
   if [[ "$*" == *"$pattern"* ]]; then
+    [[ -n $delay ]] && sleep "$delay"
     [[ -n $out ]] && printf '%b\\n' "$out"
     exit "$code"
   fi
@@ -39,7 +43,8 @@ def server(tmp_path: Path, env: str = "staging", mode: int = 0o600, quiz_env: st
 def run(
     tmp_path: Path, script: str, *args: str, answers: Sequence[str] = (), stdin: str = ""
 ) -> tuple[subprocess.CompletedProcess[str], list[str]]:
-    """`answers`: "substring of the docker arguments|exit code|output" lines, first match wins."""
+    """`answers`: "substring of the docker arguments|exit code|output[|seconds to wait first]" lines, first match
+    wins. What docker reads on stdin is appended to docker.log.stdin."""
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
     stub = bin_dir / "docker"
@@ -221,3 +226,167 @@ def test_a_fingerprint_follows_the_code_not_its_layout(tmp_path: Path) -> None:
     assert fingerprints(tmp_path / "b", {"0001.py": relaid})["0001"] == base
     edited = FIRST.replace('"a"', '"b"')
     assert fingerprints(tmp_path / "c", {"0001.py": edited})["0001"] != base
+
+
+DUMP = "quiz-20260920-033000-nightly.dump"
+SAFETY = "quiz-20260925-120000-pre-restore.dump"
+MARKER = f"restored from {DUMP} over {SAFETY}"
+
+
+def restore_answers(*extra: str) -> list[str]:
+    """A restore that gets as far as loading the dump; `extra` rules come first and win."""
+    return [
+        *extra,
+        "--table=alembic_version|0|COPY public.alembic_version (version_num) FROM stdin;\\n0016",
+        f"backup.sh once pre-restore|0|backup: /backups/{SAFETY}",
+    ]
+
+
+def after(calls: list[str], step: str) -> list[str]:
+    return calls[next(i for i, c in enumerate(calls) if step in c) + 1 :]
+
+
+def in_order(calls: list[str], *steps: str) -> bool:
+    """Each step comes after the one before (the dump's own pg_restore call can be logged around psql's)."""
+    at = [next((i for i, c in enumerate(calls) if step in c), -1) for step in steps]
+    return -1 not in at and at == sorted(at)
+
+
+def test_a_restore_loads_the_dump_marks_it_migrates_and_starts(tmp_path: Path) -> None:
+    server(tmp_path)
+    done, docker = run(tmp_path, "restore.sh", "staging", DUMP, answers=restore_answers(), stdin="staging\n")
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert f"staging restored from {DUMP}" in done.stdout  # the terminal follows the worker's log
+    assert f"COMMENT ON SCHEMA public IS '{MARKER}';\nCOMMIT;" in (tmp_path / "docker.log.stdin").read_text()
+    assert in_order(docker, "PGAPPNAME=quiz-restore", "alembic upgrade head", "up -d"), docker
+    assert (
+        list((tmp_path / "srv/staging").glob("restore-*.log"))
+        and not (tmp_path / "srv/staging/restore.lock").exists()
+    )
+
+
+def test_a_restore_that_rolled_back_says_so_and_starts_the_app(tmp_path: Path) -> None:
+    server(tmp_path)
+    done, docker = run(
+        tmp_path,
+        "restore.sh",
+        "staging",
+        DUMP,
+        answers=restore_answers("PGAPPNAME=quiz-restore|3|ERROR: role x does not exist"),
+        stdin="staging\n",
+    )
+    out = done.stdout + done.stderr
+    assert done.returncode != 0 and f"{DUMP} was not loaded: the data is as it was" in out, out
+    assert not any("alembic upgrade" in c for c in docker)
+    assert "up -d" in after(docker, "obj_description")[-1]
+
+
+def test_a_restore_whose_client_died_after_the_commit_is_migrated_before_the_app_starts(
+    tmp_path: Path,
+) -> None:
+    # S2-OPS-01: the client went away, but psql inside the db container had the whole stream and committed.
+    server(tmp_path)
+    done, docker = run(
+        tmp_path,
+        "restore.sh",
+        "staging",
+        DUMP,
+        answers=restore_answers("PGAPPNAME=quiz-restore|137|", f"obj_description|0|{MARKER}"),
+        stdin="staging\n",
+    )
+    out = done.stdout + done.stderr
+    assert done.returncode != 0 and f"{DUMP} was loaded and migrated to v1.0.0" in out, out
+    rest = after(docker, "obj_description")
+    assert "alembic upgrade head" in rest[0] and "up -d" in rest[1]
+
+
+def test_a_loaded_dump_that_cannot_be_migrated_leaves_the_app_stopped(tmp_path: Path) -> None:
+    server(tmp_path)
+    done, docker = run(
+        tmp_path,
+        "restore.sh",
+        "staging",
+        DUMP,
+        answers=restore_answers(
+            "alembic upgrade|1|FAILED: password authentication failed", f"obj_description|0|{MARKER}"
+        ),
+        stdin="staging\n",
+    )
+    out = done.stdout + done.stderr
+    assert (
+        done.returncode != 0 and "the app stays stopped" in out and "deploy/deploy.sh staging v1.0.0" in out
+    ), out
+    assert not any("up -d" in c for c in after(docker, "PGAPPNAME=quiz-restore"))
+
+
+def test_a_restore_that_cannot_tell_what_happened_leaves_the_app_stopped(tmp_path: Path) -> None:
+    server(tmp_path)
+    done, docker = run(
+        tmp_path,
+        "restore.sh",
+        "staging",
+        DUMP,
+        answers=restore_answers(
+            "PGAPPNAME=quiz-restore|2|psql: connection refused", "obj_description|2|psql: connection refused"
+        ),
+        stdin="staging\n",
+    )
+    out = done.stdout + done.stderr
+    assert (
+        done.returncode != 0
+        and "couldn't reach the database" in out
+        and "deploy/deploy.sh staging v1.0.0" in out
+    )
+    assert not any("up -d" in c for c in docker)
+
+
+def test_a_restore_goes_on_when_its_terminal_is_lost(tmp_path: Path) -> None:
+    # S2-OPS-01: an SSH session dropped (or the script killed) while the dump loads.
+    server(tmp_path)
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "docker").write_text(STUB)
+    (bin_dir / "docker").chmod(0o755)
+    log, rules = tmp_path / "docker.log", tmp_path / "answers"
+    log.write_text("")
+    rules.write_text("\n".join(restore_answers("PGAPPNAME=quiz-restore|0||2")) + "\n")
+    env = {
+        **os.environ,
+        "PATH": f"{bin_dir}:{os.environ['PATH']}",
+        "QUIZ_ROOT": str(tmp_path / "srv"),
+        "STUB_LOG": str(log),
+        "STUB_ANSWERS": str(rules),
+    }
+    script = subprocess.Popen(
+        ["bash", str(DEPLOY / "restore.sh"), "staging", DUMP],
+        env=env,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        text=True,
+        start_new_session=True,  # the terminal's process group
+    )
+    assert script.stdin is not None
+    script.stdin.write("staging\n")
+    script.stdin.close()
+    deadline = time.monotonic() + 20
+    while "PGAPPNAME=quiz-restore" not in log.read_text():
+        assert time.monotonic() < deadline, log.read_text()
+        time.sleep(0.1)
+    os.killpg(script.pid, signal.SIGHUP)
+    os.killpg(script.pid, signal.SIGKILL)
+    script.wait(timeout=10)
+    [worker_log] = (tmp_path / "srv/staging").glob("restore-*.log")
+    while f"staging restored from {DUMP}" not in worker_log.read_text():
+        assert time.monotonic() < deadline + 20, worker_log.read_text()
+        time.sleep(0.2)
+    calls = [c for c in log.read_text().splitlines() if c]
+    assert in_order(calls, "PGAPPNAME=quiz-restore", "alembic upgrade head", "up -d"), calls
+
+
+def test_a_second_restore_is_refused_while_one_runs(tmp_path: Path) -> None:
+    server(tmp_path)
+    (tmp_path / "srv/staging/restore.lock").mkdir()
+    done, docker = run(tmp_path, "restore.sh", "staging", DUMP, answers=restore_answers(), stdin="staging\n")
+    assert done.returncode != 0 and "a restore is already running" in done.stderr, done.stderr
+    assert not any("stop" in c for c in docker)
