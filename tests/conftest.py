@@ -108,6 +108,14 @@ def new_client(app_client: TestClient) -> Callable[[], TestClient]:
 
 
 @pytest.fixture(autouse=True)
+def fresh_boards() -> None:
+    """Each worker keeps the boards' LP sums for a while; tests reuse the same clock on a fresh database."""
+    from ifs_tests.services import leaderboard
+
+    leaderboard._sums.clear()
+
+
+@pytest.fixture(autouse=True)
 def no_crits(monkeypatch: pytest.MonkeyPatch) -> None:
     """Critical answers are a 5 % draw from a random server secret: off everywhere, so XP can be asserted exactly.
     A test that wants one patches `services.xp._crit` back."""

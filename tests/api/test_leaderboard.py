@@ -14,6 +14,7 @@ from ifs_tests.bank.mirror import load_bank
 from ifs_tests.bank.sample import SAMPLE_DIR
 from ifs_tests.db.models import Attempt, DailyQuestion, Question, User
 from ifs_tests.domain.daily import madrid_day
+from ifs_tests.domain.leaderboard import first_day
 from ifs_tests.domain.xp import account_level
 from ifs_tests.services import daily, leaderboard, mock, practice
 from ifs_tests.services.bank import import_bank
@@ -521,3 +522,95 @@ def test_the_boards_read_this_seasons_play_not_the_whole_history(
     }
     read = {name: attempts_read(db, look) for name, look in looks.items()}
     assert read == {name: min(n, this_season) for name, n in read.items()}
+
+
+def test_a_room_opening_a_board_adds_up_everyones_lp_once(
+    team: None, app_client: TestClient, new_client: NewClient, db: Session, clock: Clock
+) -> None:
+    """R-2 (PERF-03 leftover): every view of an area or 7-day board added up every member's play, which late
+    in a season is about 20 ms of database time, so a room opening the board at once queued on the database."""
+    join(app_client, new_client, "Marta")
+    room = [add(db, name, rank_points=300) for name in ("Leo", "Pau", "Kai", "Sol")]
+    for u in room:
+        play_daily(db, u, "mech", clock.now)
+        play_mock(db, u, clock.now)
+    marta = user(db, "Marta")
+    for area, period in (("mech", "season"), (None, "week")):
+        seen = leaderboard.board(db, marta, area, period, clock.now)
+        assert seen.players == len(room)
+        for u in room:
+            own = db.scalar(select(func.count()).select_from(Attempt).where(Attempt.user_id == u.id)) or 0
+            look = lambda u=u, a=area, p=period: leaderboard.board(db, u, a, p, clock.now)  # noqa: E731
+            assert attempts_read(db, look) <= own
+
+
+def test_boards_keep_others_lp_for_half_a_minute_and_read_the_rest_on_every_view(
+    team: None, app_client: TestClient, new_client: NewClient, db: Session, clock: Clock
+) -> None:
+    c = join(app_client, new_client, "Marta")
+    marta = user(db, "Marta")
+    leo, pau, kai = (add(db, name, rank_points=300) for name in ("Leo", "Pau", "Kai"))
+    for u in (marta, leo, pau, kai):
+        play_daily(db, u, "mech", clock.now)
+    play_mock(db, pau, clock.now)
+    boards = [
+        (a, p)
+        for a in (None, "mech", "elec", "rules")
+        for p in ("season", "week")
+        if (a, p) != (None, "season")
+    ]
+
+    def views() -> dict[tuple[str, str | None, str], leaderboard.Board]:
+        return {
+            (u.display_name, a, p): leaderboard.board(db, u, a, p, clock.now)
+            for u in (marta, leo, pau, kai)
+            for a, p in boards
+        }
+
+    cold = {}
+    for key in views():
+        leaderboard._sums.clear()
+        name, a, p = key
+        cold[key] = leaderboard.board(db, user(db, name), a, p, clock.now)
+    assert views() == cold  # the same boards from the kept sums
+    today = madrid_day(clock.now)
+    assert set(leaderboard._sums) == {(a, first_day(p, today)) for a, p in boards}  # what the sums depend on
+
+    play_daily(db, leo, "elec", clock.now)
+    assert leaderboard.board(db, leo, "elec", "season", clock.now).me == leaderboard.Mine(
+        1, won(db, "Leo", "elec"), False
+    )  # your own play shows at once
+    assert board(c, board="elec")["players"] == 0  # others' after at most BOARD_TTL
+
+    def age(seconds: float) -> None:
+        for key, (at, lp) in list(leaderboard._sums.items()):
+            leaderboard._sums[key] = (at - seconds, lp)
+
+    age(leaderboard.BOARD_TTL - 1)
+    assert board(c, board="elec")["players"] == 0
+    age(1)
+    assert rows(board(c, board="elec")) == [(1, "Leo", won(db, "Leo", "elec"), False)]
+    clock.advance(days=1)  # a new Madrid day moves the 7-day window: new sums
+    login(c, email("Marta"), PASSWORD)
+    board(c, period="week")
+    assert (None, first_day("week", madrid_day(clock.now))) in leaderboard._sums
+
+    # Opting out, leaving the team and renaming show at once, whatever was kept.
+    assert c.patch("/api/me", json={"leaderboard_opt_out": True}).status_code == 200
+    db.execute(update(User).where(User.id == kai.id).values(status="alumni"))
+    db.execute(update(User).where(User.id == pau.id).values(display_name="Paula"))
+    db.commit()
+    db.expire_all()
+    mech = {"Leo": won(db, "Leo", "mech"), "Paula": won(db, "Paula", "mech")}
+    seen_by_leo = leaderboard.board(db, leo, "mech", "season", clock.now)
+    assert [(r.display_name, r.score) for r in seen_by_leo.rows] == sorted(
+        mech.items(), key=lambda s: (-s[1], s[0])
+    )
+    assert seen_by_leo.players == 2
+    mine = won(db, "Marta", "mech")
+    assert board(c, board="mech")["me"] == {
+        "rank": 1 + sum(1 for x in mech.values() if x > mine),
+        "score": mine,
+        "hidden": True,
+    }
+    assert "Marta" not in str(board(c, board="mech")["rows"])

@@ -150,7 +150,7 @@ No session needed; the CSRF header still is.
 
 | Method and path | Purpose |
 |---|---|
-| `GET /api/leaderboard` | A board (`board`: `everyone`, `mech`, `elec`, `rules`; `period`: `season`, `week`) and the caller's place |
+| `GET /api/leaderboard` | A board (`board`: `everyone`, `mech`, `elec`, `rules`; `period`: `season`, `week`) and the caller's place. On the area and 7-day boards other members' LP can be up to 30 s old ([game-rules](game-rules.md#6-leaderboards)) |
 | `GET /api/leaderboard/verticals` | Average rank and participation per vertical (`period`) |
 
 ### `/api/learning` (`api/routes/learning.py`): `Member`

@@ -320,6 +320,7 @@ Code: `src/ifs_tests/domain/leaderboard.py`, `src/ifs_tests/services/leaderboard
 - **Opt-out** (Profile → "Hide me from the leaderboard"): left out of the rows, the ranking and the vertical board, but they still see their own place as if included.
 - **Ties:** competition ranking (1, 2, 2, 4), then by name.
 - **Top 50** are shown, plus anyone tied at 50th. Anyone outside it still sees their own place.
+- **How fresh:** the Everyone board this season and the vertical board are read on every view. On the area and 7-day boards your own LP is too, but other members' LP can be up to 30 seconds old (`BOARD_TTL` in `src/ifs_tests/services/leaderboard.py`): a new answer reaches everyone else's view of those boards within half a minute. Names, opt-outs and who is active always show at once.
 - **Verticals:** for each vertical with at least 3 members who are active, haven't opted out and played for their rank this season: the average of their rank points, and participation (the share of them with a submitted daily answer in the last 7 Madrid days). Opted-out members are left out of the averages entirely, because otherwise anyone could subtract the named members' ranks and recover theirs. Members without a vertical count for none.
 
 | Constant | Value | File |
@@ -327,6 +328,7 @@ Code: `src/ifs_tests/domain/leaderboard.py`, `src/ifs_tests/services/leaderboard
 | `TOP` | 50 | `src/ifs_tests/domain/leaderboard.py` |
 | `WEEK_DAYS` | 7 | same |
 | `MIN_VERTICAL` | 3 | same |
+| `BOARD_TTL` | 30 s | `src/ifs_tests/services/leaderboard.py` |
 
 ---
 
