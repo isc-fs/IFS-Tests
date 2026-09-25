@@ -248,7 +248,7 @@ Policy (expand/contract, and the list of pending contract steps) is in [data-mod
    uv run ruff format migrations
    ```
    Revisions are numbered `0001`, `0002`, …: use the next number after the newest file in `ls migrations/versions/` (`0017` while `0016` is the newest). Without `--rev-id` Alembic invents a random one. The generated file isn't ruff-formatted, hence the second command.
-3. Review it by hand. Autogenerate misses data moves, server-side defaults on existing rows, `CHECK` constraint changes and anything the app needs backfilled. Make it **expand only** if the release before yours uses what you are changing: add the new column or table, backfill with `op.execute`, and leave the old one until a later release drops it. Write a `downgrade()` that undoes it.
+3. Review it by hand, and fix it now: once a migration has run on staging or prod, never edit it, write a new one ([data-model.md](data-model.md#expandcontract)). Autogenerate misses data moves, server-side defaults on existing rows, `CHECK` constraint changes and anything the app needs backfilled. Make it **expand only** if the release before yours uses what you are changing: add the new column or table, backfill with `op.execute`, and leave the old one until a later release drops it. Write a `downgrade()` that undoes it.
 4. Apply and check:
    ```bash
    uv run alembic upgrade head

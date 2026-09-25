@@ -327,6 +327,10 @@ The migration 0002 revokes `UPDATE`, `DELETE` and `TRUNCATE` on `audit_log` from
 
 Alembic's current revision: the newest file in `migrations/versions/` (the table under [Migrations](#migrations) lists them).
 
+### `deploy_migrations`
+
+Only on the server, outside Alembic and the models: `deploy/deploy.sh` creates it (as `migrator`) and, after each migration step, records every migration of the deployed image, `revision` (primary key) and `fingerprint` (16 hex characters of a SHA-256 of the migration's code without comments, docstrings or layout). A revision alone can't tell a migration from an edited one under the same number; with this record a deploy refuses an image whose migration under an applied number has other code, and a roll back is allowed to skip migrations only when the database recorded the image's whole chain and the revision it is at ([runbook](runbook.md#22-when-a-deploy-fails)). It is part of every dump, so a restore brings back the record that matches the restored schema.
+
 ## Personal data
 
 [ADR 0006](adr/0006-personal-data.md) sets the rules; `services/privacy.py` implements them. AGENTS.md requires anything new stored about a person to appear in `services/privacy.export` and to go when the account is deleted (a cascading foreign key or a step in `privacy._delete`).
@@ -385,6 +389,7 @@ Retention: alumni and disabled accounts are deleted 365 days after `left_at`; th
 
 - **Expand** in one release: add tables and nullable (or defaulted) columns, widen checks, backfill. Never rename or drop something the running release uses.
 - **Contract** in a later release, once no deployed image uses the old column: drop it.
+- **Never edit a migration once it has run anywhere** (staging included): the database keeps its revision number, so the edited version would never run there. Write a new migration instead. `deploy.sh` refuses such an image ([`deploy_migrations`](#deploy_migrations)); reformatting or rewording comments is fine, the fingerprint ignores them.
 
 Example: 0014 added `account_xp` and left `xp` in place, because the release before ADR 0007 still wrote lifetime XP there during the deploy; the model maps the old column as `legacy_xp` so SQLAlchemy keeps it in the schema. `tests/integration/test_migrations.py` checks upgrade → downgrade → upgrade and that the models and migrations produce the same schema.
 

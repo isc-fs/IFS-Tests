@@ -8,7 +8,11 @@
 # it (including /readyz, a database query as the app role, and the SPA at /). If the smoke test fails, the
 # previous tag is started again (migrations are expand/contract, so the previous image still works with the
 # new schema). Rolling back to an older tag works the same way: when the database is already past every
-# migration the older image knows, migrations are skipped. Run it from a checkout of the repo on the server.
+# migration the older image knows, migrations are skipped. That is proven, not assumed: after migrating, the
+# database records each migration of the image with a fingerprint of its code (table deploy_migrations), so a
+# deploy refuses a database at a revision the image doesn't know unless the record shows the image's whole chain
+# leads to it, and refuses an image whose migration under an applied number isn't the one applied (an edited
+# migration would otherwise never run). Run it from a checkout of the repo on the server.
 set -euo pipefail
 
 die() { echo "deploy: $*" >&2; exit 1; }
@@ -52,21 +56,50 @@ fi
 # Passed by name only, so the passwords never show up on a command line (`ps`).
 export IFS_DATABASE_URL="postgresql+psycopg://migrator:${MIGRATOR_PASSWORD}@db:5432/quiz"
 export PGPASSWORD=$MIGRATOR_PASSWORD
-current=$(compose "$tag" exec -T -e PGPASSWORD db psql -h 127.0.0.1 -U migrator -d quiz -tAc \
-  "SELECT version_num FROM alembic_version" 2>/dev/null || true)
-unset PGPASSWORD
-known=1
-if [[ -n $current ]] && ! out=$(compose "$tag" run --rm --no-deps api alembic show "$current" 2>&1); then
-  grep -q "Can't locate revision" <<<"$out" || die "can't read migration $current in $tag: $out"
-  known=0
-fi
-if [[ $known == 1 ]]; then
+sql() { compose "$tag" exec -T -e PGPASSWORD db psql -h 127.0.0.1 -U migrator -d quiz -v ON_ERROR_STOP=1 -tAc "$1"; }
+current=$(sql "SELECT version_num FROM alembic_version" 2>/dev/null || true)
+sql "SET client_min_messages TO warning;
+  CREATE TABLE IF NOT EXISTS deploy_migrations (revision text PRIMARY KEY, fingerprint text NOT NULL)" >/dev/null
+recorded=$(sql "SELECT revision || ' ' || fingerprint FROM deploy_migrations") || die "can't read deploy_migrations"
+# "<revision> <fingerprint>" for each migration the image has: its code without comments, docstrings or layout.
+chain=$(compose "$tag" run --rm --no-deps -T api python - <<'PY'
+import ast, hashlib
+from alembic.config import Config
+from alembic.script import ScriptDirectory
+
+for script in ScriptDirectory.from_config(Config("alembic.ini")).walk_revisions():
+    tree = ast.parse(open(script.path, encoding="utf-8").read())
+    for node in ast.walk(tree):
+        body = getattr(node, "body", None)
+        if isinstance(body, list) and body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant):
+            node.body = body[1:] or [ast.Pass()]
+    print(script.revision, hashlib.sha256(ast.unparse(tree).encode()).hexdigest()[:16])
+PY
+) || die "can't list the migrations of $tag"
+grep -qvE '^[0-9A-Za-z_]+ [0-9a-f]{16}$' <<<"$chain" && die "unexpected migration list from $tag: $chain"
+# Migrations of the image recorded here with other code: edited after they were applied.
+edited=$(awk 'NR == FNR { if (NF == 2) seen[$1] = $2; next } ($1 in seen) && seen[$1] != $2 { print $1 }' \
+  <(echo "$recorded") <(echo "$chain") | tr '\n' ' ')
+[[ -z $edited ]] || die "migration(s) ${edited% } in $tag differ from the ones applied to this database: an \
+applied migration was edited (write a new one instead). Nothing changed. See docs/runbook.md, 2.2"
+if [[ -z $current ]] || grep -q "^$current " <<<"$chain"; then
   log "migrating"
   compose "$tag" run --rm --no-deps -e IFS_DATABASE_URL api alembic upgrade head
+  values=$(sed -E "s/^([^ ]+) ([^ ]+)$/('\1', '\2')/" <<<"$chain" | paste -sd, -)
+  sql "INSERT INTO deploy_migrations VALUES $values
+    ON CONFLICT (revision) DO UPDATE SET fingerprint = EXCLUDED.fingerprint" >/dev/null
 else
+  # Ahead only if this database recorded the revision it is at and every migration of the image.
+  missing=$(awk 'NR == FNR { if (NF == 2) seen[$1] = 1; next } !($1 in seen) { print $1 }' \
+    <(echo "$recorded") <(echo "$chain") | tr '\n' ' ')
+  if ! grep -q "^$current " <<<"$recorded" || [[ -n $missing ]]; then
+    die "the database is at $current, which $tag doesn't know, and nothing shows it comes after $tag's \
+migrations (a rewritten or foreign migration, or a restore not yet deployed over). Nothing changed. \
+See docs/runbook.md, 2.2"
+  fi
   log "the database ($current) is ahead of $tag: skipping migrations (expand/contract keeps it compatible)"
 fi
-unset IFS_DATABASE_URL
+unset PGPASSWORD IFS_DATABASE_URL
 
 smoke() {
   compose "$tag" exec -T api python - <<'PY'
