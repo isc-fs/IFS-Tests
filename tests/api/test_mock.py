@@ -222,6 +222,27 @@ def test_ungraded_questions_are_shown_and_never_move_the_rank(player: TestClient
     assert [i["feedback"]["correct"] for i in s["items"]].count(None) == 2
 
 
+def test_an_ungraded_question_left_to_run_out_never_moves_the_rank(
+    player: TestClient, db: Session, clock: Clock
+) -> None:
+    state = player.post("/api/mock/quizzes/9001/start").json()
+    while state["current"]["question"]["graded"]:
+        state = answer(player, state, right_answer(db, state["current"]["question"]["id"]))
+    ungraded = state["current"]["question"]["id"]
+    rank = select(User.rank_points).where(User.display_name == "Marta")
+    before = db.scalars(rank).one()
+    clock.now = datetime.fromisoformat(state["current"]["deadline_at"])
+    clock.advance(seconds=4)
+    state = player.get(f"/api/mock/sessions/{state['session_id']}").json()
+    db.expire_all()
+    assert db.scalars(rank).one() == before
+    while state["current"]:
+        q = state["current"]["question"]
+        state = answer(player, state, right_answer(db, q["id"]) if q["graded"] else {"options": []})
+    item = next(i for i in state["summary"]["items"] if i["question"]["id"] == ungraded)
+    assert (item["late"], item["feedback"]["correct"], item["feedback"]["lp"]) == (True, None, 0)
+
+
 def test_runs_belong_to_their_player(
     player: TestClient, app_client: TestClient, new_client: NewClient
 ) -> None:
