@@ -156,11 +156,16 @@ deploy/restore.sh prod quiz-20261003-033000-nightly.dump # restore (asks you to 
 What `deploy/restore.sh` does, in order:
 1. Checks the arguments, the `.env` file, its permissions and its `QUIZ_ENV`, as `deploy.sh` does.
 2. Reads the dump's schema revision and asks the deployed image whether it knows it. A dump taken on a newer release than the one deployed (after a roll back, for example) is refused: deploy that release first, or pick an older dump. Nothing has changed at this point.
-3. Asks you to type the environment name.
+3. Asks you to type the environment name. From here on the restore runs on its own, logging to
+   `/srv/quiz/<env>/restore-<date>-<time>.log`, and your terminal only follows that log: a dropped SSH session, Ctrl-C
+   or closing the terminal stops the view, not the restore. Reconnect and follow it again with
+   `tail -f /srv/quiz/<env>/restore-*.log`; its last line says how it ended. A second restore is refused while one runs.
 4. Stops `api` and `scheduler` and takes a safety dump of the current data, `quiz-<date>-<time>-pre-restore.dump`.
-5. In **one transaction**: drops the `public` schema with everything in it, recreates it, loads the dump as `migrator` (tables, data, and the grants the dump carries) and re-applies `deploy/db/roles.sql`. Tables that newer migrations created don't survive, and the privileges end up exactly as in a freshly migrated database (`app_rt` still can't rewrite `audit_log`). If anything fails, the transaction rolls back and the data is as it was.
+5. In **one transaction**: drops the `public` schema with everything in it, recreates it, loads the dump as `migrator` (tables, data, and the grants the dump carries), re-applies `deploy/db/roles.sql` and marks the schema with a comment, `restored from <file> over <safety dump>`. Tables that newer migrations created don't survive, and the privileges end up exactly as in a freshly migrated database (`app_rt` still can't rewrite `audit_log`). If anything fails, the transaction rolls back and the data is as it was.
 6. Runs `alembic upgrade head` as `migrator`: an older dump is brought up to the deployed release.
-7. Starts `api` and `scheduler` again, **whatever happened** from step 4 on (on a failure it prints `restore: FAILED, see above` first).
+7. Starts `api` and `scheduler` again.
+
+If anything fails from step 4 on, it prints `restore: FAILED, see above`, waits for the database to finish whatever it was still doing, and reads the schema comment to tell whether the dump was loaded. It then says which of three states you are in (the last rows below): it never starts the app on a dump the deployed release hasn't migrated.
 
 | The script stopped at | What state you're in | What to do |
 |---|---|---|
@@ -168,8 +173,11 @@ What `deploy/restore.sh` does, in order:
 | `can't read <file>: is it complete?` | Nothing changed | The file is truncated or damaged (a full disk during the dump?). Pick another dump |
 | `... which <tag> doesn't know` | Nothing changed | Deploy the release the dump was taken on (or a later one), or pick an older dump |
 | The safety dump | The app was stopped and started again; nothing else changed | `df -h`; `docker logs quiz-<env>-backup-1` |
-| `restoring <file>` then `FAILED` | The transaction rolled back: the data is as it was, and the app is running again | Read the error. `role "..." does not exist` means the dump grants something to a role this database doesn't have |
-| `migrating` then `FAILED` | The database holds the dump, still at its old revision, under a newer release: expect errors | Fix the migration error, or go back to where you were by restoring the safety dump (`...-pre-restore.dump`) |
+| `a restore is already running` | Nothing changed | Follow it: `tail -f /srv/quiz/<env>/restore-*.log`. If none is running (`ps aux \| grep restore`, after a reboot for example), `rmdir /srv/quiz/<env>/restore.lock` |
+| `FAILED`, then `<file> was not loaded: the data is as it was` | The transaction rolled back; the app is running again | Read the error. `role "..." does not exist` means the dump grants something to a role this database doesn't have |
+| `FAILED`, then `<file> was loaded and migrated to <tag>` | The data is the dump's, migrated; the app is running | Read the cause on the `FAILED` line (an error above it, or `stopped by SIGTERM`); check the site |
+| `FAILED`, then `the database holds <file>, not migrated to <tag>; the app stays stopped` | The data is the dump's at its old revision; the app is stopped so it doesn't serve errors | Fix the error (a wrong `MIGRATOR_PASSWORD`, a failing migration), then `deploy/deploy.sh <env> <tag>`: it migrates and starts the app. Or go back by restoring the safety dump it names |
+| The restore process itself was killed (`kill -9`, a server reboot) mid-way | Unknown until you look | `deploy/deploy.sh <env> <deployed tag>` migrates whatever is there and starts the app; then `rmdir /srv/quiz/<env>/restore.lock`, which the killed restore left behind. Which data you have: `docker exec quiz-<env>-db-1 psql -U postgres -d quiz -tAc "SELECT obj_description('public'::regnamespace, 'pg_namespace')"` names the last dump restored |
 
 To undo a restore, restore its safety dump the same way.
 

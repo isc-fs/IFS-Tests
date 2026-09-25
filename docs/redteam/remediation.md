@@ -1,6 +1,6 @@
 # Red-team remediation tracker (functional report of 2026-09-24)
 
-One row per finding from the [red-team report](report-2026-09-24.md): its priority, who fixes it, where, and how the fix
+One row per finding from the [red-team report](report-2026-09-24.md) and its [second sweep](report-2026-09-25-sweep2.md): its priority, who fixes it, where, and how the fix
 was proven. Update the row in the same PR that changes it. If something goes wrong later, this is the trail: the
 PR holds the change, the test named here holds the proof, and the evidence column says what was re-run.
 
@@ -160,6 +160,48 @@ Still present and not scheduled (Low, report section 4): UI-07, UI-11, UI-15, UI
 ## Low and Info
 
 Not scheduled yet: see the report's sections 4.1–4.9. When one is picked up, add its row here.
+
+## Sweep 2 (2026-09-25)
+
+A second red-team pass on `dev` at `0b8f1be` ([report](report-2026-09-25-sweep2.md), evidence in
+`~/dev/IFS-Tests-evidence/redteam-2026-09-25-sweep2/`): of the 42 Critical, High and Medium findings above, 32
+verified fixed, 10 partly, none regressed; new findings 0 Critical, 1 High, 19 Medium, 50 Low, 16 Info.
+
+### High
+
+| Finding | Branch / PR | Status | Proof |
+|---|---|---|---|
+| S2-OPS-01 an interrupted `restore.sh` can leave prod down, or serving an unmigrated dump while it says "FAILED" | fix/25 | Fixed | `test_deploy_scripts.py`: the restore goes on when its terminal is lost; a rolled-back, a loaded-then-failed and a loaded-but-unmigratable restore each reported as what happened (removing the detach fails the first; the old script fails all of them); replay of the red team's interruptions on a prod-like stack (0016 dump, 291k answers, onto 0023): dropped pty, SIGHUP, `kill -9` and Ctrl-C of the script each end restored at 0023 with the app up (`/readyz` 200, sign-in 401, never 500); SIGTERM to the restore itself reports truthfully, including a commit after its client died; a second restore refused. Found meanwhile: the red team's Ctrl-C probe never delivered SIGINT (a background job ignores it), so its "rolled back" row is untested |
+
+### Medium: plan (not started)
+
+Priorities as above. Waves run in order; the workstreams inside a wave own disjoint files and can run in parallel.
+Each fix follows "How a fix counts as done", starting from the sweep-2 probe in the evidence folder.
+
+| Finding | P | Wave | Workstream (files) | Needs first |
+|---|---|---|---|---|
+| S2-BANK-01 the mass-removal guard only counts deletions: a mirror with empty quiz lists empties every quiz; one that lost its answers drops every correction | P1 | 1 | H bank (`services/bank.py`, bank tests, architecture/runbook) | |
+| S2-BANK-02 the first push on a database loaded before #52 drops corrections | P1 | 1 | H bank | |
+| S2-DOC-01 sample and real banks retire each other; the documented escape retires the real bank | P2 | 1 | H bank (+ testing, troubleshooting) | Owner: exempt the sample IDs (recommended) or only rewrite the docs |
+| S2-OPS-02 a dropped session during `deploy.sh`'s wait leaves a failing release serving | P2 | 1 | I ops (`deploy.sh`, `compose.yaml`, runbook), after fix/25 | |
+| S2-OPS-03 a damaged database can't be restored (the safety dump blocks it) | P2 | 1 | I ops (`restore.sh`) | Owner: a `--no-safety-dump` override behind a typed confirmation |
+| S2-OPS-04 bank-parser and Nginx fixes don't take effect on deploy, and nothing says so | P2 | 1 | I ops (`deploy.sh` reminder, runbook release checklist) | |
+| S2-ACC-01 the export drops a mock run's `unreached` counts | P2 | 1 | J small (`api/schemas.py`, strict export models, `test_privacy.py`) | |
+| S2-LIVE-02 live 204 routes share one `Response`, so the after-response XP share never runs | P2 | 1 | J small (`api/routes/live.py`, a two-session test) | |
+| S2-DOM-01 a blind pick pays on single-choice questions with two right options | P2 | 2 | K scoring (`domain/rank.py`, rank tests, game-rules) | Reviewers: Q18, Q64, Q446, Q600 keys (likely FS-Quiz errors) |
+| S2-DOM-02 the hint promises "half"; the real stakes differ (25–46 %, wrong answers cost up to ×3.4) | P2 | 2 | K scoring (`QuestionCard.tsx`, players' guide, game-rules) | Follows DOM-03's decision |
+| S2-DOM-03 the typed-answer hint floor of 0.5 is far above how often a guess lands (9 %) | P3 | 2 | K scoring (`domain/rank.py`) | TDs: floor per answer kind |
+| S2-ACC-02 undoing a mistaken lowering of position mints or destroys LP | P2 | 2 | K scoring (`domain/rank.py`, `services/accounts.py`, a migration) | Owner: record what a lowering took this season (as for raises) |
+| S2-LIVE-01 tables sharing a topic don't take turns across sessions (ties to the lowest ID) | P2 | 2 | L live and screens (`domain/live.py`) | |
+| S2-UI-02 projector figures stretched, options below the fold | P2 | 2 | L (`Live.tsx`, `global.css`) | |
+| S2-UI-01 the offline banner covers the running countdown | P2 | 2 | L (`global.css`) | |
+| S2-UI-05 the reviewers' guide quotes a message the app never shows | P3 | 2 | L (`reviewers.md` or `Form.tsx`) | |
+| S2-GATE-02 8 mutants of the new code survive all tests | P2 | 3 | M tests only, after waves 1–2 (their code moves) | |
+| S2-GATE-03 UI-01's retry is tested on the daily page only | P2 | 3 | M (`Mock.test.tsx`, `Live.test.tsx`) | |
+| S2-PERF-01 little CPU headroom at 80–90 live screens (busiest seconds 69–104 % of one CPU) | P2 | 3 | N capacity (`services/live.py` room view, wake-ups) | Re-measure on the Hetzner staging server first; `cpus: 2.0` is the fallback |
+
+Low and Info (50 + 16) and the sweep-1 Low/Info still open are listed in the report's sections 3.3, 4.2 and 4.3;
+not scheduled.
 
 ## Log
 
