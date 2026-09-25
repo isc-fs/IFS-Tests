@@ -221,6 +221,22 @@ def test_within_the_grace_period_is_on_time(player: TestClient, db: Session, clo
     assert (r["late"], r["xp"]) == (False, DAILY) and r["lp"] > 0
 
 
+def test_neither_the_page_nor_the_nightly_job_closes_a_question_inside_its_grace(
+    player: TestClient, db: Session, clock: Clock
+) -> None:
+    started = player.post("/api/daily/rules/start").json()
+    clock.now = datetime.fromisoformat(started["deadline_at"])
+    clock.advance(seconds=3)
+    assert daily.close_expired(db, clock.now) == 0
+    area = next(a for a in player.get("/api/daily").json()["areas"] if a["area"] == "rules")
+    assert area["state"] == "started"
+    r = player.post(
+        f"/api/daily/attempts/{started['attempt_id']}/answer",
+        json=right_answer(db, started["question"]["id"]),
+    ).json()
+    assert (r["late"], r["xp"]) == (False, DAILY) and r["lp"] > 0
+
+
 def test_streaks_grow_by_the_day_and_reset_after_a_gap(player: TestClient, db: Session, clock: Clock) -> None:
     assert play(player, db, "mech")["xp"] == DAILY
     next_day(player, clock)

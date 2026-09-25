@@ -14,7 +14,7 @@ from ifs_tests.bank.mirror import load_bank
 from ifs_tests.bank.sample import SAMPLE_DIR
 from ifs_tests.db.models import Attempt, DailyQuestion, Question, QuizQuestion, User
 from ifs_tests.domain.xp import xp_award
-from ifs_tests.services import maintenance
+from ifs_tests.services import maintenance, mock
 from ifs_tests.services.bank import import_bank
 
 from ..conftest import Clock
@@ -169,6 +169,21 @@ def test_a_question_left_to_run_out_is_closed_as_wrong(player: TestClient, db: S
         later = answer(player, later, right_answer(db, later["current"]["question"]["id"]))
     timed_out = later["summary"]["items"][0]["feedback"]
     assert (timed_out["correct"], timed_out["xp"]) == (False, 0) and timed_out["lp"] < 0
+
+
+def test_neither_the_page_nor_the_nightly_job_closes_a_question_inside_its_grace(
+    player: TestClient, db: Session, clock: Clock
+) -> None:
+    state = player.post(f"/api/mock/quizzes/{CV}/start").json()
+    clock.now = datetime.fromisoformat(state["current"]["deadline_at"])
+    clock.advance(seconds=3)
+    assert mock.close_expired(db, clock.now) == 0
+    again = player.get(f"/api/mock/sessions/{state['session_id']}").json()
+    assert (again["position"], again["current"]["attempt_id"]) == (0, state["current"]["attempt_id"])
+    while again["current"]:
+        again = answer(player, again, right_answer(db, again["current"]["question"]["id"]))
+    s = again["summary"]
+    assert (s["correct"], s["items"][0]["late"]) == (5, False)
 
 
 def test_a_late_answer_moves_on_and_counts_as_wrong(player: TestClient, db: Session, clock: Clock) -> None:
