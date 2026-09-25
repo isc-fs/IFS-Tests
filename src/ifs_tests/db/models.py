@@ -561,6 +561,10 @@ class MockSession(Base):
     position: Mapped[int] = mapped_column(server_default="0")
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Set when the run finishes: the questions it didn't reach (and how many were graded), kept so a question
+    # FS-Quiz deletes later doesn't change its summary. Null for runs finished by a release before 0022.
+    unreached: Mapped[int | None] = mapped_column(SmallInteger)
+    unreached_graded: Mapped[int | None] = mapped_column(SmallInteger)
 
 
 Index(

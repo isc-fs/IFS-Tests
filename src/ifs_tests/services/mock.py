@@ -188,16 +188,23 @@ def _attempts(db: DB, s: MockSession) -> dict[int, Attempt]:
 
 
 def _run(db: DB, s: MockSession, attempts: dict[int, Attempt]) -> list[Question]:
-    """The run's questions in quiz order: every question it has already shown, plus the still-playable ones
-    (only while running). Tracking by question, not by position, keeps a run intact when a question is
-    hidden or its images arrive mid-run."""
-    everything = db.scalars(
-        select(Question)
-        .join(QuizQuestion, QuizQuestion.question_id == Question.id)
-        .where(QuizQuestion.quiz_id == s.quiz_id)
-        .order_by(QuizQuestion.position)
-    )
-    return [q for q in everything if q.id in attempts or (q.playable and s.finished_at is None)]
+    """The run's questions: the ones it has shown, in the order it showed them, then (only while running) the
+    still-playable ones it hasn't, in quiz order. Going by what it showed keeps a run and its summary intact when
+    a question is hidden, its images arrive mid-run, or FS-Quiz deletes it or drops it from the quiz."""
+    shown = sorted(attempts.values(), key=lambda a: a.id)
+    found = db.scalars(select(Question).where(Question.id.in_([a.question_id for a in shown])))
+    by_id = {q.id: q for q in found}
+    run = [by_id[a.question_id] for a in shown]
+    if s.finished_at is None:
+        run += [q for q in _questions(db, s.quiz_id) if q.id not in attempts]
+    return run
+
+
+def _finish(db: DB, s: MockSession, attempts: dict[int, Attempt], now: datetime) -> None:
+    """Close the run, keeping what it didn't reach as the quiz stands now."""
+    left = [q for q in _questions(db, s.quiz_id) if q.id not in attempts]
+    s.unreached, s.unreached_graded = len(left), sum(1 for q in left if q.graded)
+    s.finished_at = now
 
 
 def _advance(db: DB, s: MockSession, now: datetime) -> tuple[Question, Attempt] | None:
@@ -227,8 +234,8 @@ def _advance(db: DB, s: MockSession, now: datetime) -> tuple[Question, Attempt] 
         if a.submitted_at is None:
             _time_out(db, s, q, a, now)
     s.position = sum(1 for a in attempts.values() if a.submitted_at)
-    if current is None:
-        s.finished_at = s.finished_at or now
+    if current is None and s.finished_at is None:
+        _finish(db, s, _attempts(db, s), now)
     return current
 
 
@@ -284,7 +291,7 @@ def _end(db: DB, s: MockSession, now: datetime) -> None:
         if a.submitted_at is None:
             _time_out(db, s, db.get_one(Question, a.question_id), a, now)
     s.position = len(attempts)
-    s.finished_at = now
+    _finish(db, s, attempts, now)
 
 
 def end(db: DB, user: User, session_id: int, now: datetime) -> State:
@@ -336,12 +343,16 @@ def _summary(db: DB, s: MockSession, now: datetime) -> Summary:
         checked.score = xp.Grant(xp=a.xp if a else 0, lp=a.lp if a else 0.0, level=0)
         items.append(Item(q, checked, bool(a and a.late), answer))
     correct = sum(1 for i in items if i.checked.correct and not i.late)  # right but late scores as wrong
-    unreached = [q for q in _questions(db, s.quiz_id) if q.id not in attempts]
+    unreached, unreached_graded = s.unreached, s.unreached_graded
+    if unreached is None or unreached_graded is None:  # finished before 0022: as the quiz stands now
+        left = [q for q in _questions(db, s.quiz_id) if q.id not in attempts]
+        unreached, unreached_graded = len(left), sum(1 for q in left if q.graded)
     quiz = db.get_one(Quiz, s.quiz_id)
     return Summary(
         correct=correct,
-        graded=sum(1 for q in questions + unreached if q.graded),
-        unreached=len(unreached),
+        # graded when answered, as recorded: a later correction or deletion doesn't change the run
+        graded=sum(1 for a in attempts.values() if a.correct is not None) + unreached_graded,
+        unreached=unreached,
         xp=sum(a.xp for a in attempts.values()),
         lp=round(sum(a.lp for a in attempts.values()), 2),
         counted=s.counted,

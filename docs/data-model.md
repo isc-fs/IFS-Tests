@@ -242,6 +242,7 @@ One run through a past quiz. **Personal data.**
 | `counted` | The first run of this quiz this season: moves LP. Replays earn XP only |
 | `position` | Questions answered so far |
 | `started_at`, `finished_at` | Null `finished_at` = still open. A run ended early (by its player, or by the nightly job after 2 days untouched) is finished too; its summary lists the questions it reached |
+| `unreached`, `unreached_graded` | Set when the run finishes: how many of the quiz's playable questions it didn't reach, and how many of those were graded. With the run's own attempts (in the order shown, graded as recorded) they make its summary, so a question FS-Quiz later deletes or drops from the quiz, or a reviewer hides, doesn't change "*n* of *m* right". Null for runs finished by a release before 0022, whose summaries count the quiz as it stands |
 
 Partial unique index **`uq_mock_sessions_open`** on (`user_id`, `quiz_id`) `WHERE finished_at IS NULL`: one open run per player and quiz; `services/mock.start` inserts with `ON CONFLICT DO NOTHING` and returns the open run.
 
@@ -386,6 +387,7 @@ Retention: alumni and disabled accounts are deleted 365 days after `left_at`; th
 | 0019 | `ix_attempts_lp_day`, an index on each member's answers by the day their LP counts, so the leaderboards read a period's play instead of the whole history. Index only |
 | 0020 | `questions.graded_hash` and `upstream_change`: a new solution, image or wording upstream keeps a reviewer's correction; `quizzes.retired` for quizzes FS-Quiz deleted. Expand only: the previous release ignores them, and the next `ifs-tests push` fills `graded_hash` |
 | 0021 | `users.position_lifts`, so a correction of position takes back only what a raise gave. Expand only: the previous release ignores it |
+| 0022 | `mock_sessions.unreached` and `unreached_graded`, so upstream deletions don't rewrite a finished run's summary; backfilled for finished runs from the quiz as it stood. Expand only: the previous release ignores them, and a run it finishes during the deploy keeps them null (counted as the quiz stands) |
 
 ### Expand/contract
 
