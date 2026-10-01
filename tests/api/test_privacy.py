@@ -6,13 +6,15 @@ import time
 import tracemalloc
 from collections.abc import Callable
 from datetime import date, timedelta
-from typing import Any
+from typing import Any, get_args
 
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import BaseModel
 from sqlalchemy import Engine, func, inspect, select, text, update
 from sqlalchemy.orm import Session, sessionmaker
 
+from ifs_tests.api.schemas import Export
 from ifs_tests.db.models import Attempt, AuditLog, Base, Invite, LiveAnswer, LiveSession, StreakFreeze, User
 from ifs_tests.db.models import Session as LoginSession
 from ifs_tests.services import maintenance, privacy
@@ -126,6 +128,117 @@ POINTING_NOT_EXPORTED = {
     ("reports", "resolved_by"): "a reviewer's work on someone else's report: in actions",
 }
 
+KEY = "a database key, meaningless outside it"
+SESSION = "the live quiz's own state, not about the person"
+# Every other column of those tables: where the export shows it, or why it doesn't.
+COLUMNS = {
+    ("attempts", "question_id"): "answers.question_id",
+    ("attempts", "mode"): "answers.mode",
+    ("attempts", "answer"): "answers.answer",
+    ("attempts", "correct"): "answers.correct",
+    ("attempts", "created_at"): "answers.started_at",
+    ("attempts", "day"): "answers.day",
+    ("attempts", "area"): "answers.area",
+    ("attempts", "deadline_at"): "answers.deadline_at",
+    ("attempts", "submitted_at"): "answers.submitted_at",
+    ("attempts", "late"): "answers.late",
+    ("attempts", "xp"): "answers.xp",
+    ("attempts", "lp"): "answers.lp",
+    ("attempts", "hint_used"): "answers.hint_used",
+    ("attempts", "passed"): "answers.passed",
+    ("invites", "role"): "invite.role",
+    ("invites", "vertical"): "invite.vertical",
+    ("invites", "note"): "invite.note",
+    ("invites", "used_at"): "invite.used_at",
+    ("live_answers", "session_id"): "live.answers_sent_as_captain.code",
+    ("live_answers", "position"): "live.answers_sent_as_captain.question",
+    ("live_answers", "answer"): "live.answers_sent_as_captain.answer",
+    ("live_answers", "correct"): "live.answers_sent_as_captain.correct",
+    ("live_answers", "submitted_at"): "live.answers_sent_as_captain.submitted_at",
+    ("live_players", "session_id"): "live.joined.code",
+    ("live_players", "table_id"): "live.joined.table",
+    ("live_players", "joined_at"): "live.joined.joined_at",
+    ("live_players", "removed"): "live.joined.removed_by_host",
+    ("live_proposals", "session_id"): "live.proposals.code",
+    ("live_proposals", "position"): "live.proposals.question",
+    ("live_proposals", "answer"): "live.proposals.answer",
+    ("live_proposals", "updated_at"): "live.proposals.at",
+    ("live_sessions", "code"): "live.hosted.code",
+    ("live_sessions", "created_at"): "live.hosted.created_at",
+    ("live_sessions", "finished_at"): "live.hosted.finished_at",
+    ("live_tables", "name"): "live.joined.table",
+    ("mock_sessions", "quiz_id"): "mock_runs.quiz_id",
+    ("mock_sessions", "season"): "mock_runs.season",
+    ("mock_sessions", "counted"): "mock_runs.counted",
+    ("mock_sessions", "started_at"): "mock_runs.started_at",
+    ("mock_sessions", "finished_at"): "mock_runs.finished_at",
+    ("mock_sessions", "unreached"): "mock_runs.unreached",
+    ("mock_sessions", "unreached_graded"): "mock_runs.unreached_graded",
+    ("password_resets", "created_at"): "password_resets.created_at",
+    ("password_resets", "expires_at"): "password_resets.expires_at",
+    ("password_resets", "used_at"): "password_resets.used_at",
+    ("practice_hints", "question_id"): "pending_hints",
+    ("reports", "question_id"): "reports.question_id",
+    ("reports", "message"): "reports.message",
+    ("reports", "created_at"): "reports.at",
+    ("reports", "resolved_at"): "reports.handled_at",
+    ("sessions", "created_at"): "sign_ins.started_at",
+    ("sessions", "last_seen"): "sign_ins.last_seen",
+    ("sessions", "expires_at"): "sign_ins.expires_at",
+    ("streak_freezes", "day"): "streak_freezes_used",
+}
+COLUMNS_NOT_EXPORTED = {
+    ("attempts", "id"): KEY,
+    ("attempts", "points"): "season points of an early design, unused since 0008 (data-model.md)",
+    ("attempts", "session_id"): "the run's key: the run itself is in mock_runs",
+    ("attempts", "live_session_id"): "the quiz's key: the quiz itself is in live",
+    ("invites", "id"): KEY,
+    ("invites", "token_hash"): "a secret",
+    ("invites", "created_at"): "the admin's work, in their actions",
+    ("invites", "expires_at"): "the admin's work, in their actions",
+    ("live_answers", "table_id"): "the table, in live.joined",
+    ("live_answers", "passed"): "the table's result, not the captain's",
+    ("live_answers", "points"): "the table's result, not the captain's",
+    ("live_answers", "member_ids"): "other people",
+    ("live_answers", "granted"): "bookkeeping: whether the table's XP was shared",
+    ("live_proposals", "table_id"): "the table, in live.joined",
+    ("live_sessions", "id"): KEY,
+    ("live_sessions", "config"): SESSION,
+    ("live_sessions", "state"): SESSION,
+    ("live_sessions", "position"): SESSION,
+    ("live_sessions", "opened_at"): SESSION,
+    ("live_sessions", "deadline_at"): SESSION,
+    ("live_sessions", "version"): SESSION,
+    ("live_tables", "id"): KEY,
+    ("live_tables", "session_id"): "the quiz, in live.joined",
+    ("live_tables", "topics"): "the table's set-up, not the captain's",
+    ("live_tables", "catch_all"): "the table's set-up, not the captain's",
+    ("live_tables", "proposals"): "the table's set-up, not the captain's",
+    ("mock_sessions", "id"): KEY,
+    ("mock_sessions", "position"): "how far the run got: its answers, in answers",
+    ("password_resets", "id"): KEY,
+    ("password_resets", "token_hash"): "a secret",
+    ("practice_hints", "created_at"): "only orders the hints: each is spent by the next answer to it",
+    ("reports", "id"): KEY,
+    ("sessions", "id_hash"): "a secret",
+}
+
+
+def _in_export(path: str) -> bool:
+    model: Any = Export
+    for key in path.split("."):
+        if model is None or key not in model.model_fields:
+            return False
+        model = _model_in(model.model_fields[key].annotation)
+    return True
+
+
+def _model_in(t: Any) -> Any:
+    """The export model inside a field's type (`list[ExportAnswer]`, `ExportInvite | None`), if any."""
+    if isinstance(t, type) and issubclass(t, BaseModel):
+        return t
+    return next((m for a in get_args(t) if (m := _model_in(a))), None)
+
 
 def test_every_personal_column_is_exported_or_deliberately_left_out(
     app_client: TestClient, admin: User, new_client: NewClient
@@ -141,6 +254,16 @@ def test_every_personal_column_is_exported_or_deliberately_left_out(
         if any(fk.column.table.name == "users" for fk in c.foreign_keys)
     }
     assert pointing == POINTING.keys() | POINTING_NOT_EXPORTED.keys()
+    # Each column of those tables too: a column the export builds but its model doesn't declare would vanish
+    # from the file (S2-ACC-01).
+    others = {
+        (t, c.name)
+        for t in {t for t, _ in pointing}
+        for c in Base.metadata.tables[t].columns
+        if (t, c.name) not in pointing
+    }
+    assert others == COLUMNS.keys() | COLUMNS_NOT_EXPORTED.keys()
+    assert [path for path in COLUMNS.values() if not _in_export(path)] == []
 
     login(app_client)
     marta = new_client()
@@ -198,6 +321,14 @@ def test_the_export_keeps_a_mock_run_secret_until_it_ends(player: TestClient, db
     while run["current"]:
         run = answer(player, run, right_answer(db, run["current"]["question"]["id"]))
     assert all(a["correct"] and a["xp"] > 0 and a["lp"] > 0 for a in export(player)["answers"])
+
+
+def test_the_export_holds_what_a_mock_run_left_unreached(player: TestClient, db: Session) -> None:  # noqa: F811
+    run = player.post(f"/api/mock/quizzes/{CV}/start").json()
+    assert [(m["unreached"], m["unreached_graded"]) for m in export(player)["mock_runs"]] == [(None, None)]
+    run = answer(player, run, right_answer(db, run["current"]["question"]["id"]))
+    assert player.post(f"/api/mock/sessions/{run['session_id']}/end").status_code == 200
+    assert [(m["unreached"], m["unreached_graded"]) for m in export(player)["mock_runs"]] == [(3, 3)]
 
 
 def test_the_export_keeps_live_results_secret_until_the_session_ends(

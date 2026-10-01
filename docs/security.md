@@ -34,7 +34,7 @@ The rules and their reasons are in [ADR 0006](adr/0006-personal-data.md); which 
 - Members can hide themselves from other people's boards, download everything as JSON (`GET /api/me/export`) and delete their account after confirming their password. Deletion is real: the row and everything cascading from it go; other people's live results stay without them.
 - Alumni and disabled accounts are signed out and leave the boards; they are deleted 365 days after they stopped being active unless reactivated. Admins can download or delete their data meanwhile. The audit log keeps two years (purged nightly, see the threats table); invite notes and email addresses are never recorded in it. The app writes no access log (uvicorn `--no-access-log`); the shared Nginx keeps IP addresses and rotates its logs.
 - FS-Quiz content is ODbL: attributed in the footer and on `/about`, not republished outside the team.
-- `tests/api/test_privacy.py` fails when a `users` column, or a column pointing at a user, is neither in the export nor listed there as deliberately left out (with the reason).
+- `tests/api/test_privacy.py` fails when a `users` column, a column pointing at a user, or another column of a table that points at one is neither in the export nor listed there as deliberately left out (with the reason).
 
 ## Server and containers
 

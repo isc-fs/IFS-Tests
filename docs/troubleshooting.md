@@ -211,3 +211,15 @@ These look like bugs to users and reviewers. They aren't; point people here or t
 - **Symptom:** `deploy/restore.sh <env> <file>` stops with `<file> is at revision NNNN, which <tag> doesn't know: deploy a release that has it first. Nothing changed`.
 - **Cause:** the dump was taken on a newer release than the one deployed (typically after a roll back, or a prod dump restored on a staging that runs an older tag). The deployed image can't migrate a schema it doesn't know, and a newer schema isn't promised to work with an older release ([data-model.md](data-model.md#expandcontract)).
 - **Fix:** deploy the release the dump was taken on, or a later one, then restore; or pick an older dump. Nothing was stopped or changed.
+
+### A fix in a new release doesn't show after the deploy
+
+- **Symptom:** the release fixed how an answer is graded or which questions are hidden, or changed a rate limit or header in Nginx, but the site behaves as before.
+- **Cause:** those fixes don't live only in the image. Answer keys are parsed and questions hidden when the bank is loaded, so the bank in the database still holds what the old code made of it; Nginx reads `deploy/nginx/quiz.conf` from the server's configuration, not from the image.
+- **Fix:** `deploy.sh` says so: its `deploy: to do:` lines before the last one ([runbook 2](runbook.md#2-deploy), step 8). Run `deploy/refresh-bank.sh <env> --no-mirror`, and ask the consultant to install the new `quiz.conf` and reload Nginx. If the deploy's output is gone, its log is in `/srv/quiz/<env>/deploy-<date>-<time>.log`.
+
+### `deploy.sh` or `restore.sh` says another one "is already running"
+
+- **Symptom:** `a deploy of <tag> (log: ...) is already running in <env>` or `a restore of <file> ...`.
+- **Cause:** one deploy or restore at a time per environment: another is running (perhaps from a session that dropped; it carries on), or one was killed (`kill -9`, a reboot) and left `/srv/quiz/<env>/operation.lock` behind.
+- **Fix:** follow the log it names. If `ps aux | grep -E 'deploy|restore'` shows none running, `rm -r /srv/quiz/<env>/operation.lock` and check the environment's state ([runbook 2.2](runbook.md#22-when-a-deploy-fails)) before running anything else.

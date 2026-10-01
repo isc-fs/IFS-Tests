@@ -704,6 +704,12 @@ export type ExportAnswer = {
      */
     started_at: string;
     /**
+     * Deadline At
+     *
+     * Timed modes: when the clock ran out
+     */
+    deadline_at: string | null;
+    /**
      * Submitted At
      */
     submitted_at: string | null;
@@ -873,6 +879,18 @@ export type ExportMockRun = {
      * Finished At
      */
     finished_at: string | null;
+    /**
+     * Unreached
+     *
+     * Questions the run didn't reach, kept when it finished; null while running or if it finished before this was kept
+     */
+    unreached: number | null;
+    /**
+     * Unreached Graded
+     *
+     * How many of those were graded
+     */
+    unreached_graded: number | null;
 };
 
 /**

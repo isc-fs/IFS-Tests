@@ -198,7 +198,12 @@ class DeleteAccountIn(In):
     password: str = Field(max_length=256)
 
 
-class ExportAccount(BaseModel):
+class Exported(BaseModel):
+    # The export builds plain dicts: a key the model doesn't declare fails instead of vanishing from the file.
+    model_config = ConfigDict(extra="forbid")
+
+
+class ExportAccount(Exported):
     email: str
     display_name: str
     vertical: str | None
@@ -228,14 +233,14 @@ class ExportAccount(BaseModel):
     deleted_on: datetime | None = Field(description="When the account will be deleted, if inactive")
 
 
-class ExportInvite(BaseModel):
+class ExportInvite(Exported):
     role: str
     vertical: str | None
     note: str | None
     used_at: datetime | None
 
 
-class ExportAnswer(BaseModel):
+class ExportAnswer(Exported):
     question_id: int
     question: str
     mode: str
@@ -249,18 +254,24 @@ class ExportAnswer(BaseModel):
     late: bool | None
     day: date | None
     started_at: datetime
+    deadline_at: datetime | None = Field(description="Timed modes: when the clock ran out")
     submitted_at: datetime | None
 
 
-class ExportMockRun(BaseModel):
+class ExportMockRun(Exported):
     quiz_id: int
     season: int
     counted: bool
     started_at: datetime
     finished_at: datetime | None
+    unreached: int | None = Field(
+        description="Questions the run didn't reach, kept when it finished; null while running or if it "
+        "finished before this was kept"
+    )
+    unreached_graded: int | None = Field(description="How many of those were graded")
 
 
-class ExportLiveJoin(BaseModel):
+class ExportLiveJoin(Exported):
     code: str
     created_at: datetime
     joined_at: datetime
@@ -269,13 +280,13 @@ class ExportLiveJoin(BaseModel):
     captain: bool
 
 
-class ExportHosted(BaseModel):
+class ExportHosted(Exported):
     code: str
     created_at: datetime
     finished_at: datetime | None
 
 
-class ExportLiveAnswer(BaseModel):
+class ExportLiveAnswer(Exported):
     code: str
     question: int
     answer: dict[str, Any]
@@ -283,52 +294,52 @@ class ExportLiveAnswer(BaseModel):
     submitted_at: datetime
 
 
-class ExportProposal(BaseModel):
+class ExportProposal(Exported):
     code: str
     question: int
     answer: dict[str, Any]
     at: datetime
 
 
-class ExportLive(BaseModel):
+class ExportLive(Exported):
     joined: list[ExportLiveJoin]
     hosted: list[ExportHosted]
     answers_sent_as_captain: list[ExportLiveAnswer]
     proposals: list[ExportProposal]
 
 
-class ExportReport(BaseModel):
+class ExportReport(Exported):
     question_id: int
     message: str
     at: datetime
     handled_at: datetime | None
 
 
-class ExportReset(BaseModel):
+class ExportReset(Exported):
     created_at: datetime
     expires_at: datetime
     used_at: datetime | None
 
 
-class ExportSignIn(BaseModel):
+class ExportSignIn(Exported):
     started_at: datetime
     last_seen: datetime
     expires_at: datetime
 
 
-class ExportHistory(BaseModel):
+class ExportHistory(Exported):
     at: datetime
     action: str
     details: dict[str, Any]
 
 
-class ExportAction(BaseModel):
+class ExportAction(Exported):
     at: datetime
     action: str
     on: str
 
 
-class Export(BaseModel):
+class Export(Exported):
     """Everything MingoQuiz stores about the member who asks (GET /api/me/export)."""
 
     exported_at: datetime
