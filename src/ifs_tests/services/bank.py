@@ -2,7 +2,8 @@
 skipped, changed ones are updated in place (options keep their IDs, so answers already given stay valid), a
 change to what is graded drops a reviewer's correction and is flagged for review, a change of wording is
 flagged but keeps the correction (a new solution or image is neither), questions FS-Quiz says it removed are hidden, and quizzes and questions it deleted are
-retired: no longer played, kept for history."""
+retired: no longer played, kept for history. A mirror that would delete or change too much at once is held
+back (see MAX_RETIRED)."""
 
 from __future__ import annotations
 
@@ -42,8 +43,9 @@ from ..domain import xp as xp_rules
 log = logging.getLogger(__name__)
 CHOICE = ("single-choice", "multi-choice")
 GONE = "Deleted from FS-Quiz."
-# A mirror missing more of the bank than this is more likely broken than FS-Quiz deleting that much at once.
-# Measured against the questions there before the push: new ones arriving at the same time don't dilute it.
+# A mirror that would delete, or change the answer of, more of the bank's questions than this (or drop more of
+# its quiz-question links) is more likely broken than FS-Quiz changing that much at once. Measured against the
+# bank before the push: new questions arriving at the same time don't dilute it.
 MAX_RETIRED = 0.25
 
 
@@ -60,7 +62,11 @@ class ImportReport:
     hidden: int = 0
     retired: int = 0
     restored: int = 0
-    not_retired: int = 0  # deleted upstream, but too many at once: see MAX_RETIRED
+    # Held back because the mirror changes too much at once (see MAX_RETIRED): questions deleted upstream,
+    # questions whose answer changed upstream, and quiz-question links the mirror drops.
+    not_retired: int = 0
+    not_changed: int = 0
+    not_unlinked: int = 0
 
 
 def _digest(content: object) -> str:
@@ -190,10 +196,15 @@ def _rekey(db: DB, q: Question, raw: dict[str, Any], current: list[AnswerOption]
 def _answer_changed(q: Question, raw: dict[str, Any], key: AnswerKey, current: list[AnswerOption]) -> bool:
     if q.graded_hash is not None:
         return q.graded_hash != graded_hash(raw)
-    # Loaded before the graded hash was kept: judge by the type, options and official answer stored.
-    ids = {o.fsquiz_id for o in current if not o.retired}
-    wanted = {a["answer_id"] for a in raw["answers"]} if raw["type"] in CHOICE else set()
-    return q.type != raw["type"] or ids != wanted or key.display != keys.display(raw["type"], raw["answers"])
+    # Loaded before the graded hash was kept: judge by the type, options and official answer stored. Options
+    # loaded before FS-Quiz's answer ID was kept are compared by text.
+    live = [o for o in current if not o.retired]
+    answers = raw["answers"] if raw["type"] in CHOICE else []
+    if any(o.fsquiz_id is None for o in live):
+        same = sorted(o.text for o in live) == sorted(keys.clean(a["text"] or "") for a in answers)
+    else:
+        same = {o.fsquiz_id for o in live} == {a["answer_id"] for a in answers}
+    return q.type != raw["type"] or not same or key.display != keys.display(raw["type"], raw["answers"])
 
 
 def _reworded(q: Question, raw: dict[str, Any], current: list[AnswerOption]) -> bool:
@@ -344,9 +355,41 @@ def import_bank(
         if not _all_in(media_dir, names)
     }
 
+    listed = {raw["question_id"] for raw in bank["questions"]}
+    gone = [q for fid, q in existing.items() if fid not in listed and q.upstream_note != GONE]
+    changed = {
+        q.id
+        for raw in bank["questions"]
+        if (q := existing.get(raw["question_id"])) is not None
+        and q.source_hash != source_hash(raw)
+        and _answer_changed(q, raw, answer_keys[q.id], options[q.id])
+    }
+    ids = {q["quiz_id"] for q in bank["quizzes"]}
+    linked = set(db.execute(select(QuizQuestion.quiz_id, QuizQuestion.question_id)).tuples())
+    wanted = {
+        (z["quiz_id"], existing[f].id) for z in bank["quizzes"] for f in z["question_ids"] if f in existing
+    }
+    unlinked = {link for link in linked if link[0] in ids and link not in wanted}
+    hold = not allow_mass_removal and (
+        len(gone) + len(changed) > MAX_RETIRED * here or len(unlinked) > MAX_RETIRED * len(linked)
+    )
+    if hold:
+        log.warning(
+            "the bank would retire %d and change the answer of %d of the %d questions, and drop %d of the %d "
+            "quiz links: none of that done (the rest is loaded)",
+            len(gone),
+            len(changed),
+            here,
+            len(unlinked),
+            len(linked),
+        )
+        report.not_retired, report.not_changed, report.not_unlinked = len(gone), len(changed), len(unlinked)
+
     for raw in bank["questions"]:
         q = existing.get(raw["question_id"])
-        if (
+        if hold and q is not None and q.id in changed:
+            pass  # held back with the rest of the mass change
+        elif (
             q is not None
             and q.source_hash == source_hash(raw)
             and (not q.images_missing or image_dir is None)
@@ -373,22 +416,18 @@ def import_bank(
         report.restored += _restore(q, now)
         report.hidden += _hide_removed(q, removed.get(raw["question_id"]))
 
-    listed = {raw["question_id"] for raw in bank["questions"]}
-    gone = [q for fid, q in existing.items() if fid not in listed and q.upstream_note != GONE]
-    if len(gone) > MAX_RETIRED * here and not allow_mass_removal:
-        log.warning("%d of %d questions are missing from the bank: none retired", len(gone), here)
-        report.not_retired = len(gone)
-    else:
+    if not hold:
         report.retired = sum(_retire(q, now) for q in gone)
-        quizzes = [q["quiz_id"] for q in bank["quizzes"]]
-        db.execute(update(Quiz).where(Quiz.id.not_in(quizzes)).values(retired=True))
+        db.execute(update(Quiz).where(Quiz.id.not_in(ids)).values(retired=True))
 
-    ids = [q["quiz_id"] for q in bank["quizzes"]]
-    db.execute(delete(QuizQuestion).where(QuizQuestion.quiz_id.in_(ids)))
+    # Held back, only quizzes new to the database get their questions.
+    relink = [z for z in ids if z not in {link[0] for link in linked}] if hold else ids
+    db.execute(delete(QuizQuestion).where(QuizQuestion.quiz_id.in_(relink)))
     by_fsquiz = {fid: q.id for fid, q in existing.items()}
     rows = [
         {"quiz_id": q["quiz_id"], "question_id": by_fsquiz[qid], "position": i}
         for q in bank["quizzes"]
+        if q["quiz_id"] in relink
         # FS-Quiz lists a question twice in at least one quiz; keep its first position.
         for i, qid in enumerate(dict.fromkeys(q["question_ids"]))
         if qid in by_fsquiz

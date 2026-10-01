@@ -4,7 +4,7 @@
 #   deploy/refresh-bank.sh staging
 #   deploy/refresh-bank.sh prod
 #   deploy/refresh-bank.sh prod --no-mirror   # load the mirror already in the volume, no FS-Quiz requests
-#   deploy/refresh-bank.sh prod --no-mirror --allow-mass-removal   # FS-Quiz really deleted over a quarter
+#   deploy/refresh-bank.sh prod --no-mirror --allow-mass-removal   # FS-Quiz really deleted or changed over a quarter
 #
 # Re-fetches every quiz, the document list and the last qualifier results (--refresh), so corrected
 # questions, new rulebook editions and new results arrive too, not just new quizzes: about 125 requests,

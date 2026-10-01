@@ -173,6 +173,13 @@ verified fixed, 10 partly, none regressed; new findings 0 Critical, 1 High, 19 M
 |---|---|---|---|
 | S2-OPS-01 an interrupted `restore.sh` can leave prod down, or serving an unmigrated dump while it says "FAILED" | fix/25 | Fixed | `test_deploy_scripts.py`: the restore goes on when its terminal is lost; a rolled-back, a loaded-then-failed and a loaded-but-unmigratable restore each reported as what happened (removing the detach fails the first; the old script fails all of them); replay of the red team's interruptions on a prod-like stack (0016 dump, 291k answers, onto 0023): dropped pty, SIGHUP, `kill -9` and Ctrl-C of the script each end restored at 0023 with the app up (`/readyz` 200, sign-in 401, never 500); SIGTERM to the restore itself reports truthfully, including a commit after its client died; a second restore refused. Found meanwhile: the red team's Ctrl-C probe never delivered SIGINT (a background job ignores it), so its "rolled back" row is untested |
 
+### Medium: fixed
+
+| Finding | Branch / PR | Status | Proof |
+|---|---|---|---|
+| S2-BANK-01 the mass-removal guard only counts deletions: a mirror with empty quiz lists empties every quiz; one that lost its answers drops every correction | fix/27 | Fixed | `test_bank_import.py` `test_a_mirror_changing_most_of_the_bank_changes_nothing_unless_allowed`, one case per shape (quiz lists emptied, questions gone, answers lost, none marked right, every answer changed): links, keys, corrections, flags and options unchanged, the counts in `not_retired`/`not_changed`/`not_unlinked`, and `--allow-mass-removal` applies it; all 5 fail on the old code, and reverting the guard fails them plus the two older guard tests. The red team's `test_broken_mirror.py` and `test_mass_content_change.py` re-run: quizzes keep their lists, the open run keeps its 8 questions, corrections stay. The real mirror (1,072 questions) pushed over itself and over the red team's regenerated mirror holds nothing back |
+| S2-BANK-02 the first push on a database loaded before #52 drops corrections | fix/27 | Fixed | options without an FS-Quiz answer ID are compared by text: `test_choice_questions_loaded_before_answer_ids_were_kept_keep_their_correction_on_a_new_solution` (fails on the old code); the red team's `test_upgrade_path.py`: a new solution keeps the correction and difficulty 5. A reworded option on such rows still counts as an answer change (it can't be told from a replaced one). Prod was never loaded before #52, so it was never exposed |
+
 ### Medium: plan (not started)
 
 Priorities as above. Waves run in order; the workstreams inside a wave own disjoint files and can run in parallel.
@@ -180,8 +187,6 @@ Each fix follows "How a fix counts as done", starting from the sweep-2 probe in 
 
 | Finding | P | Wave | Workstream (files) | Needs first |
 |---|---|---|---|---|
-| S2-BANK-01 the mass-removal guard only counts deletions: a mirror with empty quiz lists empties every quiz; one that lost its answers drops every correction | P1 | 1 | H bank (`services/bank.py`, bank tests, architecture/runbook) | |
-| S2-BANK-02 the first push on a database loaded before #52 drops corrections | P1 | 1 | H bank | |
 | S2-DOC-01 sample and real banks retire each other; the documented escape retires the real bank | P2 | 1 | H bank (+ testing, troubleshooting) | Owner: exempt the sample IDs (recommended) or only rewrite the docs |
 | S2-OPS-02 a dropped session during `deploy.sh`'s wait leaves a failing release serving | P2 | 1 | I ops (`deploy.sh`, `compose.yaml`, runbook), after fix/25 | |
 | S2-OPS-03 a damaged database can't be restored (the safety dump blocks it) | P2 | 1 | I ops (`restore.sh`) | Owner: a `--no-safety-dump` override behind a typed confirmation |
