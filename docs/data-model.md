@@ -7,7 +7,7 @@ Conventions:
 - Times are `timestamp with time zone`, stored in UTC; "Madrid day" dates (`date` columns) are computed with `domain/daily.madrid_day`.
 - Enumerations are strings with a `CHECK` constraint generated from a Python tuple in `models.py` (`ROLES`, `STATUSES`, `VERTICALS`, `POSITIONS`, `AREAS`, `KINDS`, `MODES`, `LIVE_STATES`). Widening one needs a migration.
 - Constraint and index names follow the naming convention at the top of `models.py` (`pk_<table>`, `fk_<table>_<column>_<referred table>`, `ix_…`, `uq_…`, `ck_<table>_<name>`).
-- **Watch the XP column names on `users`:** the ORM attribute `User.xp` maps to the column `account_xp`, and `User.legacy_xp` maps to the column `xp`. In raw SQL, `users.xp` is the old column (see [pending contract steps](#pending-contract-steps)).
+- **Watch the XP column name on `users`:** the ORM attribute `User.xp` maps to the column `account_xp`. The old column `users.xp` was dropped in 0024.
 
 ## Entity relationships
 
@@ -66,7 +66,6 @@ One row per member. **Personal data.**
 | `failed_logins`, `locked_until` | Consecutive failed password checks; lock end after the fifth (15 minutes) |
 | `last_seen`, `created_at` | Last request (touched at most every 5 minutes) and sign-up time |
 | `account_xp` (attribute `xp`) | Account XP, integer, only goes up; sets the account level |
-| `xp` (attribute `legacy_xp`) | Lifetime XP of the release before ADR 0007. Unused; kept for the previous release during a deploy, to drop |
 | `rank_points` | Rank, `numeric(8,2)`: 100 points per division, 0 = Mingo I, 1500+ = the top title; floor 0 |
 | `rank_season` | Season (start year) the rank belongs to; 0 = placed by the migration, no reset due |
 | `rank_best` | Highest division reached this season (only a new one plays the promotion) |
@@ -340,7 +339,7 @@ Only on the server, outside Alembic and the models: `deploy/deploy.sh` creates i
 
 | Table | Export (`GET /api/me/export`) | On account deletion |
 |---|---|---|
-| `users` | `account`: email, name, vertical, sub-departments, position, role, status, XP (and `xp_before_ranked`, the old `users.xp`), rank points, rank season, best division this season, right and wrong answers in a row, rested XP and when it was topped up, streak freezes held and when one was last earned, opt-out, joined, last seen, failed sign-ins, lock, inactive since, deletion date. Only `id` and `password_hash` are left out | Row deleted |
+| `users` | `account`: email, name, vertical, sub-departments, position, role, status, XP, rank points, rank season, best division this season, right and wrong answers in a row, rested XP and when it was topped up, streak freezes held and when one was last earned, opt-out, joined, last seen, failed sign-ins, lock, inactive since, deletion date. Only `id` and `password_hash` are left out | Row deleted |
 | `sessions` | `sign_ins` | Cascade |
 | `invites` | `invite`: the one they signed up with (role, vertical, note, used) | Note cleared, `used_by`/`created_by` set null |
 | `password_resets` | `password_resets`: created, expires, used (never the token hash) | Cascade (`user_id`); `created_by` set null |
@@ -389,6 +388,7 @@ Retention: alumni and disabled accounts are deleted 365 days after `left_at`; th
 | 0021 | `users.position_lifts`, so a correction of position takes back only what a raise gave. Expand only: the previous release ignores it |
 | 0022 | `mock_sessions.unreached` and `unreached_graded`, so upstream deletions don't rewrite a finished run's summary; backfilled for finished runs from the quiz as it stood. Expand only: the previous release ignores them, and a run it finishes during the deploy keeps them null (counted as the quiz stands) |
 | 0023 | `daily_questions.drawn_at`, so a mock question closed after midnight but before the day's draw (whose answer the summary showed) doesn't count as hidden for that daily. Expand only: null rows count from midnight, as before |
+| 0024 | Drops `users.xp`, the lifetime XP of the release before ADR 0007: the contract step of 0014. Safe because no deployed release maps it: prod never ran one, and `v1.0.0` is the first image without it |
 
 ### Expand/contract
 
@@ -398,11 +398,10 @@ Retention: alumni and disabled accounts are deleted 365 days after `left_at`; th
 - **Contract** in a later release, once no deployed image uses the old column: drop it.
 - **Never edit a migration once it has run anywhere** (staging included): the database keeps its revision number, so the edited version would never run there. Write a new migration instead. `deploy.sh` refuses such an image ([`deploy_migrations`](#deploy_migrations)); reformatting or rewording comments is fine, the fingerprint ignores them.
 
-Example: 0014 added `account_xp` and left `xp` in place, because the release before ADR 0007 still wrote lifetime XP there during the deploy; the model maps the old column as `legacy_xp` so SQLAlchemy keeps it in the schema. `tests/integration/test_migrations.py` checks upgrade → downgrade → upgrade and that the models and migrations produce the same schema.
+Example: 0014 added `account_xp` and left `xp` in place, because the release before ADR 0007 still wrote lifetime XP there during the deploy; the model mapped the old column as `legacy_xp` so SQLAlchemy kept it in the schema, until 0024 dropped both in the first release. `tests/integration/test_migrations.py` checks upgrade → downgrade → upgrade and that the models and migrations produce the same schema.
 
 The other direction isn't promised: a newer release may not run on an older schema. So `deploy/restore.sh` migrates an older dump up to the deployed release before it starts the app, and refuses a dump from a newer release than the deployed one. Grants a migration makes beyond the defaults in `deploy/db/roles.sql` (0002 on `audit_log`, 0016 on `purge_audit_log`) are part of every dump, so a restore brings them back.
 
 ### Pending contract steps
 
-- Drop `users.xp` (attribute `legacy_xp`) and remove it from the model: planned in `feat/20-launch` (`.github/roadmap.yaml`).
 - `attempts.points` has been unused since 0008 (always 0 in new rows). Not scheduled; drop it in the same kind of contract release if nobody needs old values.

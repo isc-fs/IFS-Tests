@@ -12,7 +12,7 @@ memory: if you learn something that isn't written here, add it to the doc that o
 | A reviewer fixing questions | [Reviewers' guide](guides/reviewers.md) |
 | An admin running the team's accounts | [Admins' guide](guides/admins.md), then the [maintenance calendar](maintenance.md) |
 | A developer about to change the code | [Development](development.md), [architecture](architecture.md), [testing](testing.md), then the [ADRs](adr/) |
-| Deploying or operating the server | [Runbook](runbook.md), [maintenance calendar](maintenance.md), [security](security.md) |
+| Deploying or operating the server | [Runbook](runbook.md), [maintenance calendar](maintenance.md), [security](security.md); for the first release, the [release plan](release-plan.md) |
 | Taking the project over | [Handover](handover.md): it points to everything else |
 
 Words you don't know are in the [glossary](glossary.md).
@@ -30,6 +30,8 @@ Words you don't know are in the [glossary](glossary.md).
 | The test suite and how to extend it | [testing.md](testing.md) |
 | Known problems and their fixes | [troubleshooting.md](troubleshooting.md) |
 | Deploying, rolling back, backups, restores, secrets, incidents | [runbook.md](runbook.md) |
+| The first release, `v1.0.0`: server checks, stages, blockers, checklist | [release-plan.md](release-plan.md) |
+| What each release contains, its known issues and the steps after deploying it | [release-notes/](release-notes/) |
 | What has to happen nightly, each season, each September, each year | [maintenance.md](maintenance.md) |
 | Threats, controls, personal data, supply chain | [security.md](security.md) |
 | Handing the project to the next maintainer | [handover.md](handover.md) |

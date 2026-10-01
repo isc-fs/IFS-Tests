@@ -51,7 +51,13 @@ Store a copy of the prod `.env` in the team's password manager, not in a shared 
 
 ### 1.4 GitHub
 - Make the `ifs-tests` package on GHCR **public** (Package settings → Change visibility), so the server can pull without a token. The image contains code only, never data or secrets.
-- Branch rules on `dev` and `main`: pull request required, CI checks required, no force pushes; `main` only from `dev`.
+- Branch rules on `dev` and `main` (Settings → Rules → Rulesets → New branch ruleset, one per branch, enforcement Active):
+  - Restrict deletions; block force pushes.
+  - Require a pull request before merging, with 0 approvals (one maintainer can't approve their own pull request).
+  - Require status checks to pass: `python`, `web`, `e2e`, `image`, `shell`, `secrets`, `dependency-review` (source GitHub Actions). Don't require branches to be up to date: parallel fixes would queue behind each other.
+  - On `dev` only, add **GitHub Actions** to the bypass list: the `Render ROADMAP` workflow commits `ROADMAP.md` straight to `dev`, and without the bypass every merge leaves the roadmap stale.
+  - `main` only takes the release pull request from `dev`; that is a convention, not a rule GitHub enforces.
+  - Check: `gh api repos/isc-fs/IFS-Tests/rulesets` lists both.
 - Settings → Code security: secret scanning and push protection on; Dependabot alerts on.
 
 ### 1.5 First deploy of an environment
@@ -67,7 +73,7 @@ Store a copy of the prod `.env` in the team's password manager, not in a shared 
 
 ## 2. Deploy
 
-CI publishes an image for every push to `dev` (`sha-<12 chars>` and `staging`) and for every tag `vX.Y.Z` (`.github/workflows/publish.yml`). The exact tags are in the "Publish image" run summary on GitHub (Actions → Publish image → the run → Summary).
+CI publishes an image for every push to `dev` (`sha-<12 chars>` and `staging`) and for every tag `vX.Y.Z` (`.github/workflows/publish.yml`). A release tag only gets an image if it names the version in `pyproject.toml`, its commit is on `main`, and CI passed on that commit (`.github/scripts/release-gate.sh`; it waits up to 30 minutes for a CI run still going). The exact tags are in the "Publish image" run summary on GitHub (Actions → Publish image → the run → Summary).
 
 ```bash
 ssh <you>@<server>
@@ -99,11 +105,12 @@ What `deploy/deploy.sh` does, in order:
 Starting the scheduler also runs the day's jobs whose time has passed (it keeps no memory across restarts), so every deploy runs the nightly maintenance once more. The jobs are idempotent; that's expected.
 
 ### 2.1 Release
-1. Merge `dev` into `main` through a pull request.
-2. Tag the merge commit on `main` (on your machine: `git checkout main && git pull`, then `git tag v1.0.0 && git push origin v1.0.0`). Versions follow `vMAJOR.MINOR.PATCH`; the roadmap names the tag each phase ends with.
-3. Wait for "Publish image" to finish for the tag.
-4. Deploy the tag to staging, check it (sign in, answer a practice question, open the leaderboard), then deploy it to prod.
-5. Do every `deploy: to do:` step the deploy listed (step 8 above), on staging first: the Nginx reload once for both environments, the bank push once per environment. The prod deploy compares with prod's previous release, so it can list steps staging didn't.
+1. On `dev`, set `version` in `pyproject.toml` to the release (then `uv lock` and regenerate the API client, [development](development.md)), and write its notes in [release-notes/](release-notes/), one file per version: what's in it, known issues, and steps an operator must take after deploying.
+2. Merge `dev` into `main` through a pull request, with the notes in its description, and wait for CI on `main`.
+3. Tag the merge commit on `main` (on your machine: `git checkout main && git pull`, then `git tag v1.0.0 && git push origin v1.0.0`). Versions follow `vMAJOR.MINOR.PATCH`; the first release is `v1.0.0` ([release plan](release-plan.md)).
+4. Wait for "Publish image" to finish for the tag. If its release gate refuses (`isn't on main`, `doesn't match version`, `CI ... ended failure`), nothing was published: delete the tag (`git push origin :refs/tags/vX.Y.Z`), fix, and tag again; if it timed out waiting for CI, re-run the workflow once CI is green. Then create the GitHub release for the tag with the same notes.
+5. Deploy the tag to staging, check it (sign in, answer a practice question, open the leaderboard), then deploy it to prod.
+6. Do every `deploy: to do:` step the deploy listed (step 8 above), on staging first: the Nginx reload once for both environments, the bank push once per environment. The prod deploy compares with prod's previous release, so it can list steps staging didn't.
 
 ### 2.2 When a deploy fails
 

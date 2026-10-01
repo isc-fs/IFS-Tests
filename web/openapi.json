@@ -2,7 +2,7 @@
  "openapi": "3.1.0",
  "info": {
   "title": "MingoQuiz",
-  "version": "0.1.0"
+  "version": "1.0.0"
  },
  "paths": {
   "/auth/login": {
@@ -3655,11 +3655,6 @@
       "type": "integer",
       "title": "Xp"
      },
-     "xp_before_ranked": {
-      "type": "integer",
-      "title": "Xp Before Ranked",
-      "description": "Lifetime XP from before ranks and account levels (ADR 0007)"
-     },
      "rank_points": {
       "type": "number",
       "title": "Rank Points"
@@ -3811,7 +3806,6 @@
      "role",
      "status",
      "xp",
-     "xp_before_ranked",
      "rank_points",
      "rank_season",
      "best_division",

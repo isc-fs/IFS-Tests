@@ -183,7 +183,6 @@ def export(db: DB, user: User, now: datetime) -> dict[str, Any]:
             "role": user.role,
             "status": user.status,
             "xp": user.xp,
-            "xp_before_ranked": user.legacy_xp,
             "rank_points": user.rank_points,
             "rank_season": user.rank_season,
             "best_division": rank_rules.title(user.rank_best, user.vertical),
