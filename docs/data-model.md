@@ -345,9 +345,9 @@ Only on the server, outside Alembic and the models: `deploy/deploy.sh` creates i
 | `invites` | `invite`: the one they signed up with (role, vertical, note, used) | Note cleared, `used_by`/`created_by` set null |
 | `password_resets` | `password_resets`: created, expires, used (never the token hash) | Cascade (`user_id`); `created_by` set null |
 | `streak_freezes` | `streak_freezes_used` (the days) | Cascade |
-| `attempts` | `answers` (right/wrong, XP and LP hidden while a mock run or live quiz is unfinished) | Cascade |
+| `attempts` | `answers`, with the deadline of timed answers (right/wrong, XP and LP hidden while a mock run or live quiz is unfinished); not the unused `points` | Cascade |
 | `practice_hints` | `pending_hints` | Cascade |
-| `mock_sessions` | `mock_runs` | Cascade (and their attempts) |
+| `mock_sessions` | `mock_runs`, with the questions a run didn't reach (`unreached`, `unreached_graded`) | Cascade (and their attempts) |
 | `reports` | `reports` | `user_id` set null; the message stays |
 | `live_players` | `live.joined` (table, captain, removed) | Cascade |
 | `live_sessions` (hosted) | `live.hosted` | Unfinished ones are finished; `host_id` set null; XP shared |
@@ -358,7 +358,7 @@ Only on the server, outside Alembic and the models: `deploy/deploy.sh` creates i
 
 Retention: alumni and disabled accounts are deleted 365 days after `left_at`; the audit log keeps two years; closed invite and reset links 30 days; backups 14 days. All of these run in the nightly job (see [architecture.md](architecture.md#background-work)).
 
-`test_every_personal_column_is_exported_or_deliberately_left_out` in `tests/api/test_privacy.py` keeps this table honest: it lists every `users` column and every column pointing at a user, with where each lands in the export or why it is left out (an admin's work on someone else's account, such as `invites.created_by`, is in the admin's own `actions` instead), and fails when a new one appears in neither list.
+`test_every_personal_column_is_exported_or_deliberately_left_out` in `tests/api/test_privacy.py` keeps this table honest: it lists every `users` column, every column pointing at a user and every other column of those tables, with where each lands in the export or why it is left out (an admin's work on someone else's account, such as `invites.created_by`, is in the admin's own `actions` instead), and fails when a new one appears in neither list. The export's models refuse keys they don't declare, so a field built in `privacy.export` but missing from its model fails instead of vanishing from the file.
 
 ## Migrations
 

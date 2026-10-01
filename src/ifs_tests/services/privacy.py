@@ -88,6 +88,7 @@ def export(db: DB, user: User, now: datetime) -> dict[str, Any]:
             Attempt.late,
             Attempt.day,
             Attempt.created_at,
+            Attempt.deadline_at,
             Attempt.submitted_at,
             Attempt.session_id,
             Attempt.live_session_id,
@@ -114,6 +115,7 @@ def export(db: DB, user: User, now: datetime) -> dict[str, Any]:
                 "late": a.late,
                 "day": a.day,
                 "started_at": a.created_at,
+                "deadline_at": a.deadline_at,
                 "submitted_at": a.submitted_at,
             }
         )

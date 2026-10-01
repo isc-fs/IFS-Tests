@@ -188,7 +188,7 @@ Two things to know when writing specs: the app's strict CSP blocks `page.addStyl
 | A write that touches a player's scores, an admin, or a nightly job | A race in `test_concurrency.py` (or `test_admin_and_job_races.py` for the nightly job), asserting `unexpected(...) == []` and the final state |
 | The nightly job's result | The expected dict in `test_maintenance_removes_only_stale_rows_and_is_idempotent` |
 | The schema | Nothing new usually: `test_migrations.py` and `test_db_roles.py` run every migration; run them locally before pushing |
-| Personal data | `tests/api/test_privacy.py`: it's in the export and gone after deletion; a new column about a person must be added to `ACCOUNT`/`POINTING` (exported) or to the `…_NOT_EXPORTED` lists with the reason, or `test_every_personal_column_is_exported_or_deliberately_left_out` fails |
+| Personal data | `tests/api/test_privacy.py`: it's in the export and gone after deletion; a new column about a person must be added to `ACCOUNT`/`POINTING`/`COLUMNS` (exported) or to the `…_NOT_EXPORTED` lists with the reason, or `test_every_personal_column_is_exported_or_deliberately_left_out` fails |
 | The bank import | `test_bank_import.py`, using or extending the sample bank |
 | A page or component | A component test with `renderApp`; keep the coverage gates |
 | A main user journey | The matching Playwright spec |
