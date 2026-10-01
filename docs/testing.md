@@ -84,6 +84,8 @@ One file per area (`test_auth.py`, `test_practice.py`, `test_daily.py`, `test_mo
 - `test_security.py`: every `/api/` route answers 401 signed out and admin/review routes 403 to members; the CSRF guard; no secret fields in the schema; bad input is 422, never 500; and **no response schema carries an answer field** unless the route is in `MAY_REVEAL`. See [development.md](development.md#6-anything-that-shows-an-answer).
 - `test_boundaries.py`: where modes, days and seasons meet (31 August, midnight, a question running in two modes at once).
 
+Tests that count the rows a query reads (`attempts_read` in `test_leaderboard.py`) measure the plan Postgres picks, and on a few hundred rows that plan follows the table statistics. `TRUNCATE` keeps them, so without a fresh `ANALYZE` a test is planned with the statistics of whatever earlier test autovacuum last caught, and passes or fails with the runner's timing. Analyze the tables in the same transaction as the measurement; an `ANALYZE` in a transaction that is later rolled back is undone with it.
+
 ### Integration tests
 
 | File | Covers |
