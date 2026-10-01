@@ -438,7 +438,8 @@ def test_both_boards_need_a_member(team: None, new_client: NewClient) -> None:
 
 def attempts_read(db: Session, look: Callable[[], object]) -> int:
     """Rows of `attempts` the statements behind `look` read, as EXPLAIN ANALYZE counts them, with sequential
-    scans off: a filter no index can serve reads every row ever stored."""
+    scans off: a filter no index can serve reads every row ever stored. The tables are analyzed first: on a few
+    hundred rows the plan follows whatever statistics an earlier test (or autovacuum) left behind."""
     seen: list[tuple[str, Any]] = []
 
     def grab(conn: Any, cursor: Any, statement: str, parameters: Any, context: Any, many: bool) -> None:
@@ -459,6 +460,7 @@ def attempts_read(db: Session, look: Callable[[], object]) -> int:
         return own + sum(read(child) for child in node.get("Plans", []))
 
     conn = db.connection()
+    conn.exec_driver_sql("ANALYZE attempts, mock_sessions, questions, users")
     conn.exec_driver_sql("SET LOCAL enable_seqscan = off")
     total = 0.0
     for statement, parameters in seen:
@@ -505,7 +507,6 @@ def test_the_boards_read_this_seasons_play_not_the_whole_history(
         """)
     )
     db.commit()
-    db.execute(text("ANALYZE attempts"))
     this_season = db.scalar(
         select(func.count())
         .select_from(Attempt)
