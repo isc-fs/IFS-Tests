@@ -207,7 +207,6 @@ class ExportAccount(BaseModel):
     role: str
     status: str
     xp: int
-    xp_before_ranked: int = Field(description="Lifetime XP from before ranks and account levels (ADR 0007)")
     rank_points: float
     rank_season: int = Field(description="The season the rank points belong to; 0 if never placed")
     best_division: str = Field(description="The highest division reached in that season")

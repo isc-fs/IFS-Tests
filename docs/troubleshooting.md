@@ -114,11 +114,11 @@ Not an error, but a question that comes up. Every install in this repository (CI
 
 ## Database and migrations
 
-### `alembic check` wants to drop `users.xp` or `users.account_xp`
+### `alembic check` wants to drop `users.account_xp`
 
-- **Symptom:** `uv run alembic check` or `tests/integration/test_migrations.py` fails with `New upgrade operations detected: [('remove_column', None, 'users', Column('xp', …` (or `Column('account_xp', …`).
-- **Cause:** Alembic compares **column names**, not model attributes. On `User` (`src/ifs_tests/db/models.py`), the attribute `xp` is mapped to the column `account_xp`, and the attribute `legacy_xp` to the old column `xp`, which migration 0014 kept for the previous release (expand/contract). Deleting `legacy_xp` from the model, or dropping the explicit `"account_xp"` name, leaves a column the model no longer describes.
-- **Fix:** keep the explicit column names. Remove `legacy_xp` only in the contract release, together with a migration that drops `users.xp` (listed under pending contract steps in [data-model.md](data-model.md#pending-contract-steps)). The same applies to any attribute you rename: keep the old column name with `mapped_column("old_name", ...)`.
+- **Symptom:** `uv run alembic check` or `tests/integration/test_migrations.py` fails with `New upgrade operations detected: [('remove_column', None, 'users', Column('account_xp', …`.
+- **Cause:** Alembic compares **column names**, not model attributes. On `User` (`src/ifs_tests/db/models.py`), the attribute `xp` is mapped to the column `account_xp`. Dropping the explicit `"account_xp"` name leaves a column the model no longer describes.
+- **Fix:** keep the explicit column name. To retire a column, remove its attribute in the contract release together with a migration that drops it (as 0024 did for `users.xp`; pending ones are under [pending contract steps](data-model.md#pending-contract-steps)). The same applies to any attribute you rename: keep the old column name with `mapped_column("old_name", ...)`.
 
 ### Autogenerate says "Target database is not up to date."
 

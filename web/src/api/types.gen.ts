@@ -544,12 +544,6 @@ export type ExportAccount = {
      */
     xp: number;
     /**
-     * Xp Before Ranked
-     *
-     * Lifetime XP from before ranks and account levels (ADR 0007)
-     */
-    xp_before_ranked: number;
-    /**
      * Rank Points
      */
     rank_points: number;

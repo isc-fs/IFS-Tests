@@ -83,7 +83,6 @@ ACCOUNT = {
     "role": "role",
     "status": "status",
     "xp": "xp",
-    "legacy_xp": "xp_before_ranked",
     "rank_points": "rank_points",
     "rank_season": "rank_season",
     "rank_best": "best_division",
@@ -163,7 +162,6 @@ def test_the_export_holds_the_rank_and_account_level_state(
     marta = new_client()
     uid = member(app_client, marta, "marta@alu.comillas.edu", "Marta")["id"]
     values = {
-        "legacy_xp": 1234,
         "rank_season": 2025,
         "rank_best": 5,
         "combo": 4,
@@ -180,7 +178,7 @@ def test_the_export_holds_the_rank_and_account_level_state(
 
     data = export(marta)
     a = data["account"]
-    assert (a["xp_before_ranked"], a["rank_season"], a["best_division"]) == (1234, 2025, "Jefe I")
+    assert (a["rank_season"], a["best_division"]) == (2025, "Jefe I")
     assert (a["right_in_a_row"], a["wrong_in_a_row"]) == (4, 2)
     assert (a["rested_xp"], a["rested_on"]) == (300, "2026-09-28")
     assert (a["streak_freezes"], a["streak_freeze_earned_on"]) == (1, "2026-09-21")
