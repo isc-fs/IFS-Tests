@@ -21,7 +21,7 @@ As of 24 September 2026 (update this section at each handover):
 | 5 Launch | In progress: privacy (`feat/17`), the ranked LP system (`feat/18`) and the fixes `fix/1` to `fix/4` (audit retention, live quizzes, accounts and privacy, operations and housekeeping) are merged into `dev`; this documentation is `feat/19`; `feat/20-launch` (load test, restore drill, launch checklist, dropping `users.xp`) is next |
 | 6 After launch | Deferred ideas, to prioritise with the team |
 
-No release has been tagged yet, so nothing has been deployed to prod: `deploy/deploy.sh` only takes release tags (`vX.Y.Z`) for prod, and the repository has none. The first release is `v1.0.0` at the end of phase 5.
+No release has been tagged yet, so nothing has been deployed to prod: `deploy/deploy.sh` only takes release tags (`vX.Y.Z`) for prod, and the repository has none. The first release is `v1.0.0` at the end of phase 5; how it gets there is in the [release plan](release-plan.md).
 
 **To fill in** at each handover:
 

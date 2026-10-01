@@ -103,7 +103,7 @@ The season changes on **1 September**, Madrid time. The rank reset is automatic 
 | Task | Where it's tracked | Notes |
 |---|---|---|
 | Drop the legacy `users.xp` column | `feat/20-launch` in `.github/roadmap.yaml`, [ADR 0007](adr/0007-ranked-lp-and-account-level.md) | Expand/contract: the running release still maps it (`User.legacy_xp` in `src/ifs_tests/db/models.py`), and migrations run while the old release serves. Remove the mapping in one release; drop the column in a migration of the next |
-| Load test, restore drill, launch checklist | `feat/20-launch` | Before the first prod release (`v1.0.0`) |
+| Load test, restore drill, launch checklist | `feat/20-launch`, [release plan](release-plan.md) | Before the first prod release (`v1.0.0`) |
 | Legal name of the association, contact address, whether a data protection officer must be named | [ADR 0006](adr/0006-personal-data.md) (Consequences) | Board decision before launch; then update the privacy notice |
 | Which vertical TS Testing belongs to, and default topic ownership per sub-department | [ADR 0005](adr/0005-live-quiz.md) (Open) | Technical Directors |
 | Daily question per player; demotions shown at the end of the day; double LP for newcomers' first answers; whether repeats move LP | `feat/26-daily-per-player`, [ADR 0007](adr/0007-ranked-lp-and-account-level.md) | Team decision ([game rules 9](game-rules.md#9-tuning-the-rules)) |
