@@ -24,6 +24,8 @@ COPY --from=build /app/.venv /app/.venv
 COPY --from=build /app/src /app/src
 COPY alembic.ini ./
 COPY migrations ./migrations
+# Not used by the app: deploy.sh compares it between releases to say when Nginx needs the new one.
+COPY deploy/nginx/quiz.conf ./deploy/nginx/quiz.conf
 COPY --from=web /web/dist ./web/dist
 # Return large freed buffers to the OS (Argon2 allocates 19 MiB per hash).
 ENV PATH="/app/.venv/bin:$PATH" PYTHONUNBUFFERED=1 IFS_WEB_DIST=/app/web/dist IFS_MEDIA_DIR=/data/media IFS_BANK_DIR=/data/fsquiz \

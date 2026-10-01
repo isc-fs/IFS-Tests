@@ -3591,6 +3591,7 @@
       "title": "Actions"
      }
     },
+    "additionalProperties": false,
     "type": "object",
     "required": [
      "exported_at",
@@ -3799,6 +3800,7 @@
       "description": "When the account will be deleted, if inactive"
      }
     },
+    "additionalProperties": false,
     "type": "object",
     "required": [
      "email",
@@ -3846,6 +3848,7 @@
       "title": "On"
      }
     },
+    "additionalProperties": false,
     "type": "object",
     "required": [
      "at",
@@ -3940,6 +3943,19 @@
       "format": "date-time",
       "title": "Started At"
      },
+     "deadline_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Deadline At",
+      "description": "Timed modes: when the clock ran out"
+     },
      "submitted_at": {
       "anyOf": [
        {
@@ -3953,6 +3969,7 @@
       "title": "Submitted At"
      }
     },
+    "additionalProperties": false,
     "type": "object",
     "required": [
      "question_id",
@@ -3968,6 +3985,7 @@
      "late",
      "day",
      "started_at",
+     "deadline_at",
      "submitted_at"
     ],
     "title": "ExportAnswer"
@@ -3989,6 +4007,7 @@
       "title": "Details"
      }
     },
+    "additionalProperties": false,
     "type": "object",
     "required": [
      "at",
@@ -4021,6 +4040,7 @@
       "title": "Finished At"
      }
     },
+    "additionalProperties": false,
     "type": "object",
     "required": [
      "code",
@@ -4070,6 +4090,7 @@
       "title": "Used At"
      }
     },
+    "additionalProperties": false,
     "type": "object",
     "required": [
      "role",
@@ -4110,6 +4131,7 @@
       "title": "Proposals"
      }
     },
+    "additionalProperties": false,
     "type": "object",
     "required": [
      "joined",
@@ -4151,6 +4173,7 @@
       "title": "Submitted At"
      }
     },
+    "additionalProperties": false,
     "type": "object",
     "required": [
      "code",
@@ -4197,6 +4220,7 @@
       "title": "Captain"
      }
     },
+    "additionalProperties": false,
     "type": "object",
     "required": [
      "code",
@@ -4238,15 +4262,42 @@
        }
       ],
       "title": "Finished At"
+     },
+     "unreached": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Unreached",
+      "description": "Questions the run didn't reach, kept when it finished; null while running or if it finished before this was kept"
+     },
+     "unreached_graded": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Unreached Graded",
+      "description": "How many of those were graded"
      }
     },
+    "additionalProperties": false,
     "type": "object",
     "required": [
      "quiz_id",
      "season",
      "counted",
      "started_at",
-     "finished_at"
+     "finished_at",
+     "unreached",
+     "unreached_graded"
     ],
     "title": "ExportMockRun"
    },
@@ -4271,6 +4322,7 @@
       "title": "At"
      }
     },
+    "additionalProperties": false,
     "type": "object",
     "required": [
      "code",
@@ -4308,6 +4360,7 @@
       "title": "Handled At"
      }
     },
+    "additionalProperties": false,
     "type": "object",
     "required": [
      "question_id",
@@ -4342,6 +4395,7 @@
       "title": "Used At"
      }
     },
+    "additionalProperties": false,
     "type": "object",
     "required": [
      "created_at",
@@ -4368,6 +4422,7 @@
       "title": "Expires At"
      }
     },
+    "additionalProperties": false,
     "type": "object",
     "required": [
      "started_at",

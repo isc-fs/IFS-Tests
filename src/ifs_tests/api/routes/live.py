@@ -39,7 +39,6 @@ from ..schemas import (
 router = APIRouter(prefix="/api/live", tags=["live"])
 Code = Annotated[LiveCode, Path()]
 Id = Annotated[int, Path(ge=1, le=2**31 - 1)]
-NO_CONTENT = Response(status_code=204)
 STREAM_SECONDS = 300
 POLL_SECONDS = 0.5  # how old the session may be, as a worker's event streams see it
 log = logging.getLogger(__name__)
@@ -145,39 +144,33 @@ def join_session(
 
 
 @router.put("/sessions/{code}/config", status_code=204)
-def configure_session(code: Code, body: LiveConfig, user: Member, db: Db) -> Response:
+def configure_session(code: Code, body: LiveConfig, user: Member, db: Db) -> None:
     live.configure(db, user, code, body.model_dump())
-    return NO_CONTENT
 
 
 @router.put("/sessions/{code}/tables", status_code=204)
-def seat_tables(code: Code, body: SeatIn, user: Member, db: Db) -> Response:
+def seat_tables(code: Code, body: SeatIn, user: Member, db: Db) -> None:
     live.seat(db, user, code, [t.model_dump() for t in body.tables])
-    return NO_CONTENT
 
 
 @router.post("/sessions/{code}/tables/auto", status_code=204)
-def seat_by_subdepartment(code: Code, user: Member, db: Db) -> Response:
+def seat_by_subdepartment(code: Code, user: Member, db: Db) -> None:
     live.seat_by_subdepartment(db, user, code)
-    return NO_CONTENT
 
 
 @router.patch("/sessions/{code}/tables/{table_id}", status_code=204)
-def edit_table(code: Code, table_id: Id, body: TableEditIn, user: Member, db: Db) -> Response:
+def edit_table(code: Code, table_id: Id, body: TableEditIn, user: Member, db: Db) -> None:
     live.edit_table(db, user, code, table_id, body.name, body.captain_id)
-    return NO_CONTENT
 
 
 @router.put("/sessions/{code}/players/{user_id}", status_code=204)
-def move_player(code: Code, user_id: Id, body: MoveIn, user: Member, db: Db) -> Response:
+def move_player(code: Code, user_id: Id, body: MoveIn, user: Member, db: Db) -> None:
     live.move(db, user, code, user_id, body.table_id)
-    return NO_CONTENT
 
 
 @router.delete("/sessions/{code}/players/{user_id}", status_code=204)
-def remove_player(code: Code, user_id: Id, user: Member, db: Db) -> Response:
+def remove_player(code: Code, user_id: Id, user: Member, db: Db) -> None:
     live.remove(db, user, code, user_id)
-    return NO_CONTENT
 
 
 @router.post("/sessions/{code}/advance", status_code=204)
@@ -189,33 +182,27 @@ def advance_session(
     db: Db,
     now: Now,
     body: AdvanceIn | None = None,
-) -> Response:
+) -> None:
     sid = live.advance(db, user, code, now, (body.state, body.position) if body else None)
     _share_later(tasks, request, sid, now)
-    return NO_CONTENT
 
 
 @router.post("/sessions/{code}/end", status_code=204)
-def end_session(
-    code: Code, request: Request, tasks: BackgroundTasks, user: Member, db: Db, now: Now
-) -> Response:
+def end_session(code: Code, request: Request, tasks: BackgroundTasks, user: Member, db: Db, now: Now) -> None:
     _share_later(tasks, request, live.end(db, user, code, now), now)
-    return NO_CONTENT
 
 
 @router.put("/sessions/{code}/proposal", status_code=204)
-def propose(code: Code, body: KeyIn, user: Member, db: Db, now: Now) -> Response:
+def propose(code: Code, body: KeyIn, user: Member, db: Db, now: Now) -> None:
     live.propose(db, user, code, {"options": body.options, "value": body.value}, now)
-    return NO_CONTENT
 
 
 @router.post("/sessions/{code}/answer", status_code=204)
 def answer(
     code: Code, body: AnswerIn, request: Request, tasks: BackgroundTasks, user: Member, db: Db, now: Now
-) -> Response:
+) -> None:
     sid = live.answer(db, user, code, body.options, body.value, body.unsure, now)
     _share_later(tasks, request, sid, now)
-    return NO_CONTENT
 
 
 @router.get("/sessions/{code}/results.csv", response_class=Response)

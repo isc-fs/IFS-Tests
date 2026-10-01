@@ -44,7 +44,7 @@ Store a copy of the prod `.env` in the team's password manager, not in a shared 
 
 ### 1.3 Network and Nginx (consultant)
 1. The api containers join the Docker network the Nginx container uses (default name `proxy`, set `PROXY_NETWORK` in `.env` if it differs). If it doesn't exist yet: `docker network create proxy`. Set `FORWARDED_ALLOW_IPS` in `.env` to the Nginx container's address (`docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' <nginx container>`) so only Nginx can set the client IP; the stack refuses to start without it. If the Nginx container is recreated with a new address, update it and redeploy.
-2. Add [`deploy/nginx/quiz.conf`](../deploy/nginx/quiz.conf) to the Nginx configuration. It routes both hostnames to `quiz-prod-api` and `quiz-staging-api`; rate-limits `/auth/` and the password, delete and export endpoints (30 a minute per address, burst 80); gives the live event streams their own location, unbuffered, with at most 160 open per address; and caps requests in flight under `/api/` at 160 per address. The limits are per client IP and sized for the whole team (up to 80 people) in one room behind one campus address; see [security](security.md#server-and-containers). Reload Nginx whenever this file changes.
+2. Add [`deploy/nginx/quiz.conf`](../deploy/nginx/quiz.conf) to the Nginx configuration. It routes both hostnames to `quiz-prod-api` and `quiz-staging-api`; rate-limits `/auth/` and the password, delete and export endpoints (30 a minute per address, burst 80); gives the live event streams their own location, unbuffered, with at most 160 open per address; and caps requests in flight under `/api/` at 160 per address. The limits are per client IP and sized for the whole team (up to 80 people) in one room behind one campus address; see [security](security.md#server-and-containers). Reload Nginx whenever this file changes: `deploy.sh` says when a release changed it ([section 2](#2-deploy), step 8).
 3. DNS (Squarespace Domains): `A` (and `AAAA`) records for `quiz` and `quiz-staging` pointing at the server.
 4. Certificate for both names: `certbot certonly --webroot -w /var/www/certbot -d quiz.iscracingteam.com -d quiz-staging.iscracingteam.com`, then reload Nginx.
 5. Commit the change in etckeeper, as for every server configuration change.
@@ -79,13 +79,22 @@ deploy/deploy.sh prod v0.3.0                   # prod: release tags only
 Pull the repository first: the scripts and `deploy/compose.yaml` come from the checkout, the application from the image.
 
 What `deploy/deploy.sh` does, in order:
-1. Checks the arguments, the `.env` file and its permissions.
+1. Checks the arguments, the `.env` file and its permissions. From here on the deploy runs on its own, logging to
+   `/srv/quiz/<env>/deploy-<date>-<time>.log`, and your terminal only follows that log: a dropped SSH session, Ctrl-C
+   or closing the terminal stops the view, not the deploy, so the smoke test and the roll back still happen.
+   Reconnect and follow it again with `tail -f /srv/quiz/<env>/deploy-*.log`; its last line says where the
+   environment ended up. One deploy or restore at a time per environment: a second one is refused while one runs.
 2. Pulls the image for the api (`QUIZ_PULL=0` skips it).
 3. Starts `db` and `backup` if they aren't running.
 4. Takes a dump named `quiz-<date>-<time>-pre-<tag>.dump` (skipped on the very first deploy).
 5. Checks the image's migrations against the ones this database recorded (`deploy_migrations`): an applied migration edited since stops the deploy. Then runs `alembic upgrade head` as `migrator`, in one transaction, and records the image's migrations (skipped when the database is provably ahead of the image, as in a [roll back](#3-roll-back)).
 6. Starts `api` and `scheduler` on the new tag, waits up to 90 s for them to be healthy, and smoke-tests the api: `/healthz` answers 200 with a CSP header, `/` serves the app's page, an unknown `/api/` route is 404, the OpenAPI schema is hidden, and `/readyz` answers 200, which means the app reached the database with its own role (`app_rt`, `APP_PASSWORD`) and found every table and column the code maps (a migration missing or rewritten makes it 503 `schema out of date`). Both containers' health checks need the database too (the api's is `/readyz`; the scheduler only beats while the database answers), so a wrong `APP_PASSWORD` or a dead database fails here. The smoke test runs even when a container isn't healthy, so its `FAIL` lines say what's wrong. An image from before `/readyz` existed (a rollback to an old release) prints `skip readyz`.
-7. On success: writes the tag to `/srv/quiz/<env>/deployed-tag` and appends a line (UTC time, env, tag, who) to `/srv/quiz/<env>/deploy-history`. On failure: starts the previous tag again and exits with an error.
+7. On success: writes the tag to `/srv/quiz/<env>/deployed-tag` and appends a line (UTC time, env, tag, who) to `/srv/quiz/<env>/deploy-history`. On failure (or if the deploy process itself is stopped with SIGTERM or SIGINT): prints `deploy: FAILED`, starts the previous tag again if the new one had been started, and ends with a line saying which tag the environment runs ([2.2](#22-when-a-deploy-fails)).
+8. Lists what the release needs that a deploy doesn't do, comparing files between the previous image and the new one, as `deploy: to do:` lines before the last one (`deploy: done: <env> is on <tag>; N step(s) left, listed above`):
+   - `reload Nginx with the new deploy/nginx/quiz.conf`: the file changed. Nginx reads it from the server's configuration, not from the image: ask the consultant to install the new one and reload Nginx ([1.3](#13-network-and-nginx-consultant)).
+   - `run deploy/refresh-bank.sh <env> --no-mirror`: the code that reads answer keys, grades or imports the bank changed (`domain/keys.py`, `grading.py`, `upstream.py`, `bank/topics.py`, `services/bank.py`). The bank in the database was loaded by the old code, so its fixes only apply once it is loaded again ([2.3](#23-question-bank)). Safe to repeat, so a change that turns out not to need it costs only the run.
+   - `couldn't compare ...`: one of the images couldn't be read (removed from the server, for example). Check the release's changes to those files by hand.
+   An image from before this check doesn't carry `quiz.conf`, so the first deploy over one always lists the Nginx step: check the installed file matches the repository's.
 
 Starting the scheduler also runs the day's jobs whose time has passed (it keeps no memory across restarts), so every deploy runs the nightly maintenance once more. The jobs are idempotent; that's expected.
 
@@ -94,20 +103,26 @@ Starting the scheduler also runs the day's jobs whose time has passed (it keeps 
 2. Tag the merge commit on `main` (on your machine: `git checkout main && git pull`, then `git tag v1.0.0 && git push origin v1.0.0`). Versions follow `vMAJOR.MINOR.PATCH`; the roadmap names the tag each phase ends with.
 3. Wait for "Publish image" to finish for the tag.
 4. Deploy the tag to staging, check it (sign in, answer a practice question, open the leaderboard), then deploy it to prod.
+5. Do every `deploy: to do:` step the deploy listed (step 8 above), on staging first: the Nginx reload once for both environments, the bank push once per environment. The prod deploy compares with prod's previous release, so it can list steps staging didn't.
 
 ### 2.2 When a deploy fails
 
 | The script stopped at | What state you're in | What to do |
 |---|---|---|
 | `usage`, `missing ... .env`, `must be chmod 600`, `QUIZ_ENV ... expected`, `tag must be`, `prod only takes release tags` | Nothing changed | Fix the argument or the file and run it again |
+| `a deploy of <tag> ... is already running` or `a restore of <file> ... is already running` | Nothing changed | Follow it with the log it names. If none is running (`ps aux \| grep -E 'deploy\|restore'`, after a reboot for example), `rm -r /srv/quiz/<env>/operation.lock` |
+| Any line below followed by `<tag> was not started; <env> still runs <previous>` | The app is still on the previous tag; a migration that ran stays (expand-only, so the previous release works with it) | As in the row for the line above it |
 | The image pull | Nothing changed | Check the tag in the "Publish image" summary; check the GHCR package is still public |
 | `pre-deploy dump` | Nothing changed; the app is still on the previous tag | `docker logs quiz-<env>-backup-1`; check disk space (`df -h`) |
 | `migration(s) NNNN in <tag> differ from the ones applied to this database` | Nothing changed (apart from creating the empty `deploy_migrations` table the first time); the app is still on the previous tag | A migration was edited after it ran here, so the edit would never run. Put the migration back as it was and add a new one with the change, then publish a new image. If you have compared them and the difference really is harmless, clear the record as `migrator` (`DELETE FROM deploy_migrations WHERE revision = 'NNNN'`) and deploy again: it is recorded afresh from the image |
 | `the database is at NNNN, which <tag> doesn't know, and nothing shows it comes after <tag>'s migrations` | Nothing changed | The database's migrations aren't a continuation of the image's: a rewritten or foreign migration, or a database migrated by something other than `deploy.sh` since it began recording (a restore migrated forward, a manual `alembic upgrade`). After a restore, deploy the tag that is running (it records the chain) and then roll back. Otherwise find out where revision NNNN came from before deploying anything |
 | `migrating` | The migration rolled back as a whole; the app is still on the previous tag | Read the error; fix it in a new commit and publish a new image. Nothing to roll back |
-| `FAIL readyz ...`, then `rolling back to <previous>` | The app can't reach the database with `APP_PASSWORD`, or (`curl .../readyz` says `schema out of date`) the database lacks columns the new code maps; the previous tag is started again, but with the same `.env`, so the site still fails if the `.env` changed | Almost always `APP_PASSWORD` in `.env` doesn't match the `app_rt` role (for example half-way through a [password rotation](#7-secrets-rotation)), or `db` isn't running (`docker ps`). Fix the `.env` or the role's password and deploy the tag again. For `schema out of date`, the api's log names the missing columns: see [troubleshooting](troubleshooting.md#a-deploy-fails-with-fail-readyz-and-rolls-back). Rolling back never undoes an `.env` change |
-| `rolling back to <previous>` then `failed to start or failed the smoke test` (without `FAIL readyz`) | The database is migrated (expand-only, so the previous release works with it); the app is back on the previous tag | Find the cause on staging (below). Nothing else to do on prod |
-| Anything, on the first deploy of an environment | No previous tag to go back to | `docker logs quiz-<env>-api-1` |
+| `FAIL readyz ...`, then `rolling back to <previous>` and `rolled back: <env> runs <previous> again` | The app can't reach the database with `APP_PASSWORD`, or (`curl .../readyz` says `schema out of date`) the database lacks columns the new code maps; the previous tag is started again, but with the same `.env`, so the site still fails if the `.env` changed | Almost always `APP_PASSWORD` in `.env` doesn't match the `app_rt` role (for example half-way through a [password rotation](#7-secrets-rotation)), or `db` isn't running (`docker ps`). Fix the `.env` or the role's password and deploy the tag again. For `schema out of date`, the api's log names the missing columns: see [troubleshooting](troubleshooting.md#a-deploy-fails-with-fail-readyz-and-rolls-back). Rolling back never undoes an `.env` change |
+| `failed to start or failed the smoke test` (without `FAIL readyz`), then `rolled back: <env> runs <previous> again` | The database is migrated (expand-only, so the previous release works with it); the app is back on the previous tag | Find the cause on staging (below). Nothing else to do on prod |
+| `the roll back to <previous> failed too, so <env> may be down` | Neither tag is healthy: often the `.env` or the database, which both share | `docker logs quiz-<env>-api-1`, `docker ps`; fix the cause, then `deploy/deploy.sh <env> <previous>` |
+| `FAILED, stopped by SIGTERM` (or `SIGINT`) | Someone stopped the deploy process itself; the line after it says which tag runs, and it rolled back if the new one had started | Deploy again when ready |
+| The deploy process itself was killed (`kill -9`, a server reboot) | Unknown until you look; `deployed-tag` still names the previous tag unless the deploy finished | `rm -r /srv/quiz/<env>/operation.lock`, which it left behind, then deploy the tag you want |
+| Anything, on the first deploy of an environment | No previous tag to go back to: `<tag> is running but failed` | `docker logs quiz-<env>-api-1` |
 
 To see why a tag doesn't start (rolling back replaces the failed container and its logs), start it on staging by hand and read its logs, then put staging back:
 ```bash
@@ -128,7 +143,7 @@ It runs `ifs-tests mirror --refresh --images` then `ifs-tests push` with the dep
 
 Do this on staging first. Each environment has its own mirror, so each refresh costs FS-Quiz its own requests: don't repeat it without reason ([AGENTS.md](../AGENTS.md), server etiquette).
 
-After deploying a release that changes how answers are parsed or which questions are graded (the release notes say so), load the mirror already in the volume again, without asking FS-Quiz anything: `deploy/refresh-bank.sh <env> --no-mirror`. The first push after migration 0017 also records FS-Quiz's answer ID on every option.
+After deploying a release that changes how answers are parsed or which questions are graded (`deploy.sh` ends with `deploy: to do: run deploy/refresh-bank.sh <env> --no-mirror`, [section 2](#2-deploy)), load the mirror already in the volume again, without asking FS-Quiz anything: `deploy/refresh-bank.sh <env> --no-mirror`. The first push after migration 0017 also records FS-Quiz's answer ID on every option.
 
 ---
 
@@ -159,7 +174,7 @@ What `deploy/restore.sh` does, in order:
 3. Asks you to type the environment name. From here on the restore runs on its own, logging to
    `/srv/quiz/<env>/restore-<date>-<time>.log`, and your terminal only follows that log: a dropped SSH session, Ctrl-C
    or closing the terminal stops the view, not the restore. Reconnect and follow it again with
-   `tail -f /srv/quiz/<env>/restore-*.log`; its last line says how it ended. A second restore is refused while one runs.
+   `tail -f /srv/quiz/<env>/restore-*.log`; its last line says how it ended. A second restore, or a deploy, is refused while one runs (and a restore while a deploy runs).
 4. Stops `api` and `scheduler` and takes a safety dump of the current data, `quiz-<date>-<time>-pre-restore.dump`.
 5. In **one transaction**: drops the `public` schema with everything in it, recreates it, loads the dump as `migrator` (tables, data, and the grants the dump carries), re-applies `deploy/db/roles.sql` and marks the schema with a comment, `restored from <file> over <safety dump>`. Tables that newer migrations created don't survive, and the privileges end up exactly as in a freshly migrated database (`app_rt` still can't rewrite `audit_log`). If anything fails, the transaction rolls back and the data is as it was.
 6. Runs `alembic upgrade head` as `migrator`: an older dump is brought up to the deployed release.
@@ -173,11 +188,11 @@ If anything fails from step 4 on, it prints `restore: FAILED, see above`, waits 
 | `can't read <file>: is it complete?` | Nothing changed | The file is truncated or damaged (a full disk during the dump?). Pick another dump |
 | `... which <tag> doesn't know` | Nothing changed | Deploy the release the dump was taken on (or a later one), or pick an older dump |
 | The safety dump | The app was stopped and started again; nothing else changed | `df -h`; `docker logs quiz-<env>-backup-1` |
-| `a restore is already running` | Nothing changed | Follow it: `tail -f /srv/quiz/<env>/restore-*.log`. If none is running (`ps aux \| grep restore`, after a reboot for example), `rmdir /srv/quiz/<env>/restore.lock` |
+| `a restore of <file> ... is already running` or `a deploy of <tag> ... is already running` | Nothing changed | Follow it with the log it names. If none is running (`ps aux \| grep -E 'deploy\|restore'`, after a reboot for example), `rm -r /srv/quiz/<env>/operation.lock` |
 | `FAILED`, then `<file> was not loaded: the data is as it was` | The transaction rolled back; the app is running again | Read the error. `role "..." does not exist` means the dump grants something to a role this database doesn't have |
 | `FAILED`, then `<file> was loaded and migrated to <tag>` | The data is the dump's, migrated; the app is running | Read the cause on the `FAILED` line (an error above it, or `stopped by SIGTERM`); check the site |
 | `FAILED`, then `the database holds <file>, not migrated to <tag>; the app stays stopped` | The data is the dump's at its old revision; the app is stopped so it doesn't serve errors | Fix the error (a wrong `MIGRATOR_PASSWORD`, a failing migration), then `deploy/deploy.sh <env> <tag>`: it migrates and starts the app. Or go back by restoring the safety dump it names |
-| The restore process itself was killed (`kill -9`, a server reboot) mid-way | Unknown until you look | `deploy/deploy.sh <env> <deployed tag>` migrates whatever is there and starts the app; then `rmdir /srv/quiz/<env>/restore.lock`, which the killed restore left behind. Which data you have: `docker exec quiz-<env>-db-1 psql -U postgres -d quiz -tAc "SELECT obj_description('public'::regnamespace, 'pg_namespace')"` names the last dump restored |
+| The restore process itself was killed (`kill -9`, a server reboot) mid-way | Unknown until you look | `rm -r /srv/quiz/<env>/operation.lock`, which the killed restore left behind; then `deploy/deploy.sh <env> <deployed tag>` migrates whatever is there and starts the app. Which data you have: `docker exec quiz-<env>-db-1 psql -U postgres -d quiz -tAc "SELECT obj_description('public'::regnamespace, 'pg_namespace')"` names the last dump restored |
 
 To undo a restore, restore its safety dump the same way.
 

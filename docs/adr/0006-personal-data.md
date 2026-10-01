@@ -46,8 +46,9 @@ live quiz still going), and deleting one person must not break anyone else's res
 - Question difficulty recalibration loses their answers; with a team of this size that is noise.
 - Every new table or column holding personal data must appear in `services/privacy.export` and be removed with the
   account (a cascading foreign key, or a step in `privacy._delete`). AGENTS.md says so, and
-  `tests/api/test_privacy.py` fails when a `users` column or a column pointing at a user is neither exported nor
-  listed there as left out, with the reason.
+  `tests/api/test_privacy.py` fails when a `users` column, a column pointing at a user, or any other column of a
+  table that points at a user is neither exported nor listed there as left out, with the reason. The export's
+  models refuse keys they don't declare, so a field the export builds can't silently drop out of the file.
 - The notice names the team and its admins as the contact. Before launch the board should confirm the legal name of
   the association responsible and a contact address, and whether a faculty or university data protection officer
   needs to be named.
