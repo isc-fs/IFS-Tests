@@ -51,13 +51,13 @@ Store a copy of the prod `.env` in the team's password manager, not in a shared 
 
 ### 1.4 GitHub
 - Make the `ifs-tests` package on GHCR **public** (Package settings → Change visibility), so the server can pull without a token. The image contains code only, never data or secrets.
-- Branch rules on `dev` and `main` (Settings → Rules → Rulesets → New branch ruleset, one per branch, enforcement Active):
+- Branch rules on `dev` and `main`, kept as code in `.github/rulesets/dev.json` and `.github/rulesets/main.json`. Import each: Settings → Rules → Rulesets → New ruleset → Import a ruleset, then check the preview and create it. Or from a terminal: `gh api -X POST repos/isc-fs/IFS-Tests/rulesets --input .github/rulesets/dev.json` (and `main.json`). To change a rule, edit the file in a pull request, then edit the ruleset on GitHub to match. What they set:
   - Restrict deletions; block force pushes.
   - Require a pull request before merging, with 0 approvals (one maintainer can't approve their own pull request).
   - Require status checks to pass: `python`, `web`, `e2e`, `image`, `shell`, `secrets`, `dependency-review` (source GitHub Actions). Don't require branches to be up to date: parallel fixes would queue behind each other.
-  - On `dev` only, add **GitHub Actions** to the bypass list: the `Render ROADMAP` workflow commits `ROADMAP.md` straight to `dev`, and without the bypass every merge leaves the roadmap stale.
+  - On `dev` only, **GitHub Actions** is on the bypass list (app id 15368): the `Render ROADMAP` workflow commits `ROADMAP.md` straight to `dev`, and without the bypass every merge leaves the roadmap stale.
   - `main` only takes the release pull request from `dev`; that is a convention, not a rule GitHub enforces.
-  - Check: `gh api repos/isc-fs/IFS-Tests/rulesets` lists both.
+  - Check: `gh api repos/isc-fs/IFS-Tests/rulesets` lists both, and after the next merge into `dev` the `Render ROADMAP` run succeeds (a failed push there means the bypass didn't take).
 - Settings → Code security: secret scanning and push protection on; Dependabot alerts on.
 
 ### 1.5 First deploy of an environment
