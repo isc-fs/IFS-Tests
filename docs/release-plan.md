@@ -56,6 +56,22 @@ Each stage ends at its exit check; don't start the next one before it passes. Ow
 
 **Exit:** CI green on `dev`; every blocker in section 4 merged; the package public and the branch rules on; the release notes draft lists the known issues.
 
+**Where stage A stands (1 October 2026).** The code side is done and waits in pull requests; the two GitHub settings need a repository admin.
+
+| Item | Pull request | State |
+|---|---|---|
+| A.1 Leaderboard tests independent of table statistics (the cause: `TRUNCATE` keeps old statistics, and the one `ANALYZE` was rolled back; production unaffected) | #92 (`fix/26`) | CI green |
+| A.2 S2-BANK-01 and S2-BANK-02 | #94 (`fix/27`) | CI green |
+| A.2 S2-ACC-01 and S2-LIVE-02 | #98 (`fix/29`) | CI green |
+| A.2 S2-OPS-02 and S2-OPS-04 (also merges `fix/27` and `fix/29`, resolving the tracker) | #97 (`fix/28`) | see the PR |
+| A.3, A.4, A.7 and the release notes; also merges every fix above | #90 (`feat/20`) | see the PR |
+| A.5 Branch rulesets | Settings, exactly as in [runbook 1.4](runbook.md#14-github) | Maintainer |
+| A.6 GHCR package public | Package settings | Maintainer |
+
+Merge in this order, each after its CI passes: #92, #94, #98, #97, #90. Each later branch already contains the earlier ones' conflicting edits, so every merge is clean. Merged together (#90's tree), the suite gave 3610 Python and 168 web tests passing, with lint, types, shellcheck and the generated API client clean.
+
+To confirm while reviewing #98: the export now leaves out, on purpose, `attempts.points` (unused since 0008), `practice_hints.created_at` and `mock_sessions.position`; `tests/api/test_privacy.py` gives the reason for each.
+
 ### Stage B: owner decisions (board, TDs, maintainer)
 
 These can run in parallel with stage A; prod waits for all of them.
@@ -130,8 +146,8 @@ Pick a weekday morning, not the day of a team meeting, with the consultant reach
 | | Items |
 |---|---|
 | **Blocks** | CI green on `dev`, the image gate, the branch rules and a public package (stage A). The server checks of section 2, above all how Nginx runs. The controller identity and contact on the privacy page, and the Hetzner DPA (stage B). A successful staging rehearsal (stage D). From sweep 2, the findings that damage data or leave an operator blind: S2-BANK-01 (a broken mirror can empty every quiz and drop every reviewer correction), S2-OPS-02 (a dropped SSH session mid-deploy leaves a failing release serving) and S2-OPS-04 (a deploy that doesn't apply bank-parser or Nginx changes, and doesn't say so) |
-| **Should** | S2-OPS-03 (a damaged database can't be restored), S2-ACC-01 (the export misses a field: a promise of the privacy page), S2-LIVE-02 (XP after a table's answer is shared by the event streams instead of after the response: late, not lost), S2-PERF-01 if the load test in D.4 shows the api near saturation |
-| **Doesn't apply to a fresh prod** | S2-BANK-02 (only a database loaded before #52) and S2-DOC-01 (only a stack that loaded both the sample and the real bank). Check staging: if it was loaded before #52 or with `push --sample`, recreate its volumes before stage D |
+| **Should** | S2-ACC-01 (the export misses a field: a promise of the privacy page) and S2-LIVE-02 (a table's XP shared late, by the event streams), both fixed in #98. Still open: S2-OPS-03 (a damaged database can't be restored; needs the owner's choice of override), S2-PERF-01 if the load test in D.4 shows the api near saturation |
+| **Doesn't apply to a fresh prod** | S2-DOC-01 (only a stack that loaded both the sample and the real bank). Check staging: if it was loaded with `push --sample`, recreate its volumes before stage D. (S2-BANK-02, which only hit a database loaded before #52, is fixed in #94 anyway) |
 | **Can ship as known issues** | The scoring findings waiting on the TDs (S2-DOM-01/02/03, S2-ACC-02), live routing fairness (S2-LIVE-01), the projector and banner layout (S2-UI-01/02), the guide wording (S2-UI-05), the test-only findings (S2-GATE-02/03), and the Low/Info findings. List them in the release notes |
 
 This sorting is a recommendation from the state on 1 October 2026; the maintainer decides it in stage A.2 and records the decision in the tracking issue.
