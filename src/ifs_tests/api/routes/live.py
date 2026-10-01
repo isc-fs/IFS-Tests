@@ -5,7 +5,7 @@ import logging
 import time
 from collections.abc import AsyncIterator
 from dataclasses import asdict, dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, FastAPI, Path, Request, Response
@@ -15,7 +15,7 @@ from fastapi.responses import StreamingResponse
 from ...domain.live import SUBDEPARTMENTS
 from ...services import live
 from ...services.live import View
-from ..deps import Db, Member, Now, background_db
+from ..deps import Db, Member, Now, app_now, background_db
 from ..present import feedback, play_question
 from ..schemas import (
     AdvanceIn,
@@ -228,7 +228,7 @@ _sharing: set[asyncio.Task[None]] = set()
 
 def _poll(app: FastAPI, code: str) -> live.Watch:
     with background_db(app) as db:
-        return live.watch(db, code, datetime.now(UTC))
+        return live.watch(db, code, app_now(app))
 
 
 def _shared(task: asyncio.Task[None]) -> None:
@@ -252,7 +252,7 @@ async def _latest(app: FastAPI, code: str) -> live.Watch:
         if new.state in ("closed", "finished") and (
             old is None or (old.state, old.position) != (new.state, new.position)
         ):
-            task = asyncio.create_task(run_in_threadpool(_share, app, new.session_id, datetime.now(UTC)))
+            task = asyncio.create_task(run_in_threadpool(_share, app, new.session_id, app_now(app)))
             _sharing.add(task)
             task.add_done_callback(_shared)
         if len(_watched) > 64:  # sessions nobody watches any more
@@ -267,7 +267,7 @@ async def events(code: Code, request: Request, user: Member, db: Db) -> Streamin
     reaches the viewer's table, so screens know to fetch the state again. No state travels here, so nobody sees
     more than their own GET shows them."""
     # The same access check as the state.
-    await run_in_threadpool(live.view, db, user, code, datetime.now(UTC))
+    await run_in_threadpool(live.view, db, user, code, app_now(request.app))
 
     async def stream() -> AsyncIterator[str]:
         last, quiet = "", 0
