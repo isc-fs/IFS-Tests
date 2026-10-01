@@ -13,6 +13,13 @@
 # deploy refuses a database at a revision the image doesn't know unless the record shows the image's whole chain
 # leads to it, and refuses an image whose migration under an applied number isn't the one applied (an edited
 # migration would otherwise never run). Run it from a checkout of the repo on the server.
+#
+# After the checks of its arguments and .env, the deploy runs on its own and logs to
+# <QUIZ_ROOT>/<env>/deploy-<date>-<time>.log; the terminal only follows that log, so a dropped SSH session, Ctrl-C
+# or killing the script can't stop it before its smoke test or roll back. One deploy or restore at a time per
+# environment. Its last line says where the environment ended up. On success it also lists the steps the release
+# needs that a deploy doesn't take: reloading Nginx when deploy/nginx/quiz.conf changed, and loading the bank again
+# when the code that parses answer keys, grades or imports the bank changed (compared between the two images).
 set -euo pipefail
 
 die() { echo "deploy: $*" >&2; exit 1; }
@@ -40,8 +47,40 @@ compose() {
     --env-file "$envfile" "${@:2}"
 }
 
+# shellcheck source=/dev/null
+. "$repo/deploy/lib.sh"
+if [[ -z ${QUIZ_DETACHED:-} ]]; then
+  lock_check
+  run_detached deploy "$env" "$tag"
+fi
+lock_take "a deploy of $tag"
+
 previous=$(cat "$dir/deployed-tag" 2>/dev/null || true)
 log "$env: ${previous:-<none>} -> $tag"
+started='' stopped=''
+on_exit() {
+  local status=$?
+  trap - EXIT
+  echo "deploy: FAILED, ${stopped:-see above}" >&2
+  if [[ -z $started ]]; then
+    echo "deploy: $tag was not started; $env still runs ${previous:-nothing} (a migration that ran is expand-only)" >&2
+  elif [[ -z $previous ]]; then
+    echo "deploy: $tag is running but failed; there is no previous tag to go back to: docker logs quiz-$env-api-1" >&2
+  else
+    log "rolling back to $previous"
+    if compose "$previous" up -d --remove-orphans --wait --wait-timeout 90 api scheduler; then
+      echo "deploy: rolled back: $env runs $previous again" >&2
+    else
+      echo "deploy: the roll back to $previous failed too, so $env may be down: read docker logs quiz-$env-api-1," >&2
+      echo "deploy: then run deploy/deploy.sh $env $previous" >&2
+    fi
+  fi
+  lock_release
+  exit "$status"
+}
+trap on_exit EXIT
+trap 'stopped="stopped by SIGTERM"; exit 143' TERM
+trap 'stopped="stopped by SIGINT"; exit 130' INT
 
 if [[ ${QUIZ_PULL:-1} == 1 ]]; then
   compose "$tag" pull api
@@ -132,18 +171,44 @@ sys.exit(0 if all(checks.values()) else 1)
 PY
 }
 
+# Changes that only take effect with a step a deploy doesn't take: "<files in the image>|<the step>".
+followups=(
+  "deploy/nginx/quiz.conf|reload Nginx with the new deploy/nginx/quiz.conf (consultant, runbook 1.3)"
+  "src/ifs_tests/domain/keys.py src/ifs_tests/domain/grading.py src/ifs_tests/domain/upstream.py \
+src/ifs_tests/bank/topics.py src/ifs_tests/services/bank.py|run deploy/refresh-bank.sh $env --no-mirror (answer-key \
+parsing, grading or the bank import changed, runbook 2.3)"
+)
+image=ghcr.io/isc-fs/ifs-tests # as in compose.yaml
+hashes() { docker run --rm --pull never --network none --entrypoint sha256sum "$image:$1" "${@:2}" </dev/null 2>/dev/null; }
+
+started=1
 healthy=0
 compose "$tag" up -d --remove-orphans --wait --wait-timeout 90 api scheduler && healthy=1
 # Smoke-test even when a container isn't healthy: its checks say why (readyz FAIL: the database, APP_PASSWORD or
 # a schema missing columns the code maps).
-if smoke && [[ $healthy == 1 ]]; then
-  echo "$tag" > "$dir/deployed-tag"
-  echo "$(date -u +%FT%TZ) $env $tag $(whoami)" >> "$dir/deploy-history"
-  log "done: $env is on $tag"
-else
-  if [[ -n $previous ]]; then
-    log "rolling back to $previous"
-    compose "$previous" up -d --remove-orphans --wait --wait-timeout 90 api scheduler
-  fi
+if ! smoke || [[ $healthy != 1 ]]; then
   die "$tag failed to start or failed the smoke test"
+fi
+echo "$tag" > "$dir/deployed-tag"
+echo "$(date -u +%FT%TZ) $env $tag $(whoami)" >> "$dir/deploy-history"
+trap lock_release EXIT
+trap '' INT TERM
+
+todo=0
+if [[ -n $previous && $previous != "$tag" ]]; then
+  for followup in "${followups[@]}"; do
+    read -ra files <<<"${followup%%|*}"
+    if ! new=$(hashes "$tag" "${files[@]}"); then
+      log "to do: couldn't compare ${files[*]} with $previous; if they changed, ${followup#*|}"
+      todo=$((todo + 1))
+    elif [[ $new != "$(hashes "$previous" "${files[@]}")" ]]; then
+      log "to do: ${followup#*|}"
+      todo=$((todo + 1))
+    fi
+  done
+fi
+if ((todo)); then
+  log "done: $env is on $tag; $todo step(s) left, listed above"
+else
+  log "done: $env is on $tag"
 fi

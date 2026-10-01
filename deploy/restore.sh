@@ -55,30 +55,16 @@ if ! out=$(compose run --rm --no-deps api alembic show "$revision" </dev/null 2>
   grep -q "Can't locate revision" <<<"$out" || die "can't check revision $revision with $tag: $out"
   die "$file is at revision $revision, which $tag doesn't know: deploy a release that has it first. Nothing changed"
 fi
-[[ -n ${RESTORE_CONFIRMED:-} ]] || log "$file is at revision $revision; $env runs $tag"
-
-lock=$dir/restore.lock
-if [[ -z ${RESTORE_CONFIRMED:-} ]]; then
-  [[ ! -d $lock ]] || die "a restore is already running (tail -f $dir/restore-*.log); if none is (ps aux | grep restore), rmdir $lock"
+# shellcheck source=/dev/null
+. "$repo/deploy/lib.sh"
+if [[ -z ${QUIZ_DETACHED:-} ]]; then
+  log "$file is at revision $revision; $env runs $tag"
+  lock_check
   read -r -p "This replaces all $env data with $file. Type '$env' to continue: " answer
   [[ $answer == "$env" ]] || die "aborted"
-  logfile=$dir/restore-$(TZ=Europe/Madrid date +%Y%m%d-%H%M%S).log
-  set -m # its own process group: a signal to this terminal's group doesn't reach it
-  RESTORE_CONFIRMED=1 nohup bash "$0" "$env" "$file" </dev/null >"$logfile" 2>&1 &
-  worker=$!
-  set +m
-  log "running on its own: a dropped connection or Ctrl-C only stops this view. Log: $logfile"
-  tail -n +1 -f "$logfile" &
-  watcher=$!
-  # Stops the view when the restore ends or when this script is killed, so it never outlives both.
-  (while kill -0 $$ 2>/dev/null && kill -0 "$worker" 2>/dev/null; do sleep 1; done; sleep 1; kill "$watcher" 2>/dev/null) &
-  status=0
-  wait "$worker" || status=$?
-  sleep 1
-  kill "$watcher" 2>/dev/null || true
-  exit "$status"
+  run_detached restore "$env" "$file"
 fi
-mkdir "$lock" 2>/dev/null || die "a restore is already running; if none is, rmdir $lock"
+lock_take "a restore of $file"
 
 sql() { compose exec -T db psql -X -tAq -U postgres -d quiz -c "$1" </dev/null; }
 start_app() {
@@ -113,7 +99,7 @@ on_exit() {
     echo "restore: the database holds $file, not migrated to $tag; the app stays stopped. Fix the error above," >&2
     echo "restore: then run deploy/deploy.sh $env $tag (it migrates and starts the app), or restore $safety" >&2
   fi
-  rmdir "$lock" 2>/dev/null || true
+  lock_release
   exit "$status"
 }
 trap on_exit EXIT
@@ -145,6 +131,6 @@ log "restoring $file"
 } | compose exec -T -e PGAPPNAME=quiz-restore db psql -X -q -o /dev/null -v ON_ERROR_STOP=1 -U postgres -d quiz
 
 migrate
-trap 'rmdir "$lock" 2>/dev/null || true' EXIT
+trap lock_release EXIT
 start_app
 log "$env restored from $file"

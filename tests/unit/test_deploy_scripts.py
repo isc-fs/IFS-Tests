@@ -3,6 +3,7 @@ records its calls and answers what the test tells it to."""
 
 from __future__ import annotations
 
+import contextlib
 import os
 import signal
 import subprocess
@@ -261,7 +262,7 @@ def test_a_restore_loads_the_dump_marks_it_migrates_and_starts(tmp_path: Path) -
     assert in_order(docker, "PGAPPNAME=quiz-restore", "alembic upgrade head", "up -d"), docker
     assert (
         list((tmp_path / "srv/staging").glob("restore-*.log"))
-        and not (tmp_path / "srv/staging/restore.lock").exists()
+        and not (tmp_path / "srv/staging/operation.lock").exists()
     )
 
 
@@ -340,25 +341,28 @@ def test_a_restore_that_cannot_tell_what_happened_leaves_the_app_stopped(tmp_pat
     assert not any("up -d" in c for c in docker)
 
 
-def test_a_restore_goes_on_when_its_terminal_is_lost(tmp_path: Path) -> None:
-    # S2-OPS-01: an SSH session dropped (or the script killed) while the dump loads.
-    server(tmp_path)
+def lose_terminal(
+    tmp_path: Path, script: str, args: list[str], answers: list[str], stdin: str, step: str
+) -> Path:
+    """Runs `script` as from a terminal and drops it (SIGHUP, then SIGKILL to its process group, as a dropped SSH
+    session or a killed script) once docker is called with `step`. Returns the worker's log file."""
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     (bin_dir / "docker").write_text(STUB)
     (bin_dir / "docker").chmod(0o755)
     log, rules = tmp_path / "docker.log", tmp_path / "answers"
     log.write_text("")
-    rules.write_text("\n".join(restore_answers("PGAPPNAME=quiz-restore|0||2")) + "\n")
+    rules.write_text("\n".join(answers) + "\n")
     env = {
         **os.environ,
         "PATH": f"{bin_dir}:{os.environ['PATH']}",
         "QUIZ_ROOT": str(tmp_path / "srv"),
+        "QUIZ_PULL": "0",
         "STUB_LOG": str(log),
         "STUB_ANSWERS": str(rules),
     }
-    script = subprocess.Popen(
-        ["bash", str(DEPLOY / "restore.sh"), "staging", DUMP],
+    terminal = subprocess.Popen(
+        ["bash", str(DEPLOY / script), *args],
         env=env,
         stdin=subprocess.PIPE,
         stdout=subprocess.DEVNULL,
@@ -366,27 +370,153 @@ def test_a_restore_goes_on_when_its_terminal_is_lost(tmp_path: Path) -> None:
         text=True,
         start_new_session=True,  # the terminal's process group
     )
-    assert script.stdin is not None
-    script.stdin.write("staging\n")
-    script.stdin.close()
+    assert terminal.stdin is not None
+    terminal.stdin.write(stdin)
+    terminal.stdin.close()
     deadline = time.monotonic() + 20
-    while "PGAPPNAME=quiz-restore" not in log.read_text():
+    while step not in log.read_text():
         assert time.monotonic() < deadline, log.read_text()
         time.sleep(0.1)
-    os.killpg(script.pid, signal.SIGHUP)
-    os.killpg(script.pid, signal.SIGKILL)
-    script.wait(timeout=10)
-    [worker_log] = (tmp_path / "srv/staging").glob("restore-*.log")
-    while f"staging restored from {DUMP}" not in worker_log.read_text():
-        assert time.monotonic() < deadline + 20, worker_log.read_text()
+    os.killpg(terminal.pid, signal.SIGHUP)
+    with contextlib.suppress(
+        ProcessLookupError, PermissionError
+    ):  # macOS: the group may hold only zombies by now
+        os.killpg(terminal.pid, signal.SIGKILL)
+    terminal.wait(timeout=10)
+    logs = list((tmp_path / "srv/staging").glob(f"{script.removesuffix('.sh')}-*.log"))
+    assert len(logs) == 1, "the script died with its terminal"
+    return logs[0]
+
+
+def wait_for(path: Path, text: str, seconds: float = 30) -> None:
+    deadline = time.monotonic() + seconds
+    while text not in path.read_text():
+        assert time.monotonic() < deadline, path.read_text()
         time.sleep(0.2)
-    calls = [c for c in log.read_text().splitlines() if c]
+
+
+def test_a_restore_goes_on_when_its_terminal_is_lost(tmp_path: Path) -> None:
+    # S2-OPS-01: an SSH session dropped (or the script killed) while the dump loads.
+    server(tmp_path)
+    worker_log = lose_terminal(
+        tmp_path,
+        "restore.sh",
+        ["staging", DUMP],
+        restore_answers("PGAPPNAME=quiz-restore|0||2"),
+        "staging\n",
+        "PGAPPNAME=quiz-restore",
+    )
+    wait_for(worker_log, f"staging restored from {DUMP}")
+    calls = [c for c in (tmp_path / "docker.log").read_text().splitlines() if c]
     assert in_order(calls, "PGAPPNAME=quiz-restore", "alembic upgrade head", "up -d"), calls
 
 
-def test_a_second_restore_is_refused_while_one_runs(tmp_path: Path) -> None:
+def migrating(*extra: str) -> list[str]:
+    """A deploy of sha-1a2b3c4 over v1.0.0 that migrates 0016 to 0017; `extra` rules come first and win."""
+    return [
+        *extra,
+        "SELECT version_num|0|0016",
+        f"FROM deploy_migrations|0|0016 {FP['0016']}",
+        f"run --rm --no-deps -T api python -|0|0017 {FP['0017']}\\n0016 {FP['0016']}",
+    ]
+
+
+@pytest.mark.parametrize("smoke_ok", [False, True])
+def test_a_deploy_finishes_or_rolls_back_when_its_terminal_is_lost(tmp_path: Path, smoke_ok: bool) -> None:
+    # S2-OPS-02: the terminal dropped while deploy.sh waits for the new release to be healthy.
     server(tmp_path)
-    (tmp_path / "srv/staging/restore.lock").mkdir()
-    done, docker = run(tmp_path, "restore.sh", "staging", DUMP, answers=restore_answers(), stdin="staging\n")
-    assert done.returncode != 0 and "a restore is already running" in done.stderr, done.stderr
-    assert not any("stop" in c for c in docker)
+    smoke = (
+        "exec -T api python -|0|  ok   SPA shell at /"
+        if smoke_ok
+        else "exec -T api python -|1|  FAIL SPA shell at /"
+    )
+    worker_log = lose_terminal(
+        tmp_path,
+        "deploy.sh",
+        ["staging", "sha-1a2b3c4"],
+        migrating("--wait-timeout 90 api scheduler|0||2", smoke),
+        "",
+        "--wait-timeout 90 api scheduler",
+    )
+    srv = tmp_path / "srv/staging"
+    if smoke_ok:
+        wait_for(worker_log, "deploy: done: staging is on sha-1a2b3c4")
+        assert (srv / "deployed-tag").read_text() == "sha-1a2b3c4\n"
+    else:
+        wait_for(worker_log, "deploy: rolled back: staging runs v1.0.0 again")
+        assert (srv / "deployed-tag").read_text() == "v1.0.0\n"
+        calls = [c for c in (tmp_path / "docker.log").read_text().splitlines() if c]
+        assert "--wait-timeout 90 api scheduler" in after(calls, "exec -T api python -")[0], calls
+    time.sleep(0.5)
+    assert not (srv / "operation.lock").exists()
+
+
+def test_a_deploy_says_what_state_it_left_when_it_fails_before_starting(tmp_path: Path) -> None:
+    server(tmp_path)
+    done, docker = run(
+        tmp_path, "deploy.sh", "staging", "sha-1a2b3c4", answers=migrating("alembic upgrade|1|boom")
+    )
+    out = done.stdout + done.stderr
+    assert done.returncode != 0, out
+    assert out.rstrip().endswith(
+        "sha-1a2b3c4 was not started; staging still runs v1.0.0 (a migration that ran is expand-only)"
+    )
+    assert not any("--wait-timeout 90" in c for c in docker)
+
+
+@pytest.mark.parametrize("script", ["deploy.sh", "restore.sh"])
+@pytest.mark.parametrize("running", ["a deploy of sha-0000000", "a restore of x.dump"])
+def test_one_deploy_or_restore_at_a_time(tmp_path: Path, script: str, running: str) -> None:
+    server(tmp_path)
+    lock = tmp_path / "srv/staging/operation.lock"
+    lock.mkdir()
+    (lock / "what").write_text(f"{running} (log: /srv/quiz/staging/x.log)\n")
+    args = ["staging", "sha-1a2b3c4"] if script == "deploy.sh" else ["staging", DUMP]
+    done, docker = run(tmp_path, script, *args, answers=restore_answers(), stdin="staging\n")
+    assert (
+        done.returncode != 0 and f"{running} (log: /srv/quiz/staging/x.log) is already running" in done.stderr
+    )
+    assert not any("up -d --remove-orphans" in c or " stop " in c for c in docker), docker
+
+
+NGINX = "ifs-tests:{} deploy/nginx/quiz.conf"
+BANK = "ifs-tests:{} src/ifs_tests/domain/keys.py"
+NGINX_STEP = "deploy: to do: reload Nginx with the new deploy/nginx/quiz.conf"
+BANK_STEP = "deploy: to do: run deploy/refresh-bank.sh staging --no-mirror"
+
+
+@pytest.mark.parametrize(
+    ("hashes", "steps"),
+    [
+        ({}, []),  # the same files in both images
+        (
+            {NGINX.format("v1.0.0"): "0|a  quiz.conf", NGINX.format("sha-1a2b3c4"): "0|b  quiz.conf"},
+            [NGINX_STEP],
+        ),
+        ({BANK.format("v1.0.0"): "0|a  keys.py", BANK.format("sha-1a2b3c4"): "0|b  keys.py"}, [BANK_STEP]),
+        # an image from before quiz.conf was in it: sha256sum fails on the missing file
+        ({NGINX.format("v1.0.0"): "1|", NGINX.format("sha-1a2b3c4"): "0|b  quiz.conf"}, [NGINX_STEP]),
+        (
+            {BANK.format("sha-1a2b3c4"): "125|"},
+            ["deploy: to do: couldn't compare src/ifs_tests/domain/keys.py"],
+        ),
+    ],
+)
+def test_a_deploy_lists_the_steps_its_release_needs(
+    tmp_path: Path, hashes: dict[str, str], steps: list[str]
+) -> None:
+    # S2-OPS-04: Nginx and bank fixes only take effect with a step deploy.sh doesn't take.
+    server(tmp_path)
+    rules = [f"{pattern}|{answer}" for pattern, answer in hashes.items()]
+    done, _ = run(tmp_path, "deploy.sh", "staging", "sha-1a2b3c4", answers=migrating(*rules))
+    out = done.stdout + done.stderr
+    assert done.returncode == 0, out
+    found = [line for line in out.splitlines() if line.startswith("deploy: to do:")]
+    assert len(found) == len(steps) and all(
+        line.startswith(s) for line, s in zip(found, steps, strict=True)
+    ), out
+    last = out.rstrip().splitlines()[-1]
+    if steps:
+        assert last == f"deploy: done: staging is on sha-1a2b3c4; {len(steps)} step(s) left, listed above"
+    else:
+        assert last == "deploy: done: staging is on sha-1a2b3c4"
