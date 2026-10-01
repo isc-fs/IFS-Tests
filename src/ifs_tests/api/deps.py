@@ -33,6 +33,13 @@ def get_now() -> datetime:
     return datetime.now(UTC)
 
 
+def app_now(app: FastAPI) -> datetime:
+    """The routes' clock, for code that runs outside a request's dependencies (the live event streams): a
+    different clock there closes questions the routes still see open."""
+    now: datetime = app.dependency_overrides.get(get_now, get_now)()
+    return now
+
+
 def get_app_settings(request: Request) -> Settings:
     settings: Settings = request.app.state.settings
     return settings

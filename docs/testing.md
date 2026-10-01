@@ -43,7 +43,7 @@ Tests that need the database are marked `integration` (a `pytestmark` at the top
 | `postgres_url` | session | The container's URL. Skips (locally) or fails (CI) without Docker. On macOS it sets `TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock` for you. |
 | `app_engine` | session | A database `app_tests` on that container, migrated to head with the real Alembic migrations |
 | `db` | test | A SQLAlchemy session on `app_tests`. Before each test every table except `alembic_version` is truncated (`RESTART IDENTITY`), so IDs start at 1 and tests don't see each other's rows. |
-| `clock` | test | A `Clock` at 2026-10-01 10:00 UTC. `clock.advance(hours=13)` moves it; the app under test reads it through the `get_now` override. |
+| `clock` | test | A `Clock` at 2026-10-01 10:00 UTC. `clock.advance(hours=13)` moves it; the app under test reads it through the `get_now` override (outside a request, through `app_now`). Anything reading the real clock instead works only while the real date is near the fake one: the live event streams did, and their test broke the day the real clock passed 10:01 on 1 October 2026 (fix/30). |
 | `app_client` | test | A FastAPI `TestClient` on a fresh app (`IFS_ENV=test`, origin `https://testserver`), with `get_db` and `get_now` overridden and the `X-CSRF: 1` header set, so it behaves like the browser |
 | `new_client` | test | A factory for more clients on the same app with their own cookies: another browser, another person |
 | `no_crits` | autouse | Turns off the 5 % "critical" XP roll so XP can be asserted exactly. A test that wants one patches `services.xp._crit` back. |
