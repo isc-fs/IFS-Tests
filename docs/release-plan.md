@@ -88,7 +88,7 @@ Rehearse the whole release on staging with the commit that will become `v1.0.0`.
 2. `create-admin`, then `deploy/refresh-bank.sh staging` ([runbook 1.5](runbook.md#15-first-deploy-of-an-environment)). One mirror, about 130 requests: don't repeat it.
 3. Smoke: sign in, invite a second account, answer a practice question, the daily question, a mock question, open the leaderboard, export your data, delete the second account.
 4. A live quiz on the real server with as many phones as the team can gather (a meeting is ideal). This is the load test of `feat/20-launch` and the re-measure S2-PERF-01 asks for: watch `docker stats quiz-staging-api-1` during it. If the api sits near 100 % CPU, raise it to `cpus: 2.0` with the consultant's agreement ([runbook 5.5](runbook.md#55-live-quiz-capacity)).
-5. Roll back and forward: deploy an older `sha-` tag, then the release candidate again.
+5. Roll back and forward: deploy an older `sha-` tag, then the release candidate again. Pick one that already has migration 0024: an image from before it still maps `users.xp`, so it fails `readyz` against the migrated database and `deploy.sh` goes back to the candidate: correct, but it tests nothing.
 6. Restore drill ([runbook 4.1](runbook.md#41-restore-drill)) with a staging dump: note how long it took.
 7. `docker exec quiz-staging-scheduler-1 ifs-tests maintenance` and check the counts.
 8. The next morning: a `backup: /backups/...-nightly.dump` line and the heartbeat ping arrived.

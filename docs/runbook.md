@@ -67,7 +67,7 @@ Store a copy of the prod `.env` in the team's password manager, not in a shared 
 
 ## 2. Deploy
 
-CI publishes an image for every push to `dev` (`sha-<12 chars>` and `staging`) and for every tag `vX.Y.Z` (`.github/workflows/publish.yml`). The exact tags are in the "Publish image" run summary on GitHub (Actions → Publish image → the run → Summary).
+CI publishes an image for every push to `dev` (`sha-<12 chars>` and `staging`) and for every tag `vX.Y.Z` (`.github/workflows/publish.yml`). A release tag only gets an image if it names the version in `pyproject.toml`, its commit is on `main`, and CI passed on that commit (`.github/scripts/release-gate.sh`; it waits up to 30 minutes for a CI run still going). The exact tags are in the "Publish image" run summary on GitHub (Actions → Publish image → the run → Summary).
 
 ```bash
 ssh <you>@<server>
@@ -90,10 +90,11 @@ What `deploy/deploy.sh` does, in order:
 Starting the scheduler also runs the day's jobs whose time has passed (it keeps no memory across restarts), so every deploy runs the nightly maintenance once more. The jobs are idempotent; that's expected.
 
 ### 2.1 Release
-1. Merge `dev` into `main` through a pull request.
-2. Tag the merge commit on `main` (on your machine: `git checkout main && git pull`, then `git tag v1.0.0 && git push origin v1.0.0`). Versions follow `vMAJOR.MINOR.PATCH`; the roadmap names the tag each phase ends with.
-3. Wait for "Publish image" to finish for the tag.
-4. Deploy the tag to staging, check it (sign in, answer a practice question, open the leaderboard), then deploy it to prod.
+1. On `dev`, set `version` in `pyproject.toml` to the release (then `uv lock` and regenerate the API client, [development](development.md)), and write its notes in [release-notes/](release-notes/), one file per version: what's in it, known issues, and steps an operator must take after deploying.
+2. Merge `dev` into `main` through a pull request, with the notes in its description, and wait for CI on `main`.
+3. Tag the merge commit on `main` (on your machine: `git checkout main && git pull`, then `git tag v1.0.0 && git push origin v1.0.0`). Versions follow `vMAJOR.MINOR.PATCH`; the first release is `v1.0.0` ([release plan](release-plan.md)).
+4. Wait for "Publish image" to finish for the tag. If its release gate refuses (`isn't on main`, `doesn't match version`, `CI ... ended failure`), nothing was published: delete the tag (`git push origin :refs/tags/vX.Y.Z`), fix, and tag again; if it timed out waiting for CI, re-run the workflow once CI is green. Then create the GitHub release for the tag with the same notes.
+5. Deploy the tag to staging, check it (sign in, answer a practice question, open the leaderboard), then deploy it to prod.
 
 ### 2.2 When a deploy fails
 
