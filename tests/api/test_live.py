@@ -210,6 +210,33 @@ def test_only_captains_answer_every_table_shares_its_result_and_answers_stay_hid
     assert (board["rows"], board["me"]) == ([], None)  # no LP moved: nobody has played for their rank
 
 
+def test_every_closing_answer_and_end_shares_its_own_xp_right_after_the_response(
+    room: dict[str, Any], db: Session
+) -> None:
+    """No event stream is open and nobody reads the state again: only the 204's background task shares. A
+    response shared between requests ran the first request's task every time (S2-LIVE-02)."""
+    players = sorted(room[f"{n}_id"] for n in ("Ana", "Leo", "Marta", "Pau"))
+
+    def shared(code: str) -> list[int]:
+        sid = db.scalar(select(LiveSession.id).where(LiveSession.code == code))
+        return sorted(db.scalars(select(Attempt.user_id).where(Attempt.live_session_id == sid)))
+
+    for _ in range(2):
+        code = lobby(room, areas=["rules"], count=1)
+        advance(room, code)
+        qid = state(room["Ana"], code)["question"]["id"]
+        assert send(room["Leo"], code, right_answer(db, qid)) == 204
+        assert send(room["Pau"], code, right_answer(db, qid)) == 204  # the last table: closes the question
+        assert shared(code) == players
+    for _ in range(2):
+        code = lobby(room, areas=["rules"], count=1)
+        advance(room, code)
+        qid = state(room["Ana"], code)["question"]["id"]
+        assert send(room["Leo"], code, right_answer(db, qid)) == 204
+        assert room["Tere"].post(f"/api/live/sessions/{code}/end").status_code == 204
+        assert shared(code) == sorted([room["Ana_id"], room["Leo_id"]])  # only the table that answered
+
+
 def test_proposals_reach_the_captain_of_the_table_that_answers(room: dict[str, Any], db: Session) -> None:
     code = lobby(room, areas=["rules"])
     advance(room, code)
