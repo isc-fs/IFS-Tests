@@ -47,7 +47,7 @@ def main(argv: list[str] | None = None) -> None:
     b.add_argument(
         "--allow-mass-removal",
         action="store_true",
-        help="retire what the bank lacks even if it is more than a quarter of the questions",
+        help="retire, change and unlink what the bank says even if it is more than a quarter of the bank",
     )
 
     sub.add_parser("openapi", help="print the API's OpenAPI schema (used to generate the web client)")

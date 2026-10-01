@@ -383,6 +383,26 @@ def test_questions_loaded_before_the_graded_hash_are_judged_by_their_stored_answ
     assert db.scalar(select(func.count()).where(Question.graded_hash.is_(None))) == 0
 
 
+def test_choice_questions_loaded_before_answer_ids_were_kept_keep_their_correction_on_a_new_solution(
+    db: Session, clock: Clock, tmp_path: Path, sample: dict[str, Any]
+) -> None:
+    import_bank(db, copy.deepcopy(sample), SAMPLE_DIR / "img", tmp_path, clock.now)
+    db.execute(update(AnswerOption).values(fsquiz_id=None))
+    db.execute(update(Question).values(graded_hash=None))
+    second = next(o.id for o in option_rows(db, by_fsquiz(db, 90001).id).values() if o.position == 1)
+    fix = {"kind": "choice", "mode": "one", "options": [second]}
+    q = corrected(db, 90001, fix, "reviewer's pick")
+    raw(sample, 90001)["solutions"].append({"solution_id": 1, "text": "A new worked solution.", "images": []})
+    raw(sample, 90006)["answers"][0]["text"] = "Something else entirely"
+    import_bank(db, copy.deepcopy(sample), SAMPLE_DIR / "img", tmp_path, clock.now)
+    db.expire_all()
+
+    assert db.get_one(AnswerKey, q.id).override == fix
+    q = by_fsquiz(db, 90001)
+    assert (q.difficulty, q.upstream_change) == (5, None)
+    assert by_fsquiz(db, 90006).upstream_change == "answer"
+
+
 def drop(bank: dict[str, Any], quizzes: tuple[int, ...] = (), questions: tuple[int, ...] = ()) -> None:
     """FS-Quiz deletes these quizzes and questions; questions only in a deleted quiz go with it."""
     bank["quizzes"] = [z for z in bank["quizzes"] if z["quiz_id"] not in quizzes]
@@ -465,3 +485,95 @@ def test_the_mass_removal_guard_counts_only_the_questions_there_before_the_push(
     report = import_bank(db, copy.deepcopy(sample), SAMPLE_DIR / "img", tmp_path, clock.now)
     assert (report.added, report.retired, report.not_retired) == (4, 0, 4)
     assert not db.get_one(Quiz, 9002).retired
+    assert (
+        db.scalar(select(func.count()).where(QuizQuestion.quiz_id == 9909)) == 4
+    )  # a new quiz gets its list
+    assert db.scalar(select(func.count()).where(QuizQuestion.quiz_id == 9002)) == 5
+
+
+def lists_emptied(bank: dict[str, Any]) -> None:
+    for z in bank["quizzes"]:
+        z["question_ids"] = []
+
+
+def questions_gone(bank: dict[str, Any]) -> None:
+    lists_emptied(bank)
+    bank["questions"] = []
+
+
+def answers_lost(bank: dict[str, Any]) -> None:
+    for q in bank["questions"]:
+        q["answers"] = []
+
+
+def none_correct(bank: dict[str, Any]) -> None:
+    for q in bank["questions"]:
+        for a in q["answers"]:
+            a["is_correct"] = False
+
+
+def answers_changed(bank: dict[str, Any]) -> None:
+    for q in bank["questions"]:
+        answers = q["answers"]
+        if len(answers) > 1:
+            flags = [a["is_correct"] for a in answers]
+            for a, flag in zip(answers, flags[-1:] + flags[:-1], strict=True):
+                a["is_correct"] = flag
+        else:
+            answers[0]["text"] += "0"
+
+
+def bank_state(db: Session) -> tuple[Any, ...]:
+    db.expire_all()
+    return (
+        sorted(
+            db.execute(select(QuizQuestion.quiz_id, QuizQuestion.question_id, QuizQuestion.position)).tuples()
+        ),
+        sorted(
+            db.execute(select(AnswerKey.question_id, AnswerKey.key, AnswerKey.override)).tuples(), key=str
+        ),
+        sorted(
+            db.execute(select(Question.id, Question.graded, Question.playable, Question.upstream_change)),
+            key=str,
+        ),
+        db.scalar(select(func.count()).where(AnswerOption.retired)),
+        db.scalar(select(func.count()).where(Quiz.retired)),
+    )
+
+
+@pytest.mark.parametrize(
+    ("breakage", "held"),
+    [
+        (lists_emptied, (0, 0, 16)),
+        (questions_gone, (12, 0, 16)),
+        (answers_lost, (0, 12, 0)),
+        (none_correct, (0, 11, 0)),  # 90010 has no right answer already
+        (answers_changed, (0, 11, 0)),
+    ],
+)
+def test_a_mirror_changing_most_of_the_bank_changes_nothing_unless_allowed(
+    breakage: Any,
+    held: tuple[int, int, int],
+    db: Session,
+    clock: Clock,
+    tmp_path: Path,
+    sample: dict[str, Any],
+) -> None:
+    import_bank(db, copy.deepcopy(sample), SAMPLE_DIR / "img", tmp_path, clock.now)
+    second = next(o.id for o in option_rows(db, by_fsquiz(db, 90001).id).values() if o.position == 1)
+    corrected(db, 90001, {"kind": "choice", "mode": "one", "options": [second]}, "reviewer's pick")
+    corrected(db, 90012, {"kind": "number", "accept": [{"v": 2800.0, "d": 0}]}, "2800")
+    before = bank_state(db)
+    broken = copy.deepcopy(sample)
+    breakage(broken)
+    clock.advance(days=1)
+
+    report = import_bank(db, copy.deepcopy(broken), SAMPLE_DIR / "img", tmp_path, clock.now)
+    assert (report.not_retired, report.not_changed, report.not_unlinked) == held
+    assert (report.retired, report.key_changed, report.updated) == (0, 0, 0)
+    assert bank_state(db) == before
+    assert db.scalar(select(func.count()).where(Question.key_changed_at.is_not(None))) == 0
+
+    report = import_bank(db, broken, SAMPLE_DIR / "img", tmp_path, clock.now, allow_mass_removal=True)
+    assert (report.not_retired, report.not_changed, report.not_unlinked) == (0, 0, 0)
+    assert bank_state(db) != before
