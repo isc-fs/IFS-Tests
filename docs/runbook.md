@@ -51,7 +51,13 @@ Store a copy of the prod `.env` in the team's password manager, not in a shared 
 
 ### 1.4 GitHub
 - Make the `ifs-tests` package on GHCR **public** (Package settings → Change visibility), so the server can pull without a token. The image contains code only, never data or secrets.
-- Branch rules on `dev` and `main`: pull request required, CI checks required, no force pushes; `main` only from `dev`.
+- Branch rules on `dev` and `main` (Settings → Rules → Rulesets → New branch ruleset, one per branch, enforcement Active):
+  - Restrict deletions; block force pushes.
+  - Require a pull request before merging, with 0 approvals (one maintainer can't approve their own pull request).
+  - Require status checks to pass: `python`, `web`, `e2e`, `image`, `shell`, `secrets`, `dependency-review` (source GitHub Actions). Don't require branches to be up to date: parallel fixes would queue behind each other.
+  - On `dev` only, add **GitHub Actions** to the bypass list: the `Render ROADMAP` workflow commits `ROADMAP.md` straight to `dev`, and without the bypass every merge leaves the roadmap stale.
+  - `main` only takes the release pull request from `dev`; that is a convention, not a rule GitHub enforces.
+  - Check: `gh api repos/isc-fs/IFS-Tests/rulesets` lists both.
 - Settings → Code security: secret scanning and push protection on; Dependabot alerts on.
 
 ### 1.5 First deploy of an environment
