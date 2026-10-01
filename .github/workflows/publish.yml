@@ -1,7 +1,8 @@
 name: Publish image
 
 # dev   -> ghcr.io/isc-fs/ifs-tests:sha-<commit> and :staging
-# vX.Y.Z tag (on main) -> ghcr.io/isc-fs/ifs-tests:vX.Y.Z
+# vX.Y.Z tag -> ghcr.io/isc-fs/ifs-tests:vX.Y.Z, only for the version in pyproject.toml, on main, with CI green
+# (.github/scripts/release-gate.sh).
 # Deployment itself is manual: a maintainer runs deploy/deploy.sh on the server.
 
 on:
@@ -18,8 +19,16 @@ jobs:
     permissions:
       contents: read
       packages: write
+      actions: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Release gate (tags only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: .github/scripts/release-gate.sh "$GITHUB_REF_NAME" "$GITHUB_SHA" "$GITHUB_REPOSITORY"
       - name: Build and push
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -64,7 +64,7 @@ Session, invite and reset tokens are stored only as hashes and need no rotation.
 
 - **Lockfiles** for both stacks (`uv.lock`, `web/package-lock.json`); CI installs with `uv sync --frozen` and `npm ci`.
 - **npm install scripts are never run:** `npm ci --ignore-scripts` locally, in CI and in the `Dockerfile`.
-- **GitHub Actions are pinned to a commit SHA** (with the version in a comment), and the CI tool images (shellcheck, gitleaks) and base images to a digest. Every workflow sets its token permissions explicitly: `contents: read` by default, and write access only on the jobs that need it (publishing the image, issues, the roadmap).
+- **GitHub Actions are pinned to a commit SHA** (with the version in a comment), and the CI tool images (shellcheck, gitleaks) and base images to a digest. A release image is built only from a commit on `main` that passed CI (`.github/scripts/release-gate.sh`). Every workflow sets its token permissions explicitly: `contents: read` by default, and write access only on the jobs that need it (publishing the image, issues, the roadmap).
 - **Dependabot** (`.github/dependabot.yml`) proposes weekly updates for Python, npm, GitHub Actions, the `Dockerfile` base images and the images in `deploy/compose.yaml` (the Postgres digest), with a 7-day cooldown so brand-new releases (the usual window for a compromised package) aren't picked up at once. A new Postgres major version is ignored: it needs a dump and restore, done by hand.
 - **Dependency review** on every pull request fails on new dependencies with known high-severity vulnerabilities.
 - **CodeQL** scans Python, JavaScript/TypeScript and the workflows on pull requests, pushes to `dev` and `main`, and weekly.
