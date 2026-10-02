@@ -24,7 +24,7 @@ COPY --from=build /app/.venv /app/.venv
 COPY --from=build /app/src /app/src
 COPY alembic.ini ./
 COPY migrations ./migrations
-# Not used by the app: deploy.sh compares it between releases to say when Nginx needs the new one.
+# Not used by the app: deploy.sh compares it between releases to say when deploy/nginx.sh must install it.
 COPY deploy/nginx/quiz.conf ./deploy/nginx/quiz.conf
 COPY --from=web /web/dist ./web/dist
 # Return large freed buffers to the OS (Argon2 allocates 19 MiB per hash).
@@ -34,5 +34,5 @@ USER 10001
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=3s --retries=3 CMD ["python", "-c", "import urllib.request,sys; sys.exit(urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=2).status != 200)"]
 # No access log: Nginx keeps one (with IPs) and rotates it; this one would never expire (ADR 0006).
-# uvicorn trusts X-Forwarded-For only from FORWARDED_ALLOW_IPS (set it to the Nginx container on the server).
+# uvicorn trusts X-Forwarded-For only from FORWARDED_ALLOW_IPS (the proxy network's subnet on the server, ADR 0008).
 CMD ["uvicorn", "ifs_tests.api.app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2", "--proxy-headers", "--no-access-log"]

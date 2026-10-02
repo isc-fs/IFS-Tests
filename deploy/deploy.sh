@@ -18,7 +18,7 @@
 # <QUIZ_ROOT>/<env>/deploy-<date>-<time>.log; the terminal only follows that log, so a dropped SSH session, Ctrl-C
 # or killing the script can't stop it before its smoke test or roll back. One deploy or restore at a time per
 # environment. Its last line says where the environment ended up. On success it also lists the steps the release
-# needs that a deploy doesn't take: reloading Nginx when deploy/nginx/quiz.conf changed, and loading the bank again
+# needs that a deploy doesn't take: deploy/nginx.sh when deploy/nginx/quiz.conf changed, and loading the bank again
 # when the code that parses answer keys, grades or imports the bank changed (compared between the two images).
 set -euo pipefail
 
@@ -173,7 +173,7 @@ PY
 
 # Changes that only take effect with a step a deploy doesn't take: "<files in the image>|<the step>".
 followups=(
-  "deploy/nginx/quiz.conf|reload Nginx with the new deploy/nginx/quiz.conf (consultant, runbook 1.3)"
+  "deploy/nginx/quiz.conf|run deploy/nginx.sh to install the new deploy/nginx/quiz.conf in the website's Nginx (runbook 1.3)"
   "src/ifs_tests/domain/keys.py src/ifs_tests/domain/grading.py src/ifs_tests/domain/upstream.py \
 src/ifs_tests/bank/topics.py src/ifs_tests/services/bank.py|run deploy/refresh-bank.sh $env --no-mirror (answer-key \
 parsing, grading or the bank import changed, runbook 2.3)"

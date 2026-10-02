@@ -2,7 +2,7 @@
 
 How to set up, deploy, roll back, back up, restore and look after MingoQuiz on the team server. Written for whoever maintains it next: follow it step by step. What has to happen when (nightly, each season, each September) is in the [maintenance calendar](maintenance.md); handing the project over is in [handover.md](handover.md); fixes for known problems are in [troubleshooting](troubleshooting.md).
 
-The server itself (SSH, firewall, updates, Nginx, certificates) is administered by the team's external consultant. Anything marked **(consultant)** needs them or a board member with server admin rights.
+The server itself (SSH, firewall, updates, certificates) is administered by the team's external consultant. Anything marked **(consultant)** needs them or a board member with server admin rights. Nginx is the website's container, `isc-web`, maintained through the website's repository ([ADR 0008](adr/0008-behind-the-website-nginx.md), section 1.3).
 
 Names used below:
 
@@ -42,12 +42,42 @@ The database roles (`migrator`, `app_rt`, `backup_ro`) are created from these pa
 
 Store a copy of the prod `.env` in the team's password manager, not in a shared document.
 
-### 1.3 Network and Nginx (consultant)
-1. The api containers join the Docker network the Nginx container uses (default name `proxy`, set `PROXY_NETWORK` in `.env` if it differs). If it doesn't exist yet: `docker network create proxy`. Set `FORWARDED_ALLOW_IPS` in `.env` to the Nginx container's address (`docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' <nginx container>`) so only Nginx can set the client IP; the stack refuses to start without it. If the Nginx container is recreated with a new address, update it and redeploy.
-2. Add [`deploy/nginx/quiz.conf`](../deploy/nginx/quiz.conf) to the Nginx configuration. It routes both hostnames to `quiz-prod-api` and `quiz-staging-api`; rate-limits `/auth/` and the password, delete and export endpoints (30 a minute per address, burst 80); gives the live event streams their own location, unbuffered, with at most 160 open per address; and caps requests in flight under `/api/` at 160 per address. The limits are per client IP and sized for the whole team (up to 80 people) in one room behind one campus address; see [security](security.md#server-and-containers). Reload Nginx whenever this file changes: `deploy.sh` says when a release changed it ([section 2](#2-deploy), step 8).
-3. DNS (Squarespace Domains): `A` (and `AAAA`) records for `quiz` and `quiz-staging` pointing at the server.
-4. Certificate for both names: `certbot certonly --webroot -w /var/www/certbot -d quiz.iscracingteam.com -d quiz-staging.iscracingteam.com`, then reload Nginx.
-5. Commit the change in etckeeper, as for every server configuration change.
+### 1.3 Network, Nginx and DNS
+
+The team's website runs on the same server as the container `isc-web` (Nginx), from its own repository, and owns ports 80 and 443; the quiz sits behind it ([ADR 0008](adr/0008-behind-the-website-nginx.md)). `isc-web` is rebuilt and recreated from the website's repository on every push to it, so anything it needs from the quiz is set up once in that repository, never by hand in `/srv/isc-web`. In this order (the website's deploy fails while step 3 refers to a network that doesn't exist yet):
+
+1. **Shared network** (maintainer, on the server). Check the subnet is free (`ip route | grep 10.213.` and `docker network inspect $(docker network ls -q) -f '{{.Name}} {{range .IPAM.Config}}{{.Subnet}}{{end}}'` show nothing in `10.213.0.0/24`), then:
+   ```bash
+   docker network create --subnet 10.213.0.0/24 proxy
+   ```
+   Both `.env` files keep `PROXY_NETWORK=proxy` and `FORWARDED_ALLOW_IPS=10.213.0.0/24` (as in `deploy/env.example`): uvicorn trusts the client address Nginx forwards only from that subnet. A subnet rather than `isc-web`'s address, because every website deploy recreates the container.
+2. **The quiz's Nginx folder** (maintainer, on the server): `mkdir -p /srv/quiz/nginx`. It stays empty until step 6; an empty folder changes nothing for the website.
+3. **The hook in the website's repository** (website maintainer, through their repository; the server picks it up within two minutes of the push). In `docker-compose.yml`, on the `web` service (container `isc-web`), add one volume and the networks, and declare `proxy` at the end:
+   ```yaml
+       volumes:
+         # ...the three it has (site.conf, certbot-www, /etc/letsencrypt), then:
+         - /srv/quiz/nginx:/etc/nginx/quiz:ro
+       networks: [default, proxy]       # default keeps it on the network it uses today
+   networks:
+     proxy:
+       external: true
+   ```
+   Its `logging` (json-file, 3 × 10 MB) stays as it is. In its Nginx configuration (`site.conf` under its `deploy/nginx` folder), add as the **last** line, after every `server {}` block: `include /etc/nginx/quiz/*.conf;`. Last, so the website's blocks stay the default for requests to unknown names or to the bare IP. Then check on the server: `docker inspect isc-web -f '{{range .Mounts}}{{.Source}}={{.Destination}} {{end}}'` lists `/srv/quiz/nginx=/etc/nginx/quiz`, `docker inspect isc-web -f '{{range $n, $_ := .NetworkSettings.Networks}}{{$n}} {{end}}'` lists `proxy`, and the website still loads.
+4. **DNS** (whoever holds the domain's DNS: Arsys today, `dns9`/`dns10.servidoresdns.net`): `A` records for `quiz` and `quiz-staging` pointing at `46.62.206.29`, like the website's. No `AAAA`: the website has none. When the domain moves to Squarespace Domains, these two records move with the website's. Check: `dig +short quiz.iscracingteam.com`.
+5. **Certificate** (server admin, on the server), before step 6: `quiz.conf` names this certificate, so Nginx refuses it until it exists. The website's certificate renews through a webroot (`/srv/isc-web/certbot-www`, which `isc-web` serves at `/var/www/certbot`) with a hook that reloads `isc-web`; the quiz's is issued the same way. Until step 6 the website's catch-all server on port 80 answers the challenge for the new names; afterwards `quiz.conf`'s own port-80 server does, from the same folder:
+   ```bash
+   sudo certbot certonly --webroot -w /srv/isc-web/certbot-www \
+     -d quiz.iscracingteam.com -d quiz-staging.iscracingteam.com \
+     --deploy-hook "docker exec isc-web nginx -s reload"
+   sudo certbot renew --dry-run
+   ```
+   Check: `sudo certbot certificates` lists `quiz.iscracingteam.com` with both names; `isc-web` already mounts `/etc/letsencrypt`.
+6. **Install the quiz's Nginx rules** (maintainer, from the checkout): `deploy/nginx.sh`. It copies [`deploy/nginx/quiz.conf`](../deploy/nginx/quiz.conf) to `/srv/quiz/nginx`, has `isc-web`'s Nginx test the whole configuration and reloads it; if Nginx rejects it, the previous file goes back and the website is untouched. It warns if `isc-web` doesn't include the folder yet (step 3). Run it again whenever `deploy.sh` says so ([section 2](#2-deploy), step 8).
+
+   `quiz.conf` routes both hostnames to `quiz-prod-api` and `quiz-staging-api`; rate-limits `/auth/` and the password, delete and export endpoints (30 a minute per address, burst 80); gives the live event streams their own location, unbuffered, with at most 160 open per address; and caps requests in flight under `/api/` at 160 per address. The limits are per client IP and sized for the whole team (up to 80 people) in one room behind one campus address; see [security](security.md#server-and-containers). Check: `curl -s https://quiz-staging.iscracingteam.com/readyz` (after the first deploy) and the website still loads.
+7. Commit the server changes (the network, `/srv/quiz`) in etckeeper, as for every server configuration change.
+
+A website deploy recreates `isc-web`: for a few seconds the quiz is unreachable too and live-quiz screens reconnect. Ask the website's maintainers not to push during a live quiz.
 
 ### 1.4 GitHub
 - Make the `ifs-tests` package on GHCR **public** (Package settings → Change visibility), so the server can pull without a token. The image contains code only, never data or secrets.
@@ -97,7 +127,7 @@ What `deploy/deploy.sh` does, in order:
 6. Starts `api` and `scheduler` on the new tag, waits up to 90 s for them to be healthy, and smoke-tests the api: `/healthz` answers 200 with a CSP header, `/` serves the app's page, an unknown `/api/` route is 404, the OpenAPI schema is hidden, and `/readyz` answers 200, which means the app reached the database with its own role (`app_rt`, `APP_PASSWORD`) and found every table and column the code maps (a migration missing or rewritten makes it 503 `schema out of date`). Both containers' health checks need the database too (the api's is `/readyz`; the scheduler only beats while the database answers), so a wrong `APP_PASSWORD` or a dead database fails here. The smoke test runs even when a container isn't healthy, so its `FAIL` lines say what's wrong. An image from before `/readyz` existed (a rollback to an old release) prints `skip readyz`.
 7. On success: writes the tag to `/srv/quiz/<env>/deployed-tag` and appends a line (UTC time, env, tag, who) to `/srv/quiz/<env>/deploy-history`. On failure (or if the deploy process itself is stopped with SIGTERM or SIGINT): prints `deploy: FAILED`, starts the previous tag again if the new one had been started, and ends with a line saying which tag the environment runs ([2.2](#22-when-a-deploy-fails)).
 8. Lists what the release needs that a deploy doesn't do, comparing files between the previous image and the new one, as `deploy: to do:` lines before the last one (`deploy: done: <env> is on <tag>; N step(s) left, listed above`):
-   - `reload Nginx with the new deploy/nginx/quiz.conf`: the file changed. Nginx reads it from the server's configuration, not from the image: ask the consultant to install the new one and reload Nginx ([1.3](#13-network-and-nginx-consultant)).
+   - `run deploy/nginx.sh to install the new deploy/nginx/quiz.conf`: the file changed. Nginx reads it from `/srv/quiz/nginx`, not from the image: after `git pull`, run `deploy/nginx.sh` ([1.3](#13-network-nginx-and-dns), step 6).
    - `run deploy/refresh-bank.sh <env> --no-mirror`: the code that reads answer keys, grades or imports the bank changed (`domain/keys.py`, `grading.py`, `upstream.py`, `bank/topics.py`, `services/bank.py`). The bank in the database was loaded by the old code, so its fixes only apply once it is loaded again ([2.3](#23-question-bank)). Safe to repeat, so a change that turns out not to need it costs only the run.
    - `couldn't compare ...`: one of the images couldn't be read (removed from the server, for example). Check the release's changes to those files by hand.
    An image from before this check doesn't carry `quiz.conf`, so the first deploy over one always lists the Nginx step: check the installed file matches the repository's.
@@ -241,7 +271,7 @@ The two link commands need an active admin account to exist (they act in its nam
 - Logs rotate automatically (3 × 10 MB per container).
 - **Database connections** are budgeted against Postgres's `max_connections=40` (3 reserved for the superuser): each app process opens at most `IFS_DB_POOL_SIZE` + `IFS_DB_MAX_OVERFLOW` connections, 5 + 5 by default, and the scheduler is set to 2 + 0 in `deploy/compose.yaml`. The api's 2 workers (20), the scheduler (2), one `ifs-tests` command run alongside with `docker exec` or `compose run` (10), a migration (1) and the backup (1) make 34 of 37. So run one such command at a time; if you raise a pool size, recount in the comment above `max_connections` in `deploy/compose.yaml`.
 - The api and scheduler run with `TZ=Europe/Madrid`, the backup too; the database keeps UTC (`timezone=UTC`).
-- The app writes no access log; Nginx keeps one (consultant), rotated within 14 days.
+- The app writes no access log. Nginx (`isc-web`) logs to its container log, which Docker rotates by size once the website sets it ([1.3](#13-network-nginx-and-dns), step 3); read it with `docker logs isc-web`.
 
 ### 5.1 Logs
 

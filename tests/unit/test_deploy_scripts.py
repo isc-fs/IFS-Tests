@@ -481,7 +481,7 @@ def test_one_deploy_or_restore_at_a_time(tmp_path: Path, script: str, running: s
 
 NGINX = "ifs-tests:{} deploy/nginx/quiz.conf"
 BANK = "ifs-tests:{} src/ifs_tests/domain/keys.py"
-NGINX_STEP = "deploy: to do: reload Nginx with the new deploy/nginx/quiz.conf"
+NGINX_STEP = "deploy: to do: run deploy/nginx.sh to install the new deploy/nginx/quiz.conf"
 BANK_STEP = "deploy: to do: run deploy/refresh-bank.sh staging --no-mirror"
 
 
