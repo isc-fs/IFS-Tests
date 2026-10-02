@@ -32,7 +32,7 @@ Stage C (the server admin, the website's maintainer, DNS) runs alongside; its st
 
 **Lands in:** `web/src/routes/About.tsx`, [security](security.md), [ADR 0006](adr/0006-personal-data.md) Consequences (as answered).
 
-**Decided:** 2 October 2026, the board: the association, represented by its board, is responsible for the data. Still needed for the privacy page: the association's legal name and a role address for data requests.
+**Decided:** 2 October 2026, the board: the association, ISC, represented by its board, is responsible for the data. Still needed (3 October): a role address for data requests (the president's contact is the likely one; a shared address such as a board mailbox is better than a personal one in a public notice). The privacy page changes once it's known.
 
 ## B2. A data processing agreement with Hetzner
 
@@ -134,4 +134,4 @@ These don't block `v1.0.0`: they ship as known issues in its [release notes](rel
 
 **Lands in:** `deploy/nginx/quiz.conf`, `web/src/routes/About.tsx`, [security](security.md).
 
-**Decided:** 2 October 2026, the board: keep the 14-day promise, in line with the GDPR. How (option 1 or 3) is being settled with the maintainer.
+**Decided:** 2 October 2026, the board: keep the GDPR promise; 3 October, option 1, the least work and the least that can break: `quiz.conf` turns the access log off and the error log down to critical errors, so Nginx records no IP addresses for MingoQuiz at all and the privacy page says so. Tested against Nginx 1.27 (the server's): 122 requests, 39 of them refused by the rate limit, left no log line, while the website kept logging its own.

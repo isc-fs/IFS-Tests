@@ -71,7 +71,7 @@ The real bank is about 1,070 questions from 120 past quizzes (`uv run ifs-tests 
    ```bash
    uv run ifs-tests mirror --images
    ```
-   This writes `data/fsquiz/` (`raw/` API responses, `bank.json`, `img/`). The client waits 1 second between requests (`--delay`, keep it); the first run is about 130 requests plus one per image. It is cached: a second run fetches the event list, then only quizzes and images it doesn't have yet, so new quizzes arrive without any flag. `--refresh` re-fetches every quiz, the document list and the last qualifiers' results too (images stay cached); the server's `deploy/refresh-bank.sh` always uses it, once a season. Locally, use it only when FS-Quiz has changed quizzes you already have (see [runbook](runbook.md#23-question-bank) and [fsquiz-api.md](fsquiz-api.md)).
+   This writes `data/fsquiz/` (`raw/` API responses, `bank.json`, `img/`). The client waits 1 second between requests (`--delay`, keep it); the first run is about 500 requests plus one per image (504 and 374 on the server on 3 October 2026). It is cached: a second run fetches the event list, then only quizzes and images it doesn't have yet, so new quizzes arrive without any flag. `--refresh` re-fetches every quiz, the document list and the last qualifiers' results too (images stay cached); the server's `deploy/refresh-bank.sh` always uses it, once a season. Locally, use it only when FS-Quiz has changed quizzes you already have (see [runbook](runbook.md#23-question-bank) and [fsquiz-api.md](fsquiz-api.md)).
 2. Load it into the local database. `compose.yaml` mounts `./data/fsquiz` read-only into the container:
    ```bash
    docker compose run --rm api ifs-tests push

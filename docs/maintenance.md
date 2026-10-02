@@ -63,7 +63,7 @@ Reviewers, on their own rhythm: work through the **Reported** queue in Review ([
 
 The registration quizzes run over the winter (FSG's is usually in January). FS-Quiz publishes them some time after. Once they are up (check fs-quiz.eu by hand; don't script it):
 
-1. **Maintainer: refresh the bank** on staging, then prod: `deploy/refresh-bank.sh staging`, check Admin → Question bank, then `deploy/refresh-bank.sh prod` ([runbook 2.3](runbook.md#23-question-bank)). The script always re-fetches every quiz, the rulebook and handbook list and the last qualifiers' results (`mirror --refresh`), so changes to quizzes already mirrored arrive too; images already downloaded are kept. That is about 130 requests per environment, one a second: run it once a season, not more, since the FS-Quiz author asks users to avoid unnecessary queries.
+1. **Maintainer: refresh the bank** on staging, then prod: `deploy/refresh-bank.sh staging`, check Admin → Question bank, then `deploy/refresh-bank.sh prod` ([runbook 2.3](runbook.md#23-question-bank)). The script always re-fetches every quiz, the rulebook and handbook list and the last qualifiers' results (`mirror --refresh`), so changes to quizzes already mirrored arrive too; images already downloaded are kept. That is about 500 API calls per environment, one a second (9 minutes on the server): run it once a season, not more, since the FS-Quiz author asks users to avoid unnecessary queries.
 2. **Reviewers: work the queues** in Review:
    - **Changed upstream**: FS-Quiz changed a question's answer or options (any local correction was dropped), its wording (the correction stays), or a hidden question, or deleted it. Check it and correct again if needed.
    - **Unclassified**: new questions whose topic the keyword tagger couldn't guess. Set area and topic.
@@ -84,7 +84,7 @@ The season changes on **1 September**, Madrid time. The rank reset is automatic 
 2. If someone with server access left: rotate the database passwords ([runbook 7](runbook.md#7-secrets-rotation)).
 3. Restore drill for the term.
 4. Check the domain's renewal date, that certificates are renewing (consultant), and that the `quiz` and `quiz-staging` DNS records still point at the server.
-5. Nginx's logs (`isc-web`'s container log) are rotated as the privacy notice says ([release plan](release-plan.md#2-does-the-deployment-fit-the-server)).
+5. `deploy/nginx/quiz.conf` still has `access_log off` and `error_log … crit`: the privacy notice says no IP addresses are recorded ([decision B7](release-decisions.md#b7-how-long-nginx-keeps-ip-addresses)).
 6. If the team's departments changed (the Team Directory in Notion), update `SUBDEPARTMENTS` in `src/ifs_tests/domain/live.py`; a new vertical also needs a migration (a database check constraint lists them, `Vertical` in `src/ifs_tests/db/models.py`).
 
 ---
