@@ -85,9 +85,9 @@ A website deploy recreates `isc-web`: for a few seconds the quiz is unreachable 
   - Restrict deletions; block force pushes.
   - Require a pull request before merging, with 0 approvals (one maintainer can't approve their own pull request).
   - Require status checks to pass: `python`, `web`, `e2e`, `image`, `shell`, `secrets`, `dependency-review` (source GitHub Actions). Don't require branches to be up to date: parallel fixes would queue behind each other.
-  - On `dev` only, **GitHub Actions** is on the bypass list (app id 15368): the `Render ROADMAP` workflow commits `ROADMAP.md` straight to `dev`, and without the bypass every merge leaves the roadmap stale.
+  - No bypass list: GitHub doesn't accept GitHub Actions as a bypass actor, so no workflow pushes to `dev` or `main`. `ROADMAP.md` is refreshed in the release pull request instead (2.1).
   - `main` only takes the release pull request from `dev`; that is a convention, not a rule GitHub enforces.
-  - Check: `gh api repos/isc-fs/IFS-Tests/rulesets` lists both, and after the next merge into `dev` the `Render ROADMAP` run succeeds (a failed push there means the bypass didn't take).
+  - Check: `gh api repos/isc-fs/IFS-Tests/rulesets` lists both, active.
 - Settings → Code security: secret scanning and push protection on; Dependabot alerts on.
 
 ### 1.5 First deploy of an environment
@@ -135,7 +135,7 @@ What `deploy/deploy.sh` does, in order:
 Starting the scheduler also runs the day's jobs whose time has passed (it keeps no memory across restarts), so every deploy runs the nightly maintenance once more. The jobs are idempotent; that's expected.
 
 ### 2.1 Release
-1. On `dev`, set `version` in `pyproject.toml` to the release (then `uv lock` and regenerate the API client, [development](development.md)), and write its notes in [release-notes/](release-notes/), one file per version: what's in it, known issues, and steps an operator must take after deploying.
+1. In a pull request into `dev`: set `version` in `pyproject.toml` to the release (then `uv lock` and regenerate the API client, [development](development.md)), refresh `ROADMAP.md` with `GITHUB_REPOSITORY=isc-fs/IFS-Tests uv run --no-project --with pyyaml==6.0.2 python .github/scripts/render_roadmap.py` (it reads the tracking issues through your `gh` login; the `Check ROADMAP` run on `dev` says when it's stale), and write its notes in [release-notes/](release-notes/), one file per version: what's in it, known issues, and steps an operator must take after deploying.
 2. Merge `dev` into `main` through a pull request, with the notes in its description, and wait for CI on `main`.
 3. Tag the merge commit on `main` (on your machine: `git checkout main && git pull`, then `git tag v1.0.0 && git push origin v1.0.0`). Versions follow `vMAJOR.MINOR.PATCH`; the first release is `v1.0.0` ([release plan](release-plan.md)).
 4. Wait for "Publish image" to finish for the tag. If its release gate refuses (`isn't on main`, `doesn't match version`, `CI ... ended failure`), nothing was published: delete the tag (`git push origin :refs/tags/vX.Y.Z`), fix, and tag again; if it timed out waiting for CI, re-run the workflow once CI is green. Then create the GitHub release for the tag with the same notes.
