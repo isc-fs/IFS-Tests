@@ -28,8 +28,8 @@ after launch.
 | 2 | Platform foundation<br><sub>Staging live on the team server, accounts and the question bank in place</sub> | ✅ done `feat/4-platform-skeleton` · ✅ done `feat/5-server-deploy` · ✅ done `feat/6-accounts-auth` · ✅ done `feat/7-bank-push` | `v0.2.0` |
 | 3 | Training MVP<br><sub>One branch per way of answering questions, then the tools around them</sub> | ✅ done `feat/8-practice` · ✅ done `feat/9-daily-question` · ✅ done `feat/10-mock-quiz` · ✅ done `feat/11-admin-taxonomy` · ✅ done `feat/12-leaderboard` · ✅ done `feat/13-xp-levels` · ✅ done `feat/14-learning-aids` · ✅ done `feat/15-mingoquiz` | `v0.3.0` |
 | 4 | Team play<br><sub>Live quiz sessions for team meetings and vertical training (ADR 0005)</sub> | ✅ done `feat/16-live-quiz` | `v0.4.0` |
-| 5 | Launch | ✅ done `feat/17-privacy-account` · ✅ done `feat/18-ranked-lp` · ✅ done `feat/19-documentation` · 🔄 active `feat/20-launch` | `v1.0.0` |
-| 6 | After launch _(deferred)_<br><sub>Ideas to prioritise with the team once the MVP is in use</sub> | ⏸ deferred `feat/21-admin-totp` · ⏸ deferred `feat/22-notion-sync` · ⏸ deferred `feat/23-solution-bounty` · ⏸ deferred `feat/24-team-questions` · ⏸ deferred `feat/25-rule-page-links` · ⏸ deferred `feat/26-daily-per-player` | `v1.1.0` |
+| 5 | Launch | ✅ done `feat/17-privacy-account` · ✅ done `feat/18-ranked-lp` · ✅ done `feat/19-documentation` · 🔄 active `feat/20-launch` · 🔄 active `feat/21-release-decisions` | `v1.0.0` |
+| 6 | After launch _(deferred)_<br><sub>Ideas to prioritise with the team once the MVP is in use</sub> | ⏸ deferred `feat/22-admin-totp` · ⏸ deferred `feat/23-notion-sync` · ⏸ deferred `feat/24-solution-bounty` · ⏸ deferred `feat/25-team-questions` · ⏸ deferred `feat/26-rule-page-links` · ⏸ deferred `feat/27-daily-per-player` | `v1.1.0` |
 
 ## Branch diagram
 
@@ -142,6 +142,10 @@ gitGraph
     commit id: "… Load test, restore drill, launch checklist; drop the old users.xp column (ADR 0007)"
     checkout dev
     merge feat/20-launch
+    branch feat/21-release-decisions
+    commit id: "… The decisions the board and Technical Directors take before launch, with options and recommendations"
+    checkout dev
+    merge feat/21-release-decisions
     checkout main
     merge dev tag: "v1.0.0"
     checkout dev
