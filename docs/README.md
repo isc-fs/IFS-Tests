@@ -31,6 +31,7 @@ Words you don't know are in the [glossary](glossary.md).
 | Known problems and their fixes | [troubleshooting.md](troubleshooting.md) |
 | Deploying, rolling back, backups, restores, secrets, incidents | [runbook.md](runbook.md) |
 | The first release, `v1.0.0`: server checks, stages, blockers, checklist | [release-plan.md](release-plan.md) |
+| The decisions the board and the Technical Directors take before launch | [release-decisions.md](release-decisions.md) |
 | What each release contains, its known issues and the steps after deploying it | [release-notes/](release-notes/) |
 | What has to happen nightly, each season, each September, each year | [maintenance.md](maintenance.md) |
 | Threats, controls, personal data, supply chain | [security.md](security.md) |

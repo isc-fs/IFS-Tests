@@ -93,6 +93,7 @@ The season changes on **1 September**, Madrid time. The rank reset is automatic 
 
 - **Rotate the database passwords** ([runbook 7](runbook.md#7-secrets-rotation)), even if nobody left.
 - **Review who has access:** server accounts, GitHub organisation and repository admins, GHCR package settings, the password manager entry. Remove anyone who no longer needs it.
+- **Server accounts expire:** the server admin creates maintainers' accounts with an end date (the first one, `webo`, ends on 31 December 2026). Before it, ask them to extend it for whoever still maintains the quiz, or deploys stop being possible.
 - **Privacy notice:** if anything stored about members changed this year, update the notice (`web/src/routes/About.tsx`, and its `UPDATED` date) and [security.md](security.md). Retention itself is automatic.
 - **FS-Quiz:** check the API still answers the way [fsquiz-api.md](fsquiz-api.md) describes (from the latest mirror run's output, not with extra requests), and that the attribution is still in place.
 
@@ -105,6 +106,6 @@ The season changes on **1 September**, Madrid time. The rank reset is automatic 
 | Load test, restore drill, launch checklist | `feat/20-launch`, [release plan](release-plan.md) | Before the first prod release (`v1.0.0`) |
 | Legal name of the association, contact address, whether a data protection officer must be named | [ADR 0006](adr/0006-personal-data.md) (Consequences) | Board decision before launch; then update the privacy notice |
 | Which vertical TS Testing belongs to, and default topic ownership per sub-department | [ADR 0005](adr/0005-live-quiz.md) (Open) | Technical Directors |
-| Daily question per player; demotions shown at the end of the day; double LP for newcomers' first answers; whether repeats move LP | `feat/26-daily-per-player`, [ADR 0007](adr/0007-ranked-lp-and-account-level.md) | Team decision ([game rules 9](game-rules.md#9-tuning-the-rules)) |
+| Daily question per player; demotions shown at the end of the day; double LP for newcomers' first answers; whether repeats move LP | `feat/27-daily-per-player`, [ADR 0007](adr/0007-ranked-lp-and-account-level.md) | Team decision ([game rules 9](game-rules.md#9-tuning-the-rules)) |
 | Offsite copy of the backups | [runbook 4](runbook.md#4-backups-and-restore) | Needs a team decision and a Storage Box |
 | After-launch ideas: admin second factor, Notion sync, solution bounty, team-written questions, rule page links | Phase 6 in `.github/roadmap.yaml` (deferred) | Prioritise with the team once the app is in use |

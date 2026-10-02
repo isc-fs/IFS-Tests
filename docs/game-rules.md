@@ -444,7 +444,7 @@ Run it with `uv run pytest tests/unit/test_rank_rules.py`. If a change breaks a 
 
 ### Open design questions
 
-From the end of ADR 0007 and roadmap branch `feat/26-daily-per-player` in `.github/roadmap.yaml`, for the team to decide:
+From the end of ADR 0007 and roadmap branch `feat/27-daily-per-player` in `.github/roadmap.yaml`, for the team to decide:
 
 - **A daily question per player,** so answers can't be passed around (today everyone in an area gets the same one).
 - **Demotions shown at the end of the day** rather than as they happen.
