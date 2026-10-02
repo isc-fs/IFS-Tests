@@ -184,7 +184,7 @@ Locally, `/api/docs` shows the interactive OpenAPI page.
 | `ci.yml`, job `dependency-review` | pull requests only | Fails on new dependencies with high-severity advisories |
 | `codeql.yml` | pull requests and pushes to `dev`/`main`; Mondays 05:17 UTC | CodeQL for Python, TypeScript and the workflows |
 | `publish.yml` | pushes to `dev`; tags `v*.*.*` | Builds and pushes `ghcr.io/isc-fs/ifs-tests:sha-<12 chars>` plus `:staging` (dev) or `:vX.Y.Z` (tag). Never deploys. |
-| `roadmap.yml` | pushes to `dev` | Regenerates `ROADMAP.md` from `.github/roadmap.yaml` and commits it |
+| `roadmap.yml` | pushes to `dev` | Renders `ROADMAP.md` from `.github/roadmap.yaml` and the tracking issues and says in the run summary whether the committed copy is stale. It never pushes (`dev` only takes pull requests); refresh it locally with `GITHUB_REPOSITORY=isc-fs/IFS-Tests uv run --no-project --with pyyaml==6.0.2 python .github/scripts/render_roadmap.py` |
 | `branch-issue.yml` | first push of a `feat/**` or `fix/**` branch | Opens the tracking issue (and warns if the number isn't the next one), then fills its description from the first commit |
 | `close-on-dev-merge.yml` | a pull request merged into `dev` | Closes the issues it references with `Closes #N` |
 
