@@ -22,23 +22,45 @@ How MingoQuiz goes from `dev` to its first release, `v1.0.0`, running in prod on
 
 ## 2. Does the deployment fit the server?
 
-The repository was built for the server described in [ADR 0003](adr/0003-self-hosted-on-team-server.md): a Hetzner Cloud CX33 (4 shared x86 vCPUs, 8 GB RAM, 80 GB disk) administered by the consultant, shared with the website, shop, members area and sponsor portal behind one Nginx. Nobody has deployed it there yet, so each assumption below is unverified until someone checks it on the server. **(consultant)** marks the ones only the consultant can check.
+The repository was built for the server described in [ADR 0003](adr/0003-self-hosted-on-team-server.md): a Hetzner Cloud CX33 (4 shared x86 vCPUs, 8 GB RAM, 80 GB disk) administered by the consultant. On 2 October 2026 the website's hosting document ("Web ISC: alojamiento y despliegue automático", 1 October 2026) settled several assumptions and changed one, recorded in [ADR 0008](adr/0008-behind-the-website-nginx.md): the website runs on the same server as the Nginx container `isc-web`, which owns ports 80 and 443 and is redeployed from its own repository, so the quiz sits behind it through a one-time hook in that repository ([runbook 1.3](runbook.md#13-network-nginx-and-dns)). `deploy/nginx.sh` and `quiz.conf` were tested against a stand-in `isc-web` (`nginx:alpine` 1.31, the same mount and include): routing to the api by alias over `proxy`, the website unaffected, a broken `quiz.conf` rejected with the website still up after a restart.
+
+**Settled by the document:**
+
+| What | Answer |
+|---|---|
+| Server | Hetzner Cloud CX33, Ubuntu 26.04, `46.62.206.29`; x86, so the amd64 image runs |
+| Nginx | A Docker container, `isc-web`, from `/srv/isc-web`, publishing 80 and 443; recreated on every website deploy (a systemd timer, every 2 minutes) |
+| Certificates | certbot on the host; the website's first certificate expires 30 December 2026 and renews itself |
+| DNS | Arsys (`dns9`/`dns10.servidoresdns.net`), moving to Squarespace Domains |
+| Other apps today | Only the website (static Vite + React). The shop, members area and sponsor portal ADR 0003 mentions aren't there yet |
+
+**Settled by the website's configuration** (the server admin's output, 2 October 2026: its `docker-compose.yml`, `site.conf` and certbot renewal file):
+
+| What | Answer |
+|---|---|
+| Nginx version | Recent enough: the website's own `site.conf` already uses `http2 on` (1.25.1 or newer) |
+| Certificates | `isc-web` mounts `/etc/letsencrypt`; the website's certificate renews by webroot `/srv/isc-web/certbot-www` (served at `/var/www/certbot`, the path `quiz.conf` uses) with `renew_hook = docker exec isc-web nginx -s reload`. The quiz's certificate is issued the same way ([runbook 1.3](runbook.md#13-network-nginx-and-dns), step 5) |
+| Port 80 | The website's server is `default_server` with a catch-all name and answers ACME challenges for any name, so the quiz's certificate can be issued before `quiz.conf` is installed |
+| IPv6 | The website listens on `[::]:80` and `[::]:443` in the same container, so `quiz.conf`'s IPv6 listens are safe |
+| Log rotation | `isc-web` already rotates its container log (json-file, 3 × 10 MB) |
+| Networks | `isc-web` is on its compose project's default network only; the hook adds `proxy` |
+
+A stand-in built from that exact `site.conf`, the same mounts and the hook passed every check: the challenge for `quiz.` answered before and after `quiz.conf`, `quiz.` routed to the api, the website, its apex redirect, and unknown names and the bare IP still the website's.
+
+**Still to check on the server.** **(consultant)** marks what only the consultant can see; **(website)** what the website's maintainer changes in their repository.
 
 | The repository assumes | Where | How to check | If it's false |
 |---|---|---|---|
-| Nginx runs **as a Docker container** on a network named `proxy`, and reaches the api by container alias | `deploy/nginx/quiz.conf` (`resolver 127.0.0.11`, `quiz-prod-api`), `deploy/compose.yaml` (`proxy` network) | **(consultant)** `docker ps` shows the Nginx container; `docker network ls` shows its network | Host Nginx (installed with apt) can't resolve container names. Publish the api on `127.0.0.1:<port>` per environment and point `proxy_pass` there instead; that's a change to `compose.yaml`, `quiz.conf` and the runbook, and `FORWARDED_ALLOW_IPS` becomes `127.0.0.1` |
-| Nginx 1.25.1 or newer | `http2 on;` in `quiz.conf` | **(consultant)** `docker exec <nginx> nginx -v` | Older: replace with `listen 443 ssl http2;` |
-| `quiz.conf` is included inside the `http {}` block (it declares `limit_req_zone`, `map` and `resolver` at top level), and no other site uses the zone names `quiz_*` | `quiz.conf` | **(consultant)** `nginx -t` after adding it | Move the zone and map lines into the main `http` block |
-| The server is x86-64 | Images are built on `ubuntu-latest` (amd64) by `publish.yml` | `uname -m` says `x86_64` (CX is x86; CAX is ARM) | An ARM server can't run the image: build multi-arch in `publish.yml` |
-| Outbound HTTPS is open | Pulling from `ghcr.io`; the bank mirror (`api.fs-quiz.eu`); the backup heartbeat | **(consultant)** Hetzner Console → Firewalls: no outbound rules means all outbound is allowed; any outbound rule blocks everything else. On the server: `curl -sI https://api.fs-quiz.eu/2/` and `docker pull ghcr.io/isc-fs/ifs-tests:staging` | Ask for 443 out to `ghcr.io`, `pkg-containers.githubusercontent.com`, `api.fs-quiz.eu` and the heartbeat host |
-| The `proxy` network isn't `--internal` | The api reaches FS-Quiz through it ([runbook 2.3](runbook.md#23-question-bank)) | `docker network inspect proxy -f '{{.Internal}}'` says `false` | The mirror fails; the app itself still works |
-| Room for both stacks | Limits in `deploy/compose.yaml`: api 512 MiB + scheduler 256 MiB + db 768 MiB + backup 256 MiB ≈ 1.8 GiB and 2.5 CPUs per environment | `free -h`, `docker stats --no-stream`, `df -h` with the other apps running | Stop staging between releases (`docker compose -p quiz-staging stop`), or agree a bigger server with the board |
-| Disk for the data | Two databases, two copies of the question images and the FS-Quiz mirror, 14 days of dumps per environment | `df -h /var/lib/docker`; after a week, `docker system df -v \| grep quiz-` | Shorten `KEEP_DAYS` on staging; ask the consultant |
-| Containers come back after the 04:00 reboot | `restart: unless-stopped`; the scheduler re-runs the day's jobs on start ([maintenance](maintenance.md#nightly-automatic)) | Covered by the staging rehearsal below (step 3.9) | — |
+| `isc-web` mounts `/srv/quiz/nginx`, includes `/etc/nginx/quiz/*.conf` at the end of `site.conf` and joins `proxy` | [runbook 1.3](runbook.md#13-network-nginx-and-dns), step 3 | **(website)** the change is merged; then the `docker inspect` checks in step 3 | `deploy/nginx.sh` refuses or warns, naming the missing part |
+| The subnet `10.213.0.0/24` is free | `docker network create --subnet` | `ip route`, `docker network inspect` ([runbook 1.3](runbook.md#13-network-nginx-and-dns), step 1) | Pick another private `/24` and set it in both `.env` files |
+| Outbound HTTPS is open | Pulling from `ghcr.io`; the bank mirror (`api.fs-quiz.eu`); the backup heartbeat | **(consultant)** Hetzner Console → Firewalls: no outbound rules means all outbound is allowed; any outbound rule blocks everything else. On the server: `curl -sI https://api.fs-quiz.eu/2/` and `docker pull ghcr.io/isc-fs/ifs-tests:staging`. The website's deploy already reaches GitHub over SSH, so outbound isn't blocked entirely | Ask for 443 out to `ghcr.io`, `pkg-containers.githubusercontent.com`, `api.fs-quiz.eu` and the heartbeat host |
+| Room for both stacks | Limits in `deploy/compose.yaml`: api 512 MiB + scheduler 256 MiB + db 768 MiB + backup 256 MiB ≈ 1.8 GiB and 2.5 CPUs per environment | `free -h`, `docker stats --no-stream`, `df -h` | With only a static website beside it, both fit. Stop staging between releases (`docker compose -p quiz-staging stop`) once more apps arrive |
+| Disk for the data | Two databases, two copies of the question images and the FS-Quiz mirror, 14 days of dumps per environment; the website's builds | `df -h /var/lib/docker`; after a week, `docker system df -v \| grep quiz-` | Shorten `KEEP_DAYS` on staging; ask the consultant |
+| Containers come back after the 04:00 reboot | `restart: unless-stopped`; the scheduler re-runs the day's jobs on start ([maintenance](maintenance.md#nightly-automatic)) | Covered by the staging rehearsal below (step D.9) | — |
 | Hetzner's daily backups are on | ADR 0003 | **(consultant)** Hetzner Console → the server → Backups | Ask for them: they're the only copy of the dumps that isn't on the same disk |
-| The GHCR package is public | Pulls without a token ([runbook 1.4](runbook.md#14-github)) | `docker logout ghcr.io && docker pull ghcr.io/isc-fs/ifs-tests:staging` on the server | Make it public, or add a read-only pull token on the server |
+| The privacy page's "Nginx keeps IP addresses and rotates its logs within 14 days" | `web/src/routes/About.tsx`, [security](security.md) | `isc-web`'s log rotation (3 × 10 MB, shared with the website) is by size, not time | At the team's traffic, 30 MB of log can span more than 14 days. Decide with the board ([stage B](#stage-b-owner-decisions-board-tds-maintainer)): turn off the quiz's access log in `quiz.conf` (the error log still names addresses that hit a rate limit), or reword the promise |
 
-Everything else the stack needs (Docker Compose v2 with `--wait`, a Linux account per maintainer in the `docker` group, DNS at Squarespace Domains, a certificate for both names) is in [runbook 1](runbook.md#1-one-time-setup).
+Everything else the stack needs (Docker Compose v2 with `--wait`, a Linux account per maintainer in the `docker` group) is in [runbook 1](runbook.md#1-one-time-setup).
 
 ## 3. The plan
 

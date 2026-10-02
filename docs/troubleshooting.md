@@ -199,6 +199,18 @@ These look like bugs to users and reviewers. They aren't; point people here or t
 - **Cause:** screens learn about changes from the Server-Sent Events stream `GET /api/live/sessions/{code}/events`; a proxy that buffers responses holds the events back, and the screens fall back to polling every 15 seconds (every 5 while the stream is down).
 - **Fix:** the app sends `X-Accel-Buffering: no` on that stream (`events` in `src/ifs_tests/api/routes/live.py`), and `deploy/nginx/quiz.conf` gives the stream its own location with `proxy_buffering off`. If you put a different proxy or CDN in front, turn off response buffering for that path. The stream also sends a comment every 15 seconds and ends after 300 seconds (the browser reconnects), so proxy read timeouts of 60 seconds or more are fine.
 
+### `deploy/nginx.sh` refuses or warns
+
+- **`doesn't mount /srv/quiz/nginx at /etc/nginx/quiz`:** the website's `docker-compose.yml` lacks the hook, or its last deploy failed (the website keeps serving its previous version when a build fails: `journalctl -u isc-web-deploy -n 50`). See [runbook 1.3](runbook.md#13-network-nginx-and-dns), step 3.
+- **`isn't running`:** `isc-web` is down, so the website is too: `cd /srv/isc-web && docker compose ps`, then the website's own procedure.
+- **`Nginx rejected the new quiz.conf`:** the lines above it are `nginx -t`'s error. Nothing changed for the website or the quiz. A missing certificate (`cannot load certificate`) means step 5 of runbook 1.3 hasn't run; otherwise fix `deploy/nginx/quiz.conf` in a pull request.
+- **Warning `doesn't include /etc/nginx/quiz/*.conf yet`:** the file is in place but the website's Nginx configuration lacks the `include` line (runbook 1.3, step 3). The quiz isn't served until it's added.
+
+### The quiz is down for a few seconds now and then, the website too
+
+- **Cause:** a website deploy recreates `isc-web`, which serves both ([ADR 0008](adr/0008-behind-the-website-nginx.md)). Live-quiz screens reconnect by themselves.
+- **Fix:** none needed. Before a live quiz, ask the website's maintainers not to push; `sudo systemctl stop isc-web-deploy.timer` pauses the website's deploys (`start` resumes them).
+
 ### A deploy fails with `FAIL readyz` and rolls back
 
 - **Symptom:** `deploy.sh` prints `application not healthy after 1m30s`, then `FAIL readyz 200 (database reachable as app_rt, schema as the code maps it)`, then `rolling back to <previous>`. `curl -s https://<host>/readyz` answers 503 `{"status":"unavailable"}`, and the api's log has `readyz: database unavailable: ...` (the scheduler's: `database unavailable: ...`).

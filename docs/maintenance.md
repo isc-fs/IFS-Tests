@@ -83,8 +83,8 @@ The season changes on **1 September**, Madrid time. The rank reset is automatic 
 1. Hand over or confirm maintainers ([handover.md](handover.md)): server accounts for new maintainers, leavers' accounts removed the same day they leave (consultant); GitHub access updated; `.github/CODEOWNERS` updated.
 2. If someone with server access left: rotate the database passwords ([runbook 7](runbook.md#7-secrets-rotation)).
 3. Restore drill for the term.
-4. Check the domain's renewal date and that certificates are renewing (consultant).
-5. With the consultant: Nginx access logs for the quiz are rotated within 14 days (the privacy notice says so).
+4. Check the domain's renewal date, that certificates are renewing (consultant), and that the `quiz` and `quiz-staging` DNS records still point at the server.
+5. Nginx's logs (`isc-web`'s container log) are rotated as the privacy notice says ([release plan](release-plan.md#2-does-the-deployment-fit-the-server)).
 6. If the team's departments changed (the Team Directory in Notion), update `SUBDEPARTMENTS` in `src/ifs_tests/domain/live.py`; a new vertical also needs a migration (a database check constraint lists them, `Vertical` in `src/ifs_tests/db/models.py`).
 
 ---

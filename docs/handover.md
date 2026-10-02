@@ -40,7 +40,8 @@ No release has been tagged yet, so nothing has been deployed to prod: `deploy/de
 | Role | What it is | Holds |
 |---|---|---|
 | **Maintainer** | One or two members who own the code and the deployment | A Linux account on the server (in the `docker` group), admin on the GitHub repository, the prod `.env` in the password manager, usually an admin account in the app |
-| **Server consultant** | The team's external administrator of the Hetzner server | Root on the server; SSH users and 2FA; firewall; the shared Nginx, certificates and etckeeper |
+| **Server consultant** | The team's external administrator of the Hetzner server | Root on the server; SSH users and 2FA; firewall; certificates and etckeeper |
+| **Website maintainer** | Whoever maintains the team's website (`isc-web`) | Its repository, which also defines the Nginx container the quiz sits behind ([ADR 0008](adr/0008-behind-the-website-nginx.md)) |
 | **Board member with server admin rights** | A board member who can stand in for the consultant | Server admin rights; decisions about hosting and the domain |
 | **Admins** (app role `admin`) | Team members who run accounts | Invites, roles, positions, alumni, data requests, reset links. Can also review and host |
 | **Reviewers** (app role `reviewer`) | Team members who fix the question bank | Review queues: reported, changed upstream, unclassified, not graded, hidden |
@@ -73,11 +74,12 @@ If this table is empty or out of date: ask the owners of the `isc-fs` GitHub org
 | Container images | GitHub Container Registry, `ghcr.io/isc-fs/ifs-tests` (public package) | `sha-<12 chars>` and `staging` for every push to `dev`; `vX.Y.Z` for release tags. Code only, no data or secrets |
 | Dependency updates | Dependabot, `.github/dependabot.yml` | Weekly; see the [maintenance calendar](maintenance.md#weekly-maintainer-about-15-minutes) |
 | Review ownership | `.github/CODEOWNERS` | Names the maintainer's GitHub account for migrations, workflows, deployment and security code; update it at every handover |
-| Server | Hetzner Cloud CX33 (EU), shared with the team's other apps ([ADR 0003](adr/0003-self-hosted-on-team-server.md)) | Administered by the consultant |
+| Server | Hetzner Cloud CX33 (EU), `46.62.206.29`, shared with the team's website ([ADR 0003](adr/0003-self-hosted-on-team-server.md)) | Administered by the consultant |
+| Nginx (ports 80 and 443) | The website's container `isc-web`, from `/srv/isc-web`, redeployed from the website's repository by a timer | The quiz's rules live in `/srv/quiz/nginx`, installed by `deploy/nginx.sh` ([ADR 0008](adr/0008-behind-the-website-nginx.md), [runbook 1.3](runbook.md#13-network-nginx-and-dns)) |
 | App on the server | `/srv/quiz/repo` (a checkout), `/srv/quiz/staging` and `/srv/quiz/prod` (each with `.env`, `deployed-tag`, `deploy-history`) | Compose projects `quiz-staging` and `quiz-prod` ([runbook](runbook.md)) |
 | Data | Docker volumes per environment: `quiz-prod_pgdata` (database), `quiz-prod_media` (question images), `quiz-prod_fsquiz` (raw FS-Quiz mirror), `quiz-prod_backups` (dumps); the same with `quiz-staging_` | Never in the repository |
 | Backups | Nightly dumps in the `backups` volume, 14 days; a dump before each deploy; Hetzner's daily snapshots of the whole server | No offsite copy yet ([runbook 4](runbook.md#4-backups-and-restore)) |
-| Domain | `quiz.iscracingteam.com` and `quiz-staging.iscracingteam.com`, under the team's domain at Squarespace Domains | DNS records and certificates through the consultant |
+| Domain | `quiz.iscracingteam.com` and `quiz-staging.iscracingteam.com`, under the team's domain; DNS at Arsys, moving to Squarespace Domains | Two `A` records to `46.62.206.29`, to carry over in the move; certificates from the host's certbot |
 | Reverse proxy | The server's shared Nginx; the quiz's part is `deploy/nginx/quiz.conf` | TLS via Let's Encrypt (certbot) |
 | Backup monitor (optional) | A Healthchecks.io check, if `BACKUP_HEARTBEAT_URL` is set in `.env` | **To fill in:** whose account |
 | Question source | FS-Quiz API v2 (`https://api.fs-quiz.eu/2/`, no key); documents on doc.fs-quiz.eu | ODbL licence: attribute it, don't publish the mirrored data outside the team. Be polite to the server ([fsquiz-api.md](fsquiz-api.md)) |

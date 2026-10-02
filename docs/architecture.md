@@ -4,11 +4,11 @@ How MingoQuiz is built, for someone about to change it. Decisions and their reas
 
 ## Overview
 
-One Python service (FastAPI) serves both the JSON API and the React single-page app from the same origin, backed by one PostgreSQL database. A second container runs the same image as a scheduler for the nightly jobs. Everything runs with Docker Compose on the team's Hetzner server, behind the server's shared Nginx ([ADR 0001](adr/0001-fastapi-modular-monolith.md), [ADR 0003](adr/0003-self-hosted-on-team-server.md)).
+One Python service (FastAPI) serves both the JSON API and the React single-page app from the same origin, backed by one PostgreSQL database. A second container runs the same image as a scheduler for the nightly jobs. Everything runs with Docker Compose on the team's Hetzner server, behind the Nginx container of the team's website, `isc-web` ([ADR 0001](adr/0001-fastapi-modular-monolith.md), [ADR 0003](adr/0003-self-hosted-on-team-server.md), [ADR 0008](adr/0008-behind-the-website-nginx.md)).
 
 ```mermaid
 flowchart LR
-    B["Browser<br/>React SPA"] -->|"HTTPS :443"| N["Shared Nginx on the team server<br/>TLS, HSTS, rate limits<br/>deploy/nginx/quiz.conf"]
+    B["Browser<br/>React SPA"] -->|"HTTPS :443"| N["The website's Nginx (isc-web)<br/>TLS, HSTS, rate limits<br/>deploy/nginx/quiz.conf"]
     N -->|"proxy network :8000"| A
     subgraph P["Compose project quiz-prod (quiz-staging is identical)"]
         A["api<br/>uvicorn, 2 workers<br/>/api, /auth, /media, /healthz, /readyz, SPA"]
@@ -128,7 +128,7 @@ The web app lives in `web/`: `web/src/routes` (pages), `web/src/components`, `we
 
 ## Request lifecycle
 
-1. **Nginx** terminates TLS, adds HSTS, rate-limits sign-in and password endpoints, caps open live event streams and requests in flight per address (sized for a whole team behind one campus IP, [security.md](security.md#server-and-containers)), overwrites `X-Forwarded-For` and proxies to `api:8000` (`deploy/nginx/quiz.conf`). Uvicorn trusts forwarded headers only from `FORWARDED_ALLOW_IPS` (the Nginx container).
+1. **Nginx** terminates TLS, adds HSTS, rate-limits sign-in and password endpoints, caps open live event streams and requests in flight per address (sized for a whole team behind one campus IP, [security.md](security.md#server-and-containers)), overwrites `X-Forwarded-For` and proxies to `api:8000` (`deploy/nginx/quiz.conf`). Uvicorn trusts forwarded headers only from `FORWARDED_ALLOW_IPS` (the `proxy` network's subnet). `deploy/nginx.sh` installs `quiz.conf` into the website's container.
 2. **Middleware** (`api/security.py`), outermost first: `SecurityHeaders` adds CSP and the other headers to every response, including rejections; `CSRFGuard` rejects any `POST`, `PUT`, `PATCH` or `DELETE` to `/api/` or `/auth/` that lacks `X-CSRF: 1` or carries a foreign `Origin` (403). Details in [api.md](api.md#authentication-and-csrf).
 3. **Dependencies** (`api/deps.py`) run per request:
    - `Db` opens a SQLAlchemy session for the request and closes it afterwards.
