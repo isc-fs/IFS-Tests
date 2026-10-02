@@ -8,7 +8,7 @@ Stage C (the server admin, the website's maintainer, DNS) runs alongside; its st
 |---|---|---|---|
 | [B1](#b1-who-is-responsible-for-the-data) | Who is responsible for the data, and the contact for data requests | Board | Prod |
 | [B2](#b2-a-data-processing-agreement-with-hetzner) | A data processing agreement with Hetzner | Board | Prod |
-| [B3](#b3-an-offsite-copy-of-the-backups) | An offsite copy of the backups | Board | Prod (as a decision; "no" is an answer) |
+| [B3](#b3-an-offsite-copy-of-the-backups) | An offsite copy of the backups | Board | Nothing: deferred, not urgent |
 | [B4](#b4-monitoring-and-who-gets-the-alerts) | Monitoring, and who gets the alerts | Maintainer | Prod |
 | [B5](#b5-admins-and-reviewers-for-day-one) | Admins and reviewers for day one | Technical Directors | Inviting the team (stage F) |
 | [B6](#b6-scoring-rules-the-red-team-left-open) | Scoring rules the red team left open | Technical Directors | Nothing: known issues in `v1.0.0` until decided |
@@ -32,7 +32,7 @@ Stage C (the server admin, the website's maintainer, DNS) runs alongside; its st
 
 **Lands in:** `web/src/routes/About.tsx`, [security](security.md), [ADR 0006](adr/0006-personal-data.md) Consequences (as answered).
 
-**Decided:** …
+**Decided:** 2 October 2026, the board: the association, represented by its board, is responsible for the data. Still needed for the privacy page: the association's legal name and a role address for data requests.
 
 ## B2. A data processing agreement with Hetzner
 
@@ -46,7 +46,7 @@ Stage C (the server admin, the website's maintainer, DNS) runs alongside; its st
 
 **Lands in:** [security](security.md).
 
-**Decided:** …
+**Decided:** already signed by the holder of the Hetzner account (reported 2 October 2026). Still needed for [security](security.md): the date and where the signed copy is kept.
 
 ## B3. An offsite copy of the backups
 
@@ -63,7 +63,7 @@ Stage C (the server admin, the website's maintainer, DNS) runs alongside; its st
 
 **Lands in:** [runbook 4](runbook.md#4-backups-and-restore).
 
-**Decided:** …
+**Decided:** open, not urgent (2 October 2026). The launch goes ahead without an offsite copy; until this is answered, losing the server means relying on Hetzner's backups of it.
 
 ## B4. Monitoring, and who gets the alerts
 
@@ -80,7 +80,7 @@ Stage C (the server admin, the website's maintainer, DNS) runs alongside; its st
 
 **Lands in:** prod `.env`; [handover](handover.md); [runbook 5](runbook.md#5-everyday-operations).
 
-**Decided:** …
+**Decided:** 2 October 2026: the MingoQuiz maintainer receives MingoQuiz's alerts, the backup heartbeat and the uptime check of `https://quiz.iscracingteam.com/readyz`. Alerts about the server itself (disk, Hetzner, the website) stay with the server admin.
 
 ## B5. Admins and reviewers for day one
 
@@ -99,7 +99,7 @@ Stage C (the server admin, the website's maintainer, DNS) runs alongside; its st
 
 **Lands in:** [handover](handover.md#roles).
 
-**Decided:** …
+**Decided:** pending the names (2 October 2026). No addresses are needed in advance: the first admin is created on the server with their own email, and everyone else gets a private invite link from Admin, made for a role (admin or reviewer), and signs up with their own email ([admins' guide](guides/admins.md)).
 
 ## B6. Scoring rules the red team left open
 
@@ -117,7 +117,7 @@ These don't block `v1.0.0`: they ship as known issues in its [release notes](rel
 
 **Lands in:** [game rules](game-rules.md); the red team tracker ([remediation](redteam/remediation.md)).
 
-**Decided:** …
+**Decided:** 2 October 2026, deferred until after the first deployment. `v1.0.0` ships them as known issues ([release notes](release-notes/v1.0.0.md)).
 
 ## B7. How long Nginx keeps IP addresses
 
@@ -134,4 +134,4 @@ These don't block `v1.0.0`: they ship as known issues in its [release notes](rel
 
 **Lands in:** `deploy/nginx/quiz.conf`, `web/src/routes/About.tsx`, [security](security.md).
 
-**Decided:** …
+**Decided:** 2 October 2026, the board: keep the 14-day promise, in line with the GDPR. How (option 1 or 3) is being settled with the maintainer.
