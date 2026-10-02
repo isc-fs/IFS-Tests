@@ -60,7 +60,7 @@ A stand-in built from that exact `site.conf`, the same mounts and the hook passe
 | Disk for the data | Two databases, two copies of the question images and the FS-Quiz mirror, 14 days of dumps per environment; the website's builds | `df -h /var/lib/docker`; after a week, `docker system df -v \| grep quiz-` | Shorten `KEEP_DAYS` on staging; ask the consultant |
 | Containers come back after the 04:00 reboot | `restart: unless-stopped`; the scheduler re-runs the day's jobs on start ([maintenance](maintenance.md#nightly-automatic)) | Covered by the staging rehearsal below (step D.9) | — |
 | Hetzner's daily backups are on | ADR 0003 | **(consultant)** Hetzner Console → the server → Backups | Ask for them: they're the only copy of the dumps that isn't on the same disk |
-| The privacy page's "Nginx keeps IP addresses and rotates its logs within 14 days" | `web/src/routes/About.tsx`, [security](security.md) | `isc-web`'s log rotation (3 × 10 MB, shared with the website) is by size, not time | At the team's traffic, 30 MB of log can span more than 14 days. Decide with the board ([stage B](#stage-b-owner-decisions-board-tds-maintainer)): turn off the quiz's access log in `quiz.conf` (the error log still names addresses that hit a rate limit), or reword the promise |
+| The privacy page's "Nginx keeps IP addresses and rotates its logs within 14 days" | `web/src/routes/About.tsx`, [security](security.md) | `isc-web`'s log rotation (3 × 10 MB, shared with the website) is by size, not time | At the team's traffic, 30 MB of log can span more than 14 days. Decide with the board ([B7](release-decisions.md#b7-how-long-nginx-keeps-ip-addresses)): turn off the quiz's access log in `quiz.conf` (the error log still names addresses that hit a rate limit), or reword the promise |
 
 Everything else the stack needs (Docker Compose v2 with `--wait`, a Linux account per maintainer in the `docker` group) is in [runbook 1](runbook.md#1-one-time-setup).
 
@@ -99,7 +99,7 @@ To confirm while reviewing #98: the export now leaves out, on purpose, `attempts
 
 ### Stage B: owner decisions (board, TDs, maintainer)
 
-These can run in parallel with stage A; prod waits for all of them.
+These can run in parallel with stages A and C; prod waits for all of them except the scoring rules. Each one, with its options, a recommendation and what follows the answer, is in the [decision brief](release-decisions.md); record the answers there.
 
 | Decision | Who | Where it lands |
 |---|---|---|

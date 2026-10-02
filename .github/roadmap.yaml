@@ -107,6 +107,8 @@ phases:
         scope: Documentation that stands on its own; guides for players, reviewers, admins and hosts; developer onboarding, data model, game rules, operations calendar, handover; docs checked in CI
       - name: feat/20-launch
         scope: Load test, restore drill, launch checklist; drop the old users.xp column (ADR 0007)
+      - name: feat/21-release-decisions
+        scope: The decisions the board and Technical Directors take before launch, with options and recommendations
 
   - number: 6
     title: After launch
@@ -114,17 +116,17 @@ phases:
     deferred: true
     note: "Ideas to prioritise with the team once the MVP is in use"
     branches:
-      - name: feat/21-admin-totp
+      - name: feat/22-admin-totp
         scope: Second factor for admin accounts
-      - name: feat/22-notion-sync
+      - name: feat/23-notion-sync
         scope: Push scores and streaks to the Notion Team Directory
-      - name: feat/23-solution-bounty
+      - name: feat/24-solution-bounty
         scope: Members write worked solutions, reviewers approve, XP awarded
-      - name: feat/24-team-questions
+      - name: feat/25-team-questions
         scope: Team-written questions, starting with Driverless
-      - name: feat/25-rule-page-links
+      - name: feat/26-rule-page-links
         scope: Download each rulebook once (polite, cached), index rule numbers to pages, link references like EV 4.7.6 to their page
-      - name: feat/26-daily-per-player
+      - name: feat/27-daily-per-player
         scope: "Decide with the team (ADR 0007, open questions): a daily question per player so answers can't be passed around, demotions shown at the end of the day, double LP for a newcomer's first answers, whether repeats move LP"
 
 sidequests: []
