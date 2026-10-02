@@ -6,6 +6,8 @@ How MingoQuiz goes from `dev` to its first release, `v1.0.0`, running in prod on
 
 ---
 
+**Where the release stands (2 October 2026).** Stage A is done: `dev` is green, the release gate, rulesets and public image are in place. Stage C is prepared: the server's layout is known and the quiz is adapted to sit behind the website's Nginx ([ADR 0008](adr/0008-behind-the-website-nginx.md), tested against the website's real configuration); it waits on the server admin, the website maintainer and the DNS (the table in stage C). Stage B waits on the board and the Technical Directors. Nothing is deployed yet. The checklist is kept in issue #89.
+
 ## 1. Where we start (1 October 2026)
 
 | | State |
@@ -108,16 +110,26 @@ These can run in parallel with stage A; prod waits for all of them.
 | A heartbeat monitor (`BACKUP_HEARTBEAT_URL`, for example Healthchecks.io), an uptime check on `https://quiz.iscracingteam.com/readyz`, and who gets their alerts | Maintainer | prod `.env`; [runbook 5](runbook.md#5-everyday-operations) |
 | At least two app admins and two reviewers for day one | TDs | [handover](handover.md#roles) |
 | The scoring decisions sweep 2 is waiting on (S2-DOM-02/03, S2-ACC-02) | TDs | [game rules](game-rules.md) |
+| The privacy page promises Nginx's IP logs go within 14 days, but `isc-web` rotates its log by size (3 × 10 MB, shared with the website): turn off the quiz's access log in `quiz.conf`, or reword the promise (section 2) | Board | `deploy/nginx/quiz.conf` or `web/src/routes/About.tsx`, [security](security.md) |
 
 **Exit:** every row has an answer, written down where the table says.
 
-### Stage C: server preparation (consultant, maintainer)
+### Stage C: server preparation (maintainer, website maintainer, server admin)
 
-1. Run every check in section 2 and write the results in the tracking issue of `feat/20-launch`. Fix what's false before going on.
-2. [Runbook 1.1–1.3](runbook.md#11-access-consultant): maintainer accounts, `/srv/quiz`, the checkout, both `.env` files (`chmod 600`, fresh passwords, `FORWARDED_ALLOW_IPS`), the Nginx snippet, DNS and the certificate.
-3. Store the prod `.env` in the password manager.
+The server is known now (section 2): the quiz sits behind the website's container `isc-web` ([ADR 0008](adr/0008-behind-the-website-nginx.md)). In this order, each step in [runbook 1](runbook.md#1-one-time-setup):
 
-**Exit:** `curl -sI https://quiz-staging.iscracingteam.com` reaches Nginx with a valid certificate (a 502 is expected until stage D).
+| # | Step | Who | Runbook |
+|---|---|---|---|
+| C.1 | A Linux account in the `docker` group for each quiz maintainer (the admin's own user isn't in it yet) | Server admin | [1.1](runbook.md#11-access-consultant) |
+| C.2 | `/srv/quiz/{staging,prod,nginx}`, the checkout in `/srv/quiz/repo`, both `.env` files (`chmod 600`, fresh passwords, `FORWARDED_ALLOW_IPS=10.213.0.0/24`) | Maintainer | [1.1](runbook.md#11-access-consultant), [1.2](runbook.md#12-code-and-secrets-maintainer) |
+| C.3 | The `proxy` network: `docker network create --subnet 10.213.0.0/24 proxy`, **before C.4** (the website's deploy fails while its compose file names a network that doesn't exist) | Maintainer | [1.3](runbook.md#13-network-nginx-and-dns), step 1 |
+| C.4 | The hook in the website's repository: one volume, the `proxy` network, and the `include` as the last line of `site.conf` | Website maintainer | [1.3](runbook.md#13-network-nginx-and-dns), step 3 |
+| C.5 | DNS at Arsys: `A` records `quiz` and `quiz-staging` → `46.62.206.29`, kept in the move to Squarespace | Whoever holds the Arsys panel | [1.3](runbook.md#13-network-nginx-and-dns), step 4 |
+| C.6 | The certificate, by webroot with the reload hook, after C.5 resolves | Server admin | [1.3](runbook.md#13-network-nginx-and-dns), step 5 |
+| C.7 | `deploy/nginx.sh` | Maintainer | [1.3](runbook.md#13-network-nginx-and-dns), step 6 |
+| C.8 | The remaining checks of section 2 (outbound HTTPS, free memory and disk, Hetzner backups on) and the prod `.env` in the password manager | Maintainer, consultant | section 2 |
+
+**Exit:** `curl -sI https://quiz-staging.iscracingteam.com` answers with a valid certificate (a 502 is expected until stage D deploys the app), and the website still loads.
 
 ### Stage D: staging rehearsal (maintainer)
 
@@ -168,7 +180,7 @@ Pick a weekday morning, not the day of a team meeting, with the consultant reach
 
 | | Items |
 |---|---|
-| **Blocks** | CI green on `dev`, the image gate, the branch rules and a public package (stage A). The server checks of section 2, above all how Nginx runs. The controller identity and contact on the privacy page, and the Hetzner DPA (stage B). A successful staging rehearsal (stage D). From sweep 2, the findings that damage data or leave an operator blind: S2-BANK-01 (a broken mirror can empty every quiz and drop every reviewer correction), S2-OPS-02 (a dropped SSH session mid-deploy leaves a failing release serving) and S2-OPS-04 (a deploy that doesn't apply bank-parser or Nginx changes, and doesn't say so) |
+| **Blocks** | CI green on `dev`, the image gate, the branch rules and a public package (stage A). Stage C (the website's hook, DNS, certificate) and the remaining checks of section 2. The controller identity and contact on the privacy page, and the Hetzner DPA (stage B). A successful staging rehearsal (stage D). From sweep 2, the findings that damage data or leave an operator blind: S2-BANK-01 (a broken mirror can empty every quiz and drop every reviewer correction), S2-OPS-02 (a dropped SSH session mid-deploy leaves a failing release serving) and S2-OPS-04 (a deploy that doesn't apply bank-parser or Nginx changes, and doesn't say so) |
 | **Should** | S2-ACC-01 (the export misses a field: a promise of the privacy page) and S2-LIVE-02 (a table's XP shared late, by the event streams), both fixed in #98. Still open: S2-OPS-03 (a damaged database can't be restored; needs the owner's choice of override), S2-PERF-01 if the load test in D.4 shows the api near saturation |
 | **Doesn't apply to a fresh prod** | S2-DOC-01 (only a stack that loaded both the sample and the real bank). Check staging: if it was loaded with `push --sample`, recreate its volumes before stage D. (S2-BANK-02, which only hit a database loaded before #52, is fixed in #94 anyway) |
 | **Can ship as known issues** | The scoring findings waiting on the TDs (S2-DOM-01/02/03, S2-ACC-02), live routing fairness (S2-LIVE-01), the projector and banner layout (S2-UI-01/02), the guide wording (S2-UI-05), the test-only findings (S2-GATE-02/03), and the Low/Info findings. List them in the release notes |
@@ -187,12 +199,13 @@ This sorting is a recommendation from the state on 1 October 2026; the maintaine
 Copy this into the tracking issue of `feat/20-launch` and tick it as you go.
 
 ```text
-A  [ ] CI green on dev (leaderboard tests)    [ ] sweep 2 blockers merged   [ ] users.xp dropped
-   [ ] publish gated on main + CI (or checked by hand)  [ ] branch rules on dev and main
-   [ ] GHCR package public  [ ] version 1.0.0 in pyproject.toml
-B  [ ] controller + contact on /privacy  [ ] Hetzner DPA  [ ] Nginx log rotation <= 14 days
+A  [x] CI green on dev (leaderboard tests)    [x] sweep 2 blockers merged   [x] users.xp dropped
+   [x] publish gated on main + CI  [x] branch rules on dev and main
+   [x] GHCR package public  [x] version 1.0.0 in pyproject.toml
+B  [ ] controller + contact on /privacy  [ ] Hetzner DPA  [ ] 14-day IP log promise: quiz access log off, or reworded
    [ ] offsite copy decided  [ ] heartbeat URL + uptime check  [ ] 2 admins + 2 reviewers named  [ ] TD scoring answers
-C  [ ] section 2 checks recorded  [ ] runbook 1.1-1.3 done  [ ] prod .env in the password manager
+C  [ ] maintainers in docker group  [ ] /srv/quiz + .env files  [ ] proxy network  [ ] website hook merged
+   [ ] DNS quiz + quiz-staging at Arsys  [ ] certificate  [ ] deploy/nginx.sh  [ ] section 2 checks  [ ] prod .env in password manager
 D  [ ] first staging deploy  [ ] bank loaded  [ ] smoke  [ ] live quiz load test  [ ] roll back/forward
    [ ] restore drill (time: ___)  [ ] maintenance by hand  [ ] nightly backup + heartbeat  [ ] reboot test
 E  [ ] release notes  [ ] dev -> main merged, CI green  [ ] v1.0.0 tagged and published  [ ] GitHub release
