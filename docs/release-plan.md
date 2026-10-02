@@ -6,7 +6,7 @@ How MingoQuiz goes from `dev` to its first release, `v1.0.0`, running in prod on
 
 ---
 
-**Where the release stands (2 October 2026, evening).** Stage A is done. Stage B is mostly answered ([decision brief](release-decisions.md)): still open are the association's legal name and contact address (B1), how to keep the 14-day log promise (B7), and the first admins and reviewers (B5, after deployment). Stage C is under way on the server (the table in stage C, from a scan on 2 October): the account, the folders, the network and DNS are there; the folders' owner, the `docker` group, the website's hook and the certificate are pending. Nothing is deployed yet. The checklist is kept in issue #89.
+**Where the release stands (3 October 2026).** Stage A is done. Stage B is answered apart from the contact address for data requests (B1) and the first admins and reviewers (B5, after deployment). Stage C is done on the server apart from the website's hook (C.4), which `deploy/nginx.sh` (C.7) waits on. Stage D has started: staging runs `sha-6aa8a87d1248` with the bank loaded, and the roll back, restore drill and maintenance passed (the table in stage D). Nothing is in prod. The checklist is kept in issue #89.
 
 ## 1. Where we start (1 October 2026)
 
@@ -60,7 +60,7 @@ A stand-in built from that exact `site.conf`, the same mounts and the hook passe
 | Disk for the data | Two databases, two copies of the question images and the FS-Quiz mirror, 14 days of dumps per environment; the website's builds | `df -h /var/lib/docker`; after a week, `docker system df -v \| grep quiz-` | Shorten `KEEP_DAYS` on staging; ask the consultant |
 | Containers come back after the 04:00 reboot | `restart: unless-stopped`; the scheduler re-runs the day's jobs on start ([maintenance](maintenance.md#nightly-automatic)) | Covered by the staging rehearsal below (step D.9) | — |
 | Hetzner's daily backups are on | ADR 0003 | **(consultant)** Hetzner Console → the server → Backups | Ask for them: they're the only copy of the dumps that isn't on the same disk |
-| The privacy page's "Nginx keeps IP addresses and rotates its logs within 14 days" | `web/src/routes/About.tsx`, [security](security.md) | `isc-web`'s log rotation (3 × 10 MB, shared with the website) is by size, not time | At the team's traffic, 30 MB of log can span more than 14 days. Decide with the board ([B7](release-decisions.md#b7-how-long-nginx-keeps-ip-addresses)): turn off the quiz's access log in `quiz.conf` (the error log still names addresses that hit a rate limit), or reword the promise |
+| The privacy page's promise about Nginx's IP logs | `web/src/routes/About.tsx`, [security](security.md) | **Settled (3 October, decision B7):** `quiz.conf` keeps no access log and only critical errors, and the page says no IP addresses are recorded | — |
 
 Everything else the stack needs (Docker Compose v2 with `--wait`, a Linux account per maintainer in the `docker` group) is in [runbook 1](runbook.md#1-one-time-setup).
 
@@ -110,7 +110,7 @@ These can run in parallel with stages A and C; prod waits for all of them except
 | A heartbeat monitor (`BACKUP_HEARTBEAT_URL`, for example Healthchecks.io), an uptime check on `https://quiz.iscracingteam.com/readyz`, and who gets their alerts | Maintainer | prod `.env`; [runbook 5](runbook.md#5-everyday-operations) |
 | At least two app admins and two reviewers for day one | TDs | [handover](handover.md#roles) |
 | The scoring decisions sweep 2 is waiting on (S2-DOM-02/03, S2-ACC-02) | TDs | [game rules](game-rules.md) |
-| The privacy page promises Nginx's IP logs go within 14 days, but `isc-web` rotates its log by size (3 × 10 MB, shared with the website): turn off the quiz's access log in `quiz.conf`, or reword the promise (section 2) | Board | `deploy/nginx/quiz.conf` or `web/src/routes/About.tsx`, [security](security.md) |
+| The privacy page's promise about IP logs (B7) | Board | Decided: Nginx records none for the quiz (`deploy/nginx/quiz.conf`, `web/src/routes/About.tsx`) |
 
 **Exit:** every row has an answer, written down where the table says.
 
@@ -138,7 +138,7 @@ A second, `sudo` scan on 3 October (`~/mingoquiz-scan.sh` on the server, read-on
 Rehearse the whole release on staging with the commit that will become `v1.0.0`. Write every surprise into the runbook in the same pull request as this plan's follow-up.
 
 1. `deploy/deploy.sh staging sha-<commit>` ([runbook 2](runbook.md#2-deploy)); it's the first deploy, so a failure has nothing to roll back to.
-2. `create-admin`, then `deploy/refresh-bank.sh staging` ([runbook 1.5](runbook.md#15-first-deploy-of-an-environment)). One mirror, about 130 requests: don't repeat it.
+2. `create-admin`, then `deploy/refresh-bank.sh staging` ([runbook 1.5](runbook.md#15-first-deploy-of-an-environment)). One mirror, about 500 API calls and the images (9 minutes): don't repeat it.
 3. Smoke: sign in, invite a second account, answer a practice question, the daily question, a mock question, open the leaderboard, export your data, delete the second account.
 4. A live quiz on the real server with as many phones as the team can gather (a meeting is ideal). This is the load test of `feat/20-launch` and the re-measure S2-PERF-01 asks for: watch `docker stats quiz-staging-api-1` during it. If the api sits near 100 % CPU, raise it to `cpus: 2.0` with the consultant's agreement ([runbook 5.5](runbook.md#55-live-quiz-capacity)).
 5. Roll back and forward: deploy an older `sha-` tag, then the release candidate again. Pick one that already has migration 0024: an image from before it still maps `users.xp`, so it fails `readyz` against the migrated database and `deploy.sh` goes back to the candidate: correct, but it tests nothing.
@@ -148,6 +148,20 @@ Rehearse the whole release on staging with the commit that will become `v1.0.0`.
 9. Reboot test: ask the consultant to reboot the server (or wait for a 04:00 one) and check every container is `healthy` afterwards.
 
 **Exit:** all nine pass; the timings are written in the tracking issue.
+
+**Where stage D stands (3 October 2026):**
+
+| # | State |
+|---|---|
+| D.1 First deploy | **Done:** `sha-6aa8a87d1248`, migrations 0001–0024, smoke test 6/6, about 1 minute |
+| D.2 Admin and bank | **Done:** one admin; 1,063 questions in 121 quizzes (80 ungraded, 20 hidden), 504 API calls and 374 images in 9 minutes; three solution images FS-Quiz answered 500 for |
+| D.3 Smoke from a browser | Waits on the website's hook (C.4) and `deploy/nginx.sh` (C.7) |
+| D.4 Live quiz with phones | Waits on C.4 and C.7 |
+| D.5 Roll back and forward | **Done:** to `sha-1584a29e8d38` and back, 56 s and 52 s, smoke test 6/6 both ways. Each listed the `deploy/nginx.sh` step, since the older image has no `quiz.conf` (expected, runbook 2) |
+| D.6 Restore drill | **Done:** staging's own pre-deploy dump restored in 51 s (target 2 hours); users, questions and quizzes as before; the safety dump kept |
+| D.7 Maintenance by hand | **Done:** every step ran, all counts 0 on an empty staging |
+| D.8 Nightly backup | First one due 3 October at 03:30; check `docker logs quiz-staging-backup-1`. The heartbeat comes with the alerts (B4) |
+| D.9 Reboot test | With the server admin |
 
 ### Stage E: cut the release (maintainer)
 
@@ -204,12 +218,12 @@ Copy this into the tracking issue of `feat/20-launch` and tick it as you go.
 A  [x] CI green on dev (leaderboard tests)    [x] sweep 2 blockers merged   [x] users.xp dropped
    [x] publish gated on main + CI  [x] branch rules on dev and main
    [x] GHCR package public  [x] version 1.0.0 in pyproject.toml
-B  [ ] controller + contact on /privacy  [x] Hetzner DPA  [ ] 14-day IP log promise: quiz access log off, or reworded
+B  [ ] controller + contact on /privacy  [x] Hetzner DPA  [x] IP log promise: no quiz access log (B7)
    [x] offsite copy decided (deferred)  [x] alerts to the MingoQuiz maintainer (set up in D)  [ ] 2 admins + 2 reviewers named  [x] TD scoring answers (after deployment)
 C  [ ] maintainers in docker group  [ ] /srv/quiz + .env files  [x] proxy network  [ ] website hook merged
    [x] DNS quiz + quiz-staging at Arsys  [x] certificate  [ ] deploy/nginx.sh  [ ] section 2 checks  [ ] prod .env in password manager
-D  [ ] first staging deploy  [ ] bank loaded  [ ] smoke  [ ] live quiz load test  [ ] roll back/forward
-   [ ] restore drill (time: ___)  [ ] maintenance by hand  [ ] nightly backup + heartbeat  [ ] reboot test
+D  [x] first staging deploy  [x] bank loaded  [ ] smoke  [ ] live quiz load test  [x] roll back/forward
+   [x] restore drill (51 s)  [x] maintenance by hand  [ ] nightly backup + heartbeat  [ ] reboot test
 E  [ ] release notes  [ ] dev -> main merged, CI green  [ ] v1.0.0 tagged and published  [ ] GitHub release
    [ ] staging on v1.0.0, smoke
 F  [ ] prod deployed  [ ] admin + bank  [ ] smoke, throwaway accounts deleted  [ ] admins/reviewers invited

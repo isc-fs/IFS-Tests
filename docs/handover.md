@@ -10,7 +10,7 @@ MingoQuiz is the ISC Racing Team's training site for the Formula Student registr
 
 ## Status
 
-As of 24 September 2026 (update this section at each handover):
+As of 3 October 2026 (update this section at each handover):
 
 | Phase ([roadmap](../ROADMAP.md)) | State |
 |---|---|
@@ -27,9 +27,9 @@ No release has been tagged yet, so nothing has been deployed to prod: `deploy/de
 
 | Question | Answer |
 |---|---|
-| Is staging running, and on which tag (`/srv/quiz/staging/deployed-tag`)? | |
-| Is prod running, and on which tag? | |
-| Date of the last restore drill | |
+| Is staging running, and on which tag (`/srv/quiz/staging/deployed-tag`)? | Yes, `sha-6aa8a87d1248` since 3 October 2026 (bank loaded, one admin); not reachable from outside until the website's hook ([runbook 1.3](runbook.md#13-network-nginx-and-dns), step 3) |
+| Is prod running, and on which tag? | No: prod comes with `v1.0.0` ([release plan](release-plan.md)) |
+| Date of the last restore drill | 3 October 2026, on staging with its own pre-deploy dump: 51 seconds |
 | Date the database passwords were last rotated | |
 | Open incidents or known bugs not yet in an issue | |
 
@@ -145,7 +145,7 @@ Limitations, by design or not yet addressed:
 - **No second factor for admins** (deferred to phase 6).
 - **Answers can be looked up.** FS-Quiz is public; the server stops forged results and extra time, not someone searching fs-quiz.eu. And today's daily question is the same for everyone in an area, so answers can be passed around.
 - **Topic tags are a keyword guess** until reviewers fix them; the bank has no topic field of its own.
-- **Refreshing the bank** re-fetches the whole FS-Quiz bank each time (about 130 requests per environment), so it is a once-a-season job, not a routine one ([runbook 2.3](runbook.md#23-question-bank)). There's no way to learn about FS-Quiz changes in between.
+- **Refreshing the bank** re-fetches the whole FS-Quiz bank each time (about 500 API calls per environment, 9 minutes), so it is a once-a-season job, not a routine one ([runbook 2.3](runbook.md#23-question-bank)). There's no way to learn about FS-Quiz changes in between.
 - **The nightly jobs keep no record** in the database; the scheduler's log is the only evidence they ran ([runbook 5.2](runbook.md#52-did-the-nightly-jobs-run)).
 - **A failed deploy's logs are lost** when the script rolls back; reproduce on staging ([runbook 2.2](runbook.md#22-when-a-deploy-fails)).
 - **A Postgres major upgrade is manual** (dump and restore); Dependabot only proposes new digests of the same major ([maintenance calendar](maintenance.md#monthly-maintainer)).

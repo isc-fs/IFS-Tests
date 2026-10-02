@@ -1,7 +1,7 @@
 import { Link } from 'react-router'
 import { APP_NAME, PublicPage } from '../components/Page'
 
-const UPDATED = '24 September 2026'
+const UPDATED = '3 October 2026'
 
 export function Privacy() {
   return (
@@ -43,8 +43,8 @@ export function Privacy() {
             by account number.
           </li>
           <li>
-            <strong>Web server logs:</strong> the server in front of the site records the IP address and time of each
-            request, for security, and deletes them within two weeks.
+            <strong>Web server logs:</strong> none. The server in front of {APP_NAME} doesn't record your IP address or
+            what you request.
           </li>
         </ul>
 

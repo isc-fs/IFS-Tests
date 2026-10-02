@@ -43,7 +43,7 @@ docker compose exec api ifs-tests create-admin --email admin@example.com --name 
 
 Then sign in at <http://localhost:8000>. Step by step, with what each command prints: [`docs/development.md`](docs/development.md).
 
-The real FS-Quiz bank is optional locally. Mirror it once (`uv run ifs-tests mirror --images`: about 130 requests plus the images, one a second, cached so a re-run only fetches what's new), then load it with `docker compose run --rm api ifs-tests push` ([development.md](docs/development.md#with-the-real-fs-quiz-bank)). Don't re-mirror without a reason: the FS-Quiz author asks users to avoid unnecessary queries. For frontend work, run the API with `uv run uvicorn ifs_tests.api.app:app --reload` and the SPA with `cd web && npm ci --ignore-scripts && npm run dev` (Vite proxies API calls to port 8000).
+The real FS-Quiz bank is optional locally. Mirror it once (`uv run ifs-tests mirror --images`: about 500 requests plus the images, one a second, cached so a re-run only fetches what's new), then load it with `docker compose run --rm api ifs-tests push` ([development.md](docs/development.md#with-the-real-fs-quiz-bank)). Don't re-mirror without a reason: the FS-Quiz author asks users to avoid unnecessary queries. For frontend work, run the API with `uv run uvicorn ifs_tests.api.app:app --reload` and the SPA with `cd web && npm ci --ignore-scripts && npm run dev` (Vite proxies API calls to port 8000).
 
 Deploying to the team server: [`docs/runbook.md`](docs/runbook.md).
 
