@@ -1,9 +1,9 @@
 # Source of truth for ROADMAP.md.
 #
-# Edit this file (or close / reopen a tracking issue on GitHub) and the
-# `Render ROADMAP` workflow will regenerate ROADMAP.md with updated
-# status badges and a fresh mermaid branch diagram. Do not hand-edit
-# ROADMAP.md — the workflow will overwrite any local changes.
+# ROADMAP.md is rendered from this file and the tracking issues' state by
+# .github/scripts/render_roadmap.py, and refreshed in each release pull
+# request (docs/runbook.md, 2.1); the `Check ROADMAP` workflow says when it
+# is stale. Do not hand-edit ROADMAP.md: the next render overwrites it.
 #
 # Schema:
 #   title:      H1 heading shown at the top of ROADMAP.md.

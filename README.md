@@ -124,7 +124,7 @@ git push
 
 ### Roadmap
 
-[ROADMAP.md](ROADMAP.md) is generated from [`.github/roadmap.yaml`](.github/roadmap.yaml) on every push to `dev`. To change the plan, edit the YAML, never the Markdown.
+[ROADMAP.md](ROADMAP.md) is generated from [`.github/roadmap.yaml`](.github/roadmap.yaml) and the tracking issues, and refreshed in each release pull request; between releases its status badges can lag. To change the plan, edit the YAML, never the Markdown.
 
 ---
 

@@ -69,7 +69,7 @@ If this table is empty or out of date: ask the owners of the `isc-fs` GitHub org
 | Thing | Where it lives | Notes |
 |---|---|---|
 | Source code | GitHub, `isc-fs/IFS-Tests` (public) | `main` holds releases only; `dev` is the integration branch; work happens on `feat/<n>-...` and `fix/<n>-...` branches ([README](../README.md#how-we-work-with-this-repository)) |
-| CI | GitHub Actions, `.github/workflows/` | `ci.yml` (Python, web, image build, shell, gitleaks, dependency review, a Playwright journey), `codeql.yml` (also weekly), `publish.yml` (images), `branch-issue.yml` and `close-on-dev-merge.yml` (tracking issues), `roadmap.yml` (regenerates `ROADMAP.md`) |
+| CI | GitHub Actions, `.github/workflows/` | `ci.yml` (Python, web, image build, shell, gitleaks, dependency review, a Playwright journey), `codeql.yml` (also weekly), `publish.yml` (images), `branch-issue.yml` and `close-on-dev-merge.yml` (tracking issues), `roadmap.yml` (says when `ROADMAP.md` is stale) |
 | Container images | GitHub Container Registry, `ghcr.io/isc-fs/ifs-tests` (public package) | `sha-<12 chars>` and `staging` for every push to `dev`; `vX.Y.Z` for release tags. Code only, no data or secrets |
 | Dependency updates | Dependabot, `.github/dependabot.yml` | Weekly; see the [maintenance calendar](maintenance.md#weekly-maintainer-about-15-minutes) |
 | Review ownership | `.github/CODEOWNERS` | Names the maintainer's GitHub account for migrations, workflows, deployment and security code; update it at every handover |
@@ -126,7 +126,7 @@ Nothing secret is ever committed: CI runs gitleaks and GitHub push protection is
 | What | Where |
 |---|---|
 | Structural and design decisions (why the app is built this way, why the rules are what they are) | ADRs in [adr/](adr/), numbered. An ADR is never rewritten afterwards; a new one supersedes it (as [ADR 0007](adr/0007-ranked-lp-and-account-level.md) superseded parts of [ADR 0004](adr/0004-xp-and-levels.md)) |
-| The plan | `.github/roadmap.yaml`; CI regenerates [ROADMAP.md](../ROADMAP.md) from it on every push to `dev`. Never edit `ROADMAP.md` by hand |
+| The plan | `.github/roadmap.yaml`; [ROADMAP.md](../ROADMAP.md) is rendered from it and refreshed in each release pull request ([runbook 2.1](runbook.md#21-release)). Never edit `ROADMAP.md` by hand |
 | Each piece of work | One tracking issue per branch, opened automatically when the branch is first pushed and closed when its pull request merges into `dev`. Closed issues are the project's history |
 | The details of a change | The pull request description and commit messages |
 | Scoring rules and how to retune them | [game-rules.md](game-rules.md#9-tuning-the-rules) |
