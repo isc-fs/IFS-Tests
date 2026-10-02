@@ -63,7 +63,9 @@ def test_an_unchanged_config_changes_nothing(tmp_path: Path) -> None:
 
 def test_it_refuses_when_the_website_does_not_mount_the_folder(tmp_path: Path) -> None:
     nginx = setup(tmp_path, installed="old\n")
-    done, docker = run(tmp_path, "nginx.sh", answers=[RUNNING, "inspect -f {{range .Mounts}}|0|/etc/x=/etc/y "])
+    done, docker = run(
+        tmp_path, "nginx.sh", answers=[RUNNING, "inspect -f {{range .Mounts}}|0|/etc/x=/etc/y "]
+    )
     assert done.returncode == 1 and "runbook 1.3" in done.stderr
     assert (nginx / "quiz.conf").read_text() == "old\n"
     assert not any(c.startswith("exec") for c in docker)
@@ -77,7 +79,9 @@ def test_it_refuses_when_the_website_is_down(tmp_path: Path) -> None:
 
 def test_it_warns_when_the_website_does_not_include_the_folder_yet(tmp_path: Path) -> None:
     setup(tmp_path)
-    rules = [r for r in answers(tmp_path) if r != INCLUDED] + ["nginx -T|0|server_name www.iscracingteam.com;"]
+    rules = [r for r in answers(tmp_path) if r != INCLUDED] + [
+        "nginx -T|0|server_name www.iscracingteam.com;"
+    ]
     done, _ = run(tmp_path, "nginx.sh", answers=rules)
     assert done.returncode == 0
     assert "doesn't include /etc/nginx/quiz/*.conf" in done.stdout
