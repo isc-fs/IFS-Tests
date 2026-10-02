@@ -93,6 +93,7 @@ The season changes on **1 September**, Madrid time. The rank reset is automatic 
 
 - **Rotate the database passwords** ([runbook 7](runbook.md#7-secrets-rotation)), even if nobody left.
 - **Review who has access:** server accounts, GitHub organisation and repository admins, GHCR package settings, the password manager entry. Remove anyone who no longer needs it.
+- **Server accounts expire:** the server admin creates maintainers' accounts with an end date (the first one, `webo`, ends on 31 December 2026). Before it, ask them to extend it for whoever still maintains the quiz, or deploys stop being possible.
 - **Privacy notice:** if anything stored about members changed this year, update the notice (`web/src/routes/About.tsx`, and its `UPDATED` date) and [security.md](security.md). Retention itself is automatic.
 - **FS-Quiz:** check the API still answers the way [fsquiz-api.md](fsquiz-api.md) describes (from the latest mirror run's output, not with extra requests), and that the attribution is still in place.
 
