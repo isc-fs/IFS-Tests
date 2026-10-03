@@ -1,0 +1,484 @@
+from __future__ import annotations
+
+from collections.abc import Callable
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+import pytest
+from fastapi.testclient import TestClient
+from pytest import approx
+from sqlalchemy import func, select, update
+from sqlalchemy.orm import Session
+
+from ifs_tests.bank.mirror import load_bank
+from ifs_tests.bank.sample import SAMPLE_DIR
+from ifs_tests.db.models import Attempt, DailyQuestion, Question, QuizQuestion, User
+from ifs_tests.domain import rank as rank_rules
+from ifs_tests.domain.xp import xp_award
+from ifs_tests.services import maintenance, mock
+from ifs_tests.services.bank import import_bank
+
+from ..conftest import Clock
+from .helpers import PASSWORD, login, member, right_answer, shape
+
+pytestmark = pytest.mark.integration
+NewClient = Callable[[], TestClient]
+CV = 9002  # sample quiz: five graded questions
+SCORES = ("xp", "lp", "rank_points", "bonuses", "level")
+
+
+def run_xp(n: int, combo: int = 0, first_wins: int = 3, **kw: bool) -> int:
+    """XP for `n` right answers in a row in a mock run of difficulty-3 questions."""
+    return sum(
+        xp_award(True, 3, "mock", first_win=i < first_wins, combo=combo + i, **kw).amount for i in range(n)
+    )
+
+
+def keys(value: Any) -> set[str]:
+    """Every key anywhere in a JSON body."""
+    if isinstance(value, dict):
+        return set(value) | {k for v in value.values() for k in keys(v)}
+    if isinstance(value, list):
+        return {k for v in value for k in keys(v)}
+    return set()
+
+
+@pytest.fixture
+def player(
+    app_client: TestClient, admin: User, new_client: NewClient, db: Session, clock: Clock, tmp_path: Path
+) -> TestClient:
+    import_bank(db, load_bank(SAMPLE_DIR), SAMPLE_DIR / "img", tmp_path, clock.now)
+    db.execute(update(Question).values(difficulty=3))
+    db.commit()
+    login(app_client)
+    c = new_client()
+    member(app_client, c, "marta@alu.comillas.edu", "Marta")
+    return c
+
+
+def answer(c: TestClient, state: dict[str, Any], body: dict[str, Any]) -> dict[str, Any]:
+    r = c.post(
+        f"/api/mock/sessions/{state['session_id']}/answer",
+        json={"attempt_id": state["current"]["attempt_id"], **body},
+    )
+    assert r.status_code == 200, r.text
+    return dict(r.json())
+
+
+def run_questions(db: Session, quiz: int = CV) -> list[int]:
+    return list(
+        db.scalars(
+            select(QuizQuestion.question_id)
+            .where(QuizQuestion.quiz_id == quiz)
+            .order_by(QuizQuestion.position)
+        )
+    )
+
+
+def run_through(c: TestClient, db: Session, quiz: int = CV) -> dict[str, Any]:
+    state = c.post(f"/api/mock/quizzes/{quiz}/start").json()
+    while state["current"]:
+        state = answer(c, state, right_answer(db, state["current"]["question"]["id"]))
+    return dict(state)
+
+
+def test_the_quiz_list(player: TestClient) -> None:
+    quizzes = {q["id"]: q for q in player.get("/api/mock/quizzes").json()}
+    assert [q["label"] for q in quizzes.values()] == [
+        "FS Sample 2026 DV",
+        "FS Demo 2025 CV",
+        "FS Demo 2025 EV",
+    ]
+    ev = quizzes[9001]
+    assert (ev["questions"], ev["graded"], ev["total_time_s"]) == (8, 6, 900)
+    assert ev["bar_to_beat"] == "The last team to get a slot had 5 correct answers."
+    assert ev["best"] is None and ev["open_session"] is None
+
+
+def test_a_full_run_scores_each_answer_and_shows_it_only_at_the_end(player: TestClient, db: Session) -> None:
+    state = player.post(f"/api/mock/quizzes/{CV}/start").json()
+    assert (state["label"], state["position"], state["total"], state["summary"]) == (
+        "FS Demo 2025 CV",
+        0,
+        5,
+        None,
+    )
+    assert "official" not in str(state) and "correct" not in str(state["current"])
+    first = state["current"]["question"]["id"]
+    state = answer(player, state, right_answer(db, first))
+    assert state["position"] == 1 and state["current"]["question"]["id"] != first
+    while state["current"]:
+        assert state["summary"] is None and not keys(state) & set(SCORES)  # nothing to read mid-run
+        state = answer(player, state, right_answer(db, state["current"]["question"]["id"]))
+    s = state["summary"]
+    assert (s["correct"], s["graded"], s["xp"], s["counted"]) == (5, 5, run_xp(5), True)
+    assert all(i["feedback"]["correct"] and i["feedback"]["official"] for i in s["items"])
+    fb = [i["feedback"] for i in s["items"]]
+    assert all(f["lp"] > 0 for f in fb)
+    assert all(f["rank_points"] is None and f["level"] is None for f in fb)  # where you stand is on /api/me
+    assert [f["xp"] for f in fb] == [
+        xp_award(True, 3, "mock", first_win=i < 3, combo=i).amount for i in range(5)
+    ]
+    assert s["lp"] == round(sum(f["lp"] for f in fb), 2)
+    stored = db.scalars(select(Attempt).where(Attempt.mode == "mock").order_by(Attempt.id)).all()
+    assert [(a.xp, a.lp) for a in stored] == [(f["xp"], f["lp"]) for f in fb]
+    rank = db.scalars(select(User.rank_points).where(User.display_name == "Marta")).one()
+    assert rank == round(50 + s["lp"], 2)
+    quiz = next(q for q in player.get("/api/mock/quizzes").json() if q["id"] == CV)
+    assert (quiz["best"], quiz["open_session"]) == (5, None)
+
+
+def test_replays_pay_nothing_the_same_day_and_xp_only_after(
+    player: TestClient, db: Session, clock: Clock
+) -> None:
+    first = run_through(player, db)["summary"]
+    assert first["lp"] > 0
+    again = run_through(player, db)["summary"]
+    assert (again["correct"], again["xp"], again["lp"], again["counted"]) == (5, 0, 0, False)
+    clock.advance(days=1)
+    player.post("/auth/login", json={"email": "marta@alu.comillas.edu", "password": PASSWORD})
+    later = run_through(player, db)["summary"]
+    # A quarter of the XP, with a new day's first wins and the combo carried on; no LP for a replay.
+    assert (later["xp"], later["lp"], later["counted"]) == (
+        run_xp(5, combo=5, first_wins=3, repeat=True),
+        0,
+        False,
+    )
+
+
+def test_starting_again_resumes_the_same_question_and_clock(player: TestClient, clock: Clock) -> None:
+    first = player.post(f"/api/mock/quizzes/{CV}/start").json()
+    clock.advance(seconds=20)
+    again = player.post(f"/api/mock/quizzes/{CV}/start").json()
+    assert again["session_id"] == first["session_id"]
+    assert again["current"]["attempt_id"] == first["current"]["attempt_id"]
+    assert again["current"]["deadline_at"] == first["current"]["deadline_at"]
+    listed = next(q for q in player.get("/api/mock/quizzes").json() if q["id"] == CV)
+    assert listed["open_session"] == first["session_id"]
+
+
+def test_a_question_left_to_run_out_is_closed_as_wrong(player: TestClient, db: Session, clock: Clock) -> None:
+    state = player.post(f"/api/mock/quizzes/{CV}/start").json()
+    clock.now = datetime.fromisoformat(state["current"]["deadline_at"])
+    clock.advance(seconds=4)
+    later = player.get(f"/api/mock/sessions/{state['session_id']}").json()
+    assert later["position"] == 1
+    assert later["current"]["question"]["id"] != state["current"]["question"]["id"]
+    late_answer = answer(player, state, {"options": []})
+    assert late_answer["position"] == 1  # answering the closed question again changes nothing
+    while later["current"]:
+        later = answer(player, later, right_answer(db, later["current"]["question"]["id"]))
+    timed_out = later["summary"]["items"][0]["feedback"]
+    assert (timed_out["correct"], timed_out["xp"]) == (False, 0) and timed_out["lp"] < 0
+
+
+def test_neither_the_page_nor_the_nightly_job_closes_a_question_inside_its_grace(
+    player: TestClient, db: Session, clock: Clock
+) -> None:
+    state = player.post(f"/api/mock/quizzes/{CV}/start").json()
+    clock.now = datetime.fromisoformat(state["current"]["deadline_at"])
+    clock.advance(seconds=3)
+    assert mock.close_expired(db, clock.now) == 0
+    again = player.get(f"/api/mock/sessions/{state['session_id']}").json()
+    assert (again["position"], again["current"]["attempt_id"]) == (0, state["current"]["attempt_id"])
+    while again["current"]:
+        again = answer(player, again, right_answer(db, again["current"]["question"]["id"]))
+    s = again["summary"]
+    assert (s["correct"], s["items"][0]["late"]) == (5, False)
+
+
+def test_a_late_answer_moves_on_and_counts_as_wrong(player: TestClient, db: Session, clock: Clock) -> None:
+    state = player.post(f"/api/mock/quizzes/{CV}/start").json()
+    clock.now = datetime.fromisoformat(state["current"]["deadline_at"])
+    clock.advance(seconds=10)
+    state = answer(player, state, right_answer(db, state["current"]["question"]["id"]))
+    assert state["position"] == 1
+    while state["current"]:
+        state = answer(player, state, right_answer(db, state["current"]["question"]["id"]))
+    s = state["summary"]
+    late = xp_award(True, 3, "mock", late=True).amount
+    assert (s["correct"], s["xp"]) == (4, late + run_xp(4))  # right but late is scored as wrong
+    assert [i["late"] for i in s["items"]] == [True, False, False, False, False]
+    assert next(q for q in player.get("/api/mock/quizzes").json() if q["id"] == CV)["best"] == 4
+    lps = [i["feedback"]["lp"] for i in s["items"]]
+    assert lps[0] < 0 < min(lps[1:])
+
+
+def test_ungraded_questions_are_shown_and_never_move_the_rank(player: TestClient, db: Session) -> None:
+    state = player.post("/api/mock/quizzes/9001/start").json()
+    while state["current"]:
+        q = state["current"]["question"]
+        body = right_answer(db, q["id"]) if q["graded"] else {"options": []}
+        state = answer(player, state, body)
+    s = state["summary"]
+    expected, rights = 0, 0
+    for i in s["items"]:
+        if i["feedback"]["correct"] is None:
+            assert (i["feedback"]["xp"], i["feedback"]["lp"]) == (xp_award(None, 3, "mock").amount, 0)
+            expected += i["feedback"]["xp"]
+        else:
+            expected += xp_award(True, 3, "mock", first_win=rights < 3, combo=rights).amount
+            rights += 1
+    assert (s["correct"], s["graded"], s["xp"], len(s["items"])) == (6, 6, expected, 8)
+    assert [i["feedback"]["correct"] for i in s["items"]].count(None) == 2
+
+
+def test_an_ungraded_question_left_to_run_out_never_moves_the_rank(
+    player: TestClient, db: Session, clock: Clock
+) -> None:
+    state = player.post("/api/mock/quizzes/9001/start").json()
+    while state["current"]["question"]["graded"]:
+        state = answer(player, state, right_answer(db, state["current"]["question"]["id"]))
+    ungraded = state["current"]["question"]["id"]
+    rank = select(User.rank_points).where(User.display_name == "Marta")
+    before = db.scalars(rank).one()
+    clock.now = datetime.fromisoformat(state["current"]["deadline_at"])
+    clock.advance(seconds=4)
+    state = player.get(f"/api/mock/sessions/{state['session_id']}").json()
+    db.expire_all()
+    assert db.scalars(rank).one() == before
+    while state["current"]:
+        q = state["current"]["question"]
+        state = answer(player, state, right_answer(db, q["id"]) if q["graded"] else {"options": []})
+    item = next(i for i in state["summary"]["items"] if i["question"]["id"] == ungraded)
+    assert (item["late"], item["feedback"]["correct"], item["feedback"]["lp"]) == (True, None, 0)
+
+
+def test_runs_belong_to_their_player(
+    player: TestClient, app_client: TestClient, new_client: NewClient
+) -> None:
+    state = player.post(f"/api/mock/quizzes/{CV}/start").json()
+    other = new_client()
+    member(app_client, other, "leo@alu.comillas.edu", "Leo")
+    assert other.get(f"/api/mock/sessions/{state['session_id']}").status_code == 404
+    assert (
+        other.post(f"/api/mock/sessions/{state['session_id']}/answer", json={"attempt_id": 1}).status_code
+        == 404
+    )
+    mine = other.post("/api/mock/quizzes/9001/start").json()
+    stolen = other.post(
+        f"/api/mock/sessions/{mine['session_id']}/answer",
+        json={"attempt_id": state["current"]["attempt_id"], "options": []},
+    )
+    assert stolen.status_code == 404
+    assert player.post("/api/mock/quizzes/424242/start").status_code == 404
+
+
+def test_a_question_disappearing_mid_run_does_not_derail_it(player: TestClient, db: Session) -> None:
+    """Images can arrive or go missing, and reviewers can hide questions, while someone is mid-run."""
+    state = player.post(f"/api/mock/quizzes/{CV}/start").json()
+    first = state["current"]["question"]["id"]
+    state = answer(player, state, right_answer(db, first))
+    second = state["current"]["question"]["id"]
+    db.execute(update(Question).where(Question.id.in_([first, second])).values(playable=False))
+    db.commit()
+
+    again = player.get(f"/api/mock/sessions/{state['session_id']}").json()
+    assert (again["current"]["question"]["id"], again["position"], again["total"]) == (second, 1, 5)
+    state = answer(player, again, right_answer(db, second))
+    while state["current"]:
+        state = answer(player, state, right_answer(db, state["current"]["question"]["id"]))
+    s = state["summary"]
+    assert (s["correct"], s["graded"], s["xp"], len(s["items"])) == (5, 5, run_xp(5), 5)
+
+
+def test_a_question_that_becomes_playable_mid_run_joins_it(player: TestClient, db: Session) -> None:
+    last = db.scalars(
+        select(QuizQuestion.question_id)
+        .where(QuizQuestion.quiz_id == CV)
+        .order_by(QuizQuestion.position.desc())
+    ).first()
+    db.execute(update(Question).where(Question.id == last).values(playable=False))
+    db.commit()
+    state = player.post(f"/api/mock/quizzes/{CV}/start").json()
+    assert state["total"] == 4
+    db.execute(update(Question).where(Question.id == last).values(playable=True))
+    db.commit()
+    while state["current"]:
+        state = answer(player, state, right_answer(db, state["current"]["question"]["id"]))
+    assert len(state["summary"]["items"]) == 5
+
+
+def test_ending_a_run_charges_the_question_on_screen_and_leaves_the_rest_unscored(
+    player: TestClient, db: Session
+) -> None:
+    state = player.post(f"/api/mock/quizzes/{CV}/start").json()
+    state = answer(player, state, right_answer(db, state["current"]["question"]["id"]))
+    on_screen = state["current"]["question"]["id"]
+    ended = player.post(f"/api/mock/sessions/{state['session_id']}/end")
+    assert ended.status_code == 200, ended.text
+    s = ended.json()["summary"]
+    assert (s["correct"], s["graded"], s["unreached"], len(s["items"])) == (1, 5, 3, 2)
+    shown = s["items"][1]
+    assert (shown["question"]["id"], shown["late"], shown["feedback"]["xp"]) == (on_screen, True, 0)
+    assert shown["feedback"]["lp"] < 0  # seen, so charged like a question left to run out
+    assert db.scalar(select(func.count()).select_from(Attempt).where(Attempt.mode == "mock")) == 2
+    again = player.post(f"/api/mock/sessions/{state['session_id']}/end").json()
+    assert again["summary"] == ended.json()["summary"]  # ending twice changes nothing
+    listed = next(q for q in player.get("/api/mock/quizzes").json() if q["id"] == CV)
+    assert (listed["open_session"], listed["best"]) == (None, 1)
+    assert player.post("/api/mock/sessions/424242/end").status_code == 404
+
+
+def test_an_ended_run_stops_holding_back_its_questions(player: TestClient, db: Session) -> None:
+    state = player.post(f"/api/mock/quizzes/{CV}/start").json()
+    unreached = [
+        db.get_one(Question, i) for i in run_questions(db) if i != state["current"]["question"]["id"]
+    ]
+    later = next(q for q in unreached if q.area in ("mech", "elec", "rules") and q.graded)
+    other = next(q for q in unreached if q.id != later.id)
+    player.get("/api/daily")
+    db.execute(update(DailyQuestion).where(DailyQuestion.area == later.area).values(question_id=later.id))
+    db.commit()
+    assert player.post(f"/api/daily/{later.area}/start").status_code == 409
+    assert player.get(f"/api/practice/questions/{other.id}").status_code == 409
+    player.post(f"/api/mock/sessions/{state['session_id']}/end")
+    assert player.get(f"/api/practice/questions/{other.id}").status_code == 200
+    started = player.post(f"/api/daily/{later.area}/start")
+    assert started.status_code == 200 and started.json()["question"]["id"] == later.id
+    r = player.post(
+        f"/api/daily/attempts/{started.json()['attempt_id']}/answer", json=right_answer(db, later.id)
+    ).json()
+    assert r["xp"] > 0 and r["lp"] > 0  # never answered in the run: the daily pays in full
+
+
+def test_the_nightly_job_ends_runs_left_untouched(player: TestClient, db: Session, clock: Clock) -> None:
+    forgotten = player.post(f"/api/mock/quizzes/{CV}/start").json()
+    clock.advance(days=1)
+    player.post("/auth/login", json={"email": "marta@alu.comillas.edu", "password": PASSWORD})
+    fresh = player.post("/api/mock/quizzes/9001/start").json()
+    clock.advance(days=1, hours=1)
+    counts = maintenance.run(db, clock.now)
+    assert counts["mock_runs_ended"] == 1 and maintenance.run(db, clock.now)["mock_runs_ended"] == 0
+    player.post("/auth/login", json={"email": "marta@alu.comillas.edu", "password": PASSWORD})
+    s = player.get(f"/api/mock/sessions/{forgotten['session_id']}").json()["summary"]
+    assert (s["unreached"], len(s["items"])) == (4, 1)
+    assert player.get(f"/api/mock/sessions/{fresh['session_id']}").json()["summary"] is None
+
+
+def test_each_question_runs_on_its_real_time_and_the_list_adds_up_the_same_clocks(
+    player: TestClient, db: Session, clock: Clock
+) -> None:
+    first, second, *rest = run_questions(db)
+    db.execute(update(Question).where(Question.id == first).values(time_s=900))  # past the daily's 10 minutes
+    db.execute(update(Question).where(Question.id == second).values(time_s=None, answer_kind="number"))
+    db.execute(update(Question).where(Question.id.in_(rest)).values(time_s=30))  # under the daily's minute
+    db.commit()
+    listed = next(q for q in player.get("/api/mock/quizzes").json() if q["id"] == CV)
+    assert listed["total_time_s"] == 900 + 240 + 30 * len(
+        rest
+    )  # an unknown time gets the default for its kind
+    state = player.post(f"/api/mock/quizzes/{CV}/start").json()
+    clocks = []
+    while state["current"]:
+        c = state["current"]
+        clocks.append((datetime.fromisoformat(c["deadline_at"]) - clock.now).total_seconds())
+        state = answer(player, state, right_answer(db, c["question"]["id"]))
+    assert clocks == [900, 240, *[30] * len(rest)]
+    assert sum(clocks) == listed["total_time_s"]
+
+
+def test_an_answer_the_grader_cannot_read_is_refused_and_the_run_waits(
+    player: TestClient, db: Session
+) -> None:
+    state = player.post(f"/api/mock/quizzes/{CV}/start").json()
+    refused = 0
+    while state["current"]:
+        current = state["current"]
+        if current["question"]["answer_kind"] == "number":
+            r = player.post(
+                f"/api/mock/sessions/{state['session_id']}/answer",
+                json={"attempt_id": current["attempt_id"], "value": "12 kN"},
+            )
+            assert r.status_code == 400 and "no units" in r.json()["detail"]
+            refused += 1
+            again = player.get(f"/api/mock/sessions/{state['session_id']}").json()
+            assert again["current"]["attempt_id"] == current["attempt_id"]
+        state = answer(player, state, right_answer(db, current["question"]["id"]))
+    assert refused == 2 and state["summary"]["correct"] == 5
+
+
+def _todays_daily_on_screen(player: TestClient, db: Session) -> tuple[dict[str, Any], Question]:
+    """A run whose question on screen is also today's daily question in its area."""
+    player.get("/api/daily")
+    state = player.post(f"/api/mock/quizzes/{CV}/start").json()
+    q = db.get_one(Question, state["current"]["question"]["id"])
+    db.execute(update(DailyQuestion).where(DailyQuestion.area == q.area).values(question_id=q.id))
+    db.commit()
+    return state, q
+
+
+def _daily_right(player: TestClient, db: Session, q: Question) -> dict[str, Any]:
+    started = player.post(f"/api/daily/{q.area}/start")
+    assert started.status_code == 200, started.text
+    r = player.post(f"/api/daily/attempts/{started.json()['attempt_id']}/answer", json=right_answer(db, q.id))
+    assert r.status_code == 200, r.text
+    return dict(r.json())
+
+
+def _full_daily_lp(db: Session, q: Question, **kw: Any) -> float:
+    points = db.scalars(select(User.rank_points).where(User.display_name == "Marta")).one()
+    return rank_rules.lp_award(True, points, 3, "daily", **shape(db, q.id), **kw).amount
+
+
+def test_ending_a_run_frees_the_daily_on_screen_and_it_pays_in_full(player: TestClient, db: Session) -> None:
+    state, q = _todays_daily_on_screen(player, db)
+    assert player.post(f"/api/daily/{q.area}/start").status_code == 409
+    ended = player.post(f"/api/mock/sessions/{state['session_id']}/end").json()["summary"]["items"][0]
+    assert ended["question"]["id"] == q.id and ended["late"] and ended["feedback"]["lp"] < 0
+    assert (ended["feedback"]["official"], ended["feedback"]["correct_options"]) == (None, [])
+    assert player.get(f"/api/practice/questions/{q.id}").status_code == 409
+    full = _full_daily_lp(db, q)
+    r = _daily_right(player, db, q)
+    # closed without an answer while its answer stayed hidden: neither answered today nor seen
+    assert (r["xp"], r["lp"]) == (xp_award(True, 3, "daily", first_win=True).amount, approx(full))
+    shown = player.get(f"/api/mock/sessions/{state['session_id']}").json()["summary"]["items"][0]
+    assert shown["feedback"]["official"]  # the daily is answered: the run's summary can show it now
+
+
+@pytest.mark.parametrize("unsure", [False, True])
+def test_a_daily_question_answered_in_the_mock_pays_nothing_again_that_day(
+    player: TestClient, db: Session, unsure: bool
+) -> None:
+    state, q = _todays_daily_on_screen(player, db)
+    body = {"unsure": True} if unsure else right_answer(db, q.id)
+    state = answer(player, state, body)
+    player.post(f"/api/mock/sessions/{state['session_id']}/end")
+    r = _daily_right(player, db, q)
+    assert (r["xp"], r["lp"]) == (0, 0)  # once a day, whether the answer was right or "not sure"
+
+
+def test_a_question_whose_answer_was_shown_before_the_days_draw_pays_nothing_as_that_daily(
+    player: TestClient, db: Session, clock: Clock
+) -> None:
+    """Before the day's draw a question is nobody's daily, so ending a run shows its answer. If the draw then
+    picks it, the player has seen the answer: once a day, it pays nothing (it used to pay in full, because
+    everything closed after midnight counted as hidden)."""
+    state = player.post(f"/api/mock/quizzes/{CV}/start").json()
+    q = db.get_one(Question, state["current"]["question"]["id"])
+    item = player.post(f"/api/mock/sessions/{state['session_id']}/end").json()["summary"]["items"][0]
+    assert item["feedback"]["official"]  # not a daily yet: the summary showed the answer
+    clock.advance(seconds=30)
+    player.get("/api/daily")  # the day's draw, after the run ended
+    db.execute(update(DailyQuestion).where(DailyQuestion.area == q.area).values(question_id=q.id))
+    db.commit()
+    r = _daily_right(player, db, q)
+    assert (r["xp"], r["lp"]) == (0, 0)
+
+
+def test_a_question_whose_answer_a_finished_run_showed_is_a_repeat_as_the_daily(
+    player: TestClient, db: Session, clock: Clock
+) -> None:
+    state = player.post(f"/api/mock/quizzes/{CV}/start").json()
+    q = db.get_one(Question, state["current"]["question"]["id"])
+    item = player.post(f"/api/mock/sessions/{state['session_id']}/end").json()["summary"]["items"][0]
+    assert item["feedback"]["official"]  # not running anywhere yesterday: the summary showed the answer
+    clock.advance(days=1)
+    player.post("/auth/login", json={"email": "marta@alu.comillas.edu", "password": PASSWORD})
+    player.get("/api/daily")
+    db.execute(update(DailyQuestion).where(DailyQuestion.area == q.area).values(question_id=q.id))
+    db.commit()
+    repeat = _full_daily_lp(db, q, repeat=True)
+    r = _daily_right(player, db, q)
+    assert r["lp"] == approx(repeat)

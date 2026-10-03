@@ -1,0 +1,132 @@
+# Production and staging stack on the team server. Run through deploy.sh, which supplies IMAGE_TAG
+# and the environment file (/srv/quiz/<env>/.env, see env.example).
+name: quiz-${QUIZ_ENV:?set QUIZ_ENV}
+
+x-logging: &logging
+  driver: json-file
+  options: { max-size: "10m", max-file: "3" }
+
+# api and scheduler run the same image with the same hardening.
+x-app: &app
+  image: ghcr.io/isc-fs/ifs-tests:${IMAGE_TAG:?set IMAGE_TAG}
+  restart: unless-stopped
+  read_only: true
+  tmpfs: [/tmp]
+  security_opt: ["no-new-privileges:true"]
+  cap_drop: [ALL]
+  logging: *logging
+  environment: &app-env
+    TZ: Europe/Madrid
+    IFS_ENV: ${QUIZ_ENV}
+    IFS_DATABASE_URL: postgresql+psycopg://app_rt:${APP_PASSWORD:?}@db:5432/quiz
+    IFS_PUBLIC_ORIGIN: https://${QUIZ_HOST:?}
+    FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:?set to the proxy network's subnet}
+  depends_on:
+    db: { condition: service_healthy }
+
+services:
+  api:
+    <<: *app
+    mem_limit: 512m
+    # No swap on any host: past the limit a worker restarts instead of every request slowing down in swap.
+    memswap_limit: 512m
+    cpus: 1.0
+    # /readyz queries the database as app_rt, so a wrong APP_PASSWORD or a database outage shows as unhealthy
+    # (the image's own check, /healthz, only says the process is up).
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/readyz', timeout=2)"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+    volumes:
+      - media:/data/media
+      - fsquiz:/data/fsquiz
+    networks:
+      internal: {}
+      proxy:
+        aliases: ["quiz-${QUIZ_ENV}-api"]
+
+  scheduler:
+    <<: *app
+    command: ["ifs-tests", "scheduler"]
+    environment:
+      <<: *app-env
+      IFS_DB_POOL_SIZE: "2"  # one job at a time
+      IFS_DB_MAX_OVERFLOW: "0"
+    mem_limit: 256m
+    cpus: 0.5
+    # The heartbeat is only touched while the database answers (scheduler.beat).
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os, sys, time; sys.exit(time.time() - os.path.getmtime('/tmp/scheduler-heartbeat') > 120)"]
+      interval: 30s
+      start_period: 15s
+    networks: [internal]
+
+  db:
+    image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+    restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    # The entrypoint needs these to fix volume ownership and drop to the postgres user.
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
+    mem_limit: 768m
+    cpus: 1.0
+    logging: *logging
+    # 40 - 3 superuser-reserved = 37 >= api 2 workers x (5+5) + scheduler 2 + one `compose run api` command (5+5) + migrate 1 + backup 1 = 34
+    # No JIT: it compiled the leaderboard's per-member sums on every view late in a season, 30 of their 45 ms.
+    command: ["postgres", "-c", "shared_buffers=128MB", "-c", "max_connections=40", "-c", "timezone=UTC", "-c", "jit=off"]
+    environment:
+      POSTGRES_DB: quiz
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+      MIGRATOR_PASSWORD: ${MIGRATOR_PASSWORD:?}
+      APP_PASSWORD: ${APP_PASSWORD:?}
+      BACKUP_PASSWORD: ${BACKUP_PASSWORD:?}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/init-roles.sh:/docker-entrypoint-initdb.d/10-roles.sh:ro
+      - ./db/roles.sql:/quiz/roles.sql:ro
+    networks: [internal]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d quiz"]
+      interval: 5s
+      retries: 12
+
+  backup:
+    image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "/quiz/backup.sh"]
+    read_only: true
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    mem_limit: 256m
+    logging: *logging
+    environment:
+      TZ: Europe/Madrid
+      PGHOST: db
+      PGDATABASE: quiz
+      PGUSER: backup_ro
+      PGPASSWORD: ${BACKUP_PASSWORD:?}
+      BACKUP_AT: "03:30"
+      KEEP_DAYS: "14"
+      HEARTBEAT_URL: ${BACKUP_HEARTBEAT_URL:-}
+    volumes:
+      - ./db/backup.sh:/quiz/backup.sh:ro
+      - backups:/backups
+    networks: [internal, egress]  # egress only for the heartbeat ping; db stays internal-only
+    depends_on:
+      db: { condition: service_healthy }
+
+networks:
+  internal:
+    internal: true
+  egress: {}
+  proxy:
+    external: true
+    name: ${PROXY_NETWORK:-proxy}
+
+volumes:
+  pgdata:
+  media:
+  fsquiz:
+  backups:

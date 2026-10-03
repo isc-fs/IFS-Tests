@@ -1,0 +1,221 @@
+from __future__ import annotations
+
+from collections.abc import Callable
+
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import delete, func, select, update
+from sqlalchemy.orm import Session
+
+from ifs_tests.db.models import Attempt, DailyQuestion, Question, User
+from ifs_tests.domain.daily import madrid_day
+from ifs_tests.domain.rank import placement
+from ifs_tests.domain.xp import xp_award
+
+from ..conftest import Clock
+from .helpers import login, member, options
+
+pytestmark = pytest.mark.integration
+NewClient = Callable[[], TestClient]
+REVEALING = ("is_correct", "key", "official", "correct", "display", "solution")
+MINGO = placement("mingo")
+
+
+def points(db: Session) -> float:
+    db.expire_all()
+    return db.scalars(select(User.rank_points).where(User.display_name == "Marta")).one()
+
+
+@pytest.fixture
+def player(app_client: TestClient, admin: User, new_client: NewClient) -> TestClient:
+    login(app_client)
+    c = new_client()
+    member(app_client, c, "marta@alu.comillas.edu", "Marta")
+    return c
+
+
+def test_questions_never_reveal_the_answer(player: TestClient, bank: dict[int, int]) -> None:
+    for fsquiz_id, qid in bank.items():
+        r = player.get(f"/api/practice/questions/{qid}")
+        assert r.status_code == 200, fsquiz_id
+        body = r.json()
+        assert not any(word in r.text for word in REVEALING), (fsquiz_id, r.text)
+        assert (len(body["options"]) > 0) == body["answer_kind"].startswith("choice")
+    pair = player.get(f"/api/practice/questions/{bank[90004]}").json()
+    assert (pair["answer_kind"], pair["values"]) == ("numbers", 2)
+    beam = player.get(f"/api/practice/questions/{bank[90006]}").json()
+    assert beam["images"][0].startswith("/media/") and beam["images"][0].endswith(".webp")
+    assert set(beam["quizzes"]) == {"FS Demo 2025 CV"}
+
+
+def test_the_play_schema_has_no_answer_fields(app_client: TestClient) -> None:
+    schemas = app_client.get("/api/openapi.json").json()["components"]["schemas"]
+    for name in ("PlayQuestion", "Option"):
+        assert not set(schemas[name]["properties"]) & set(REVEALING)
+
+
+def test_choice_answers(player: TestClient, db: Session, bank: dict[int, int], clock: Clock) -> None:
+    qid = bank[90001]
+    right, wrong = options(db, qid)[:2]
+    ok = player.post(f"/api/practice/questions/{qid}/answer", json={"options": [right]}).json()
+    first = xp_award(True, 3, "practice", first_win=True)
+    assert ok == {
+        "correct": True,
+        "official": "0.713 m",
+        "correct_options": [right],
+        "solutions": [],
+        "xp": first.amount,
+        "lp": 0,  # practice is for learning: XP only
+        "bonuses": first.bonuses,
+        "combo": 1,
+        "comeback": False,
+        "cushioned": False,
+        "promoted": False,
+        "rose": False,
+        "demoted": False,
+        "rank_points": MINGO,
+        "level": 1,
+        "level_up": False,
+        "passed": False,
+    }
+    assert set(first.bonuses) == {"first_win"}
+    no = player.post(f"/api/practice/questions/{qid}/answer", json={"options": [wrong]}).json()
+    # Graded earlier today: no XP again.
+    assert (no["correct"], no["xp"], no["combo"], no["lp"]) == (False, 0, 0, 0)
+    same_day = player.post(f"/api/practice/questions/{qid}/answer", json={"options": [right]}).json()
+    assert (same_day["correct"], same_day["xp"], same_day["lp"]) == (True, 0, 0)  # no farming it
+    clock.advance(hours=11)
+    player.get("/api/me")
+    clock.advance(hours=2)  # past Madrid midnight
+    before = points(db)
+    again = player.post(f"/api/practice/questions/{qid}/answer", json={"options": [right]}).json()
+    assert (again["correct"], again["xp"], again["lp"], again["level"]) == (
+        True,
+        xp_award(True, 3, "practice", repeat=True, first_win=True).amount,
+        0,
+        1,
+    )
+    assert points(db) == before
+
+    multi = bank[90003]
+    a, b, *_ = options(db, multi)
+    r = player.post(f"/api/practice/questions/{multi}/answer", json={"options": [b, a]}).json()
+    assert r["correct"] is True and sorted(r["correct_options"]) == sorted([a, b])
+    # The repeat above was right on a new day: it carried the combo on.
+    assert (r["xp"], r["combo"]) == (xp_award(True, 3, "practice", first_win=True, combo=2).amount, 3)
+    stored = db.scalars(select(Attempt.lp).where(Attempt.question_id == multi)).one()
+    assert (r["lp"], stored, points(db)) == (0, 0, MINGO)
+
+
+def test_typed_answers_and_solutions(player: TestClient, bank: dict[int, int]) -> None:
+    def send(fsquiz_id: int, value: str) -> dict[str, object]:
+        r = player.post(f"/api/practice/questions/{bank[fsquiz_id]}/answer", json={"value": value})
+        assert r.status_code == 200, r.text
+        return dict(r.json())
+
+    tube = send(90002, "0,32")
+    assert tube["correct"] is True and "45 000 N" in str(tube["solutions"])
+    assert send(90004, "518.4; 604.8")["correct"] is True
+    assert send(90004, "604.8; 518.4")["correct"] is False
+    assert send(90005, "3.84")["correct"] is True
+    assert send(90007, "ams")["correct"] is True
+
+
+def test_ungraded_questions_show_the_official_answer_or_say_there_is_none(
+    player: TestClient, db: Session, bank: dict[int, int]
+) -> None:
+    drag = player.post(f"/api/practice/questions/{bank[90009]}/answer", json={}).json()
+    assert drag["correct"] is None and drag["official"].startswith("12 V, 24 V")
+    # Nothing to be right or wrong about: a little XP for reading it, the rank doesn't move.
+    assert (drag["xp"], drag["lp"], drag["combo"]) == (xp_award(None, 3, "practice").amount, 0, 0)
+    missing = player.post(f"/api/practice/questions/{bank[90010]}/answer", json={"options": []}).json()
+    assert (missing["correct"], missing["official"], missing["lp"]) == (None, None, 0)
+    assert points(db) == MINGO
+
+
+def test_bad_answers(player: TestClient, db: Session, bank: dict[int, int]) -> None:
+    foreign = options(db, bank[90008])[0]
+    r = player.post(f"/api/practice/questions/{bank[90001]}/answer", json={"options": [foreign]})
+    assert r.status_code == 400 and r.json()["detail"] == "Pick one of the listed answers."
+    assert player.post("/api/practice/questions/999999/answer", json={}).status_code == 404
+    assert (
+        player.post(f"/api/practice/questions/{bank[90002]}/answer", json={"value": "x" * 201}).status_code
+        == 422
+    )
+    assert player.post(f"/api/practice/questions/{bank[90002]}/answer", json={"extra": 1}).status_code == 422
+    assert db.scalar(select(func.count()).select_from(Attempt)) == 0
+
+
+def test_next_prefers_questions_not_yet_practised(player: TestClient, bank: dict[int, int]) -> None:
+    rules = [q for q in bank.values() if player.get(f"/api/practice/questions/{q}").json()["area"] == "rules"]
+    assert len(rules) == 2
+    first = player.get("/api/practice/next", params={"area": "rules"}).json()["id"]
+    player.post(f"/api/practice/questions/{first}/answer", json={"options": []})
+    for _ in range(5):
+        assert player.get("/api/practice/next", params={"area": "rules"}).json()["id"] != first
+    other = next(q for q in rules if q != first)
+    assert player.get("/api/practice/next", params={"area": "rules", "skip": other}).json()["id"] == first
+    assert player.get("/api/practice/next", params={"topic": "nope"}).status_code == 404
+    assert player.get("/api/practice/next", params={"area": "chassis"}).status_code == 422
+    assert player.get("/api/practice/next", params={"topic": "a\x00b"}).status_code == 422
+
+
+def test_hidden_questions_are_never_served(player: TestClient, db: Session, bank: dict[int, int]) -> None:
+    db.execute(update(Question).where(Question.id != bank[90011]).values(playable=False))
+    db.commit()
+    assert player.get(f"/api/practice/questions/{bank[90001]}").status_code == 404
+    for _ in range(3):
+        assert player.get("/api/practice/next").json()["id"] == bank[90011]
+
+
+def test_progress_per_area(player: TestClient, db: Session, bank: dict[int, int]) -> None:
+    right = options(db, bank[90001])[0]
+    player.post(f"/api/practice/questions/{bank[90001]}/answer", json={"options": [right]})
+    player.post(f"/api/practice/questions/{bank[90002]}/answer", json={"value": "9"})
+    areas = {a["area"]: a for a in player.get("/api/practice/areas").json()}
+    assert sum(a["questions"] for a in areas.values()) == 12
+    assert (areas["mech"]["answered"], areas["mech"]["correct"]) == (2, 1)
+    assert areas["mech"]["topics"]["structures"] == 2
+    assert areas["elec"]["answered"] == 0
+
+
+def test_practice_never_shows_a_question_still_running_for_the_player(
+    player: TestClient, db: Session, bank: dict[int, int], clock: Clock
+) -> None:
+    daily = db.get_one(Question, bank[90011])
+    day = madrid_day(clock.now)
+    db.execute(delete(DailyQuestion).where(DailyQuestion.day == day, DailyQuestion.area == daily.area))
+    db.add(DailyQuestion(day=day, area=daily.area, question_id=daily.id))
+    db.commit()
+    r = player.get(f"/api/practice/questions/{daily.id}")  # its clock hasn't started: no peeking
+    assert r.status_code == 409 and "answer it there first" in r.json()["detail"]
+    assert daily.id not in {player.get("/api/practice/next").json()["id"] for _ in range(30)}
+    assert player.post("/api/mock/quizzes/9002/start").status_code == 200
+    assert player.get(f"/api/practice/questions/{bank[90002]}").status_code == 409  # later in the mock run
+    assert player.get(f"/api/practice/questions/{bank[90004]}").status_code == 200
+
+
+def test_an_answer_the_grader_cannot_read_is_refused_and_can_be_fixed(
+    player: TestClient, db: Session, bank: dict[int, int]
+) -> None:
+    url = f"/api/practice/questions/{bank[90012]}/answer"
+    for typed in ("2778 N", "2,778"):
+        r = player.post(url, json={"value": typed})
+        assert r.status_code == 400, r.text
+        assert r.json()["fields"]["value"] == r.json()["detail"]
+    assert "no units" in player.post(url, json={"value": "2778 N"}).json()["detail"]
+    assert db.scalar(select(func.count()).select_from(Attempt)) == 0
+    assert player.post(url, json={"value": "2778"}).json()["correct"] is True
+
+
+def test_a_comma_is_a_decimal_one_where_the_question_asks_for_three_decimals(
+    player: TestClient, db: Session, bank: dict[int, int]
+) -> None:
+    qid = bank[90012]
+    url = f"/api/practice/questions/{qid}/answer"
+    assert player.post(url, json={"value": "2,778"}).status_code == 400  # 2.778 or 2778?
+    q = db.get_one(Question, qid)
+    q.text += " Round the answer to three decimal places."
+    db.commit()
+    r = player.post(url, json={"value": "2,778"})
+    assert r.status_code == 200 and r.json()["correct"] is False  # 2.778, as the question asks: not 2778

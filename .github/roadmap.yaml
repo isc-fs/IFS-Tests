@@ -1,29 +1,132 @@
 # Source of truth for ROADMAP.md.
 #
-# Edit this file (or close / reopen a tracking issue on GitHub) and the
-# `Render ROADMAP` workflow will regenerate ROADMAP.md with updated
-# status badges and a fresh mermaid branch diagram. Do not hand-edit
-# ROADMAP.md — the workflow will overwrite any local changes.
+# ROADMAP.md is rendered from this file and the tracking issues' state by
+# .github/scripts/render_roadmap.py, and refreshed in each release pull
+# request (docs/runbook.md, 2.1); the `Check ROADMAP` workflow says when it
+# is stale. Do not hand-edit ROADMAP.md: the next render overwrites it.
 #
 # Schema:
-#   phases: list of phase clusters. Each phase has a number, a title, a
-#           tag applied on dev→main when every branch in the phase has
-#           landed, and a list of planned feat/fix branches. Each branch
-#           has a `name` (exact git branch name) and a short `scope`
-#           sentence used as the commit label in the mermaid diagram.
-#   sidequests: off-roadmap branches kept in the diagram for history
-#               (e.g. infrastructure work that doesn't map to a phase).
+#   title:      H1 heading shown at the top of ROADMAP.md.
+#   intro:      One-paragraph description shown under the heading.
+#   phases:     list of phase clusters. Each phase has a number, a title,
+#               a tag applied on dev→main when every branch in the phase
+#               has landed, and a list of planned feat/fix branches. Each
+#               branch has a `name` (exact git branch name) and a short
+#               `scope` sentence used as the commit label in the mermaid
+#               diagram. Two optional phase-level fields:
+#                 deferred: true  — phase is paused / not yet approved.
+#                                   Every branch shows `⏸ deferred` and the
+#                                   phase is left out of the diagram.
+#                 note: "..."     — one-liner rendered under the phase
+#                                   title in the table.
+#   sidequests: off-roadmap branches kept in the table for history.
 #
-# Replace the TODO entries below with the actual phases and branches for
-# this repository. See isc-fs/stm32-can-bootloader/.github/roadmap.yaml
-# for a fully filled-in example.
+# Branch names in deferred phases are placeholders: the real number is
+# assigned when the branch is cut (last closed issue of that type + 1).
+
+title: IFS-Tests roadmap
+
+intro: |
+  Plan for the team's Formula Student quiz training platform. Each phase
+  is a cluster of feat branches cut from `dev`; a milestone tag on `main`
+  closes the phase once every branch in it has merged. Branch status
+  badges (✅ / 🔄 / 🔜 / ⏸) are derived from each branch's tracking issue
+  state in GitHub Issues.
+
+  Phase 1 is the groundwork (FS-Quiz mirror, proposal). Phases 2–4 build
+  the web app on the team's own server: invite + password accounts,
+  practice, mock quizzes, a daily question and a leaderboard. The design
+  is in `docs/architecture.md` and `docs/adr/`. Phase 5 collects ideas for
+  after launch.
 
 phases:
   - number: 1
-    title: TODO — first phase title
+    title: Foundations
     tag: v0.1.0
     branches:
-      - name: feat/1-todo-branch-name
-        scope: One-line description of what this branch delivers
+      - name: feat/1-project-scope
+        scope: README, roadmap and agent instructions for the quiz practice system
+      - name: feat/2-fsquiz-client
+        scope: FS-Quiz API v2 client, polite full mirror, bank stats and API reference
+      - name: feat/3-team-proposal
+        scope: Gamification options deck and ideas doc for the team decision
+
+  - number: 2
+    title: Platform foundation
+    tag: v0.2.0
+    note: "Staging live on the team server, accounts and the question bank in place"
+    branches:
+      - name: feat/4-platform-skeleton
+        scope: ADRs, FastAPI app, Alembic, SPA shell, local compose, CI, CodeQL
+      - name: feat/5-server-deploy
+        scope: Hardened production compose, scheduler, backups, deploy script, Nginx snippet
+      - name: feat/6-accounts-auth
+        scope: Invite links, Argon2id passwords, sessions, CSRF, roles, admin users, audit
+      - name: feat/7-bank-push
+        scope: Bank tables, answer-key normaliser, idempotent import, mirrored images
+
+  - number: 3
+    title: Training MVP
+    tag: v0.3.0
+    note: "One branch per way of answering questions, then the tools around them"
+    branches:
+      - name: feat/8-practice
+        scope: Practice by topic with server-side grading and answer reveal
+      - name: feat/9-daily-question
+        scope: One question per area per day, time-boxed, with streaks
+      - name: feat/10-mock-quiz
+        scope: Replay a real past quiz against its original clock
+      - name: feat/11-admin-taxonomy
+        scope: Reviewer tools for topic labels, answer keys and exclusions
+      - name: feat/12-leaderboard
+        scope: Season leaderboards per person, area and vertical, with opt-out
+      - name: feat/13-xp-levels
+        scope: XP by difficulty, streak bonus, levels and ranks, penalties that grow with level
+      - name: feat/14-learning-aids
+        scope: That year's rulebook and handbook on every question; formulas, reading and hints taken away level by level
+      - name: feat/15-mingoquiz
+        scope: The site becomes MingoQuiz (the repository keeps its name); live quiz plan
+
+  - number: 4
+    title: Team play
+    tag: v0.4.0
+    note: "Live quiz sessions for team meetings and vertical training (ADR 0005)"
+    branches:
+      - name: feat/16-live-quiz
+        scope: Any TD hosts a session everyone joins with a code; sub-department tables with captains; specialists routing; rehearsal of a full past quiz; speed points; CSV export
+
+  - number: 5
+    title: Launch
+    tag: v1.0.0
+    branches:
+      - name: feat/17-privacy-account
+        scope: Privacy notice, data export and deletion, season rollover, attribution
+      - name: feat/18-ranked-lp
+        scope: A League-style rank with LP that goes up and down, and an account level from XP that only goes up (ADR 0007)
+      - name: feat/19-documentation
+        scope: Documentation that stands on its own; guides for players, reviewers, admins and hosts; developer onboarding, data model, game rules, operations calendar, handover; docs checked in CI
+      - name: feat/20-launch
+        scope: Load test, restore drill, launch checklist; drop the old users.xp column (ADR 0007)
+      - name: feat/21-release-decisions
+        scope: The decisions the board and Technical Directors take before launch, with options and recommendations
+
+  - number: 6
+    title: After launch
+    tag: v1.1.0
+    deferred: true
+    note: "Ideas to prioritise with the team once the MVP is in use"
+    branches:
+      - name: feat/22-admin-totp
+        scope: Second factor for admin accounts
+      - name: feat/23-notion-sync
+        scope: Push scores and streaks to the Notion Team Directory
+      - name: feat/24-solution-bounty
+        scope: Members write worked solutions, reviewers approve, XP awarded
+      - name: feat/25-team-questions
+        scope: Team-written questions, starting with Driverless
+      - name: feat/26-rule-page-links
+        scope: Download each rulebook once (polite, cached), index rule numbers to pages, link references like EV 4.7.6 to their page
+      - name: feat/27-daily-per-player
+        scope: "Decide with the team (ADR 0007, open questions): a daily question per player so answers can't be passed around, demotions shown at the end of the day, double LP for a newcomer's first answers, whether repeats move LP"
 
 sidequests: []

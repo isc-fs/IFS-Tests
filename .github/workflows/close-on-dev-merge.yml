@@ -21,7 +21,7 @@ jobs:
 
     steps:
       - name: Close issues referenced by the PR body
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
         env:
           PR_BODY:   ${{ github.event.pull_request.body }}
           PR_TITLE:  ${{ github.event.pull_request.title }}

@@ -1,0 +1,31 @@
+# AGENTS.md
+
+Instructions for coding agents working in this repository. Read [README.md](README.md) first for what the project is, and [docs/README.md](docs/README.md) for where everything is documented.
+
+## Project
+
+- Training platform for Formula Student registration quizzes, fed by the FS-Quiz API v2 (`https://api.fs-quiz.eu/2/`, no key). Users know it as **MingoQuiz** (`APP_NAME` in `web/src/components/Page.tsx`); the repository, package and CLI keep the `ifs-tests` name.
+- Architecture: one FastAPI service (Python 3.13, uv) serving a React/Vite SPA, PostgreSQL via SQLAlchemy 2 + Alembic, Docker Compose on the team's Hetzner server. Read [`docs/architecture.md`](docs/architecture.md) and [`docs/adr/`](docs/adr/) before changing structure; record new structural decisions as ADRs.
+- FS-Quiz API behaviour and quirks: [`docs/fsquiz-api.md`](docs/fsquiz-api.md). The live responses differ from the published spec.
+- Layers: `api` → `services` → `db`; `domain/` holds pure rules (no I/O, clock passed in). Authorization happens in FastAPI dependencies; user IDs come from the session only. Answer keys never appear in a response other than the user's own submission, a finished mock run, or the reviewer tools; nobody sees the answer to one of their own running questions another way first (`services/questions.running_for`: today's daily question they haven't answered (or one they started before midnight), a question in their open mock run, the open question of a live quiz they play in, or any question of a live rehearsal): reviewers get it hidden, practice refuses to answer or hint at it. `tests/api/test_security.py` scans every response schema for answer fields. Personal data (ADR 0006): anything new stored about a person must appear in `services/privacy.export` and go when the account is deleted (a cascading foreign key or a step in `privacy._delete`).
+
+## Commands
+
+- Python: `uv sync`, `uv run ruff check .`, `uv run ruff format .`, `uv run mypy`, `uv run pytest` (integration tests need Docker).
+- Web (`web/`): `npm ci --ignore-scripts`, `npm run format`, `npm run typecheck`, `npm run lint`, `npm test` (with coverage gates), `npm run build`, `npm run size`, `npm run e2e`.
+- After changing the API: `uv run ifs-tests openapi > web/openapi.json && (cd web && npm run gen:api)`; CI fails if either is stale.
+- Tests follow the pyramid: pure rules in `domain/` get table-driven unit tests; services and routes get API tests against Postgres; races get integration tests in `tests/integration/test_concurrency.py`; user flows get component tests and one Playwright journey.
+- Local stack: `docker compose up --build`; migrations: `alembic upgrade head` (or `docker compose run --rm api alembic upgrade head`).
+- Question bank: `uv run ifs-tests mirror --images` (polite, cached), then `uv run ifs-tests push` or `docker compose run --rm api ifs-tests push`; `push --sample` loads a small made-up bank (tests, CI, fresh dev stacks). Answer-key parsing and grading live in `domain/keys.py` and `domain/grading.py`, with table tests over real key formats.
+- New migration: `uv run alembic revision --autogenerate -m "..."`, then review it by hand. Migrations must be expand/contract (the previous release keeps running during a deploy).
+- Deployment: `deploy/` (compose, `deploy.sh`, `restore.sh`, Nginx snippet) and [`docs/runbook.md`](docs/runbook.md). CI never deploys; a maintainer runs `deploy.sh` on the server.
+
+## Rules
+
+- **Git:** branch from `dev` as `feat/<n>-short-title` or `fix/<n>-short-title` (next number = one greater than the highest existing tracking-issue number of that type, whether open or closed). PRs target `dev`, never `main`. Never commit to `main` or `dev` directly.
+- **Roadmap:** edit `.github/roadmap.yaml`, never `ROADMAP.md` by hand: it is rendered from the YAML and the tracking issues, refreshed in each release pull request (runbook 2.1).
+- **Security:** no secrets in the repo; pin new GitHub Actions to a commit SHA; keep CSP strict (no inline scripts, no `dangerouslySetInnerHTML`).
+- **Server etiquette:** do not hammer the API. Work from the local mirror; only re-mirror when asked or when new quizzes are published. Keep the request delay in the client.
+- **Licence:** FS-Quiz data is ODbL. Keep the attribution; do not commit mirrored data to this public repository unless the team decides to publish it under the ODbL.
+- **Style:** simple code, minimal comments (only where something is non-obvious). English for code, docs and commits.
+- **Docs:** the repository must explain itself. A change in behaviour, a command, a job, a screen or an operating procedure updates the doc that owns it in the same PR (the owner table is in [docs/README.md](docs/README.md)); scoring changes update [docs/game-rules.md](docs/game-rules.md), and a change of design gets a new ADR. `tests/unit/test_docs.py` checks that links and file paths in the docs resolve.

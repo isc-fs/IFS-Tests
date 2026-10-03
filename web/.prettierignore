@@ -1,0 +1,6 @@
+src/api
+dist
+openapi.json
+coverage
+test-results
+playwright-report

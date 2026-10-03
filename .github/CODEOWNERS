@@ -1,0 +1,6 @@
+# Changes here need a maintainer's review: schema, CI/CD, deployment and security-sensitive code.
+/migrations/                 @AlvaroGonzalez05
+/.github/workflows/          @AlvaroGonzalez05
+/deploy/                     @AlvaroGonzalez05
+/Dockerfile                  @AlvaroGonzalez05
+/src/ifs_tests/api/security.py @AlvaroGonzalez05

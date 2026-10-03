@@ -1,53 +1,48 @@
-name: Render ROADMAP
+name: Check ROADMAP
 
-# Regenerates ROADMAP.md from .github/roadmap.yaml + GitHub issue state.
-#
-# Triggers on every push to `dev` (which also covers merges of feat/fix
-# PRs, since those all target `dev`) and a manual workflow_dispatch. The
-# autocommit it creates uses GITHUB_TOKEN, which per GitHub's rules does
-# not recursively trigger this workflow — so no infinite loop.
+# Renders ROADMAP.md from .github/roadmap.yaml + GitHub issue state and says whether the committed copy is stale.
+# It never pushes: `dev` only takes pull requests (.github/rulesets/dev.json), and GitHub Actions can't be on a
+# ruleset's bypass list. The release pull request refreshes ROADMAP.md (docs/runbook.md, 2.1).
 
 on:
   push:
     branches: [dev]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   render:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
-      issues:   read
+      contents: read
+      issues: read
     steps:
       - name: Checkout dev
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: dev
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: '3.12'
 
       - name: Install dependencies
-        run: pip install --quiet pyyaml
+        run: pip install --quiet pyyaml==6.0.2
 
       - name: Render ROADMAP.md
         env:
-          GH_TOKEN:           ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_REPOSITORY:  ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
         run: python3 .github/scripts/render_roadmap.py
 
-      - name: Commit if changed
+      - name: Report whether it changed
         run: |
           if git diff --quiet -- ROADMAP.md; then
-            echo "ROADMAP.md is up-to-date; no commit needed."
-            exit 0
+            echo "ROADMAP.md is up to date." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::notice::ROADMAP.md is stale; the next release pull request refreshes it (runbook 2.1)."
+            { echo "ROADMAP.md is stale; the next release pull request refreshes it. Changes:"; echo '```diff'; git diff -- ROADMAP.md; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           fi
-          git config user.name  "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add ROADMAP.md
-          git commit -m "chore: regenerate ROADMAP.md [skip ci]"
-          git push origin HEAD:dev

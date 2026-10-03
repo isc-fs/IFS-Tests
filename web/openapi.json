@@ -1,0 +1,7329 @@
+{
+ "openapi": "3.1.0",
+ "info": {
+  "title": "MingoQuiz",
+  "version": "1.0.0"
+ },
+ "paths": {
+  "/auth/login": {
+   "post": {
+    "tags": [
+     "auth"
+    ],
+    "summary": "Login",
+    "operationId": "login",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/LoginIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Me"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/auth/logout": {
+   "post": {
+    "tags": [
+     "auth"
+    ],
+    "summary": "Logout",
+    "operationId": "logout",
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     }
+    }
+   }
+  },
+  "/auth/invites/lookup": {
+   "post": {
+    "tags": [
+     "auth"
+    ],
+    "summary": "Invite Info",
+    "operationId": "invite_info",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/TokenIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/InviteInfo"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/auth/register": {
+   "post": {
+    "tags": [
+     "auth"
+    ],
+    "summary": "Register",
+    "operationId": "register",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RegisterIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Me"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/auth/resets/lookup": {
+   "post": {
+    "tags": [
+     "auth"
+    ],
+    "summary": "Reset Info",
+    "operationId": "reset_info",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/TokenIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ResetInfo"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/auth/reset": {
+   "post": {
+    "tags": [
+     "auth"
+    ],
+    "summary": "Reset",
+    "operationId": "reset",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ResetIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/me": {
+   "get": {
+    "tags": [
+     "me"
+    ],
+    "summary": "Me",
+    "operationId": "me",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Me"
+        }
+       }
+      }
+     }
+    }
+   },
+   "patch": {
+    "tags": [
+     "me"
+    ],
+    "summary": "Update Me",
+    "operationId": "update_me",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ProfileIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Me"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/me/password": {
+   "post": {
+    "tags": [
+     "me"
+    ],
+    "summary": "Change Password",
+    "operationId": "change_password",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/PasswordChangeIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/me/export": {
+   "get": {
+    "tags": [
+     "me"
+    ],
+    "summary": "Export My Data",
+    "operationId": "export_my_data",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Export"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/me/delete": {
+   "post": {
+    "tags": [
+     "me"
+    ],
+    "summary": "Delete Account",
+    "operationId": "delete_account",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/DeleteAccountIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/admin/users": {
+   "get": {
+    "tags": [
+     "admin"
+    ],
+    "summary": "Users",
+    "operationId": "users",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/AdminUser"
+         },
+         "type": "array",
+         "title": "Response Users"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/admin/users/{user_id}": {
+   "patch": {
+    "tags": [
+     "admin"
+    ],
+    "summary": "Update User",
+    "operationId": "update_user",
+    "parameters": [
+     {
+      "name": "user_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "maximum": 2147483647,
+       "minimum": 1,
+       "title": "User Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/UserPatch"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/AdminUser"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "delete": {
+    "tags": [
+     "admin"
+    ],
+    "summary": "Delete User",
+    "operationId": "delete_user",
+    "parameters": [
+     {
+      "name": "user_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "maximum": 2147483647,
+       "minimum": 1,
+       "title": "User Id"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/admin/users/{user_id}/export": {
+   "get": {
+    "tags": [
+     "admin"
+    ],
+    "summary": "Export User",
+    "description": "For someone who can't sign in (alumni, disabled) and asks for their data.",
+    "operationId": "export_user",
+    "parameters": [
+     {
+      "name": "user_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "maximum": 2147483647,
+       "minimum": 1,
+       "title": "User Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Export"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/admin/alumni": {
+   "post": {
+    "tags": [
+     "admin"
+    ],
+    "summary": "Mark Alumni",
+    "operationId": "mark_alumni",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/AlumniIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/AlumniOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/admin/users/{user_id}/reset-link": {
+   "post": {
+    "tags": [
+     "admin"
+    ],
+    "summary": "Reset Link",
+    "operationId": "reset_link",
+    "parameters": [
+     {
+      "name": "user_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "maximum": 2147483647,
+       "minimum": 1,
+       "title": "User Id"
+      }
+     }
+    ],
+    "responses": {
+     "201": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Link"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/admin/users/{user_id}/revoke-sessions": {
+   "post": {
+    "tags": [
+     "admin"
+    ],
+    "summary": "Revoke Sessions",
+    "operationId": "revoke_sessions",
+    "parameters": [
+     {
+      "name": "user_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "maximum": 2147483647,
+       "minimum": 1,
+       "title": "User Id"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/admin/invites": {
+   "get": {
+    "tags": [
+     "admin"
+    ],
+    "summary": "Open Invites",
+    "operationId": "open_invites",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/OpenInvite"
+         },
+         "type": "array",
+         "title": "Response Open Invites"
+        }
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "tags": [
+     "admin"
+    ],
+    "summary": "Create Invite",
+    "operationId": "create_invite",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/InviteIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Link"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/admin/invites/{invite_id}": {
+   "delete": {
+    "tags": [
+     "admin"
+    ],
+    "summary": "Revoke Invite",
+    "operationId": "revoke_invite",
+    "parameters": [
+     {
+      "name": "invite_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "maximum": 2147483647,
+       "minimum": 1,
+       "title": "Invite Id"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/admin/audit": {
+   "get": {
+    "tags": [
+     "admin"
+    ],
+    "summary": "Audit Log",
+    "operationId": "audit_log",
+    "parameters": [
+     {
+      "name": "limit",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "maximum": 500,
+       "minimum": 1,
+       "default": 100,
+       "title": "Limit"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/AuditEntry"
+         },
+         "title": "Response Audit Log"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/admin/bank": {
+   "get": {
+    "tags": [
+     "admin"
+    ],
+    "summary": "Bank Summary",
+    "operationId": "bank_summary",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/BankSummary"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/practice/areas": {
+   "get": {
+    "tags": [
+     "practice"
+    ],
+    "summary": "Practice Areas",
+    "operationId": "practice_areas",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/AreaProgress"
+         },
+         "type": "array",
+         "title": "Response Practice Areas"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/practice/next": {
+   "get": {
+    "tags": [
+     "practice"
+    ],
+    "summary": "Next Question",
+    "operationId": "next_question",
+    "parameters": [
+     {
+      "name": "area",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "enum": [
+          "mech",
+          "elec",
+          "rules",
+          "unclassified"
+         ],
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Area"
+      }
+     },
+     {
+      "name": "topic",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "maxLength": 16,
+         "pattern": "^[a-z]+$"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Topic"
+      }
+     },
+     {
+      "name": "skip",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "integer",
+         "maximum": 2147483647,
+         "minimum": 1
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Skip"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/PlayQuestion"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/practice/questions/{question_id}": {
+   "get": {
+    "tags": [
+     "practice"
+    ],
+    "summary": "Practice Question",
+    "operationId": "practice_question",
+    "parameters": [
+     {
+      "name": "question_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "maximum": 2147483647,
+       "minimum": 1,
+       "title": "Question Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/PlayQuestion"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/practice/questions/{question_id}/answer": {
+   "post": {
+    "tags": [
+     "practice"
+    ],
+    "summary": "Answer Practice",
+    "operationId": "answer_practice",
+    "parameters": [
+     {
+      "name": "question_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "maximum": 2147483647,
+       "minimum": 1,
+       "title": "Question Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/AnswerIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Feedback"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/practice/questions/{question_id}/hint": {
+   "post": {
+    "tags": [
+     "practice"
+    ],
+    "summary": "Practice Hint",
+    "operationId": "practice_hint",
+    "parameters": [
+     {
+      "name": "question_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "maximum": 2147483647,
+       "minimum": 1,
+       "title": "Question Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HintOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/daily": {
+   "get": {
+    "tags": [
+     "daily"
+    ],
+    "summary": "Daily Status",
+    "operationId": "daily_status",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/DailyStatus"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/daily/{area}/start": {
+   "post": {
+    "tags": [
+     "daily"
+    ],
+    "summary": "Start Daily",
+    "operationId": "start_daily",
+    "parameters": [
+     {
+      "name": "area",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "enum": [
+        "mech",
+        "elec",
+        "rules"
+       ],
+       "type": "string",
+       "title": "Area"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/TimedQuestion"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/daily/attempts/{attempt_id}/answer": {
+   "post": {
+    "tags": [
+     "daily"
+    ],
+    "summary": "Answer Daily",
+    "operationId": "answer_daily",
+    "parameters": [
+     {
+      "name": "attempt_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "maximum": 9223372036854775807,
+       "minimum": 1,
+       "title": "Attempt Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/AnswerIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/DailyResult"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/daily/{area}/review": {
+   "get": {
+    "tags": [
+     "daily"
+    ],
+    "summary": "Review Daily",
+    "operationId": "review_daily",
+    "parameters": [
+     {
+      "name": "area",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "enum": [
+        "mech",
+        "elec",
+        "rules"
+       ],
+       "type": "string",
+       "title": "Area"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/DailyResult"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/daily/attempts/{attempt_id}/hint": {
+   "post": {
+    "tags": [
+     "daily"
+    ],
+    "summary": "Daily Hint",
+    "operationId": "daily_hint",
+    "parameters": [
+     {
+      "name": "attempt_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "maximum": 9223372036854775807,
+       "minimum": 1,
+       "title": "Attempt Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HintOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/mock/quizzes": {
+   "get": {
+    "tags": [
+     "mock"
+    ],
+    "summary": "Mock Quizzes",
+    "operationId": "mock_quizzes",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/MockQuiz"
+         },
+         "type": "array",
+         "title": "Response Mock Quizzes"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/mock/quizzes/{quiz_id}/start": {
+   "post": {
+    "tags": [
+     "mock"
+    ],
+    "summary": "Start Mock",
+    "operationId": "start_mock",
+    "parameters": [
+     {
+      "name": "quiz_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "maximum": 2147483647,
+       "minimum": 1,
+       "title": "Quiz Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/MockState"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/mock/sessions/{session_id}": {
+   "get": {
+    "tags": [
+     "mock"
+    ],
+    "summary": "Mock State",
+    "operationId": "mock_state",
+    "parameters": [
+     {
+      "name": "session_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "maximum": 2147483647,
+       "minimum": 1,
+       "title": "Session Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/MockState"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/mock/sessions/{session_id}/answer": {
+   "post": {
+    "tags": [
+     "mock"
+    ],
+    "summary": "Answer Mock",
+    "operationId": "answer_mock",
+    "parameters": [
+     {
+      "name": "session_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "maximum": 2147483647,
+       "minimum": 1,
+       "title": "Session Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/MockAnswerIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/MockState"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/mock/sessions/{session_id}/end": {
+   "post": {
+    "tags": [
+     "mock"
+    ],
+    "summary": "End Mock",
+    "description": "End the run early: the question on screen counts as out of time; the ones not reached aren't scored.",
+    "operationId": "end_mock",
+    "parameters": [
+     {
+      "name": "session_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "maximum": 2147483647,
+       "minimum": 1,
+       "title": "Session Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/MockState"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/mock/sessions/{session_id}/attempts/{attempt_id}/hint": {
+   "post": {
+    "tags": [
+     "mock"
+    ],
+    "summary": "Mock Hint",
+    "operationId": "mock_hint",
+    "parameters": [
+     {
+      "name": "session_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "maximum": 2147483647,
+       "minimum": 1,
+       "title": "Session Id"
+      }
+     },
+     {
+      "name": "attempt_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "maximum": 9223372036854775807,
+       "minimum": 1,
+       "title": "Attempt Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HintOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/review/questions": {
+   "get": {
+    "tags": [
+     "review"
+    ],
+    "summary": "Review Questions",
+    "operationId": "review_questions",
+    "parameters": [
+     {
+      "name": "queue",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "enum": [
+        "all",
+        "reports",
+        "changed",
+        "unclassified",
+        "ungraded",
+        "excluded"
+       ],
+       "type": "string",
+       "default": "all",
+       "title": "Queue"
+      }
+     },
+     {
+      "name": "area",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "enum": [
+          "mech",
+          "elec",
+          "rules",
+          "unclassified"
+         ],
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Area"
+      }
+     },
+     {
+      "name": "topic",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "maxLength": 16,
+         "pattern": "^[a-z]+$"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Topic"
+      }
+     },
+     {
+      "name": "q",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "maxLength": 100,
+         "pattern": "^[^\\x00]*$"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Q"
+      }
+     },
+     {
+      "name": "offset",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "maximum": 100000,
+       "minimum": 0,
+       "default": 0,
+       "title": "Offset"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ReviewPage"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/review/questions/{question_id}": {
+   "get": {
+    "tags": [
+     "review"
+    ],
+    "summary": "Review Question",
+    "operationId": "review_question",
+    "parameters": [
+     {
+      "name": "question_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "maximum": 2147483647,
+       "minimum": 1,
+       "title": "Question Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ReviewQuestion"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "patch": {
+    "tags": [
+     "review"
+    ],
+    "summary": "Update Question",
+    "operationId": "update_question",
+    "parameters": [
+     {
+      "name": "question_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "maximum": 2147483647,
+       "minimum": 1,
+       "title": "Question Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ReviewPatch"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ReviewQuestion"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/review/questions/{question_id}/answer": {
+   "put": {
+    "tags": [
+     "review"
+    ],
+    "summary": "Correct Answer",
+    "operationId": "correct_answer",
+    "parameters": [
+     {
+      "name": "question_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "maximum": 2147483647,
+       "minimum": 1,
+       "title": "Question Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/KeyIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ReviewQuestion"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "delete": {
+    "tags": [
+     "review"
+    ],
+    "summary": "Remove Correction",
+    "operationId": "remove_correction",
+    "parameters": [
+     {
+      "name": "question_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "maximum": 2147483647,
+       "minimum": 1,
+       "title": "Question Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ReviewQuestion"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/review/reports/{report_id}/resolve": {
+   "post": {
+    "tags": [
+     "review"
+    ],
+    "summary": "Resolve Report",
+    "operationId": "resolve_report",
+    "parameters": [
+     {
+      "name": "report_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "maximum": 2147483647,
+       "minimum": 1,
+       "title": "Report Id"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/questions/{question_id}/report": {
+   "post": {
+    "tags": [
+     "review"
+    ],
+    "summary": "Report Question",
+    "operationId": "report_question",
+    "parameters": [
+     {
+      "name": "question_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "maximum": 2147483647,
+       "minimum": 1,
+       "title": "Question Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ReportIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/leaderboard": {
+   "get": {
+    "tags": [
+     "leaderboard"
+    ],
+    "summary": "Get Leaderboard",
+    "operationId": "get_leaderboard",
+    "parameters": [
+     {
+      "name": "board",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "enum": [
+        "everyone",
+        "mech",
+        "elec",
+        "rules"
+       ],
+       "type": "string",
+       "default": "everyone",
+       "title": "Board"
+      }
+     },
+     {
+      "name": "period",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "enum": [
+        "season",
+        "week"
+       ],
+       "type": "string",
+       "default": "season",
+       "title": "Period"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Leaderboard"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/leaderboard/verticals": {
+   "get": {
+    "tags": [
+     "leaderboard"
+    ],
+    "summary": "Vertical Leaderboard",
+    "operationId": "vertical_leaderboard",
+    "parameters": [
+     {
+      "name": "period",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "enum": [
+        "season",
+        "week"
+       ],
+       "type": "string",
+       "default": "season",
+       "title": "Period"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/VerticalBoard"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/learning/{topic}": {
+   "get": {
+    "tags": [
+     "learning"
+    ],
+    "summary": "Topic Aids",
+    "operationId": "topic_aids",
+    "parameters": [
+     {
+      "name": "topic",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "maxLength": 32,
+       "title": "Topic"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Learning"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/live/subdepartments": {
+   "get": {
+    "tags": [
+     "live"
+    ],
+    "summary": "Subdepartments",
+    "operationId": "subdepartments",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/Subdepartment"
+         },
+         "type": "array",
+         "title": "Response Subdepartments"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/live/sessions": {
+   "post": {
+    "tags": [
+     "live"
+    ],
+    "summary": "Create Session",
+    "operationId": "create_session",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/LiveConfig"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/LiveCreated"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/live/sessions/{code}": {
+   "get": {
+    "tags": [
+     "live"
+    ],
+    "summary": "Session State",
+    "operationId": "session_state",
+    "parameters": [
+     {
+      "name": "code",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "pattern": "^[A-Za-z0-9]{6}$",
+       "title": "Code"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/LiveState"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/live/sessions/{code}/join": {
+   "post": {
+    "tags": [
+     "live"
+    ],
+    "summary": "Join Session",
+    "operationId": "join_session",
+    "parameters": [
+     {
+      "name": "code",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "pattern": "^[A-Za-z0-9]{6}$",
+       "title": "Code"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/LiveState"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/live/sessions/{code}/config": {
+   "put": {
+    "tags": [
+     "live"
+    ],
+    "summary": "Configure Session",
+    "operationId": "configure_session",
+    "parameters": [
+     {
+      "name": "code",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "pattern": "^[A-Za-z0-9]{6}$",
+       "title": "Code"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/LiveConfig"
+       }
+      }
+     }
+    },
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/live/sessions/{code}/tables": {
+   "put": {
+    "tags": [
+     "live"
+    ],
+    "summary": "Seat Tables",
+    "operationId": "seat_tables",
+    "parameters": [
+     {
+      "name": "code",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "pattern": "^[A-Za-z0-9]{6}$",
+       "title": "Code"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/SeatIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/live/sessions/{code}/tables/auto": {
+   "post": {
+    "tags": [
+     "live"
+    ],
+    "summary": "Seat By Subdepartment",
+    "operationId": "seat_by_subdepartment",
+    "parameters": [
+     {
+      "name": "code",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "pattern": "^[A-Za-z0-9]{6}$",
+       "title": "Code"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/live/sessions/{code}/tables/{table_id}": {
+   "patch": {
+    "tags": [
+     "live"
+    ],
+    "summary": "Edit Table",
+    "operationId": "edit_table",
+    "parameters": [
+     {
+      "name": "code",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "pattern": "^[A-Za-z0-9]{6}$",
+       "title": "Code"
+      }
+     },
+     {
+      "name": "table_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "maximum": 2147483647,
+       "minimum": 1,
+       "title": "Table Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/TableEditIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/live/sessions/{code}/players/{user_id}": {
+   "put": {
+    "tags": [
+     "live"
+    ],
+    "summary": "Move Player",
+    "operationId": "move_player",
+    "parameters": [
+     {
+      "name": "code",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "pattern": "^[A-Za-z0-9]{6}$",
+       "title": "Code"
+      }
+     },
+     {
+      "name": "user_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "maximum": 2147483647,
+       "minimum": 1,
+       "title": "User Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/MoveIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "delete": {
+    "tags": [
+     "live"
+    ],
+    "summary": "Remove Player",
+    "operationId": "remove_player",
+    "parameters": [
+     {
+      "name": "code",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "pattern": "^[A-Za-z0-9]{6}$",
+       "title": "Code"
+      }
+     },
+     {
+      "name": "user_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "maximum": 2147483647,
+       "minimum": 1,
+       "title": "User Id"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/live/sessions/{code}/advance": {
+   "post": {
+    "tags": [
+     "live"
+    ],
+    "summary": "Advance Session",
+    "operationId": "advance_session",
+    "parameters": [
+     {
+      "name": "code",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "pattern": "^[A-Za-z0-9]{6}$",
+       "title": "Code"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "anyOf": [
+         {
+          "$ref": "#/components/schemas/AdvanceIn"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Body"
+       }
+      }
+     }
+    },
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/live/sessions/{code}/end": {
+   "post": {
+    "tags": [
+     "live"
+    ],
+    "summary": "End Session",
+    "operationId": "end_session",
+    "parameters": [
+     {
+      "name": "code",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "pattern": "^[A-Za-z0-9]{6}$",
+       "title": "Code"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/live/sessions/{code}/proposal": {
+   "put": {
+    "tags": [
+     "live"
+    ],
+    "summary": "Propose",
+    "operationId": "propose",
+    "parameters": [
+     {
+      "name": "code",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "pattern": "^[A-Za-z0-9]{6}$",
+       "title": "Code"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/KeyIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/live/sessions/{code}/answer": {
+   "post": {
+    "tags": [
+     "live"
+    ],
+    "summary": "Answer",
+    "operationId": "answer",
+    "parameters": [
+     {
+      "name": "code",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "pattern": "^[A-Za-z0-9]{6}$",
+       "title": "Code"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/AnswerIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/live/sessions/{code}/results.csv": {
+   "get": {
+    "tags": [
+     "live"
+    ],
+    "summary": "Results",
+    "operationId": "results",
+    "parameters": [
+     {
+      "name": "code",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "pattern": "^[A-Za-z0-9]{6}$",
+       "title": "Code"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/live/sessions/{code}/events": {
+   "get": {
+    "tags": [
+     "live"
+    ],
+    "summary": "Events",
+    "description": "`<version>.<proposals>` whenever the session changes (and when a question's time runs out), or a proposal\nreaches the viewer's table, so screens know to fetch the state again. No state travels here, so nobody sees\nmore than their own GET shows them.",
+    "operationId": "events",
+    "parameters": [
+     {
+      "name": "code",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "pattern": "^[A-Za-z0-9]{6}$",
+       "title": "Code"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  }
+ },
+ "components": {
+  "schemas": {
+   "AccountOut": {
+    "properties": {
+     "level": {
+      "type": "integer",
+      "title": "Level"
+     },
+     "xp": {
+      "type": "integer",
+      "title": "Xp"
+     },
+     "into": {
+      "type": "integer",
+      "title": "Into",
+      "description": "XP into the current level"
+     },
+     "needed": {
+      "type": "integer",
+      "title": "Needed",
+      "description": "XP the current level needs"
+     },
+     "next_milestone": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Next Milestone",
+      "description": "The next level with an emblem frame"
+     },
+     "combo": {
+      "type": "integer",
+      "title": "Combo",
+      "description": "Right answers in a row"
+     },
+     "first_wins_left": {
+      "type": "integer",
+      "title": "First Wins Left",
+      "description": "Right answers left today with the first-win bonus"
+     },
+     "streak": {
+      "type": "integer",
+      "title": "Streak"
+     },
+     "streak_bonus": {
+      "type": "integer",
+      "title": "Streak Bonus",
+      "description": "Extra XP on right answers from the daily streak, in percent"
+     },
+     "streak_freezes": {
+      "type": "integer",
+      "title": "Streak Freezes",
+      "description": "Freezes held: each saves the streak on a missed day"
+     },
+     "rested_xp": {
+      "type": "integer",
+      "title": "Rested Xp",
+      "description": "Rested XP banked while away: it doubles XP until spent"
+     }
+    },
+    "type": "object",
+    "required": [
+     "level",
+     "xp",
+     "into",
+     "needed",
+     "next_milestone",
+     "combo",
+     "first_wins_left",
+     "streak",
+     "streak_bonus",
+     "streak_freezes",
+     "rested_xp"
+    ],
+    "title": "AccountOut",
+    "description": "The account level: XP from every answer, it only goes up."
+   },
+   "AdminUser": {
+    "properties": {
+     "id": {
+      "type": "integer",
+      "title": "Id"
+     },
+     "email": {
+      "type": "string",
+      "title": "Email"
+     },
+     "display_name": {
+      "type": "string",
+      "title": "Display Name"
+     },
+     "vertical": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Vertical"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "role": {
+      "$ref": "#/components/schemas/Role"
+     },
+     "status": {
+      "$ref": "#/components/schemas/Status"
+     },
+     "position": {
+      "$ref": "#/components/schemas/Position"
+     },
+     "xp": {
+      "type": "integer",
+      "title": "Xp"
+     },
+     "rank_points": {
+      "type": "number",
+      "title": "Rank Points"
+     },
+     "rank_by_position": {
+      "additionalProperties": {
+       "type": "number"
+      },
+      "propertyNames": {
+       "$ref": "#/components/schemas/Position"
+      },
+      "type": "object",
+      "title": "Rank By Position",
+      "description": "Their rank points if moved to each position: shown before a change is saved"
+     },
+     "leaderboard_opt_out": {
+      "type": "boolean",
+      "title": "Leaderboard Opt Out"
+     },
+     "last_seen": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Last Seen"
+     },
+     "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Created At"
+     },
+     "locked_until": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Locked Until"
+     },
+     "left_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Left At",
+      "description": "Alumni or disabled since; the account is deleted a year later"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "email",
+     "display_name",
+     "vertical",
+     "role",
+     "status",
+     "position",
+     "xp",
+     "rank_points",
+     "rank_by_position",
+     "leaderboard_opt_out",
+     "last_seen",
+     "created_at",
+     "locked_until",
+     "left_at"
+    ],
+    "title": "AdminUser"
+   },
+   "AdvanceIn": {
+    "properties": {
+     "state": {
+      "type": "string",
+      "enum": [
+       "lobby",
+       "open",
+       "closed"
+      ],
+      "title": "State"
+     },
+     "position": {
+      "type": "integer",
+      "maximum": 10000.0,
+      "minimum": -1.0,
+      "title": "Position"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "state",
+     "position"
+    ],
+    "title": "AdvanceIn",
+    "description": "The step the host's screen showed, so a double tap can't skip one."
+   },
+   "Aids": {
+    "properties": {
+     "formulas": {
+      "type": "boolean",
+      "title": "Formulas"
+     },
+     "learn_more": {
+      "type": "boolean",
+      "title": "Learn More"
+     },
+     "hint": {
+      "type": "boolean",
+      "title": "Hint"
+     }
+    },
+    "type": "object",
+    "required": [
+     "formulas",
+     "learn_more",
+     "hint"
+    ],
+    "title": "Aids"
+   },
+   "AlumniIn": {
+    "properties": {
+     "user_ids": {
+      "items": {
+       "type": "integer",
+       "maximum": 2147483647.0,
+       "minimum": 1.0
+      },
+      "type": "array",
+      "maxItems": 1000,
+      "title": "User Ids"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "user_ids"
+    ],
+    "title": "AlumniIn"
+   },
+   "AlumniOut": {
+    "properties": {
+     "marked": {
+      "type": "integer",
+      "title": "Marked"
+     }
+    },
+    "type": "object",
+    "required": [
+     "marked"
+    ],
+    "title": "AlumniOut"
+   },
+   "AnswerIn": {
+    "properties": {
+     "options": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "integer",
+         "maximum": 2147483647.0,
+         "minimum": 1.0
+        },
+        "type": "array",
+        "maxItems": 40
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Options"
+     },
+     "value": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 200
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Value"
+     },
+     "unsure": {
+      "type": "boolean",
+      "title": "Unsure",
+      "description": "\"I'm not sure\": no answer; the official one shown for half a wrong answer's LP",
+      "default": false
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "title": "AnswerIn"
+   },
+   "AreaProgress": {
+    "properties": {
+     "area": {
+      "type": "string",
+      "title": "Area"
+     },
+     "questions": {
+      "type": "integer",
+      "title": "Questions"
+     },
+     "answered": {
+      "type": "integer",
+      "title": "Answered"
+     },
+     "correct": {
+      "type": "integer",
+      "title": "Correct"
+     },
+     "topics": {
+      "additionalProperties": {
+       "type": "integer"
+      },
+      "type": "object",
+      "title": "Topics"
+     }
+    },
+    "type": "object",
+    "required": [
+     "area",
+     "questions",
+     "answered",
+     "correct",
+     "topics"
+    ],
+    "title": "AreaProgress"
+   },
+   "AuditEntry": {
+    "properties": {
+     "id": {
+      "type": "integer",
+      "title": "Id"
+     },
+     "at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "At"
+     },
+     "action": {
+      "type": "string",
+      "title": "Action"
+     },
+     "actor": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Actor"
+     },
+     "target": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Target"
+     },
+     "details": {
+      "additionalProperties": true,
+      "type": "object",
+      "title": "Details"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "at",
+     "action",
+     "actor",
+     "target",
+     "details"
+    ],
+    "title": "AuditEntry"
+   },
+   "BankSummary": {
+    "properties": {
+     "questions": {
+      "type": "integer",
+      "title": "Questions"
+     },
+     "playable": {
+      "type": "integer",
+      "title": "Playable"
+     },
+     "graded": {
+      "type": "integer",
+      "title": "Graded"
+     },
+     "by_area": {
+      "additionalProperties": {
+       "type": "integer"
+      },
+      "type": "object",
+      "title": "By Area"
+     },
+     "quizzes": {
+      "type": "integer",
+      "title": "Quizzes"
+     },
+     "key_changes": {
+      "type": "integer",
+      "title": "Key Changes"
+     },
+     "missing_images": {
+      "type": "integer",
+      "title": "Missing Images"
+     },
+     "excluded": {
+      "type": "integer",
+      "title": "Excluded"
+     },
+     "imported_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Imported At"
+     }
+    },
+    "type": "object",
+    "required": [
+     "questions",
+     "playable",
+     "graded",
+     "by_area",
+     "quizzes",
+     "key_changes",
+     "missing_images",
+     "excluded",
+     "imported_at"
+    ],
+    "title": "BankSummary"
+   },
+   "DailyArea": {
+    "properties": {
+     "area": {
+      "type": "string",
+      "title": "Area"
+     },
+     "day": {
+      "type": "string",
+      "format": "date",
+      "title": "Day",
+      "description": "The day the question belongs to: the day before for one started before midnight, whose result stays until the new day's question in its area is started"
+     },
+     "budget_s": {
+      "type": "integer",
+      "title": "Budget S"
+     },
+     "state": {
+      "type": "string",
+      "enum": [
+       "new",
+       "started",
+       "done"
+      ],
+      "title": "State"
+     },
+     "deadline_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Deadline At"
+     },
+     "correct": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Correct"
+     },
+     "late": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Late"
+     },
+     "passed": {
+      "type": "boolean",
+      "title": "Passed",
+      "description": "Answered \"I'm not sure\"",
+      "default": false
+     },
+     "xp": {
+      "type": "integer",
+      "title": "Xp"
+     },
+     "lp": {
+      "type": "number",
+      "title": "Lp"
+     }
+    },
+    "type": "object",
+    "required": [
+     "area",
+     "day",
+     "budget_s",
+     "state",
+     "deadline_at",
+     "correct",
+     "late",
+     "xp",
+     "lp"
+    ],
+    "title": "DailyArea"
+   },
+   "DailyResult": {
+    "properties": {
+     "day": {
+      "type": "string",
+      "format": "date",
+      "title": "Day",
+      "description": "The day the question belongs to"
+     },
+     "question": {
+      "$ref": "#/components/schemas/PlayQuestion"
+     },
+     "feedback": {
+      "$ref": "#/components/schemas/Feedback"
+     },
+     "answer": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/KeyIn"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "What you sent"
+     },
+     "late": {
+      "type": "boolean",
+      "title": "Late"
+     },
+     "xp": {
+      "type": "integer",
+      "title": "Xp"
+     },
+     "lp": {
+      "type": "number",
+      "title": "Lp"
+     },
+     "streak": {
+      "type": "integer",
+      "title": "Streak"
+     }
+    },
+    "type": "object",
+    "required": [
+     "day",
+     "question",
+     "feedback",
+     "late",
+     "xp",
+     "lp",
+     "streak"
+    ],
+    "title": "DailyResult"
+   },
+   "DailyStatus": {
+    "properties": {
+     "day": {
+      "type": "string",
+      "format": "date",
+      "title": "Day"
+     },
+     "streak": {
+      "type": "integer",
+      "title": "Streak"
+     },
+     "xp_today": {
+      "type": "integer",
+      "title": "Xp Today"
+     },
+     "lp_today": {
+      "type": "number",
+      "title": "Lp Today"
+     },
+     "areas": {
+      "items": {
+       "$ref": "#/components/schemas/DailyArea"
+      },
+      "type": "array",
+      "title": "Areas"
+     }
+    },
+    "type": "object",
+    "required": [
+     "day",
+     "streak",
+     "xp_today",
+     "lp_today",
+     "areas"
+    ],
+    "title": "DailyStatus"
+   },
+   "DeleteAccountIn": {
+    "properties": {
+     "password": {
+      "type": "string",
+      "maxLength": 256,
+      "title": "Password"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "password"
+    ],
+    "title": "DeleteAccountIn"
+   },
+   "DocLink": {
+    "properties": {
+     "title": {
+      "type": "string",
+      "title": "Title"
+     },
+     "type": {
+      "type": "string",
+      "title": "Type",
+      "description": "As FS-Quiz names it: Rulebook, Handbook, Additional Rules..."
+     },
+     "year": {
+      "type": "integer",
+      "title": "Year"
+     },
+     "url": {
+      "type": "string",
+      "title": "Url",
+      "description": "The PDF on doc.fs-quiz.eu"
+     }
+    },
+    "type": "object",
+    "required": [
+     "title",
+     "type",
+     "year",
+     "url"
+    ],
+    "title": "DocLink"
+   },
+   "Export": {
+    "properties": {
+     "exported_at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Exported At"
+     },
+     "account": {
+      "$ref": "#/components/schemas/ExportAccount"
+     },
+     "invite": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/ExportInvite"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "pending_hints": {
+      "items": {
+       "type": "integer"
+      },
+      "type": "array",
+      "title": "Pending Hints"
+     },
+     "answers": {
+      "items": {
+       "$ref": "#/components/schemas/ExportAnswer"
+      },
+      "type": "array",
+      "title": "Answers"
+     },
+     "mock_runs": {
+      "items": {
+       "$ref": "#/components/schemas/ExportMockRun"
+      },
+      "type": "array",
+      "title": "Mock Runs"
+     },
+     "live": {
+      "$ref": "#/components/schemas/ExportLive"
+     },
+     "reports": {
+      "items": {
+       "$ref": "#/components/schemas/ExportReport"
+      },
+      "type": "array",
+      "title": "Reports"
+     },
+     "streak_freezes_used": {
+      "items": {
+       "type": "string",
+       "format": "date"
+      },
+      "type": "array",
+      "title": "Streak Freezes Used"
+     },
+     "password_resets": {
+      "items": {
+       "$ref": "#/components/schemas/ExportReset"
+      },
+      "type": "array",
+      "title": "Password Resets"
+     },
+     "sign_ins": {
+      "items": {
+       "$ref": "#/components/schemas/ExportSignIn"
+      },
+      "type": "array",
+      "title": "Sign Ins"
+     },
+     "account_history": {
+      "items": {
+       "$ref": "#/components/schemas/ExportHistory"
+      },
+      "type": "array",
+      "title": "Account History"
+     },
+     "actions": {
+      "items": {
+       "$ref": "#/components/schemas/ExportAction"
+      },
+      "type": "array",
+      "title": "Actions"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "exported_at",
+     "account",
+     "invite",
+     "pending_hints",
+     "answers",
+     "mock_runs",
+     "live",
+     "reports",
+     "streak_freezes_used",
+     "password_resets",
+     "sign_ins",
+     "account_history",
+     "actions"
+    ],
+    "title": "Export",
+    "description": "Everything MingoQuiz stores about the member who asks (GET /api/me/export)."
+   },
+   "ExportAccount": {
+    "properties": {
+     "email": {
+      "type": "string",
+      "title": "Email"
+     },
+     "display_name": {
+      "type": "string",
+      "title": "Display Name"
+     },
+     "vertical": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Vertical"
+     },
+     "subdepartments": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Subdepartments"
+     },
+     "position": {
+      "type": "string",
+      "title": "Position"
+     },
+     "role": {
+      "type": "string",
+      "title": "Role"
+     },
+     "status": {
+      "type": "string",
+      "title": "Status"
+     },
+     "xp": {
+      "type": "integer",
+      "title": "Xp"
+     },
+     "rank_points": {
+      "type": "number",
+      "title": "Rank Points"
+     },
+     "rank_season": {
+      "type": "integer",
+      "title": "Rank Season",
+      "description": "The season the rank points belong to; 0 if never placed"
+     },
+     "best_division": {
+      "type": "string",
+      "title": "Best Division",
+      "description": "The highest division reached in that season"
+     },
+     "position_lifts": {
+      "anyOf": [
+       {
+        "additionalProperties": {
+         "anyOf": [
+          {
+           "type": "integer"
+          },
+          {
+           "type": "number"
+          }
+         ]
+        },
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Position Lifts",
+      "description": "The LP each raise of position gave this season, which a lower position takes back"
+     },
+     "right_in_a_row": {
+      "type": "integer",
+      "title": "Right In A Row"
+     },
+     "wrong_in_a_row": {
+      "type": "integer",
+      "title": "Wrong In A Row"
+     },
+     "rested_xp": {
+      "type": "integer",
+      "title": "Rested Xp"
+     },
+     "rested_on": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Rested On"
+     },
+     "streak_freezes": {
+      "type": "integer",
+      "title": "Streak Freezes"
+     },
+     "streak_freeze_earned_on": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Streak Freeze Earned On"
+     },
+     "hidden_from_leaderboard": {
+      "type": "boolean",
+      "title": "Hidden From Leaderboard"
+     },
+     "joined_at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Joined At"
+     },
+     "last_seen": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Last Seen"
+     },
+     "failed_sign_ins": {
+      "type": "integer",
+      "title": "Failed Sign Ins"
+     },
+     "locked_until": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Locked Until"
+     },
+     "inactive_since": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Inactive Since",
+      "description": "Alumni or disabled since"
+     },
+     "deleted_on": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Deleted On",
+      "description": "When the account will be deleted, if inactive"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "email",
+     "display_name",
+     "vertical",
+     "subdepartments",
+     "position",
+     "role",
+     "status",
+     "xp",
+     "rank_points",
+     "rank_season",
+     "best_division",
+     "position_lifts",
+     "right_in_a_row",
+     "wrong_in_a_row",
+     "rested_xp",
+     "rested_on",
+     "streak_freezes",
+     "streak_freeze_earned_on",
+     "hidden_from_leaderboard",
+     "joined_at",
+     "last_seen",
+     "failed_sign_ins",
+     "locked_until",
+     "inactive_since",
+     "deleted_on"
+    ],
+    "title": "ExportAccount"
+   },
+   "ExportAction": {
+    "properties": {
+     "at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "At"
+     },
+     "action": {
+      "type": "string",
+      "title": "Action"
+     },
+     "on": {
+      "type": "string",
+      "title": "On"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "at",
+     "action",
+     "on"
+    ],
+    "title": "ExportAction"
+   },
+   "ExportAnswer": {
+    "properties": {
+     "question_id": {
+      "type": "integer",
+      "title": "Question Id"
+     },
+     "question": {
+      "type": "string",
+      "title": "Question"
+     },
+     "mode": {
+      "type": "string",
+      "title": "Mode"
+     },
+     "area": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Area"
+     },
+     "answer": {
+      "additionalProperties": true,
+      "type": "object",
+      "title": "Answer"
+     },
+     "correct": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Correct",
+      "description": "Hidden (null) while a mock run or live quiz is still going"
+     },
+     "passed": {
+      "type": "boolean",
+      "title": "Passed"
+     },
+     "hint_used": {
+      "type": "boolean",
+      "title": "Hint Used"
+     },
+     "xp": {
+      "type": "integer",
+      "title": "Xp"
+     },
+     "lp": {
+      "type": "number",
+      "title": "Lp"
+     },
+     "late": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Late"
+     },
+     "day": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Day"
+     },
+     "started_at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Started At"
+     },
+     "deadline_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Deadline At",
+      "description": "Timed modes: when the clock ran out"
+     },
+     "submitted_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Submitted At"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "question_id",
+     "question",
+     "mode",
+     "area",
+     "answer",
+     "correct",
+     "passed",
+     "hint_used",
+     "xp",
+     "lp",
+     "late",
+     "day",
+     "started_at",
+     "deadline_at",
+     "submitted_at"
+    ],
+    "title": "ExportAnswer"
+   },
+   "ExportHistory": {
+    "properties": {
+     "at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "At"
+     },
+     "action": {
+      "type": "string",
+      "title": "Action"
+     },
+     "details": {
+      "additionalProperties": true,
+      "type": "object",
+      "title": "Details"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "at",
+     "action",
+     "details"
+    ],
+    "title": "ExportHistory"
+   },
+   "ExportHosted": {
+    "properties": {
+     "code": {
+      "type": "string",
+      "title": "Code"
+     },
+     "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Created At"
+     },
+     "finished_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Finished At"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "code",
+     "created_at",
+     "finished_at"
+    ],
+    "title": "ExportHosted"
+   },
+   "ExportInvite": {
+    "properties": {
+     "role": {
+      "type": "string",
+      "title": "Role"
+     },
+     "vertical": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Vertical"
+     },
+     "note": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Note"
+     },
+     "used_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Used At"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "role",
+     "vertical",
+     "note",
+     "used_at"
+    ],
+    "title": "ExportInvite"
+   },
+   "ExportLive": {
+    "properties": {
+     "joined": {
+      "items": {
+       "$ref": "#/components/schemas/ExportLiveJoin"
+      },
+      "type": "array",
+      "title": "Joined"
+     },
+     "hosted": {
+      "items": {
+       "$ref": "#/components/schemas/ExportHosted"
+      },
+      "type": "array",
+      "title": "Hosted"
+     },
+     "answers_sent_as_captain": {
+      "items": {
+       "$ref": "#/components/schemas/ExportLiveAnswer"
+      },
+      "type": "array",
+      "title": "Answers Sent As Captain"
+     },
+     "proposals": {
+      "items": {
+       "$ref": "#/components/schemas/ExportProposal"
+      },
+      "type": "array",
+      "title": "Proposals"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "joined",
+     "hosted",
+     "answers_sent_as_captain",
+     "proposals"
+    ],
+    "title": "ExportLive"
+   },
+   "ExportLiveAnswer": {
+    "properties": {
+     "code": {
+      "type": "string",
+      "title": "Code"
+     },
+     "question": {
+      "type": "integer",
+      "title": "Question"
+     },
+     "answer": {
+      "additionalProperties": true,
+      "type": "object",
+      "title": "Answer"
+     },
+     "correct": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Correct"
+     },
+     "submitted_at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Submitted At"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "code",
+     "question",
+     "answer",
+     "correct",
+     "submitted_at"
+    ],
+    "title": "ExportLiveAnswer"
+   },
+   "ExportLiveJoin": {
+    "properties": {
+     "code": {
+      "type": "string",
+      "title": "Code"
+     },
+     "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Created At"
+     },
+     "joined_at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Joined At"
+     },
+     "removed_by_host": {
+      "type": "boolean",
+      "title": "Removed By Host"
+     },
+     "table": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Table"
+     },
+     "captain": {
+      "type": "boolean",
+      "title": "Captain"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "code",
+     "created_at",
+     "joined_at",
+     "removed_by_host",
+     "table",
+     "captain"
+    ],
+    "title": "ExportLiveJoin"
+   },
+   "ExportMockRun": {
+    "properties": {
+     "quiz_id": {
+      "type": "integer",
+      "title": "Quiz Id"
+     },
+     "season": {
+      "type": "integer",
+      "title": "Season"
+     },
+     "counted": {
+      "type": "boolean",
+      "title": "Counted"
+     },
+     "started_at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Started At"
+     },
+     "finished_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Finished At"
+     },
+     "unreached": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Unreached",
+      "description": "Questions the run didn't reach, kept when it finished; null while running or if it finished before this was kept"
+     },
+     "unreached_graded": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Unreached Graded",
+      "description": "How many of those were graded"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "quiz_id",
+     "season",
+     "counted",
+     "started_at",
+     "finished_at",
+     "unreached",
+     "unreached_graded"
+    ],
+    "title": "ExportMockRun"
+   },
+   "ExportProposal": {
+    "properties": {
+     "code": {
+      "type": "string",
+      "title": "Code"
+     },
+     "question": {
+      "type": "integer",
+      "title": "Question"
+     },
+     "answer": {
+      "additionalProperties": true,
+      "type": "object",
+      "title": "Answer"
+     },
+     "at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "At"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "code",
+     "question",
+     "answer",
+     "at"
+    ],
+    "title": "ExportProposal"
+   },
+   "ExportReport": {
+    "properties": {
+     "question_id": {
+      "type": "integer",
+      "title": "Question Id"
+     },
+     "message": {
+      "type": "string",
+      "title": "Message"
+     },
+     "at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "At"
+     },
+     "handled_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Handled At"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "question_id",
+     "message",
+     "at",
+     "handled_at"
+    ],
+    "title": "ExportReport"
+   },
+   "ExportReset": {
+    "properties": {
+     "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Created At"
+     },
+     "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Expires At"
+     },
+     "used_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Used At"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "created_at",
+     "expires_at",
+     "used_at"
+    ],
+    "title": "ExportReset"
+   },
+   "ExportSignIn": {
+    "properties": {
+     "started_at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Started At"
+     },
+     "last_seen": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Last Seen"
+     },
+     "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Expires At"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "started_at",
+     "last_seen",
+     "expires_at"
+    ],
+    "title": "ExportSignIn"
+   },
+   "Feedback": {
+    "properties": {
+     "correct": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Correct"
+     },
+     "official": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Official"
+     },
+     "correct_options": {
+      "items": {
+       "type": "integer"
+      },
+      "type": "array",
+      "title": "Correct Options"
+     },
+     "solutions": {
+      "items": {
+       "$ref": "#/components/schemas/SolutionOut"
+      },
+      "type": "array",
+      "title": "Solutions"
+     },
+     "xp": {
+      "type": "integer",
+      "title": "Xp",
+      "description": "XP this answer earned",
+      "default": 0
+     },
+     "lp": {
+      "type": "number",
+      "title": "Lp",
+      "description": "LP it won or lost",
+      "default": 0
+     },
+     "bonuses": {
+      "additionalProperties": {
+       "type": "integer"
+      },
+      "type": "object",
+      "title": "Bonuses",
+      "description": "XP bonuses: first_win, combo, streak, crit"
+     },
+     "combo": {
+      "type": "integer",
+      "title": "Combo",
+      "description": "Right answers in a row, this one included",
+      "default": 0
+     },
+     "comeback": {
+      "type": "boolean",
+      "title": "Comeback",
+      "description": "A right answer after a bad run: 1.5x LP",
+      "default": false
+     },
+     "cushioned": {
+      "type": "boolean",
+      "title": "Cushioned",
+      "description": "A loss halved by the bad run",
+      "default": false
+     },
+     "promoted": {
+      "type": "boolean",
+      "title": "Promoted",
+      "description": "Into a division not reached before this season",
+      "default": false
+     },
+     "rose": {
+      "type": "boolean",
+      "title": "Rose",
+      "description": "Back up into a division reached before",
+      "default": false
+     },
+     "demoted": {
+      "type": "boolean",
+      "title": "Demoted",
+      "default": false
+     },
+     "rank_points": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Rank Points",
+      "description": "Rank points after this answer"
+     },
+     "level": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Level",
+      "description": "Account level after this answer"
+     },
+     "level_up": {
+      "type": "boolean",
+      "title": "Level Up",
+      "description": "This answer took the account to a new level",
+      "default": false
+     },
+     "passed": {
+      "type": "boolean",
+      "title": "Passed",
+      "description": "The player said \"I'm not sure\"",
+      "default": false
+     }
+    },
+    "type": "object",
+    "required": [
+     "correct",
+     "official",
+     "correct_options",
+     "solutions"
+    ],
+    "title": "Feedback",
+    "description": "What the player sees after answering: the official answer and any worked solution."
+   },
+   "Formula": {
+    "properties": {
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "formula": {
+      "type": "string",
+      "title": "Formula"
+     },
+     "where": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Where"
+     },
+     "tip": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Tip"
+     }
+    },
+    "type": "object",
+    "required": [
+     "name",
+     "formula"
+    ],
+    "title": "Formula"
+   },
+   "HTTPValidationError": {
+    "properties": {
+     "detail": {
+      "items": {
+       "$ref": "#/components/schemas/ValidationError"
+      },
+      "type": "array",
+      "title": "Detail"
+     }
+    },
+    "type": "object",
+    "title": "HTTPValidationError"
+   },
+   "HintOut": {
+    "properties": {
+     "text": {
+      "type": "string",
+      "title": "Text"
+     },
+     "removed_options": {
+      "items": {
+       "type": "integer"
+      },
+      "type": "array",
+      "title": "Removed Options",
+      "description": "Options the hint rules out"
+     }
+    },
+    "type": "object",
+    "required": [
+     "text",
+     "removed_options"
+    ],
+    "title": "HintOut",
+    "description": "A nudge, never the answer: taking it halves the XP for the question."
+   },
+   "InviteIn": {
+    "properties": {
+     "role": {
+      "$ref": "#/components/schemas/Role",
+      "default": "member"
+     },
+     "vertical": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Vertical"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "note": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 80
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Note"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "title": "InviteIn"
+   },
+   "InviteInfo": {
+    "properties": {
+     "role": {
+      "$ref": "#/components/schemas/Role"
+     },
+     "vertical": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Vertical"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Expires At"
+     }
+    },
+    "type": "object",
+    "required": [
+     "role",
+     "vertical",
+     "expires_at"
+    ],
+    "title": "InviteInfo"
+   },
+   "KeyIn": {
+    "properties": {
+     "options": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "integer",
+         "maximum": 2147483647.0,
+         "minimum": 1.0
+        },
+        "type": "array",
+        "maxItems": 40
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Options"
+     },
+     "value": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 200
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Value"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "title": "KeyIn",
+    "description": "An answer as options picked or a typed value."
+   },
+   "LeaderRow": {
+    "properties": {
+     "rank": {
+      "type": "integer",
+      "title": "Rank"
+     },
+     "display_name": {
+      "type": "string",
+      "title": "Display Name"
+     },
+     "vertical": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Vertical"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "score": {
+      "type": "number",
+      "title": "Score",
+      "description": "Rank points on the ranked board (season, everyone); LP won on the others"
+     },
+     "me": {
+      "type": "boolean",
+      "title": "Me"
+     },
+     "division": {
+      "type": "integer",
+      "title": "Division",
+      "description": "Current division (0 = Mingo I \u2026 15 = the top), for the emblem"
+     },
+     "title": {
+      "type": "string",
+      "title": "Title"
+     },
+     "level": {
+      "type": "integer",
+      "title": "Level",
+      "description": "Account level"
+     }
+    },
+    "type": "object",
+    "required": [
+     "rank",
+     "display_name",
+     "vertical",
+     "score",
+     "me",
+     "division",
+     "title",
+     "level"
+    ],
+    "title": "LeaderRow"
+   },
+   "Leaderboard": {
+    "properties": {
+     "period": {
+      "type": "string",
+      "enum": [
+       "season",
+       "week"
+      ],
+      "title": "Period"
+     },
+     "board": {
+      "type": "string",
+      "enum": [
+       "everyone",
+       "mech",
+       "elec",
+       "rules"
+      ],
+      "title": "Board"
+     },
+     "rows": {
+      "items": {
+       "$ref": "#/components/schemas/LeaderRow"
+      },
+      "type": "array",
+      "title": "Rows"
+     },
+     "me": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/MyRank"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "Null until the member scores in this period"
+     },
+     "players": {
+      "type": "integer",
+      "title": "Players",
+      "description": "People on this board, including any beyond the rows shown"
+     }
+    },
+    "type": "object",
+    "required": [
+     "period",
+     "board",
+     "rows",
+     "me",
+     "players"
+    ],
+    "title": "Leaderboard"
+   },
+   "Learning": {
+    "properties": {
+     "title": {
+      "type": "string",
+      "title": "Title"
+     },
+     "formulas": {
+      "items": {
+       "$ref": "#/components/schemas/Formula"
+      },
+      "type": "array",
+      "title": "Formulas"
+     },
+     "learn_more": {
+      "items": {
+       "$ref": "#/components/schemas/Reading"
+      },
+      "type": "array",
+      "title": "Learn More"
+     }
+    },
+    "type": "object",
+    "required": [
+     "title",
+     "formulas",
+     "learn_more"
+    ],
+    "title": "Learning",
+    "description": "A topic's panels; empty lists where the player's level has taken them away."
+   },
+   "Link": {
+    "properties": {
+     "url": {
+      "type": "string",
+      "title": "Url"
+     },
+     "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Expires At"
+     }
+    },
+    "type": "object",
+    "required": [
+     "url",
+     "expires_at"
+    ],
+    "title": "Link"
+   },
+   "LiveConfig": {
+    "properties": {
+     "questions": {
+      "type": "string",
+      "enum": [
+       "areas",
+       "quiz"
+      ],
+      "title": "Questions",
+      "default": "areas"
+     },
+     "areas": {
+      "items": {
+       "type": "string",
+       "enum": [
+        "mech",
+        "elec",
+        "rules"
+       ]
+      },
+      "type": "array",
+      "maxItems": 3,
+      "title": "Areas",
+      "default": []
+     },
+     "topics": {
+      "items": {
+       "type": "string",
+       "maxLength": 16
+      },
+      "type": "array",
+      "maxItems": 12,
+      "title": "Topics",
+      "default": []
+     },
+     "quiz_id": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "maximum": 2147483647.0,
+        "minimum": 1.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Quiz Id"
+     },
+     "count": {
+      "type": "integer",
+      "maximum": 60.0,
+      "minimum": 1.0,
+      "title": "Count",
+      "default": 10
+     },
+     "timing": {
+      "type": "string",
+      "enum": [
+       "real",
+       "fixed",
+       "host"
+      ],
+      "title": "Timing",
+      "default": "real"
+     },
+     "seconds": {
+      "type": "integer",
+      "maximum": 900.0,
+      "minimum": 10.0,
+      "title": "Seconds",
+      "default": 60
+     },
+     "feedback": {
+      "type": "string",
+      "enum": [
+       "each",
+       "end"
+      ],
+      "title": "Feedback",
+      "default": "each"
+     },
+     "speed_points": {
+      "type": "boolean",
+      "title": "Speed Points",
+      "default": false
+     },
+     "routing": {
+      "type": "string",
+      "enum": [
+       "all",
+       "owners"
+      ],
+      "title": "Routing",
+      "description": "all: every table answers every question; owners: each goes to the table owning its topic",
+      "default": "all"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "title": "LiveConfig",
+    "description": "How the host wants the quiz to go (ADR 0005)."
+   },
+   "LiveCreated": {
+    "properties": {
+     "code": {
+      "type": "string",
+      "title": "Code"
+     }
+    },
+    "type": "object",
+    "required": [
+     "code"
+    ],
+    "title": "LiveCreated"
+   },
+   "LivePlayerOut": {
+    "properties": {
+     "user_id": {
+      "type": "integer",
+      "title": "User Id"
+     },
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "table_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Table Id"
+     }
+    },
+    "type": "object",
+    "required": [
+     "user_id",
+     "name",
+     "table_id"
+    ],
+    "title": "LivePlayerOut"
+   },
+   "LiveReveal": {
+    "properties": {
+     "position": {
+      "type": "integer",
+      "title": "Position"
+     },
+     "question": {
+      "$ref": "#/components/schemas/PlayQuestion"
+     },
+     "table_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Table Id",
+      "description": "The table that answered for the room; null when every table did"
+     },
+     "feedback": {
+      "$ref": "#/components/schemas/Feedback"
+     },
+     "answers": {
+      "items": {
+       "$ref": "#/components/schemas/TableAnswer"
+      },
+      "type": "array",
+      "title": "Answers"
+     }
+    },
+    "type": "object",
+    "required": [
+     "position",
+     "question",
+     "table_id",
+     "feedback",
+     "answers"
+    ],
+    "title": "LiveReveal"
+   },
+   "LiveState": {
+    "properties": {
+     "code": {
+      "type": "string",
+      "title": "Code"
+     },
+     "state": {
+      "type": "string",
+      "enum": [
+       "lobby",
+       "open",
+       "closed",
+       "finished"
+      ],
+      "title": "State"
+     },
+     "host_name": {
+      "type": "string",
+      "title": "Host Name"
+     },
+     "config": {
+      "$ref": "#/components/schemas/LiveConfig"
+     },
+     "role": {
+      "type": "string",
+      "enum": [
+       "host",
+       "player"
+      ],
+      "title": "Role"
+     },
+     "my_table_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "My Table Id"
+     },
+     "captain": {
+      "type": "boolean",
+      "title": "Captain"
+     },
+     "position": {
+      "type": "integer",
+      "title": "Position"
+     },
+     "total": {
+      "type": "integer",
+      "title": "Total"
+     },
+     "deadline_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Deadline At"
+     },
+     "server_now": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Server Now"
+     },
+     "version": {
+      "type": "integer",
+      "title": "Version"
+     },
+     "players": {
+      "items": {
+       "$ref": "#/components/schemas/LivePlayerOut"
+      },
+      "type": "array",
+      "title": "Players"
+     },
+     "tables": {
+      "items": {
+       "$ref": "#/components/schemas/LiveTableOut"
+      },
+      "type": "array",
+      "title": "Tables"
+     },
+     "question": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/PlayQuestion"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "question_table_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Question Table Id"
+     },
+     "budget_s": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Budget S"
+     },
+     "my_answer": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/KeyIn"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "What the table answering sent, while it is open"
+     },
+     "proposals": {
+      "items": {
+       "$ref": "#/components/schemas/Proposal"
+      },
+      "type": "array",
+      "title": "Proposals",
+      "default": []
+     },
+     "reveals": {
+      "items": {
+       "$ref": "#/components/schemas/LiveReveal"
+      },
+      "type": "array",
+      "title": "Reveals",
+      "default": []
+     },
+     "room_right": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Room Right"
+     },
+     "room_asked": {
+      "type": "integer",
+      "title": "Room Asked",
+      "default": 0
+     },
+     "bar_to_beat": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Bar To Beat"
+     }
+    },
+    "type": "object",
+    "required": [
+     "code",
+     "state",
+     "host_name",
+     "config",
+     "role",
+     "my_table_id",
+     "captain",
+     "position",
+     "total",
+     "deadline_at",
+     "server_now",
+     "version",
+     "players",
+     "tables"
+    ],
+    "title": "LiveState",
+    "description": "What one person sees of a live quiz. Right and wrong appear only once a question closes (or at the end\nof a rehearsal)."
+   },
+   "LiveTableOut": {
+    "properties": {
+     "id": {
+      "type": "integer",
+      "title": "Id"
+     },
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "captain_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Captain Id"
+     },
+     "topics": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Topics"
+     },
+     "catch_all": {
+      "type": "boolean",
+      "title": "Catch All"
+     },
+     "member_ids": {
+      "items": {
+       "type": "integer"
+      },
+      "type": "array",
+      "title": "Member Ids"
+     },
+     "answered": {
+      "type": "boolean",
+      "title": "Answered",
+      "description": "Has sent its answer to the current question"
+     },
+     "right": {
+      "type": "integer",
+      "title": "Right",
+      "description": "Right answers so far, once they may be shown"
+     },
+     "points": {
+      "type": "integer",
+      "title": "Points"
+     },
+     "reach": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Reach",
+      "description": "In the lobby of a specialists quiz: the share of draws of this quiz's questions in which the table gets at least one (0 without a captain); null otherwise"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "name",
+     "captain_id",
+     "topics",
+     "catch_all",
+     "member_ids",
+     "answered",
+     "right",
+     "points"
+    ],
+    "title": "LiveTableOut"
+   },
+   "LoginIn": {
+    "properties": {
+     "email": {
+      "type": "string",
+      "maxLength": 254,
+      "title": "Email"
+     },
+     "password": {
+      "type": "string",
+      "maxLength": 256,
+      "title": "Password"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "email",
+     "password"
+    ],
+    "title": "LoginIn"
+   },
+   "Me": {
+    "properties": {
+     "id": {
+      "type": "integer",
+      "title": "Id"
+     },
+     "email": {
+      "type": "string",
+      "title": "Email"
+     },
+     "display_name": {
+      "type": "string",
+      "title": "Display Name"
+     },
+     "vertical": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Vertical"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "role": {
+      "$ref": "#/components/schemas/Role"
+     },
+     "leaderboard_opt_out": {
+      "type": "boolean",
+      "title": "Leaderboard Opt Out"
+     },
+     "position": {
+      "$ref": "#/components/schemas/Position"
+     },
+     "xp": {
+      "type": "integer",
+      "title": "Xp"
+     },
+     "subdepartments": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Subdepartments"
+     },
+     "can_host": {
+      "type": "boolean",
+      "title": "Can Host",
+      "description": "May host a live quiz: TDs by position, and admins",
+      "default": false
+     },
+     "progress": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Progress"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "email",
+     "display_name",
+     "vertical",
+     "role",
+     "leaderboard_opt_out",
+     "position",
+     "xp",
+     "subdepartments"
+    ],
+    "title": "Me"
+   },
+   "MockAnswerIn": {
+    "properties": {
+     "options": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "integer",
+         "maximum": 2147483647.0,
+         "minimum": 1.0
+        },
+        "type": "array",
+        "maxItems": 40
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Options"
+     },
+     "value": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 200
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Value"
+     },
+     "unsure": {
+      "type": "boolean",
+      "title": "Unsure",
+      "description": "\"I'm not sure\": no answer; the official one shown for half a wrong answer's LP",
+      "default": false
+     },
+     "attempt_id": {
+      "type": "integer",
+      "maximum": 9.223372036854776e+18,
+      "minimum": 1.0,
+      "title": "Attempt Id"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "attempt_id"
+    ],
+    "title": "MockAnswerIn"
+   },
+   "MockItem": {
+    "properties": {
+     "question": {
+      "$ref": "#/components/schemas/PlayQuestion"
+     },
+     "feedback": {
+      "$ref": "#/components/schemas/Feedback"
+     },
+     "answer": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/KeyIn"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "What you sent; none if the time ran out"
+     },
+     "late": {
+      "type": "boolean",
+      "title": "Late"
+     }
+    },
+    "type": "object",
+    "required": [
+     "question",
+     "feedback",
+     "late"
+    ],
+    "title": "MockItem"
+   },
+   "MockQuiz": {
+    "properties": {
+     "id": {
+      "type": "integer",
+      "title": "Id"
+     },
+     "label": {
+      "type": "string",
+      "title": "Label"
+     },
+     "year": {
+      "type": "integer",
+      "title": "Year"
+     },
+     "vehicle_class": {
+      "type": "string",
+      "title": "Vehicle Class"
+     },
+     "held_on": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Held On"
+     },
+     "questions": {
+      "type": "integer",
+      "title": "Questions"
+     },
+     "graded": {
+      "type": "integer",
+      "title": "Graded"
+     },
+     "total_time_s": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Total Time S",
+      "description": "What a run allows: the sum of its questions' clocks"
+     },
+     "bar_to_beat": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Bar To Beat"
+     },
+     "best": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Best",
+      "description": "Most right answers in time in a finished run"
+     },
+     "open_session": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Open Session"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "label",
+     "year",
+     "vehicle_class",
+     "held_on",
+     "questions",
+     "graded",
+     "total_time_s",
+     "bar_to_beat",
+     "best",
+     "open_session"
+    ],
+    "title": "MockQuiz"
+   },
+   "MockState": {
+    "properties": {
+     "session_id": {
+      "type": "integer",
+      "title": "Session Id"
+     },
+     "quiz_id": {
+      "type": "integer",
+      "title": "Quiz Id"
+     },
+     "label": {
+      "type": "string",
+      "title": "Label"
+     },
+     "position": {
+      "type": "integer",
+      "title": "Position",
+      "description": "Questions already answered"
+     },
+     "total": {
+      "type": "integer",
+      "title": "Total"
+     },
+     "current": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/TimedQuestion"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "summary": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/MockSummary"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    },
+    "type": "object",
+    "required": [
+     "session_id",
+     "quiz_id",
+     "label",
+     "position",
+     "total",
+     "current",
+     "summary"
+    ],
+    "title": "MockState"
+   },
+   "MockSummary": {
+    "properties": {
+     "correct": {
+      "type": "integer",
+      "title": "Correct",
+      "description": "Right answers sent in time: a late one is scored as wrong"
+     },
+     "graded": {
+      "type": "integer",
+      "title": "Graded",
+      "description": "Graded questions in the run, those not reached included"
+     },
+     "unreached": {
+      "type": "integer",
+      "title": "Unreached",
+      "description": "Questions not reached because the run was ended early: not scored"
+     },
+     "xp": {
+      "type": "integer",
+      "title": "Xp"
+     },
+     "lp": {
+      "type": "number",
+      "title": "Lp"
+     },
+     "counted": {
+      "type": "boolean",
+      "title": "Counted"
+     },
+     "bar_to_beat": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Bar To Beat"
+     },
+     "items": {
+      "items": {
+       "$ref": "#/components/schemas/MockItem"
+      },
+      "type": "array",
+      "title": "Items"
+     }
+    },
+    "type": "object",
+    "required": [
+     "correct",
+     "graded",
+     "unreached",
+     "xp",
+     "lp",
+     "counted",
+     "bar_to_beat",
+     "items"
+    ],
+    "title": "MockSummary"
+   },
+   "MoveIn": {
+    "properties": {
+     "table_id": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "maximum": 2147483647.0,
+        "minimum": 1.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Table Id"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "table_id"
+    ],
+    "title": "MoveIn"
+   },
+   "MyRank": {
+    "properties": {
+     "rank": {
+      "type": "integer",
+      "title": "Rank"
+     },
+     "score": {
+      "type": "number",
+      "title": "Score"
+     },
+     "hidden": {
+      "type": "boolean",
+      "title": "Hidden",
+      "description": "Opted out: others don't see them on the board"
+     }
+    },
+    "type": "object",
+    "required": [
+     "rank",
+     "score",
+     "hidden"
+    ],
+    "title": "MyRank",
+    "description": "The requesting member's own place, shown even when they are hidden or outside the top rows."
+   },
+   "OpenInvite": {
+    "properties": {
+     "id": {
+      "type": "integer",
+      "title": "Id"
+     },
+     "role": {
+      "$ref": "#/components/schemas/Role"
+     },
+     "vertical": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Vertical"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "note": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Note"
+     },
+     "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Created At"
+     },
+     "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Expires At"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "role",
+     "vertical",
+     "note",
+     "created_at",
+     "expires_at"
+    ],
+    "title": "OpenInvite"
+   },
+   "Option": {
+    "properties": {
+     "id": {
+      "type": "integer",
+      "title": "Id"
+     },
+     "text": {
+      "type": "string",
+      "title": "Text"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "text"
+    ],
+    "title": "Option"
+   },
+   "PasswordChangeIn": {
+    "properties": {
+     "current_password": {
+      "type": "string",
+      "maxLength": 256,
+      "title": "Current Password"
+     },
+     "new_password": {
+      "type": "string",
+      "maxLength": 256,
+      "title": "New Password"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "current_password",
+     "new_password"
+    ],
+    "title": "PasswordChangeIn"
+   },
+   "PlayQuestion": {
+    "properties": {
+     "id": {
+      "type": "integer",
+      "title": "Id"
+     },
+     "text": {
+      "type": "string",
+      "title": "Text"
+     },
+     "answer_kind": {
+      "type": "string",
+      "title": "Answer Kind"
+     },
+     "graded": {
+      "type": "boolean",
+      "title": "Graded"
+     },
+     "values": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Values",
+      "description": "How many values a list answer needs, when known"
+     },
+     "time_s": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Time S"
+     },
+     "area": {
+      "type": "string",
+      "title": "Area"
+     },
+     "topic": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Topic"
+     },
+     "images": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Images"
+     },
+     "options": {
+      "items": {
+       "$ref": "#/components/schemas/Option"
+      },
+      "type": "array",
+      "title": "Options"
+     },
+     "quizzes": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Quizzes"
+     },
+     "documents": {
+      "$ref": "#/components/schemas/QuestionDocs"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "text",
+     "answer_kind",
+     "graded",
+     "values",
+     "time_s",
+     "area",
+     "topic",
+     "images",
+     "options",
+     "quizzes",
+     "documents"
+    ],
+    "title": "PlayQuestion",
+    "description": "A question before it is answered: nothing here may reveal the answer."
+   },
+   "Position": {
+    "type": "string",
+    "enum": [
+     "mingo",
+     "member",
+     "department_head",
+     "technical_director"
+    ],
+    "title": "Position",
+    "description": "Someone's job on the team. Not their XP level: a DT on the ladder is not a Technical Director."
+   },
+   "ProfileIn": {
+    "properties": {
+     "display_name": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 64
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Display Name"
+     },
+     "vertical": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Vertical"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "leaderboard_opt_out": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Leaderboard Opt Out"
+     },
+     "subdepartments": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string",
+         "maxLength": 8
+        },
+        "type": "array",
+        "maxItems": 6
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Subdepartments"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "title": "ProfileIn"
+   },
+   "Progress": {
+    "properties": {
+     "rank": {
+      "$ref": "#/components/schemas/RankOut"
+     },
+     "account": {
+      "$ref": "#/components/schemas/AccountOut"
+     }
+    },
+    "type": "object",
+    "required": [
+     "rank",
+     "account"
+    ],
+    "title": "Progress"
+   },
+   "Proposal": {
+    "properties": {
+     "user_id": {
+      "type": "integer",
+      "title": "User Id"
+     },
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "options": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "integer"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Options"
+     },
+     "value": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Value"
+     }
+    },
+    "type": "object",
+    "required": [
+     "user_id",
+     "name"
+    ],
+    "title": "Proposal"
+   },
+   "QuestionDocs": {
+    "properties": {
+     "year": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Year",
+      "description": "Year of the newest of them"
+     },
+     "used": {
+      "items": {
+       "$ref": "#/components/schemas/DocLink"
+      },
+      "type": "array",
+      "title": "Used"
+     },
+     "newer": {
+      "items": {
+       "$ref": "#/components/schemas/DocLink"
+      },
+      "type": "array",
+      "title": "Newer",
+      "description": "Later editions of those rulebooks and handbooks: rules may have changed"
+     }
+    },
+    "type": "object",
+    "required": [
+     "year",
+     "used",
+     "newer"
+    ],
+    "title": "QuestionDocs",
+    "description": "The rulebook, handbook and other documents the question's quizzes were based on."
+   },
+   "RankOut": {
+    "properties": {
+     "points": {
+      "type": "number",
+      "title": "Points"
+     },
+     "division": {
+      "type": "integer",
+      "title": "Division"
+     },
+     "title": {
+      "type": "string",
+      "title": "Title"
+     },
+     "tier": {
+      "type": "string",
+      "enum": [
+       "Mingo",
+       "Jefe",
+       "DT",
+       "Top"
+      ],
+      "title": "Tier"
+     },
+     "lp": {
+      "type": "number",
+      "title": "Lp",
+      "description": "LP into the division; uncapped at the top"
+     },
+     "stakes": {
+      "type": "integer",
+      "title": "Stakes"
+     },
+     "swing": {
+      "prefixItems": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "number"
+       }
+      ],
+      "type": "array",
+      "maxItems": 2,
+      "minItems": 2,
+      "title": "Swing",
+      "description": "A middling daily question right and wrong, at this rank"
+     },
+     "miss_streak": {
+      "type": "integer",
+      "title": "Miss Streak",
+      "description": "Wrong answers in a row; from 3 losses halve and a right one pays 1.5x"
+     },
+     "aids": {
+      "$ref": "#/components/schemas/Aids"
+     },
+     "ladder": {
+      "items": {
+       "$ref": "#/components/schemas/Step"
+      },
+      "type": "array",
+      "title": "Ladder"
+     }
+    },
+    "type": "object",
+    "required": [
+     "points",
+     "division",
+     "title",
+     "tier",
+     "lp",
+     "stakes",
+     "swing",
+     "miss_streak",
+     "aids",
+     "ladder"
+    ],
+    "title": "RankOut",
+    "description": "The rank (ADR 0007): divisions of 100 LP that go up and down with how well you answer."
+   },
+   "Reading": {
+    "properties": {
+     "title": {
+      "type": "string",
+      "title": "Title"
+     },
+     "url": {
+      "type": "string",
+      "title": "Url"
+     },
+     "note": {
+      "type": "string",
+      "title": "Note"
+     }
+    },
+    "type": "object",
+    "required": [
+     "title",
+     "url",
+     "note"
+    ],
+    "title": "Reading"
+   },
+   "RegisterIn": {
+    "properties": {
+     "token": {
+      "type": "string",
+      "maxLength": 128,
+      "title": "Token"
+     },
+     "email": {
+      "type": "string",
+      "maxLength": 254,
+      "title": "Email"
+     },
+     "display_name": {
+      "type": "string",
+      "maxLength": 64,
+      "title": "Display Name"
+     },
+     "password": {
+      "type": "string",
+      "maxLength": 256,
+      "title": "Password"
+     },
+     "vertical": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Vertical"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "position": {
+      "$ref": "#/components/schemas/Position",
+      "description": "Job on the team; sets the starting level",
+      "default": "mingo"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "token",
+     "email",
+     "display_name",
+     "password"
+    ],
+    "title": "RegisterIn"
+   },
+   "ReportIn": {
+    "properties": {
+     "message": {
+      "type": "string",
+      "maxLength": 500,
+      "title": "Message"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "message"
+    ],
+    "title": "ReportIn"
+   },
+   "ResetIn": {
+    "properties": {
+     "token": {
+      "type": "string",
+      "maxLength": 128,
+      "title": "Token"
+     },
+     "password": {
+      "type": "string",
+      "maxLength": 256,
+      "title": "Password"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "token",
+     "password"
+    ],
+    "title": "ResetIn"
+   },
+   "ResetInfo": {
+    "properties": {
+     "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Expires At"
+     }
+    },
+    "type": "object",
+    "required": [
+     "expires_at"
+    ],
+    "title": "ResetInfo"
+   },
+   "ReviewOption": {
+    "properties": {
+     "id": {
+      "type": "integer",
+      "title": "Id"
+     },
+     "text": {
+      "type": "string",
+      "title": "Text"
+     },
+     "official": {
+      "type": "boolean",
+      "title": "Official"
+     },
+     "corrected": {
+      "type": "boolean",
+      "title": "Corrected"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "text",
+     "official",
+     "corrected"
+    ],
+    "title": "ReviewOption"
+   },
+   "ReviewPage": {
+    "properties": {
+     "rows": {
+      "items": {
+       "$ref": "#/components/schemas/ReviewRow"
+      },
+      "type": "array",
+      "title": "Rows"
+     },
+     "total": {
+      "type": "integer",
+      "title": "Total"
+     },
+     "queues": {
+      "additionalProperties": {
+       "type": "integer"
+      },
+      "type": "object",
+      "title": "Queues"
+     }
+    },
+    "type": "object",
+    "required": [
+     "rows",
+     "total",
+     "queues"
+    ],
+    "title": "ReviewPage"
+   },
+   "ReviewPatch": {
+    "properties": {
+     "area": {
+      "anyOf": [
+       {
+        "type": "string",
+        "enum": [
+         "mech",
+         "elec",
+         "rules",
+         "unclassified"
+        ]
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Area"
+     },
+     "topic": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 16
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Topic"
+     },
+     "labels_reviewed": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Labels Reviewed"
+     },
+     "excluded": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Excluded"
+     },
+     "exclusion_note": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 200
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Exclusion Note"
+     },
+     "acknowledge_change": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Acknowledge Change"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "title": "ReviewPatch"
+   },
+   "ReviewQuestion": {
+    "properties": {
+     "id": {
+      "type": "integer",
+      "title": "Id"
+     },
+     "fsquiz_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Fsquiz Id"
+     },
+     "type": {
+      "type": "string",
+      "title": "Type"
+     },
+     "text": {
+      "type": "string",
+      "title": "Text"
+     },
+     "images": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Images"
+     },
+     "area": {
+      "type": "string",
+      "title": "Area"
+     },
+     "topic": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Topic"
+     },
+     "labels_reviewed": {
+      "type": "boolean",
+      "title": "Labels Reviewed"
+     },
+     "answer_kind": {
+      "type": "string",
+      "title": "Answer Kind"
+     },
+     "graded": {
+      "type": "boolean",
+      "title": "Graded"
+     },
+     "playable": {
+      "type": "boolean",
+      "title": "Playable"
+     },
+     "images_missing": {
+      "type": "boolean",
+      "title": "Images Missing"
+     },
+     "excluded": {
+      "type": "boolean",
+      "title": "Excluded"
+     },
+     "exclusion_note": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Exclusion Note"
+     },
+     "key_changed_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Key Changed At"
+     },
+     "upstream_change": {
+      "anyOf": [
+       {
+        "type": "string",
+        "enum": [
+         "answer",
+         "wording",
+         "content",
+         "removed",
+         "back"
+        ]
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Upstream Change",
+      "description": "Why it is in the changed-upstream queue: its answer or options changed (any correction was removed), the wording of the question or an option changed (the correction stays), a hidden question changed, FS-Quiz deleted it, or it is back after being deleted"
+     },
+     "official": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Official"
+     },
+     "correction": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Correction"
+     },
+     "options": {
+      "items": {
+       "$ref": "#/components/schemas/ReviewOption"
+      },
+      "type": "array",
+      "title": "Options"
+     },
+     "quizzes": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Quizzes"
+     },
+     "reports": {
+      "items": {
+       "$ref": "#/components/schemas/ReviewReport"
+      },
+      "type": "array",
+      "title": "Reports"
+     },
+     "answered": {
+      "type": "integer",
+      "title": "Answered"
+     },
+     "right": {
+      "type": "integer",
+      "title": "Right"
+     },
+     "answer_hidden": {
+      "type": "boolean",
+      "title": "Answer Hidden",
+      "description": "The reviewer's own live question: answers withheld until answered"
+     },
+     "quiz_notes": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Quiz Notes",
+      "description": "FS-Quiz's notes on the quizzes it appeared in, e.g. that a question was later removed"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "fsquiz_id",
+     "type",
+     "text",
+     "images",
+     "area",
+     "topic",
+     "labels_reviewed",
+     "answer_kind",
+     "graded",
+     "playable",
+     "images_missing",
+     "excluded",
+     "exclusion_note",
+     "key_changed_at",
+     "upstream_change",
+     "official",
+     "correction",
+     "options",
+     "quizzes",
+     "reports",
+     "answered",
+     "right",
+     "answer_hidden",
+     "quiz_notes"
+    ],
+    "title": "ReviewQuestion",
+    "description": "Everything a reviewer needs about one question, answers included (reviewers only)."
+   },
+   "ReviewReport": {
+    "properties": {
+     "id": {
+      "type": "integer",
+      "title": "Id"
+     },
+     "by": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "By"
+     },
+     "message": {
+      "type": "string",
+      "title": "Message"
+     },
+     "at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "At"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "by",
+     "message",
+     "at"
+    ],
+    "title": "ReviewReport"
+   },
+   "ReviewRow": {
+    "properties": {
+     "id": {
+      "type": "integer",
+      "title": "Id"
+     },
+     "text": {
+      "type": "string",
+      "title": "Text"
+     },
+     "area": {
+      "type": "string",
+      "title": "Area"
+     },
+     "topic": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Topic"
+     },
+     "answer_kind": {
+      "type": "string",
+      "title": "Answer Kind"
+     },
+     "graded": {
+      "type": "boolean",
+      "title": "Graded"
+     },
+     "playable": {
+      "type": "boolean",
+      "title": "Playable"
+     },
+     "excluded": {
+      "type": "boolean",
+      "title": "Excluded"
+     },
+     "labels_reviewed": {
+      "type": "boolean",
+      "title": "Labels Reviewed"
+     },
+     "key_changed_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Key Changed At"
+     },
+     "reports": {
+      "type": "integer",
+      "title": "Reports"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "text",
+     "area",
+     "topic",
+     "answer_kind",
+     "graded",
+     "playable",
+     "excluded",
+     "labels_reviewed",
+     "key_changed_at",
+     "reports"
+    ],
+    "title": "ReviewRow"
+   },
+   "Role": {
+    "type": "string",
+    "enum": [
+     "member",
+     "reviewer",
+     "admin"
+    ],
+    "title": "Role"
+   },
+   "SeatIn": {
+    "properties": {
+     "tables": {
+      "items": {
+       "$ref": "#/components/schemas/TableIn"
+      },
+      "type": "array",
+      "maxItems": 30,
+      "title": "Tables"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "tables"
+    ],
+    "title": "SeatIn"
+   },
+   "SolutionOut": {
+    "properties": {
+     "text": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Text"
+     },
+     "images": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Images"
+     }
+    },
+    "type": "object",
+    "required": [
+     "text",
+     "images"
+    ],
+    "title": "SolutionOut"
+   },
+   "Status": {
+    "type": "string",
+    "enum": [
+     "active",
+     "alumni",
+     "disabled"
+    ],
+    "title": "Status"
+   },
+   "Step": {
+    "properties": {
+     "division": {
+      "type": "integer",
+      "title": "Division"
+     },
+     "tier": {
+      "type": "string",
+      "enum": [
+       "Mingo",
+       "Jefe",
+       "DT",
+       "Top"
+      ],
+      "title": "Tier"
+     },
+     "title": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Title",
+      "description": "Null for the top until the player reaches DT V: a surprise"
+     },
+     "points": {
+      "type": "integer",
+      "title": "Points",
+      "description": "Rank points where it starts"
+     },
+     "aids": {
+      "$ref": "#/components/schemas/Aids"
+     },
+     "stakes": {
+      "type": "integer",
+      "title": "Stakes",
+      "description": "How hard a wrong answer bites here, in percent (80 at Mingo I)"
+     }
+    },
+    "type": "object",
+    "required": [
+     "division",
+     "tier",
+     "title",
+     "points",
+     "aids",
+     "stakes"
+    ],
+    "title": "Step",
+    "description": "One division of the ladder and what it changes."
+   },
+   "Subdepartment": {
+    "properties": {
+     "code": {
+      "type": "string",
+      "title": "Code"
+     },
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "vertical": {
+      "type": "string",
+      "title": "Vertical"
+     },
+     "topics": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Topics"
+     }
+    },
+    "type": "object",
+    "required": [
+     "code",
+     "name",
+     "vertical",
+     "topics"
+    ],
+    "title": "Subdepartment"
+   },
+   "TableAnswer": {
+    "properties": {
+     "table_id": {
+      "type": "integer",
+      "title": "Table Id"
+     },
+     "correct": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Correct"
+     },
+     "passed": {
+      "type": "boolean",
+      "title": "Passed"
+     },
+     "points": {
+      "type": "integer",
+      "title": "Points"
+     },
+     "options": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "integer"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Options"
+     },
+     "value": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Value"
+     }
+    },
+    "type": "object",
+    "required": [
+     "table_id",
+     "correct",
+     "passed",
+     "points"
+    ],
+    "title": "TableAnswer"
+   },
+   "TableEditIn": {
+    "properties": {
+     "name": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 40,
+        "minLength": 1
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Name"
+     },
+     "captain_id": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "maximum": 2147483647.0,
+        "minimum": 1.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Captain Id"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "title": "TableEditIn"
+   },
+   "TableIn": {
+    "properties": {
+     "name": {
+      "type": "string",
+      "maxLength": 40,
+      "minLength": 1,
+      "title": "Name"
+     },
+     "captain_id": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "maximum": 2147483647.0,
+        "minimum": 1.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Captain Id"
+     },
+     "member_ids": {
+      "items": {
+       "type": "integer",
+       "maximum": 2147483647.0,
+       "minimum": 1.0
+      },
+      "type": "array",
+      "maxItems": 100,
+      "title": "Member Ids"
+     },
+     "topics": {
+      "items": {
+       "type": "string",
+       "maxLength": 16
+      },
+      "type": "array",
+      "maxItems": 12,
+      "title": "Topics",
+      "default": []
+     },
+     "catch_all": {
+      "type": "boolean",
+      "title": "Catch All",
+      "default": false
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "name",
+     "member_ids"
+    ],
+    "title": "TableIn"
+   },
+   "TimedQuestion": {
+    "properties": {
+     "attempt_id": {
+      "type": "integer",
+      "title": "Attempt Id"
+     },
+     "question": {
+      "$ref": "#/components/schemas/PlayQuestion"
+     },
+     "deadline_at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Deadline At"
+     },
+     "server_now": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Server Now"
+     }
+    },
+    "type": "object",
+    "required": [
+     "attempt_id",
+     "question",
+     "deadline_at",
+     "server_now"
+    ],
+    "title": "TimedQuestion",
+    "description": "A question whose clock is running. `server_now` lets the browser correct for its own clock."
+   },
+   "TokenIn": {
+    "properties": {
+     "token": {
+      "type": "string",
+      "maxLength": 128,
+      "title": "Token"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "token"
+    ],
+    "title": "TokenIn"
+   },
+   "UserPatch": {
+    "properties": {
+     "email": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 254
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Email"
+     },
+     "role": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Role"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "status": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Status"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "position": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Position"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "title": "UserPatch"
+   },
+   "ValidationError": {
+    "properties": {
+     "loc": {
+      "items": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "integer"
+        }
+       ]
+      },
+      "type": "array",
+      "title": "Location"
+     },
+     "msg": {
+      "type": "string",
+      "title": "Message"
+     },
+     "type": {
+      "type": "string",
+      "title": "Error Type"
+     },
+     "input": {
+      "title": "Input"
+     },
+     "ctx": {
+      "type": "object",
+      "title": "Context"
+     }
+    },
+    "type": "object",
+    "required": [
+     "loc",
+     "msg",
+     "type"
+    ],
+    "title": "ValidationError"
+   },
+   "Vertical": {
+    "type": "string",
+    "enum": [
+     "Management",
+     "Mechanical",
+     "Tractive System",
+     "Electronics",
+     "Driverless",
+     "Business",
+     "Board"
+    ],
+    "title": "Vertical"
+   },
+   "VerticalBoard": {
+    "properties": {
+     "period": {
+      "type": "string",
+      "enum": [
+       "season",
+       "week"
+      ],
+      "title": "Period"
+     },
+     "rows": {
+      "items": {
+       "$ref": "#/components/schemas/VerticalRow"
+      },
+      "type": "array",
+      "title": "Rows"
+     }
+    },
+    "type": "object",
+    "required": [
+     "period",
+     "rows"
+    ],
+    "title": "VerticalBoard"
+   },
+   "VerticalRow": {
+    "properties": {
+     "vertical": {
+      "$ref": "#/components/schemas/Vertical"
+     },
+     "members": {
+      "type": "integer",
+      "title": "Members"
+     },
+     "rank_points": {
+      "type": "number",
+      "title": "Rank Points",
+      "description": "The members' average rank points"
+     },
+     "participation": {
+      "type": "number",
+      "title": "Participation",
+      "description": "Share of members who answered a daily question in the last 7 days"
+     }
+    },
+    "type": "object",
+    "required": [
+     "vertical",
+     "members",
+     "rank_points",
+     "participation"
+    ],
+    "title": "VerticalRow"
+   }
+  }
+ }
+}

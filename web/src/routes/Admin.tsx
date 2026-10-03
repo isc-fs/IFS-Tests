@@ -1,0 +1,724 @@
+import { type QueryKey, useMutation, useQuery } from '@tanstack/react-query'
+import { useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router'
+import {
+  auditLogOptions,
+  auditLogQueryKey,
+  bankSummaryOptions,
+  createInviteMutation,
+  deleteUserMutation,
+  markAlumniMutation,
+  openInvitesOptions,
+  openInvitesQueryKey,
+  resetLinkMutation,
+  revokeInviteMutation,
+  updateUserMutation,
+  usersOptions,
+  usersQueryKey,
+} from '../api/@tanstack/react-query.gen'
+import { exportUser } from '../api/sdk.gen'
+import { type AdminUser, type InviteIn, type Position, Role, Status, Vertical } from '../api/types.gen'
+import { ErrorNotice, Field, Form, Notice, SelectField, useFieldErrors } from '../components/Form'
+import { Page } from '../components/Page'
+import { queryClient, saveJson, useMe } from '../lib/api'
+import { AREAS } from '../lib/areas'
+import { lpIn, numeral, TOP, tierOf } from '../lib/rank'
+import { POSITION_NAMES } from '../lib/xp'
+
+const day = (iso: string) =>
+  new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+const YEAR = 365 * 24 * 3600 * 1000
+
+const when = (iso: string | null | undefined) =>
+  iso
+    ? new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+    : '—'
+
+/** Refetch what an admin action changed; the audit trail always changes. */
+function refresh(...keys: QueryKey[]) {
+  for (const queryKey of [...keys, auditLogQueryKey()]) queryClient.invalidateQueries({ queryKey })
+}
+
+export default function Admin() {
+  const { data: me } = useMe()
+  if (me?.role !== 'admin') {
+    return (
+      <Page title="Admins only">
+        <p className="muted">Ask a team admin if you need something changed.</p>
+      </Page>
+    )
+  }
+  return (
+    <Page title="Admin" eyebrow="Team">
+      <InvitePanel />
+      <Members selfId={me.id} />
+      <SeasonPanel selfId={me.id} />
+      <BankPanel />
+      <AuditTrail />
+    </Page>
+  )
+}
+
+/** Shows a one-time link, focuses it for keyboard and screen-reader users, and copies it if allowed. */
+function OneTimeLink({ label, url, expires }: { label: string; url: string; expires: string }) {
+  const input = useRef<HTMLInputElement>(null)
+  const [copied, setCopied] = useState<'yes' | 'manual' | null>(null)
+  useEffect(() => input.current?.focus(), [url])
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(url)
+      setCopied('yes')
+    } catch {
+      input.current?.select()
+      setCopied('manual')
+    }
+  }
+  return (
+    <Notice tone="ok">
+      <p>
+        {label} Send it privately: it works once and expires {when(expires)}.
+      </p>
+      <div className="copy">
+        <input ref={input} readOnly value={url} aria-label={label} onFocus={(e) => e.target.select()} />
+        <button type="button" onClick={copy}>
+          {copied === 'yes' ? 'Copied' : 'Copy'}
+        </button>
+      </div>
+      {copied === 'manual' && <p>Copying isn't allowed here: the link is selected, press Ctrl/⌘ + C.</p>}
+    </Notice>
+  )
+}
+
+function InvitePanel() {
+  const [form, setForm] = useState<InviteIn>({ role: Role.MEMBER, vertical: null, note: '' })
+  const [created, setCreated] = useState<{ note: string; url: string; expires: string } | null>(null)
+  const invites = useQuery(openInvitesOptions())
+  const create = useMutation({
+    ...createInviteMutation(),
+    onSuccess: (l, { body }) => {
+      setCreated({ note: body.note ?? '', url: l.url, expires: l.expires_at })
+      setForm({ ...form, note: '' })
+      refresh(openInvitesQueryKey())
+    },
+  })
+  const revoke = useMutation({ ...revokeInviteMutation(), onSuccess: () => refresh(openInvitesQueryKey()) })
+  const revokeInvite = (id: number, note: string) => {
+    if (window.confirm(`Revoke the invite for ${note}? The link stops working.`))
+      revoke.mutate({ path: { invite_id: id } })
+  }
+
+  return (
+    <section className="panel stack" aria-labelledby="invite-title">
+      <h2 id="invite-title">Invite a member</h2>
+      <Form onSubmit={() => create.mutate({ body: form })} className="row">
+        <SelectField
+          label="Role"
+          value={form.role}
+          onChange={(e) => setForm({ ...form, role: e.target.value as Role })}
+        >
+          {Object.values(Role).map((r) => (
+            <option key={r}>{r}</option>
+          ))}
+        </SelectField>
+        <SelectField
+          label="Vertical"
+          value={form.vertical ?? ''}
+          onChange={(e) => setForm({ ...form, vertical: (e.target.value || null) as Vertical | null })}
+        >
+          <option value="">Let them choose</option>
+          {Object.values(Vertical).map((v) => (
+            <option key={v}>{v}</option>
+          ))}
+        </SelectField>
+        <div className="grow">
+          <Field
+            label="Who it's for"
+            required
+            maxLength={80}
+            value={form.note ?? ''}
+            onChange={(e) => setForm({ ...form, note: e.target.value })}
+          />
+        </div>
+        <button type="submit" disabled={create.isPending || !form.note?.trim()}>
+          Create link
+        </button>
+      </Form>
+      <ErrorNotice error={create.error} />
+      <ErrorNotice error={revoke.error} />
+      {created && <OneTimeLink label={`Invite for ${created.note}.`} url={created.url} expires={created.expires} />}
+      {!!invites.data?.length && (
+        <>
+          <h3>Open invites</h3>
+          <ul className="list invites">
+            {invites.data.map((i) => (
+              <li key={i.id} className="item">
+                <span className="item-title">{i.note ?? 'No note'}</span>
+                <span className="muted">
+                  {i.role}
+                  {i.vertical && ` · ${i.vertical}`} · expires {when(i.expires_at)}
+                </span>
+                <button
+                  type="button"
+                  className="link-button"
+                  aria-label={`Revoke invite for ${i.note ?? 'unnamed'}`}
+                  onClick={() => revokeInvite(i.id, i.note ?? 'unnamed')}
+                >
+                  Revoke
+                </button>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </section>
+  )
+}
+
+/** Inactive accounts are deleted a year after they stopped being active (ADR 0006). */
+const deletedOn = (leftAt: string | null | undefined) =>
+  day(new Date((leftAt ? new Date(leftAt).getTime() : Date.now()) + YEAR).toISOString())
+
+const CONFIRM: Partial<Record<string, (u: AdminUser) => string>> = {
+  disabled: (u) =>
+    `Disable ${u.display_name}? They'll be signed out and can't sign in; the account is deleted on ${deletedOn(u.left_at)} unless re-enabled.`,
+  alumni: (u) =>
+    `Mark ${u.display_name} as alumni? They'll be signed out and leave the leaderboards; the account is deleted on ${deletedOn(u.left_at)} unless they come back.`,
+  admin: (u) => `Make ${u.display_name} an admin? Admins can invite people and change anyone's role.`,
+}
+
+const rankAt = (points: number) => {
+  const d = Math.min(Math.floor(Math.max(points, 0) / 100), TOP)
+  return `${d >= TOP ? 'the top' : `${tierOf(d)} ${numeral(d)}`}, ${lpIn(points)} LP`
+}
+
+/** A new position moves the rank (ADR 0007): the admin sees by how much before it's saved. */
+const askPosition = (u: AdminUser, p: Position) =>
+  `Change ${u.display_name}'s position to ${POSITION_NAMES[p]}? Their rank goes from ${rankAt(u.rank_by_position[u.position] ?? u.rank_points)} to ${rankAt(u.rank_by_position[p] ?? u.rank_points)}.`
+
+const matches = (u: AdminUser, q: string) =>
+  [u.display_name, u.email, u.vertical ?? '', u.role, u.status].some((s) => s.toLowerCase().includes(q))
+
+function Members({ selfId }: { selfId: number }) {
+  const users = useQuery(usersOptions())
+  const [query, setQuery] = useState('')
+  const [changed, setChanged] = useState('')
+  const heading = useRef<HTMLHeadingElement>(null)
+  const deleted = (message: string) => {
+    setChanged(message)
+    heading.current?.focus()
+  }
+  const [link, setLink] = useState<{ userId: number; url: string; expires: string } | null>(null)
+  const update = useMutation({
+    ...updateUserMutation(),
+    onSuccess: (u) => setChanged(`${u.display_name} is now ${u.role}, ${u.status}, ${POSITION_NAMES[u.position]}.`),
+    onSettled: () => refresh(usersQueryKey()),
+  })
+  const reset = useMutation({
+    ...resetLinkMutation(),
+    onSuccess: (l, vars) => {
+      setLink({ userId: vars.path.user_id, url: l.url, expires: l.expires_at })
+      refresh()
+    },
+  })
+
+  const change = (u: AdminUser, body: { role?: Role; status?: Status; position?: Position }) => {
+    const ask = body.position ? askPosition(u, body.position) : CONFIRM[body.role ?? body.status ?? '']?.(u)
+    if (ask && !window.confirm(ask)) return
+    setChanged('')
+    update.mutate({ path: { user_id: u.id }, body })
+  }
+  const q = query.trim().toLowerCase()
+  const shown = users.data?.filter((u) => matches(u, q))
+
+  return (
+    <section className="panel stack" aria-labelledby="members-title">
+      <h2 id="members-title" ref={heading} tabIndex={-1}>
+        Members ({users.data?.length ?? '…'})
+      </h2>
+      {(users.data?.length ?? 0) > 5 && (
+        <Field
+          label="Find a member"
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          hint="Name, email, vertical, role or status."
+        />
+      )}
+      <ErrorNotice error={update.error} />
+      {changed && <Notice tone="ok">{changed}</Notice>}
+      {q && shown?.length === 0 && <p className="muted">Nobody matches “{query.trim()}”.</p>}
+      <ul className="list members">
+        {shown?.map((u) => {
+          const self = u.id === selfId
+          const locked = u.locked_until && new Date(u.locked_until) > new Date()
+          return (
+            <li key={u.id}>
+              <fieldset className="item member">
+                <legend className="sr-only">{u.display_name}</legend>
+                <div className="who">
+                  <span className="item-title">
+                    {u.display_name}
+                    {self && <span className="badge">you</span>}
+                    {u.leaderboard_opt_out && <span className="badge">off leaderboard</span>}
+                    {locked && <span className="badge warn">locked until {when(u.locked_until)}</span>}
+                  </span>
+                  <span className="muted">
+                    {u.email} · {u.vertical ?? 'no vertical'} · seen {when(u.last_seen)}
+                  </span>
+                  {u.status !== 'active' && u.left_at && (
+                    <span className="muted">
+                      {u.status === 'alumni' ? 'Alumni' : 'Disabled'} since {day(u.left_at)}; deleted on{' '}
+                      {deletedOn(u.left_at)} unless {u.status === 'alumni' ? 'they come back' : 're-enabled'}.
+                    </span>
+                  )}
+                </div>
+                <SelectField
+                  label="Role"
+                  value={u.role}
+                  disabled={self}
+                  onChange={(e) => change(u, { role: e.target.value as Role })}
+                >
+                  {Object.values(Role).map((r) => (
+                    <option key={r}>{r}</option>
+                  ))}
+                </SelectField>
+                <SelectField
+                  label="Status"
+                  value={u.status}
+                  disabled={self}
+                  onChange={(e) => change(u, { status: e.target.value as Status })}
+                >
+                  {Object.values(Status).map((s) => (
+                    <option key={s}>{s}</option>
+                  ))}
+                </SelectField>
+                <SelectField
+                  label="Position"
+                  value={u.position}
+                  onChange={(e) => change(u, { position: e.target.value as Position })}
+                >
+                  {Object.entries(POSITION_NAMES).map(([r, label]) => (
+                    <option key={r} value={r}>
+                      {label}
+                    </option>
+                  ))}
+                </SelectField>
+                <button
+                  type="button"
+                  className="secondary"
+                  aria-label={`Reset link for ${u.display_name}`}
+                  onClick={() => reset.mutate({ path: { user_id: u.id } })}
+                >
+                  Reset link
+                </button>
+                <ChangeEmail user={u} onChanged={setChanged} />
+                {!self && <ExportMember user={u} />}
+                {!self && <DeleteMember user={u} onDeleted={deleted} />}
+                {link?.userId === u.id && (
+                  <div className="full">
+                    <OneTimeLink
+                      label={`Password reset link for ${u.display_name}.`}
+                      url={link.url}
+                      expires={link.expires}
+                    />
+                  </div>
+                )}
+              </fieldset>
+            </li>
+          )
+        })}
+      </ul>
+    </section>
+  )
+}
+
+/** Accents and case don't have to match: some names can't be typed on every keyboard. */
+const loose = (name: string) => name.normalize('NFKD').replace(/\p{M}/gu, '').replace(/ı/g, 'i').toLowerCase().trim()
+
+/** Deleting someone else's account: typed confirmation, since there's no undo. */
+function DeleteMember({ user, onDeleted }: { user: AdminUser; onDeleted: (message: string) => void }) {
+  const [asking, setAsking] = useState(false)
+  const [typed, setTyped] = useState('')
+  const open = useRef<HTMLButtonElement>(null)
+  const box = useRef<HTMLFormElement>(null)
+  const remove = useMutation({
+    ...deleteUserMutation(),
+    onSuccess: () => {
+      onDeleted(`Deleted ${user.display_name}'s account.`)
+      refresh(usersQueryKey())
+    },
+  })
+  useEffect(() => {
+    if (asking) box.current?.querySelector('input')?.focus()
+  }, [asking])
+  const keep = () => {
+    setAsking(false)
+    setTyped('')
+    requestAnimationFrame(() => open.current?.focus())
+  }
+  if (!asking) {
+    return (
+      <button
+        ref={open}
+        type="button"
+        className="link-button"
+        aria-label={`Delete the account of ${user.display_name}`}
+        onClick={() => setAsking(true)}
+      >
+        Delete account
+      </button>
+    )
+  }
+  const matches = loose(typed) === loose(user.display_name)
+  return (
+    <form
+      ref={box}
+      className="full stack danger-zone"
+      onSubmit={(e) => {
+        e.preventDefault()
+        if (matches && !remove.isPending) remove.mutate({ path: { user_id: user.id } })
+      }}
+    >
+      <p>
+        Delete {user.display_name}&apos;s account, answers and XP for good? Members can do this themselves from their
+        profile; do it here when someone asks and can&apos;t sign in.
+      </p>
+      <Field
+        label={`Type ${user.display_name} to confirm`}
+        value={typed}
+        onChange={(e) => setTyped(e.target.value)}
+        autoComplete="off"
+      />
+      <ErrorNotice error={remove.error} />
+      <div className="answer-actions">
+        <button type="submit" className="danger" disabled={!matches || remove.isPending}>
+          Delete for good
+        </button>
+        <button type="button" className="link-button" onClick={keep}>
+          Keep
+        </button>
+      </div>
+    </form>
+  )
+}
+
+/** Members can't change their own email: they ask an admin. Their sign-ins stay open. */
+function ChangeEmail({ user, onChanged }: { user: AdminUser; onChanged: (message: string) => void }) {
+  const [email, setEmail] = useState<string | null>(null)
+  const open = useRef<HTMLButtonElement>(null)
+  const box = useRef<HTMLDivElement>(null)
+  const editing = email !== null
+  const save = useMutation({
+    ...updateUserMutation(),
+    onSuccess: (u) => {
+      setEmail(null)
+      onChanged(`${u.display_name}'s email is now ${u.email}. They sign in with it from now on.`)
+      refresh(usersQueryKey())
+    },
+  })
+  const { errors, touch } = useFieldErrors(save.error)
+  useEffect(() => {
+    if (editing) box.current?.querySelector('input')?.focus()
+  }, [editing])
+  const keep = () => {
+    setEmail(null)
+    save.reset()
+    requestAnimationFrame(() => open.current?.focus())
+  }
+  if (!editing) {
+    return (
+      <button
+        ref={open}
+        type="button"
+        className="link-button"
+        aria-label={`Change the email of ${user.display_name}`}
+        onClick={() => setEmail(user.email)}
+      >
+        Change email
+      </button>
+    )
+  }
+  const changed = email.trim().toLowerCase() !== user.email
+  return (
+    <div ref={box} className="full">
+      <Form
+        error={save.error}
+        className="stack"
+        onSubmit={() => changed && !save.isPending && save.mutate({ path: { user_id: user.id }, body: { email } })}
+      >
+        <Field
+          label={`New email for ${user.display_name}`}
+          type="email"
+          maxLength={254}
+          autoComplete="off"
+          value={email}
+          onChange={(e) => {
+            setEmail(e.target.value)
+            touch('email')
+          }}
+          error={errors.email}
+        />
+        <ErrorNotice error={save.error} />
+        <div className="answer-actions">
+          <button type="submit" disabled={!changed || save.isPending}>
+            Save email
+          </button>
+          <button type="button" className="link-button" onClick={keep}>
+            Keep
+          </button>
+        </div>
+      </Form>
+    </div>
+  )
+}
+
+/** For someone who can't sign in (alumni, disabled) and asks for a copy of their data. */
+function ExportMember({ user }: { user: AdminUser }) {
+  const download = useMutation({
+    mutationFn: async () => (await exportUser({ path: { user_id: user.id }, throwOnError: true })).data,
+    onSuccess: (data) => {
+      saveJson(data, `mingoquiz-export-${user.id}-${new Date().toISOString().slice(0, 10)}.json`)
+      refresh()
+    },
+  })
+  return (
+    <>
+      <button
+        type="button"
+        className="link-button"
+        aria-label={`Download the data of ${user.display_name}`}
+        disabled={download.isPending}
+        onClick={() => download.mutate()}
+      >
+        Download their data
+      </button>
+      <ErrorNotice error={download.error} />
+    </>
+  )
+}
+
+const seen = (iso: string | null | undefined) =>
+  iso ? new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : 'never'
+
+const MONTH = 30 * 24 * 3600 * 1000
+
+/** The start of a season: mark who left the team. They leave the boards and are deleted a year later. */
+function SeasonPanel({ selfId }: { selfId: number }) {
+  const users = useQuery(usersOptions())
+  const [picked, setPicked] = useState<number[]>([])
+  const [query, setQuery] = useState('')
+  const [months, setMonths] = useState(6)
+  const [now] = useState(() => Date.now())
+  const [done, setDone] = useState('')
+  const mark = useMutation({
+    ...markAlumniMutation(),
+    onSuccess: ({ marked }) => {
+      setDone(`${marked} marked as alumni.`)
+      setPicked([])
+      refresh(usersQueryKey())
+    },
+  })
+  const active = (users.data ?? [])
+    .filter((u) => u.status === 'active' && u.id !== selfId)
+    .sort((a, b) => (a.last_seen ?? '').localeCompare(b.last_seen ?? ''))
+  const q = query.trim().toLowerCase()
+  const shown = active.filter((u) => matches(u, q))
+  const quiet = active.filter((u) => !u.last_seen || now - new Date(u.last_seen).getTime() > months * MONTH)
+  const flip = (id: number) => setPicked(picked.includes(id) ? picked.filter((p) => p !== id) : [...picked, id])
+  const submit = () => {
+    if (window.confirm(`Mark ${picked.length} as alumni? They'll be signed out and leave the leaderboards.`))
+      mark.mutate({ body: { user_ids: picked } })
+  }
+  return (
+    <details className="panel">
+      <summary>New season: who left the team?</summary>
+      <div className="stack">
+        <p className="muted">
+          At the start of each season, tick the people who left. They&apos;re signed out and leave the boards, and their
+          accounts are deleted a year later unless you set them back to active. Least recently seen first.
+        </p>
+        <div className="row">
+          <div className="grow">
+            <Field label="Find someone" type="search" value={query} onChange={(e) => setQuery(e.target.value)} />
+          </div>
+          <SelectField label="Not seen for" value={months} onChange={(e) => setMonths(Number(e.target.value))}>
+            {[3, 6, 12].map((m) => (
+              <option key={m} value={m}>
+                {m} months
+              </option>
+            ))}
+          </SelectField>
+          <button
+            type="button"
+            className="secondary"
+            disabled={!quiet.length}
+            onClick={() => setPicked([...new Set([...picked, ...quiet.map((u) => u.id)])])}
+          >
+            Tick those {quiet.length}
+          </button>
+        </div>
+        <ul className="list season">
+          {shown.map((u) => (
+            <li key={u.id}>
+              <label className="check">
+                <input type="checkbox" checked={picked.includes(u.id)} onChange={() => flip(u.id)} />
+                <span>
+                  {u.display_name}{' '}
+                  <span className="muted">
+                    · {u.vertical ?? 'no vertical'} · seen {seen(u.last_seen)}
+                  </span>
+                </span>
+              </label>
+            </li>
+          ))}
+        </ul>
+        <ErrorNotice error={mark.error} />
+        {done && <Notice tone="ok">{done}</Notice>}
+        <div className="season-actions">
+          <button type="button" onClick={submit} disabled={!picked.length || mark.isPending}>
+            Mark {picked.length} as alumni
+          </button>
+        </div>
+      </div>
+    </details>
+  )
+}
+
+function BankPanel() {
+  const { data: bank } = useQuery(bankSummaryOptions())
+  if (!bank) return null
+  return (
+    <section className="panel stack" aria-labelledby="bank-title">
+      <h2 id="bank-title">Question bank</h2>
+      {bank.questions === 0 ? (
+        <p className="muted">
+          No questions yet. On the server run <code>deploy/refresh-bank.sh</code>; locally,{' '}
+          <code>ifs-tests push --sample</code> loads a small made-up bank.
+        </p>
+      ) : (
+        <>
+          <p>
+            {bank.playable} questions from {bank.quizzes} past quizzes, {bank.graded} of them graded automatically. Last
+            loaded {when(bank.imported_at)}.
+          </p>
+          <ul className="stats">
+            {Object.entries(AREAS).map(([area, label]) => (
+              <li key={area}>
+                <strong>{bank.by_area[area] ?? 0}</strong> {label}
+              </li>
+            ))}
+          </ul>
+          {bank.missing_images > 0 && (
+            <p className="muted">{bank.missing_images} are hidden until their images are available.</p>
+          )}
+          {bank.excluded > 0 && (
+            <p className="muted">
+              {bank.excluded} hidden by reviewers. <Link to="/review?queue=excluded">See them</Link>
+            </p>
+          )}
+          {bank.key_changes > 0 && (
+            <Notice tone="error">
+              FS-Quiz changed {bank.key_changes} question{bank.key_changes > 1 ? 's' : ''} since they were loaded.{' '}
+              <Link to="/review?queue=changed">Review the changes</Link>
+            </Notice>
+          )}
+        </>
+      )}
+    </section>
+  )
+}
+
+const ACTIONS: Record<string, string> = {
+  'invite.create': 'created an invite',
+  'invite.revoke': 'revoked an invite',
+  'user.register': 'joined',
+  'user.bootstrap_admin': 'set up the first admin account',
+  'user.update': 'changed',
+  'user.email': 'changed the email of',
+  'user.revoke_sessions': 'signed out',
+  'reset.create': 'created a reset link for',
+  'password.reset': 'reset their password',
+  'password.change': 'changed their password',
+  'bank.import': 'loaded the question bank',
+  'question.update': 'reviewed',
+  'question.answer': 'corrected the answer of',
+  'question.answer_cleared': 'removed the correction of',
+  'report.resolve': 'handled a report on',
+  'user.export': 'downloaded the data of',
+}
+
+const DELETED: Record<string, string> = {
+  self: 'A member deleted their account',
+  admin: 'deleted an account',
+  retention: 'An alumni account was deleted, a year after they left',
+}
+
+const shown = (v: unknown) =>
+  v === null || v === undefined || v === '' ? 'none' : Array.isArray(v) ? v.join(', ') : String(v)
+
+/** How a changed field reads, given its new value; other fields read as "field → value". */
+const CHANGES: Record<string, (after: unknown) => string> = {
+  labels_reviewed: (v) => (v ? 'labels confirmed' : 'labels unconfirmed'),
+  excluded: (v) => (v ? 'hidden' : 'shown again'),
+  exclusion_note: (v) => `note → ${shown(v)}`,
+  upstream_change: (v) => `upstream change ${shown(v)}`,
+  position: (v) => `position → ${POSITION_NAMES[v as Position] ?? shown(v)}`,
+}
+
+/** Only these are the system's own entries; any other without an actor was made by an account since deleted. */
+const SYSTEM = new Set(['bank.import'])
+
+function detail(action: string, details: Record<string, unknown>) {
+  let parts: string[] = []
+  if (action === 'user.update' || action === 'question.update') {
+    parts = Object.entries(details).map(([k, v]) => {
+      const after = (v as unknown[])[1]
+      return CHANGES[k]?.(after) ?? `${k} → ${shown(after)}`
+    })
+  }
+  if (action === 'question.answer') parts = [`${shown(details.before)} → ${shown(details.answer)}`]
+  if (action === 'question.answer_cleared') parts = [`was ${shown(details.removed)}`]
+  return parts.length ? ` (${parts.join(', ')})` : ''
+}
+
+function AuditTrail() {
+  const log = useQuery(auditLogOptions({ query: { limit: 30 } }))
+  return (
+    <details className="panel">
+      <summary>Recent activity</summary>
+      <ul className="audit">
+        {log.data?.map((a) => {
+          const self = a.actor === a.target
+          if (a.action === 'user.delete') {
+            const by = String(a.details.by)
+            return (
+              <li key={a.id}>
+                <time dateTime={a.at}>{when(a.at)}</time> {by === 'admin' ? `${a.actor ?? 'An admin'} ` : ''}
+                {DELETED[by] ?? 'deleted an account'}
+              </li>
+            )
+          }
+          if (a.action === 'user.locked') {
+            return (
+              <li key={a.id}>
+                <time dateTime={a.at}>{when(a.at)}</time> {a.target} was locked after 5 failed sign-ins
+              </li>
+            )
+          }
+          return (
+            <li key={a.id}>
+              <time dateTime={a.at}>{when(a.at)}</time>{' '}
+              {a.actor ?? (SYSTEM.has(a.action) ? 'The system' : 'A deleted account')} {ACTIONS[a.action] ?? a.action}
+              {!self &&
+                a.target &&
+                a.actor !== null &&
+                !a.target.startsWith('invite:') &&
+                ` ${a.target.replace(/^question:/, 'question ')}`}
+              {detail(a.action, a.details)}
+            </li>
+          )
+        })}
+      </ul>
+    </details>
+  )
+}

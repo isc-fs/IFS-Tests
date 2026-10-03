@@ -1,0 +1,10 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["react", "typescript", "import", "jsx-a11y"],
+  "rules": {
+    "react/no-danger": "error",
+    "react/no-danger-with-children": "error",
+    "no-eval": "error",
+    "no-implied-eval": "error"
+  }
+}

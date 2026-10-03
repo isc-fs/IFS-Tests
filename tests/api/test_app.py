@@ -1,0 +1,132 @@
+from __future__ import annotations
+
+from collections.abc import Iterator
+from pathlib import Path
+
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import Session
+
+from ifs_tests.api.app import create_app
+from ifs_tests.api.deps import get_db
+from ifs_tests.settings import Settings
+
+
+@pytest.fixture
+def dist(tmp_path: Path) -> Path:
+    (tmp_path / "dist" / "assets").mkdir(parents=True)
+    (tmp_path / "dist" / "index.html").write_text("<html>spa</html>")
+    (tmp_path / "dist" / "assets" / "app-abc123.js").write_text("console.log(1)")
+    (tmp_path / "secret.txt").write_text("top secret")
+    return tmp_path / "dist"
+
+
+def client(dist: Path, env: str = "test") -> TestClient:
+    return TestClient(create_app(Settings(env=env, web_dist=dist, public_origin="https://quiz.example")))
+
+
+def test_healthz_and_security_headers(dist: Path) -> None:
+    r = client(dist).get("/healthz")
+    assert r.status_code == 200 and r.json()["status"] == "ok"
+    assert "frame-ancestors 'none'" in r.headers["content-security-policy"]
+    assert r.headers["x-content-type-options"] == "nosniff"
+    assert client(dist).head("/healthz").status_code == 200
+
+
+@pytest.mark.integration
+def test_readyz_queries_the_database(app_client: TestClient) -> None:
+    r = app_client.get("/readyz")
+    assert r.status_code == 200 and r.json() == {"status": "ok"}
+    assert app_client.head("/readyz").status_code == 200
+
+
+def app_on(dist: Path, db: Session) -> TestClient:
+    """The app on the test's own session, so a schema change it makes (never committed) is what readyz sees."""
+
+    def same_session() -> Iterator[Session]:
+        yield db
+
+    app = create_app(Settings(env="test", web_dist=dist, public_origin="https://quiz.example"))
+    app.dependency_overrides[get_db] = same_session
+    return TestClient(app)
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "change",
+    [
+        "ALTER TABLE users DROP COLUMN account_xp",  # the red team's rewritten migration
+        "DROP TABLE live_proposals",
+    ],
+)
+def test_readyz_is_503_when_the_schema_lacks_what_the_code_maps(dist: Path, db: Session, change: str) -> None:
+    try:
+        db.execute(text(change))
+        r = app_on(dist, db).get("/readyz")
+    finally:
+        db.rollback()
+    assert r.status_code == 503 and r.json() == {"status": "schema out of date"}
+
+
+@pytest.mark.integration
+def test_readyz_is_ok_when_the_schema_is_ahead_of_the_code(dist: Path, db: Session) -> None:
+    """Expand/contract: the previous release keeps running on the newer schema during a deploy."""
+    try:
+        db.execute(text("ALTER TABLE users ADD COLUMN from_the_next_release int"))
+        db.execute(text("CREATE TABLE from_the_next_release (id int)"))
+        r = app_on(dist, db).get("/readyz")
+    finally:
+        db.rollback()
+    assert r.status_code == 200
+
+
+def test_readyz_is_503_when_the_database_is_unreachable(dist: Path) -> None:
+    engine = create_engine("postgresql+psycopg://app_rt:wrong@127.0.0.1:1/quiz")
+
+    def unreachable() -> Iterator[Session]:
+        with Session(engine) as s:
+            yield s
+
+    app = create_app(Settings(env="test", web_dist=dist, public_origin="https://quiz.example"))
+    app.dependency_overrides[get_db] = unreachable
+    r = TestClient(app).get("/readyz")
+    assert r.status_code == 503 and r.json() == {"status": "unavailable"}
+
+
+def test_spa_fallback_and_asset_caching(dist: Path) -> None:
+    c = client(dist)
+    page = c.get("/practice/mech")
+    assert "spa" in page.text and page.headers["cache-control"] == "no-cache"
+    assert "immutable" in c.get("/assets/app-abc123.js").headers["cache-control"]
+    assert c.head("/").status_code == 200
+
+
+@pytest.mark.parametrize(
+    "path", ["/%2e%2e/secret.txt", "/..%2fsecret.txt", "/%00", "/" + "a" * 300, "/a/" * 100]
+)
+def test_spa_never_serves_outside_dist_or_crashes(dist: Path, path: str) -> None:
+    r = client(dist).get(path)
+    assert r.status_code == 200 and "top secret" not in r.text
+
+
+def test_docs_hidden_when_deployed(dist: Path) -> None:
+    assert client(dist, "test").get("/api/openapi.json").status_code == 200
+    assert client(dist, "prod").get("/api/openapi.json").status_code == 404
+
+
+def test_app_without_a_build_still_serves_the_api(tmp_path: Path) -> None:
+    c = client(tmp_path / "missing")
+    assert c.get("/healthz").status_code == 200 and c.get("/").status_code == 404
+
+
+def test_media_is_served_immutable_and_confined(tmp_path: Path, dist: Path) -> None:
+    media = tmp_path / "media"
+    media.mkdir()
+    (media / "abc.webp").write_bytes(b"RIFF....WEBP")
+    c = TestClient(create_app(Settings(env="test", web_dist=dist, media_dir=media)))
+    r = c.get("/media/abc.webp")
+    assert r.status_code == 200 and "immutable" in r.headers["cache-control"]
+    assert c.get("/media/missing.webp").status_code == 404
+    traversal = c.get("/media/%2e%2e/secret.txt")
+    assert traversal.status_code == 404 and "top secret" not in traversal.text

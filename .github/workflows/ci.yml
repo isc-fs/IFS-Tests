@@ -1,0 +1,138 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [dev, main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          enable-cache: true
+      - run: uv sync --frozen
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run mypy
+      - name: Tests with coverage (integration tests start Postgres with testcontainers)
+        run: |
+          uv run pytest -q --cov=ifs_tests --cov-branch --cov-report=term-missing:skip-covered --cov-fail-under=78
+          uv run coverage report --include='src/ifs_tests/api/*,src/ifs_tests/auth/*,src/ifs_tests/services/*,src/ifs_tests/domain/*' --fail-under=92
+      - name: OpenAPI schema is up to date (regenerate with `uv run ifs-tests openapi > web/openapi.json`)
+        run: uv run ifs-tests openapi > web/openapi.json && git diff --exit-code web/openapi.json
+
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Generated API client matches openapi.json (regenerate with `npm run gen:api`)
+        run: npm run gen:api && git diff --exit-code src/api
+      - run: npm run format:check
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+      - run: npm run size
+
+  e2e:
+    runs-on: ubuntu-latest
+    env:
+      E2E_ADMIN_PASSWORD: pit wall strategy 2026
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Start the stack
+        run: |
+          docker compose up -d --build --wait
+          docker compose run --rm api alembic upgrade head
+          docker compose run --rm api ifs-tests push --sample
+          printf '%s\n' "$E2E_ADMIN_PASSWORD" | docker compose exec -T api \
+            ifs-tests create-admin --email e2e-admin@alu.comillas.edu --name "E2E Admin" --password-stdin
+      - working-directory: web
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npx playwright install --with-deps chromium
+          npm run e2e
+      - if: failure()
+        run: docker compose logs api
+      - if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: playwright-traces
+          path: web/test-results
+          retention-days: 7
+
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: docker build -t ifs-tests:ci .
+      - name: Image runs as non-root and contains no mirrored data
+        run: |
+          test "$(docker run --rm ifs-tests:ci id -u)" = "10001"
+          docker run --rm ifs-tests:ci sh -c '! test -e /app/data'
+      - name: Smoke test
+        run: |
+          docker run -d --name smoke -p 8000:8000 -e IFS_ENV=staging -e IFS_PUBLIC_ORIGIN=https://quiz.example ifs-tests:ci
+          for i in $(seq 20); do curl -fsS localhost:8000/healthz && break; sleep 1; done
+          curl -fsSI localhost:8000/ | grep -i "content-security-policy"
+          test "$(curl -s -o /dev/null -w '%{http_code}' localhost:8000/api/openapi.json)" = "404"
+
+  shell:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: shellcheck deploy scripts
+        run: >
+          docker run --rm -v "$PWD:/mnt" -w /mnt
+          koalaman/shellcheck:v0.11.0@sha256:61862eba1fcf09a484ebcc6feea46f1782532571a34ed51fedf90dd25f925a8d
+          deploy/deploy.sh deploy/restore.sh deploy/lib.sh deploy/nginx.sh deploy/refresh-bank.sh deploy/db/init-roles.sh deploy/db/backup.sh
+          .github/scripts/release-gate.sh
+      - name: compose file is valid
+        run: >
+          QUIZ_ENV=staging IMAGE_TAG=sha-0000000 QUIZ_HOST=x APP_PASSWORD=x POSTGRES_PASSWORD=x
+          MIGRATOR_PASSWORD=x BACKUP_PASSWORD=x FORWARDED_ALLOW_IPS=10.213.0.0/24 docker compose -f deploy/compose.yaml config --quiet
+
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: gitleaks
+        run: >
+          docker run --rm -v "$PWD:/repo" -w /repo
+          ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
+          git --redact --no-banner .
+
+  dependency-review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high

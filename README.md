@@ -1,40 +1,86 @@
 <img width="470.235" height="179.4" alt="isc-full-primary" src="https://github.com/user-attachments/assets/31365569-11bf-427e-ae3e-8d81ca87d765" />
 
-# IFSXX-[DPT]_[PCB/PURPOSE]
+# IFS-Tests
 
-Embedded firmware for the **[PCB/PURPOSE]** of the IFSXX, developed on XXXXXXXXX with XXXXXXXXX.
+**MingoQuiz**: the ISC team's practice system for the **Formula Student registration quizzes**, built on the public [FS-Quiz](https://fs-quiz.eu) question bank. (The site is MingoQuiz; this repository and the Python package keep the IFS-Tests name.)
+
+Most European events hand out their registration slots through a short, timed online quiz on the rules and on vehicle engineering. FSG is the most contested of them, and a few questions separate the teams that get a slot from the ones that don't. This repository exists so that ISC trains for those quizzes all season instead of cramming the week before, and gets back into FSG.
 
 ---
 
-## Getting started
+## What it does
 
-1. Create a GitHub account if you don't have one yet.
-2. Download and install [GitHub Desktop](https://desktop.github.com/) (beginner) or [Git CLI](https://git-scm.com/book/en/v2/Getting-Started-Installing-Git) (advanced).
+1. **Pulls the question bank.** Every past quiz (FSG, FSA, FSCZ, FSN, FSS, FS East...) with its questions, answers, worked solutions, images and the rulebooks each quiz was based on, via the [FS-Quiz API v2](https://api.fs-quiz.eu/#/).
+2. **Sorts it by who should answer it.** FS-Quiz has no topic field, so every question is tagged by area and topic (automatically, then checked by reviewers):
 
-   - If this is your first time using GitHub Desktop, make sure to read the [User Manual](https://help.github.com/desktop/guides/).
-   - If this is your first time using Git, start with a tutorial. There are many available online:
-     - [Git Tutorial](https://git-scm.com/docs/gittutorial)
-     - [Atlassian Git Tutorial](https://www.atlassian.com/git/tutorials/)
-   - Keep a copy of [GitHub's Git Cheat Sheet](https://services.github.com/kit/downloads/github-git-cheat-sheet.pdf) handy as a reference.
+   | Area | Topics |
+   |---|---|
+   | **Mechanical** | vehicle dynamics, aerodynamics, structures, powertrain |
+   | **Electrical** | high voltage, driverless, electronics |
+   | **Rules** | scoring and events: everyone needs these |
 
-3. Clone this repository to your machine (update these links!!):
-   - SSH: `git@github.com:isc-fs/IFSXX-[DPT]_[PCB/PURPOSE].git`
-   - HTTPS: `https://github.com/isc-fs/IFSXX-[DPT]_[PCB/PURPOSE].git`
+3. **Lets the team train** in a web app on the team's server: practice by topic with that year's rulebooks beside each question, a timed daily question per area, replays of real past quizzes against their clock, and live quizzes for team meetings where each sub-department's table answers together. A League-style rank with LP moves with how well you answer, an account level with XP with how much you play, and there's a season leaderboard. Members join through an invite link.
+
+## Documentation
+
+Everything about using, running, changing and handing over MingoQuiz is in [`docs/`](docs/README.md): guides for players, live quiz hosts, reviewers and admins; development, architecture, data model, API and testing; the game rules; the runbook, the maintenance calendar and the handover guide. Decisions and their reasons are in [`docs/adr/`](docs/adr/).
+
+See [ROADMAP.md](ROADMAP.md) for the phase plan and branch status.
+
+---
+
+## Run it locally
+
+Needs [uv](https://docs.astral.sh/uv/), Node 24 and Docker.
+
+```bash
+uv sync                                                # Python dependencies
+docker compose up -d --build --wait                    # app + database on http://localhost:8000
+docker compose run --rm api alembic upgrade head       # create the schema
+docker compose run --rm api ifs-tests push --sample    # a small made-up bank: no calls to FS-Quiz
+docker compose exec api ifs-tests create-admin --email admin@example.com --name "Local Admin"
+```
+
+Then sign in at <http://localhost:8000>. Step by step, with what each command prints: [`docs/development.md`](docs/development.md).
+
+The real FS-Quiz bank is optional locally. Mirror it once (`uv run ifs-tests mirror --images`: about 500 requests plus the images, one a second, cached so a re-run only fetches what's new), then load it with `docker compose run --rm api ifs-tests push` ([development.md](docs/development.md#with-the-real-fs-quiz-bank)). Don't re-mirror without a reason: the FS-Quiz author asks users to avoid unnecessary queries. For frontend work, run the API with `uv run uvicorn ifs_tests.api.app:app --reload` and the SPA with `cd web && npm ci --ignore-scripts && npm run dev` (Vite proxies API calls to port 8000).
+
+Deploying to the team server: [`docs/runbook.md`](docs/runbook.md).
+
+Checks that CI runs:
+
+```bash
+uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pytest
+(cd web && npm run format:check && npm run typecheck && npm run lint && npm test && npm run build && npm run size)
+(cd web && npm run e2e)                   # needs the local stack, the sample bank and the e2e admin: docs/testing.md
+```
+
+---
+
+## Data source and licence
+
+All questions come from **[fs-quiz.eu](https://fs-quiz.eu)**, maintained by Yannik Ottens and published under the [Open Database License (ODbL)](https://opendatacommons.org/licenses/odbl/). In practice:
+
+- **Attribute** FS-Quiz wherever the questions are shown (app, slides, exports).
+- **Share-alike:** if we publish a derived database (for example, the bank with our topic labels), it has to be released under the ODbL too. Private use inside the team has no such obligation.
+- **Be gentle with the server.** The API is free and needs no key; its author asks users to avoid unnecessary queries. Mirror once, work from the local copy, and refresh only when a new quiz season is published.
+
+The API itself (endpoints, data model, quirks, the fastest way to pull everything) is documented in [`docs/fsquiz-api.md`](docs/fsquiz-api.md).
 
 ---
 
 ## How we work with this repository
 
+This repository follows the same Git workflow as every other `isc-fs` repository.
+
 ### Main branches
 
-The repository has two permanent branches:
+**`main`** holds released versions only. Never work directly on it.
 
-**`main`** is the production branch. It contains only validated code that can be flashed onto the car. Never work directly on it.
-
-**`dev`** is the development branch. It is the integration point where everyone's work comes together. Never work directly on it either — all changes arrive through a feature branch.
+**`dev`** is the integration branch. Never work directly on it either: all changes arrive through a feature branch.
 
 ```
-main  ──────────────────●──────────────────────●──▶  (validated releases only)
+main  ──────────────────●──────────────────────●──▶  (releases only)
                         ↑                      ↑
 dev   ──────●───●───●───●───●───●───●───●───●──●──▶  (continuous integration)
             ↑   ↑       ↑   ↑   ↑       ↑   ↑
@@ -43,111 +89,43 @@ dev   ──────●───●───●───●───●─�
 
 ### Feature branches
 
-All work — whether a new feature or a bug fix — is done on a **feature branch** created from `dev`. When the work is ready, a Pull Request is opened toward `dev`, reviewed, merged, and the branch is deleted.
-
-There are two branch types, each with its own independent numeric counter:
+All work is done on a branch cut from `dev`, merged back through a Pull Request, then deleted. There are two branch types, each with its own counter:
 
 ```
-feat/<n>   →  new functionality  (feat/1, feat/2, feat/3 ...)
-fix/<n>    →  bug fix            (fix/1,  fix/2,  fix/3  ...)
+feat/<n>[-short-title]   →  new functionality  (feat/7-bank-push, feat/8 ...)
+fix/<n>[-short-title]    →  bug fix            (fix/1, fix/2-mirror-retry ...)
 ```
 
-The `feat` and `fix` counters are independent: `feat/2` and `fix/2` can exist at the same time with no conflict.
+The next number of each type is the highest existing tracking-issue number of that type, open or closed, plus one. The short title is optional but recommended.
 
-### Tracking branch history
+### Tracking issues
 
-Feature branches are deleted after merging to keep the repository clean. The history of each branch is preserved in **GitHub Issues**.
+Every branch has one tracking issue, labelled `feat` or `fix` and titled `[feat/N-...] ...`. It is opened automatically when the branch is first pushed, filled from the first commit message, and closed when the PR is merged into `dev`. Closed issues are the permanent history of the repository.
 
-Every branch has one associated issue. The issue carries a **label** (`feat` or `fix`) and its title includes the branch number, for example: `[feat/3] Add CAN broadcast for mission state`. When the branch is merged and deleted, the issue is closed — becoming a permanent record of all the work done.
-
-To see which branches are currently active: filter issues by label and status `open`.
-To browse the full history: filter by label and status `closed`.
-The number for the next branch of each type is the last closed issue of that type plus one.
-
-> Example: if the last closed issue with label `feat` is `[feat/4] ...`, the next feature branch will be `feat/5`.
-
----
-
-## Automation
-
-The repository includes a GitHub Actions workflow that manages tracking issues automatically. No setup is required — it works for every developer as soon as they create a branch.
-
-### Automatic issue creation
-
-When a `feat/*` or `fix/*` branch is pushed to GitHub, the workflow automatically opens an issue with:
-
-- The corresponding `[feat/N]` or `[fix/N]` title
-- The correct label (`feat` or `fix`)
-- A template with sections for describing the work and adding notes
-- The name of the developer who created the branch
-
-### Wrong number warning
-
-If the branch number is not the next expected one (either too low or too high), the issue will display a warning indicating the correct number and asking the developer to delete and recreate the branch with the right name.
-
-### Auto-fill description from first commit
-
-When the developer makes their first commit and pushes it, the workflow automatically updates the *"What does this branch do?"* section of the issue with that commit message.
-
-- If the developer manually edits the issue before pushing their first commit, the workflow will not overwrite the description.
-- The description is only updated once — subsequent commits do not modify the issue.
-
----
-
-## Step-by-step workflow
-
-### 1. Create the branch
+### Step by step
 
 ```bash
-# Make sure you are on an up-to-date dev
+# 1. Branch from an up-to-date dev
 git checkout dev
 git pull origin dev
+git checkout -b feat/8-practice
 
-# Create your branch using the next available number for its type
-# (last closed issue of that type + 1)
-git checkout -b feat/5    # or fix/3, depending on that type's counter
-```
+# 2. Push it: the tracking issue opens by itself
+git push -u origin feat/8-practice
 
-> To find the right number: go to **Issues → filter by label `feat` or `fix` → sort by newest** and read the last number.
-
-### 2. Push the branch
-
-```bash
-git push origin feat/5
-```
-
-The tracking issue will be opened automatically on GitHub within seconds.
-
-### 3. Work and commit
-
-```bash
-# Make your changes and commit with a clear, descriptive message
-git add .
+# 3. Work and commit (the first commit message becomes the issue description)
 git commit -m "short description of what this commit does"
-
-# Push the changes
-git push origin feat/5
+git push
 ```
 
-The message of your **first commit** will be used to automatically fill in the issue description.
+4. Open a Pull Request **towards `dev`** with `Closes #<issue-number>` in the description.
+5. Another team member reviews it; once approved it is merged and the branch deleted.
+6. When a phase of the [roadmap](ROADMAP.md) is complete, a maintainer merges `dev` into `main` and tags the release.
 
-### 4. Open a Pull Request
+### Roadmap
 
-When the work is ready, open a Pull Request on GitHub from your branch toward `dev`. In the PR description write `Closes #<issue-number>` so the issue closes automatically when the PR is merged.
-
-Before requesting a review, check that:
-- The code compiles with no errors or warnings
-- You have tested the change on the bench if applicable
-- The PR targets `dev`, not `main`
-
-### 5. Review and merge
-
-Another team member will review the PR. Once approved, it is merged into `dev` and the branch is deleted. The issue will be closed as a permanent record.
-
-### 6. Merging into main
-
-When `dev` holds a set of validated changes that are ready for the car, a responsible team member opens a Pull Request from `dev` into `main`. This only happens after full firmware validation (HIL/bench).
+[ROADMAP.md](ROADMAP.md) is generated from [`.github/roadmap.yaml`](.github/roadmap.yaml) and the tracking issues, and refreshed in each release pull request; between releases its status badges can lag. To change the plan, edit the YAML, never the Markdown.
 
 ---
 
-*ISC Racing Team — IFS08 Driverless*
+*ISC Racing Team — IFS09*

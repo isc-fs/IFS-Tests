@@ -1,0 +1,472 @@
+# Runbook
+
+How to set up, deploy, roll back, back up, restore and look after MingoQuiz on the team server. Written for whoever maintains it next: follow it step by step. What has to happen when (nightly, each season, each September) is in the [maintenance calendar](maintenance.md); handing the project over is in [handover.md](handover.md); fixes for known problems are in [troubleshooting](troubleshooting.md).
+
+The server itself (SSH, firewall, updates, certificates) is administered by the team's external consultant. Anything marked **(consultant)** needs them or a board member with server admin rights. Nginx is the website's container, `isc-web`, maintained through the website's repository ([ADR 0008](adr/0008-behind-the-website-nginx.md), section 1.3).
+
+Names used below:
+
+| | staging | prod |
+|---|---|---|
+| URL | `https://quiz-staging.iscracingteam.com` | `https://quiz.iscracingteam.com` |
+| Directory on the server | `/srv/quiz/staging` | `/srv/quiz/prod` |
+| Compose project | `quiz-staging` | `quiz-prod` |
+| Containers | `quiz-staging-api-1`, `-scheduler-1`, `-db-1`, `-backup-1` | `quiz-prod-api-1`, `-scheduler-1`, `-db-1`, `-backup-1` |
+| Image tags it takes | `sha-<commit>` or `vX.Y.Z` | `vX.Y.Z` only |
+
+The checkout of this repository on the server is `/srv/quiz/repo`; every script below runs from there. The scripts are in [`deploy/`](../deploy/): `deploy/deploy.sh`, `deploy/restore.sh`, `deploy/refresh-bank.sh`, with the stack in `deploy/compose.yaml`.
+
+---
+
+## 1. One-time setup
+
+### 1.1 Access (consultant)
+1. Create a Linux account for each quiz maintainer (SSH key + TOTP, added to `AllowUsers`, in the `docker` group), following the consultant's "add a user" procedure.
+2. Create the directories and give maintainers access:
+   ```bash
+   sudo mkdir -p /srv/quiz/staging /srv/quiz/prod
+   sudo chown -R <maintainer>:<maintainer> /srv/quiz
+   ```
+
+### 1.2 Code and secrets (maintainer)
+```bash
+git clone https://github.com/isc-fs/IFS-Tests.git /srv/quiz/repo
+for env in staging prod; do
+  cp /srv/quiz/repo/deploy/env.example /srv/quiz/$env/.env
+  chmod 600 /srv/quiz/$env/.env
+done
+```
+Edit each `.env` (the variables are explained in `deploy/env.example`): set `QUIZ_ENV` and `QUIZ_HOST`, and fill every password with a fresh `openssl rand -hex 24`. The scripts refuse to run if the file isn't `chmod 600` or if `QUIZ_ENV` doesn't match the environment you name.
+
+The database roles (`migrator`, `app_rt`, `backup_ro`) are created from these passwords **once**, the first time the database volume starts (`deploy/db/init-roles.sh`). Editing `.env` afterwards does not change them: follow [section 7](#7-secrets-rotation).
+
+Store a copy of the prod `.env` in the team's password manager, not in a shared document.
+
+### 1.3 Network, Nginx and DNS
+
+The team's website runs on the same server as the container `isc-web` (Nginx), from its own repository, and owns ports 80 and 443; the quiz sits behind it ([ADR 0008](adr/0008-behind-the-website-nginx.md)). `isc-web` is rebuilt and recreated from the website's repository on every push to it, and its files in `/srv/isc-web` are reset to that repository each time, so the quiz never edits them: it adds a file of its own that the website's deploy keeps and applies ([ADR 0009](adr/0009-website-hook-as-compose-override.md)). In this order (once step 3 exists, the website's deploy fails if the `proxy` network of step 1 is missing):
+
+1. **Shared network** (maintainer, on the server). Check the subnet is free (`ip route | grep 10.213.` and `docker network inspect $(docker network ls -q) -f '{{.Name}} {{range .IPAM.Config}}{{.Subnet}}{{end}}'` show nothing in `10.213.0.0/24`), then:
+   ```bash
+   docker network create --subnet 10.213.0.0/24 proxy
+   ```
+   Both `.env` files keep `PROXY_NETWORK=proxy` and `FORWARDED_ALLOW_IPS=10.213.0.0/24` (as in `deploy/env.example`): uvicorn trusts the client address Nginx forwards only from that subnet. A subnet rather than `isc-web`'s address, because every website deploy recreates the container.
+2. **The quiz's Nginx folder and include** (maintainer, on the server): `mkdir -p /srv/quiz/nginx` (it stays empty until step 6; an empty folder changes nothing for the website), and the one-line include `isc-web` will load after its own configuration:
+   ```bash
+   printf '%s\n' 'include /etc/nginx/quiz/*.conf;' > /srv/quiz/isc-web-include.conf
+   ```
+3. **The hook: a Compose override next to the website's compose file** (maintainer, with `sudo`, because `/srv/isc-web` belongs to `iscdeploy`). The website's deploy (`/usr/local/bin/isc-web-autodeploy`) resets its tracked files with `git reset --hard` and runs `docker compose up -d --build` without `-f`, so this untracked file survives every website deploy and is applied each time. Check that is still true before relying on it (`cat /usr/local/bin/isc-web-autodeploy`):
+   ```bash
+   sudo tee /srv/isc-web/docker-compose.override.yml > /dev/null <<'EOF'
+   # MingoQuiz (quiz.iscracingteam.com) behind this Nginx: isc-fs/IFS-Tests, ADR 0009 and runbook 1.3.
+   # Not part of the website's repository: the deploy's git reset --hard keeps it, and docker compose reads it on its own.
+   services:
+     web:
+       volumes:
+         - /srv/quiz/nginx:/etc/nginx/quiz:ro
+         - /srv/quiz/isc-web-include.conf:/etc/nginx/conf.d/zz-quiz.conf:ro
+       networks: [default, proxy]
+   networks:
+     proxy:
+       external: true
+   EOF
+   ```
+   Before applying it, check the combined configuration and let Nginx test it in a throwaway container, without touching `isc-web`:
+   ```bash
+   cd /srv/isc-web && docker compose config      # the web service shows its three volumes plus these two, and both networks
+   docker run --rm --network none \
+     -v /srv/isc-web/deploy/nginx/site.conf:/etc/nginx/conf.d/default.conf:ro -v /srv/isc-web/certbot-www:/var/www/certbot:ro \
+     -v /etc/letsencrypt:/etc/letsencrypt:ro -v /srv/quiz/nginx:/etc/nginx/quiz:ro \
+     -v /srv/quiz/isc-web-include.conf:/etc/nginx/conf.d/zz-quiz.conf:ro isc-web:latest nginx -t
+   ```
+   Then apply it (the website is down for a second or two while `isc-web` is recreated; no rebuild): `cd /srv/isc-web && docker compose up -d`. Check `docker inspect isc-web -f '{{range .Mounts}}{{.Source}}={{.Destination}} {{end}}'` lists both mounts, `docker inspect isc-web -f '{{range $n, $_ := .NetworkSettings.Networks}}{{$n}} {{end}}'` lists `proxy`, and the website still loads. Tell the website's maintainer the file exists, and ask them to say if their deploy ever names its compose file (`-f`), cleans untracked files, or their repository gains a file with this name. To undo it: delete the file and run `docker compose up -d` there again.
+4. **DNS** (whoever holds the domain's DNS: Arsys today, `dns9`/`dns10.servidoresdns.net`): `A` records for `quiz` and `quiz-staging` pointing at `46.62.206.29`, like the website's. No `AAAA`: the website has none. When the domain moves to Squarespace Domains, these two records move with the website's. Check: `dig +short quiz.iscracingteam.com`.
+5. **Certificate** (server admin, on the server), before step 6: `quiz.conf` names this certificate, so Nginx refuses it until it exists. The website's certificate renews through a webroot (`/srv/isc-web/certbot-www`, which `isc-web` serves at `/var/www/certbot`) with a hook that reloads `isc-web`; the quiz's is issued the same way. Until step 6 the website's catch-all server on port 80 answers the challenge for the new names; afterwards `quiz.conf`'s own port-80 server does, from the same folder:
+   ```bash
+   sudo certbot certonly --webroot -w /srv/isc-web/certbot-www \
+     -d quiz.iscracingteam.com -d quiz-staging.iscracingteam.com \
+     --deploy-hook "docker exec isc-web nginx -s reload"
+   sudo certbot renew --dry-run
+   ```
+   Check: `sudo certbot certificates` lists `quiz.iscracingteam.com` with both names; `isc-web` already mounts `/etc/letsencrypt`.
+6. **Install the quiz's Nginx rules** (maintainer, from the checkout): `deploy/nginx.sh`. It copies [`deploy/nginx/quiz.conf`](../deploy/nginx/quiz.conf) to `/srv/quiz/nginx`, has `isc-web`'s Nginx test the whole configuration and reloads it; if Nginx rejects it, the previous file goes back and the website is untouched. It warns if `isc-web` doesn't include the folder yet (step 3). Run it again whenever `deploy.sh` says so ([section 2](#2-deploy), step 8).
+
+   `quiz.conf` routes both hostnames to `quiz-prod-api` and `quiz-staging-api`; rate-limits `/auth/` and the password, delete and export endpoints (30 a minute per address, burst 80); gives the live event streams their own location, unbuffered, with at most 160 open per address; and caps requests in flight under `/api/` at 160 per address. The limits are per client IP and sized for the whole team (up to 80 people) in one room behind one campus address; see [security](security.md#server-and-containers). Check: `curl -s https://quiz-staging.iscracingteam.com/readyz` (after the first deploy) and the website still loads.
+7. Commit the server changes (the network, `/srv/quiz`) in etckeeper, as for every server configuration change.
+
+A website deploy recreates `isc-web`: for a few seconds the quiz is unreachable too and live-quiz screens reconnect. Ask the website's maintainers not to push during a live quiz.
+
+### 1.4 GitHub
+- Make the `ifs-tests` package on GHCR **public** (Package settings → Change visibility), so the server can pull without a token. The image contains code only, never data or secrets.
+- Branch rules on `dev` and `main`, kept as code in `.github/rulesets/dev.json` and `.github/rulesets/main.json`. Import each: Settings → Rules → Rulesets → New ruleset → Import a ruleset, then check the preview and create it. Or from a terminal: `gh api -X POST repos/isc-fs/IFS-Tests/rulesets --input .github/rulesets/dev.json` (and `main.json`). To change a rule, edit the file in a pull request, then edit the ruleset on GitHub to match. What they set:
+  - Restrict deletions; block force pushes.
+  - Require a pull request before merging, with 0 approvals (one maintainer can't approve their own pull request).
+  - Require status checks to pass: `python`, `web`, `e2e`, `image`, `shell`, `secrets`, `dependency-review` (source GitHub Actions). Don't require branches to be up to date: parallel fixes would queue behind each other.
+  - No bypass list: GitHub doesn't accept GitHub Actions as a bypass actor, so no workflow pushes to `dev` or `main`. `ROADMAP.md` is refreshed in the release pull request instead (2.1).
+  - `main` only takes the release pull request from `dev`; that is a convention, not a rule GitHub enforces.
+  - Check: `gh api repos/isc-fs/IFS-Tests/rulesets` lists both, active.
+- Settings → Code security: secret scanning and push protection on; Dependabot alerts on.
+
+### 1.5 First deploy of an environment
+1. Deploy an image ([section 2](#2-deploy)). There is no previous tag yet, so a failure can't roll back: read the logs ([section 5.1](#51-logs)).
+2. Create the first admin (on staging the container is `quiz-staging-api-1`). It refuses once any active admin exists. It asks for the password twice (10 characters or more):
+   ```bash
+   docker exec -it quiz-prod-api-1 ifs-tests create-admin --email <their email> --name "<display name>"
+   ```
+3. Load the question bank: `deploy/refresh-bank.sh prod` ([section 2.3](#23-question-bank)).
+4. Sign in at the URL, then invite everyone else from Admin (see the [admins' guide](guides/admins.md)).
+
+---
+
+## 2. Deploy
+
+CI publishes an image for every push to `dev` (`sha-<12 chars>` and `staging`) and for every tag `vX.Y.Z` (`.github/workflows/publish.yml`). A release tag only gets an image if it names the version in `pyproject.toml`, its commit is on `main`, and CI passed on that commit (`.github/scripts/release-gate.sh`; it waits up to 30 minutes for a CI run still going). The exact tags are in the "Publish image" run summary on GitHub (Actions → Publish image → the run → Summary).
+
+```bash
+ssh <you>@<server>
+cd /srv/quiz/repo && git pull
+deploy/deploy.sh staging sha-1a2b3c4d5e6f      # staging: any commit on dev
+deploy/deploy.sh prod v0.3.0                   # prod: release tags only
+```
+
+Pull the repository first: the scripts and `deploy/compose.yaml` come from the checkout, the application from the image.
+
+What `deploy/deploy.sh` does, in order:
+1. Checks the arguments, the `.env` file and its permissions. From here on the deploy runs on its own, logging to
+   `/srv/quiz/<env>/deploy-<date>-<time>.log`, and your terminal only follows that log: a dropped SSH session, Ctrl-C
+   or closing the terminal stops the view, not the deploy, so the smoke test and the roll back still happen.
+   Reconnect and follow it again with `tail -f /srv/quiz/<env>/deploy-*.log`; its last line says where the
+   environment ended up. One deploy or restore at a time per environment: a second one is refused while one runs.
+2. Pulls the image for the api (`QUIZ_PULL=0` skips it).
+3. Starts `db` and `backup` if they aren't running.
+4. Takes a dump named `quiz-<date>-<time>-pre-<tag>.dump` (skipped on the very first deploy).
+5. Checks the image's migrations against the ones this database recorded (`deploy_migrations`): an applied migration edited since stops the deploy. Then runs `alembic upgrade head` as `migrator`, in one transaction, and records the image's migrations (skipped when the database is provably ahead of the image, as in a [roll back](#3-roll-back)).
+6. Starts `api` and `scheduler` on the new tag, waits up to 90 s for them to be healthy, and smoke-tests the api: `/healthz` answers 200 with a CSP header, `/` serves the app's page, an unknown `/api/` route is 404, the OpenAPI schema is hidden, and `/readyz` answers 200, which means the app reached the database with its own role (`app_rt`, `APP_PASSWORD`) and found every table and column the code maps (a migration missing or rewritten makes it 503 `schema out of date`). Both containers' health checks need the database too (the api's is `/readyz`; the scheduler only beats while the database answers), so a wrong `APP_PASSWORD` or a dead database fails here. The smoke test runs even when a container isn't healthy, so its `FAIL` lines say what's wrong. An image from before `/readyz` existed (a rollback to an old release) prints `skip readyz`.
+7. On success: writes the tag to `/srv/quiz/<env>/deployed-tag` and appends a line (UTC time, env, tag, who) to `/srv/quiz/<env>/deploy-history`. On failure (or if the deploy process itself is stopped with SIGTERM or SIGINT): prints `deploy: FAILED`, starts the previous tag again if the new one had been started, and ends with a line saying which tag the environment runs ([2.2](#22-when-a-deploy-fails)).
+8. Lists what the release needs that a deploy doesn't do, comparing files between the previous image and the new one, as `deploy: to do:` lines before the last one (`deploy: done: <env> is on <tag>; N step(s) left, listed above`):
+   - `run deploy/nginx.sh to install the new deploy/nginx/quiz.conf`: the file changed. Nginx reads it from `/srv/quiz/nginx`, not from the image: after `git pull`, run `deploy/nginx.sh` ([1.3](#13-network-nginx-and-dns), step 6).
+   - `run deploy/refresh-bank.sh <env> --no-mirror`: the code that reads answer keys, grades or imports the bank changed (`domain/keys.py`, `grading.py`, `upstream.py`, `bank/topics.py`, `services/bank.py`). The bank in the database was loaded by the old code, so its fixes only apply once it is loaded again ([2.3](#23-question-bank)). Safe to repeat, so a change that turns out not to need it costs only the run.
+   - `couldn't compare ...`: one of the images couldn't be read (removed from the server, for example). Check the release's changes to those files by hand.
+   An image from before this check doesn't carry `quiz.conf`, so the first deploy over one always lists the Nginx step: check the installed file matches the repository's.
+
+Starting the scheduler also runs the day's jobs whose time has passed (it keeps no memory across restarts), so every deploy runs the nightly maintenance once more. The jobs are idempotent; that's expected.
+
+### 2.1 Release
+1. In a pull request into `dev`: set `version` in `pyproject.toml` to the release (then `uv lock` and regenerate the API client, [development](development.md)), refresh `ROADMAP.md` with `GITHUB_REPOSITORY=isc-fs/IFS-Tests uv run --no-project --with pyyaml==6.0.2 python .github/scripts/render_roadmap.py` (it reads the tracking issues through your `gh` login; the `Check ROADMAP` run on `dev` says when it's stale), and write its notes in [release-notes/](release-notes/), one file per version: what's in it, known issues, and steps an operator must take after deploying.
+2. Merge `dev` into `main` through a pull request, with the notes in its description, and wait for CI on `main`.
+3. Tag the merge commit on `main` (on your machine: `git checkout main && git pull`, then `git tag v1.0.0 && git push origin v1.0.0`). Versions follow `vMAJOR.MINOR.PATCH`; the first release is `v1.0.0` ([release plan](release-plan.md)).
+4. Wait for "Publish image" to finish for the tag. If its release gate refuses (`isn't on main`, `doesn't match version`, `CI ... ended failure`), nothing was published: delete the tag (`git push origin :refs/tags/vX.Y.Z`), fix, and tag again; if it timed out waiting for CI, re-run the workflow once CI is green. Then create the GitHub release for the tag with the same notes.
+5. Deploy the tag to staging, check it (sign in, answer a practice question, open the leaderboard), then deploy it to prod.
+6. Do every `deploy: to do:` step the deploy listed (step 8 above), on staging first: the Nginx reload once for both environments, the bank push once per environment. The prod deploy compares with prod's previous release, so it can list steps staging didn't.
+
+### 2.2 When a deploy fails
+
+| The script stopped at | What state you're in | What to do |
+|---|---|---|
+| `usage`, `missing ... .env`, `must be chmod 600`, `QUIZ_ENV ... expected`, `tag must be`, `prod only takes release tags` | Nothing changed | Fix the argument or the file and run it again |
+| `a deploy of <tag> ... is already running` or `a restore of <file> ... is already running` | Nothing changed | Follow it with the log it names. If none is running (`ps aux \| grep -E 'deploy\|restore'`, after a reboot for example), `rm -r /srv/quiz/<env>/operation.lock` |
+| Any line below followed by `<tag> was not started; <env> still runs <previous>` | The app is still on the previous tag; a migration that ran stays (expand-only, so the previous release works with it) | As in the row for the line above it |
+| The image pull | Nothing changed | Check the tag in the "Publish image" summary; check the GHCR package is still public |
+| `pre-deploy dump` | Nothing changed; the app is still on the previous tag | `docker logs quiz-<env>-backup-1`; check disk space (`df -h`) |
+| `migration(s) NNNN in <tag> differ from the ones applied to this database` | Nothing changed (apart from creating the empty `deploy_migrations` table the first time); the app is still on the previous tag | A migration was edited after it ran here, so the edit would never run. Put the migration back as it was and add a new one with the change, then publish a new image. If you have compared them and the difference really is harmless, clear the record as `migrator` (`DELETE FROM deploy_migrations WHERE revision = 'NNNN'`) and deploy again: it is recorded afresh from the image |
+| `the database is at NNNN, which <tag> doesn't know, and nothing shows it comes after <tag>'s migrations` | Nothing changed | The database's migrations aren't a continuation of the image's: a rewritten or foreign migration, or a database migrated by something other than `deploy.sh` since it began recording (a restore migrated forward, a manual `alembic upgrade`). After a restore, deploy the tag that is running (it records the chain) and then roll back. Otherwise find out where revision NNNN came from before deploying anything |
+| `migrating` | The migration rolled back as a whole; the app is still on the previous tag | Read the error; fix it in a new commit and publish a new image. Nothing to roll back |
+| `FAIL readyz ...`, then `rolling back to <previous>` and `rolled back: <env> runs <previous> again` | The app can't reach the database with `APP_PASSWORD`, or (`curl .../readyz` says `schema out of date`) the database lacks columns the new code maps; the previous tag is started again, but with the same `.env`, so the site still fails if the `.env` changed | Almost always `APP_PASSWORD` in `.env` doesn't match the `app_rt` role (for example half-way through a [password rotation](#7-secrets-rotation)), or `db` isn't running (`docker ps`). Fix the `.env` or the role's password and deploy the tag again. For `schema out of date`, the api's log names the missing columns: see [troubleshooting](troubleshooting.md#a-deploy-fails-with-fail-readyz-and-rolls-back). Rolling back never undoes an `.env` change |
+| `failed to start or failed the smoke test` (without `FAIL readyz`), then `rolled back: <env> runs <previous> again` | The database is migrated (expand-only, so the previous release works with it); the app is back on the previous tag | Find the cause on staging (below). Nothing else to do on prod |
+| `the roll back to <previous> failed too, so <env> may be down` | Neither tag is healthy: often the `.env` or the database, which both share | `docker logs quiz-<env>-api-1`, `docker ps`; fix the cause, then `deploy/deploy.sh <env> <previous>` |
+| `FAILED, stopped by SIGTERM` (or `SIGINT`) | Someone stopped the deploy process itself; the line after it says which tag runs, and it rolled back if the new one had started | Deploy again when ready |
+| The deploy process itself was killed (`kill -9`, a server reboot) | Unknown until you look; `deployed-tag` still names the previous tag unless the deploy finished | `rm -r /srv/quiz/<env>/operation.lock`, which it left behind, then deploy the tag you want |
+| Anything, on the first deploy of an environment | No previous tag to go back to: `<tag> is running but failed` | `docker logs quiz-<env>-api-1` |
+
+To see why a tag doesn't start (rolling back replaces the failed container and its logs), start it on staging by hand and read its logs, then put staging back:
+```bash
+cd /srv/quiz/repo
+IMAGE_TAG=<tag> docker compose --project-directory deploy -f deploy/compose.yaml \
+  --env-file /srv/quiz/staging/.env up -d api scheduler
+docker logs quiz-staging-api-1
+deploy/deploy.sh staging $(cat /srv/quiz/staging/deployed-tag)
+```
+
+### 2.3 Question bank
+
+The bank lives in the database; images live in the `media` volume; the raw FS-Quiz mirror lives in the `fsquiz` volume of each environment. Load it after the first deploy, and refresh it once a season after the registration quizzes are published (see the [maintenance calendar](maintenance.md#every-registration-season)):
+```bash
+deploy/refresh-bank.sh staging     # then the same for prod
+```
+It runs `ifs-tests mirror --refresh --images` then `ifs-tests push` with the deployed image. Like the other scripts, it first refuses (and runs nothing) if the `.env` isn't `chmod 600` or its `QUIZ_ENV` isn't the environment you named: the compose project is named after `QUIZ_ENV`, so a mismatch would refresh the other environment. The mirror re-fetches every quiz, the document list (rulebooks and handbooks) and the last qualifiers' results, so corrected questions, new editions and new results arrive, not just new quizzes: about 500 API calls, one per second, plus the images not already in the volume (the first full load on the server, 3 October 2026: 504 calls and 374 images in 9 minutes; [fsquiz-api.md](fsquiz-api.md#extraction-strategy)). Images already in the volume are kept; only missing ones are fetched. The push is safe to repeat and never changes past results: options are updated in place (matched by FS-Quiz's answer ID), so finished mock runs, daily reviews and live results keep working; unchanged questions are skipped apart from parsing their answer again; a question whose answer or options changed upstream loses any reviewer correction and is flagged under Admin → Question bank and in the Review "Changed upstream" queue, while a new wording keeps the correction and the difficulty but is flagged too, and a new solution or image changes nothing for reviewers; a question FS-Quiz says it removed from its quiz is hidden once and lands in the Review "Hidden" queue. Quizzes and questions FS-Quiz deleted are retired: no longer played, kept in past results, the questions hidden and flagged in "Changed upstream". The push prints its counts (`rekeyed`: answers a newer release reads differently; `hidden`: questions hidden for a removal note; `retired` and `restored`: questions deleted upstream, or back; `not_retired`, `not_changed` and `not_unlinked`: deletions, answer changes and dropped quiz-question links held back, with a warning, because the mirror would retire or change the answer of more than a quarter of the bank, or drop more than a quarter of its quiz links). If any of the three is set, check the mirror (`ifs-tests stats`, `ifs-tests show <id>` on a question it changed) before anything else: an empty or answerless mirror usually means FS-Quiz renamed a field. The database still holds the good bank, so nothing is urgent, but the refresh has already replaced the mirror in the volume (the backups hold the database, not the mirror), so fix the mirror before pushing anything else. If FS-Quiz really changed that much, push the mirror already in the volume again, letting it apply all of it: `deploy/refresh-bank.sh <env> --no-mirror --allow-mass-removal` (same `.env` checks; the script refuses `--allow-mass-removal` without `--no-mirror`, so the override only ever applies to a mirror you have checked). The quarter is of the bank before the push, so new questions arriving at the same time don't hide a mass change. Images FS-Quiz can't serve are skipped; questions that need a missing image stay hidden until it arrives. The mirror needs outbound HTTPS from the api container (through the `proxy` network).
+
+Do this on staging first. Each environment has its own mirror, so each refresh costs FS-Quiz its own requests: don't repeat it without reason ([AGENTS.md](../AGENTS.md), server etiquette).
+
+After deploying a release that changes how answers are parsed or which questions are graded (`deploy.sh` ends with `deploy: to do: run deploy/refresh-bank.sh <env> --no-mirror`, [section 2](#2-deploy)), load the mirror already in the volume again, without asking FS-Quiz anything: `deploy/refresh-bank.sh <env> --no-mirror`. The first push after migration 0017 also records FS-Quiz's answer ID on every option.
+
+---
+
+## 3. Roll back
+
+```bash
+deploy/deploy.sh prod v0.2.3      # any earlier release tag
+```
+Migrations are written expand/contract, so the previous release works with the newer schema. When the database is already ahead of the older image (the bad release added a migration the older image doesn't know), `deploy.sh` skips the migration step instead of failing; that is safe by the expand/contract rule. It checks first that the database really is ahead: it recorded, when the newer release was deployed, the revision it is at and every migration of the older image with the same code ([`deploy_migrations`](data-model.md#deploy_migrations)). A revision it can't place that way stops the deploy ([2.2](#22-when-a-deploy-fails)). The limits: databases migrated before this record existed (the first deploy with it records the chain), and a restore, whose own migration step isn't recorded until the next deploy. Everything else runs as in a deploy, including the pre-deploy dump.
+
+Roll back first. Only if data must also be undone, restore the dump taken just before the bad release (`quiz-<date>-<time>-pre-<tag>.dump`, [section 4](#4-backups-and-restore)) afterwards. In that order, the dump is at the schema of the release you are back on: the restore replaces the whole schema, so the bad release's tables go too, and there is nothing to migrate. Everything since that dump is lost; announce it.
+
+---
+
+## 4. Backups and restore
+
+- **Nightly** at 03:30 Madrid time (a time that exists on daylight-saving nights) the `backup` service writes a `pg_dump` (custom format) to the `backups` volume as `quiz-<date>-<time>-nightly.dump` and deletes dumps older than 14 days, even when that night's dump failed. **Before every deploy** `deploy.sh` takes one more, and **before every restore** `restore.sh` takes a safety dump (`...-pre-restore.dump`); both are kept 14 days like the others. Script: `deploy/db/backup.sh`.
+- **Hetzner** also snapshots the whole server daily (7 kept).
+- If `BACKUP_HEARTBEAT_URL` is set, each successful dump (nightly and pre-deploy) pings it; the monitor alerts when a ping is missing. The `backup` container reaches the internet only for this, through its own `egress` network; `db` stays on the internal network. A ping that fails is logged as `backup: heartbeat ping failed`, and the dump is kept.
+
+```bash
+deploy/restore.sh prod                                   # list dumps
+deploy/restore.sh prod quiz-20261003-033000-nightly.dump # restore (asks you to type the environment name)
+```
+What `deploy/restore.sh` does, in order:
+1. Checks the arguments, the `.env` file, its permissions and its `QUIZ_ENV`, as `deploy.sh` does.
+2. Reads the dump's schema revision and asks the deployed image whether it knows it. A dump taken on a newer release than the one deployed (after a roll back, for example) is refused: deploy that release first, or pick an older dump. Nothing has changed at this point.
+3. Asks you to type the environment name. From here on the restore runs on its own, logging to
+   `/srv/quiz/<env>/restore-<date>-<time>.log`, and your terminal only follows that log: a dropped SSH session, Ctrl-C
+   or closing the terminal stops the view, not the restore. Reconnect and follow it again with
+   `tail -f /srv/quiz/<env>/restore-*.log`; its last line says how it ended. A second restore, or a deploy, is refused while one runs (and a restore while a deploy runs).
+4. Stops `api` and `scheduler` and takes a safety dump of the current data, `quiz-<date>-<time>-pre-restore.dump`.
+5. In **one transaction**: drops the `public` schema with everything in it, recreates it, loads the dump as `migrator` (tables, data, and the grants the dump carries), re-applies `deploy/db/roles.sql` and marks the schema with a comment, `restored from <file> over <safety dump>`. Tables that newer migrations created don't survive, and the privileges end up exactly as in a freshly migrated database (`app_rt` still can't rewrite `audit_log`). If anything fails, the transaction rolls back and the data is as it was.
+6. Runs `alembic upgrade head` as `migrator`: an older dump is brought up to the deployed release.
+7. Starts `api` and `scheduler` again.
+
+If anything fails from step 4 on, it prints `restore: FAILED, see above`, waits for the database to finish whatever it was still doing, and reads the schema comment to tell whether the dump was loaded. It then says which of three states you are in (the last rows below): it never starts the app on a dump the deployed release hasn't migrated.
+
+| The script stopped at | What state you're in | What to do |
+|---|---|---|
+| `QUIZ_ENV ...`, `must be chmod 600`, `no dump named`, `invalid dump file name` | Nothing changed | Fix the argument or the file |
+| `can't read <file>: is it complete?` | Nothing changed | The file is truncated or damaged (a full disk during the dump?). Pick another dump |
+| `... which <tag> doesn't know` | Nothing changed | Deploy the release the dump was taken on (or a later one), or pick an older dump |
+| The safety dump | The app was stopped and started again; nothing else changed | `df -h`; `docker logs quiz-<env>-backup-1` |
+| `a restore of <file> ... is already running` or `a deploy of <tag> ... is already running` | Nothing changed | Follow it with the log it names. If none is running (`ps aux \| grep -E 'deploy\|restore'`, after a reboot for example), `rm -r /srv/quiz/<env>/operation.lock` |
+| `FAILED`, then `<file> was not loaded: the data is as it was` | The transaction rolled back; the app is running again | Read the error. `role "..." does not exist` means the dump grants something to a role this database doesn't have |
+| `FAILED`, then `<file> was loaded and migrated to <tag>` | The data is the dump's, migrated; the app is running | Read the cause on the `FAILED` line (an error above it, or `stopped by SIGTERM`); check the site |
+| `FAILED`, then `the database holds <file>, not migrated to <tag>; the app stays stopped` | The data is the dump's at its old revision; the app is stopped so it doesn't serve errors | Fix the error (a wrong `MIGRATOR_PASSWORD`, a failing migration), then `deploy/deploy.sh <env> <tag>`: it migrates and starts the app. Or go back by restoring the safety dump it names |
+| The restore process itself was killed (`kill -9`, a server reboot) mid-way | Unknown until you look | `rm -r /srv/quiz/<env>/operation.lock`, which the killed restore left behind; then `deploy/deploy.sh <env> <deployed tag>` migrates whatever is there and starts the app. Which data you have: `docker exec quiz-<env>-db-1 psql -U postgres -d quiz -tAc "SELECT obj_description('public'::regnamespace, 'pg_namespace')"` names the last dump restored |
+
+To undo a restore, restore its safety dump the same way.
+
+**Restoring brings back accounts deleted since the dump.** Before restoring, list them: `SELECT target, at FROM audit_log WHERE action = 'user.delete' AND at > '<dump time>';`. After restoring, delete those accounts again from Admin.
+
+### 4.1 Restore drill
+
+Once per term, and whenever the restore procedure changes: copy a prod dump into the staging volume and restore it there. Staging must run a release at least as new as prod (it normally does); otherwise the script refuses the dump.
+```bash
+docker cp quiz-prod-backup-1:/backups/<file> /tmp/<file>
+docker cp /tmp/<file> quiz-staging-backup-1:/backups/<file> && rm /tmp/<file>
+time deploy/restore.sh staging <file>
+curl -s https://quiz-staging.iscracingteam.com/readyz     # {"status":"ok"}
+```
+Sign in on staging and open the leaderboard. Note how long it took (the target is 2 hours for prod, [architecture](architecture.md#targets)) and the date in [handover.md](handover.md#status).
+
+Staging now holds real member data. Put it back by restoring the safety dump the drill took (`deploy/restore.sh staging` lists it as `...-pre-restore.dump`), then delete the two dumps that hold prod data, the copied one and the safety dump the put-back took: `docker exec quiz-staging-backup-1 rm /backups/<file> /backups/<newest ...-pre-restore.dump>`.
+
+**Offsite copy:** none yet. If the team decides on a Hetzner Storage Box, add a nightly `rsync` of the backups volume.
+
+---
+
+## 5. Everyday operations
+
+| Task | Command |
+|---|---|
+| Status and health | `docker ps --filter name=quiz-` (api, scheduler and db show `healthy`; api and scheduler turn `unhealthy` when they can't reach the database) |
+| Is the site up | `curl -sI https://quiz.iscracingteam.com/healthz` (the app process answers), then `curl -s https://quiz.iscracingteam.com/readyz` (`{"status":"ok"}`: it reaches the database too and the schema has what the code needs; 503 `unavailable`: it doesn't reach it; 503 `schema out of date`: a migration is missing; see the api's log) |
+| Database shell (read-only) | `docker exec -it quiz-prod-db-1 psql -U backup_ro -d quiz` |
+| Database shell (superuser, for fixes) | `docker exec -it quiz-prod-db-1 psql -U postgres -d quiz` |
+| Disk used by the app | `docker system df -v \| grep quiz-` and `df -h` |
+| Deployed version | `cat /srv/quiz/prod/deployed-tag`; history in `/srv/quiz/prod/deploy-history` |
+| Password reset link from the server (an admin locked out) | `docker exec quiz-prod-api-1 ifs-tests reset-link --email <their email>` (valid 24 h) |
+| Invite link from the server | `docker exec quiz-prod-api-1 ifs-tests invite --role admin --note "<who it's for>"` (valid 7 days) |
+
+The two link commands need an active admin account to exist (they act in its name). If none exists any more, create one with `create-admin` ([section 1.5](#15-first-deploy-of-an-environment)). Send links privately: anyone holding one can use it.
+
+- The server reboots itself at 04:00 when security updates need it. Containers restart on their own; the nightly jobs run earlier (daily questions 00:01, maintenance 03:00, backup 03:30).
+- Logs rotate automatically (3 × 10 MB per container).
+- **Database connections** are budgeted against Postgres's `max_connections=40` (3 reserved for the superuser): each app process opens at most `IFS_DB_POOL_SIZE` + `IFS_DB_MAX_OVERFLOW` connections, 5 + 5 by default, and the scheduler is set to 2 + 0 in `deploy/compose.yaml`. The api's 2 workers (20), the scheduler (2), one `ifs-tests` command run alongside with `docker exec` or `compose run` (10), a migration (1) and the backup (1) make 34 of 37. So run one such command at a time; if you raise a pool size, recount in the comment above `max_connections` in `deploy/compose.yaml`.
+- The api and scheduler run with `TZ=Europe/Madrid`, the backup too; the database keeps UTC (`timezone=UTC`).
+- Neither the app nor Nginx keeps an access log for the quiz: `quiz.conf` turns it off and keeps only critical errors, so the privacy page can say no IP addresses are recorded. `docker logs isc-web` holds the website's own lines only.
+
+### 5.1 Logs
+
+```bash
+docker logs --since 24h quiz-prod-api-1
+docker logs --since 24h quiz-prod-scheduler-1
+docker logs --since 3d quiz-prod-backup-1
+docker logs -f quiz-prod-api-1          # follow live
+```
+
+| Container | What it writes |
+|---|---|
+| api | Start-up, errors with tracebacks, warnings from a bank push (`image ...` for images that couldn't be converted). No line per request |
+| scheduler | `scheduler: daily@00:01, maintenance@03:00` at start; `daily: {...}` and `maintenance: {...}` with what each job did; `<job> failed` with a traceback. Times in Madrid time (`TZ=Europe/Madrid`, as for the api) |
+| backup | `backup: daily at 03:30 <zone>` at start; `backup: /backups/<file>` per dump; `backup: FAILED, no heartbeat sent` on a failed dump; `backup: heartbeat ping failed` when the dump worked but the monitor couldn't be reached. Times in Madrid time |
+| db | PostgreSQL's own log |
+
+### 5.2 Did the nightly jobs run?
+
+1. Read the scheduler's log for the night:
+   ```bash
+   docker logs --since 30h quiz-prod-scheduler-1 | grep -E "daily|maintenance"
+   ```
+   A healthy night shows one `daily: {'mech': ..., 'elec': ..., 'rules': ...}` line and one `maintenance: {...}` line with a count per step (the keys and what each means: [maintenance calendar](maintenance.md#nightly-automatic)). A `maintenance failed` line with a traceback means the job stopped at that step; most steps commit as they go, so what ran before it stays done, and the next run (it is idempotent) picks up the rest.
+2. The container's health (`docker ps`) only says the scheduler loop is alive and reaches the database (it touches a heartbeat file every 30 s, only after a `SELECT 1` succeeds; otherwise it logs `database unavailable: ...` and turns `unhealthy` a few minutes later); it doesn't say a job succeeded. A job that fails is logged and not retried until the next day or the next restart.
+3. The jobs keep no record in the database. Indirect checks: today's daily questions exist (`SELECT area, question_id FROM daily_questions WHERE day = (now() AT TIME ZONE 'Europe/Madrid')::date;`, though the first visitor of the day also picks them), and retention deletions appear in the audit log as `user.delete` with `"by": "retention"`.
+
+### 5.3 Run the maintenance by hand
+
+```bash
+docker exec quiz-prod-scheduler-1 ifs-tests maintenance
+```
+Runs the whole nightly job now and prints the counts. It is idempotent and safe at any time. To run both the daily pick and the maintenance, restart the scheduler instead: `docker restart quiz-prod-scheduler-1`.
+
+### 5.4 Personal data requests
+
+- **Someone asks for their data or to be deleted and can't sign in** (alumni and disabled accounts can't): Admin → their row → *Download their data* (a JSON file; send it privately) or *Delete account* and type their name. Deletion is immediate; backups drop it within 14 days. Members who can sign in do both from Profile → *Your data*.
+- After a restore, delete again the accounts deleted since the dump ([section 4](#4-backups-and-restore)).
+
+### 5.5 Live quiz capacity
+
+A live quiz with the whole team is the heaviest thing the api does: every screen holds an event stream and fetches
+the state after each change. Measured on 2026-09-25 on a local stack with the `deploy/compose.yaml` limits (api 1 CPU,
+512 MiB, 2 workers, pool 5 + 5; db 1 CPU, 768 MiB), no Nginx, the sample bank: 80 players seated by sub-department at
+21 tables plus host and projector, 30-second questions, everyone but the captains proposing 1 to 3 times, captains
+answering 20 to 27 seconds in. The probe fetches like the old web client (a 5-second poll on top of the stream), so it
+overstates the load a little. The same script ran against the previous release and this one back to back, twice each;
+other heavy jobs shared the machine, so compare the two columns rather than the absolute numbers, and expect the
+server's vCPUs to be somewhat slower.
+
+| | Previous release | This release |
+|---|---|---|
+| State fetch p50 / p95 / max | 1.4–1.5 s / 2.5–2.8 s / 4.3–6.3 s | 7 ms / 18–19 ms / 0.5–0.6 s |
+| Captain's answer p95 / max | 3.0–3.3 s / 9.3–11.0 s | 20 ms / 32–45 ms |
+| Proposal p95 | 2.2–2.4 s | 20 ms |
+| api CPU, median of the run | 101 % (saturated) | 23–24 % |
+| 81 open streams, nothing else happening | 25–32 % CPU | 2–3 % CPU |
+| The answer that closes a question and shares a room's XP | 0.2 s idle (4–13 s under load) | 8 ms (XP shared after the response) |
+| 82 state fetches at once (one per screen) | 1.4 s | 0.5–0.6 s |
+| 200 state fetches at once | 3.3 s | 1.1–1.4 s |
+
+XP was granted exactly once in every run. What changed: a proposal wakes only its table's screens, each worker reads a
+session once for all its streams, the state every screen shares is built once per change, and XP is shared after
+responding ([architecture](architecture.md#live-quiz-at-the-system-level)). The first requests after a start also no
+longer open more database connections than the pool allows (they used to fail with "too many clients" when a room
+arrived at a freshly started api).
+
+**Headroom:** a full meeting leaves the api at about a quarter of its CPU, so `cpus: 1.0` is enough and the limits stay
+as they are. If meetings grow or the server's vCPUs turn out much slower, raise the api to `cpus: 2.0` in
+`deploy/compose.yaml`: before these changes the red team measured that this roughly halves latency under saturation.
+The server is a Hetzner CX33 shared with the team's other apps ([handover](handover.md)), so agree it with the server
+consultant first. Nginx's per-address caps (160 streams, 160 requests in flight) fit 80 people; for more people behind
+one campus address raise both in `deploy/nginx/quiz.conf`.
+
+
+### 5.6 Leaderboard and data export capacity
+
+The red team's probe (`perf/burst.py`: 60 signed-in members open the leaderboard and the vertical board within 2 s)
+on a local stack with the `deploy/compose.yaml` limits and the red team's seeded season of play (71 accounts, 103k
+answers), then grown to three seasons (309k). Previous release and this one back to back; the machine was shared
+with other heavy jobs, so compare columns rather than absolute numbers. p95 of the leaderboard / vertical board:
+
+| | Previous release | This release |
+|---|---|---|
+| One season, September | 215–405 ms / 200–486 ms, database CPU saturated | 17–21 ms / 10–11 ms, database CPU under 11 % |
+| Three seasons, September | 2.8–3.2 s / 2.1–3.2 s | 11–24 ms / 7–21 ms |
+| Three seasons, a full season into the current one (August) | 3.7–4.0 s / 3.3–3.6 s | 14–17 ms / 10–11 ms |
+| Area and 7-day boards, one season, September | 195–259 ms | 10–12 ms |
+| Area and 7-day boards, three seasons, September | 2.9–3.1 s | 20–32 ms |
+| Area and 7-day boards, a full season into the current one (worst case: the whole season fell in the 7 days too) | 3.4–4.6 s | 90–183 ms in the fix's own run, not reproduced: 0.5–0.8 s in the independent verification with two such boards per member (see below) |
+
+The boards used to add up every answer ever given on each view. Now they read each member's play in the period
+through an index ([data-model](data-model.md#attempts)), so the cost follows the season, not the history. The
+database runs without JIT compilation (`jit=off` in `deploy/compose.yaml`): late in a season Postgres compiled the
+area boards' sums on every view, which took two thirds of their time (with JIT on, those boards stayed at 2.5–3.3 s
+in the last row).
+
+Those sums still grow with the season: at the end of one, a view of an area or 7-day board costs about 15–20 ms of
+database time, so 60 members opening two such boards within 2 s saturate the database's one CPU and the views queue.
+Each api worker now keeps each of those boards' sums for 30 s (`BOARD_TTL` in `services/leaderboard.py`, one sum at a
+time per worker), so a room opening a board adds them up once per worker; every view still reads the viewer's own
+LP, names, opt-outs and who is active. The price is that other members' LP on those boards can be up to 30 s old
+([game-rules](game-rules.md#6-leaderboards)); the ranked board and the vertical board are still read on every view.
+Measured on a local stack with the same limits, the red team's seeded season grown to three (298k answers) and moved
+on so the newest whole year (99k answers) falls in the current season: the end-of-season worst case. The same
+`burst.py`, each burst after 35 s idle so it starts with nothing kept; previous release and this one back to back,
+p95:
+
+| 60 members within 2 s, each opening | Previous release | This release |
+|---|---|---|
+| The mech and elec season boards | 1.4–2.4 s (5 runs), 33–46 s of database time per burst | 12–21 ms (3 runs), 0.2 s |
+| One area season board | 29–36 ms | 16–17 ms |
+| The 7-day board and the mech 7-day board (the whole season in the 7 days) | 25–494 ms | 14–20 ms |
+| Mech, elec and rules season boards and the 7-day board | 1.5–3.6 s | 14–20 ms |
+| The ranked board and the vertical board (unchanged) | 13–15 / 8–10 ms | 15 / 9–10 ms |
+
+Every board as each of the 60 members sees it came out byte for byte the same from both releases, also with 5 of them
+opted out and 2 made alumni.
+
+A data export holds one member's whole history in memory. Measured with the red team's `perf/export_mem.py` (the
+heaviest members' exports, 8.6 MB of JSON each at three seasons) on the api container (512 MiB; 176 MiB at rest):
+
+| | Previous release | This release |
+|---|---|---|
+| 6 exports, one season: peak / held 20 s later | 292 / 284 MiB | 227 / 214 MiB |
+| 6 exports, three seasons: peak / held | 494 / 415 MiB, 2.2 s each at worst | 303 / 247 MiB, 1.1 s |
+| 12 at once, three seasons | 512 MiB (the limit), 282 MiB pushed to swap | 325 / 246 MiB; 4 served, 8 told to try again (429) |
+
+An export now reads only the columns it shows, in batches, each question's text once, and writes the JSON straight
+to bytes. Each api process prepares at most two at once and answers 429 ("Another download is being prepared. Try
+again in a minute.") to more, because Nginx lets one address send a burst of 80 to that path. The api also has
+`memswap_limit` equal to its memory limit: if it ever goes past it, the kernel stops a worker (uvicorn starts a new
+one; its live streams reconnect) instead of the whole api slowing down in swap. Exports are rare: if members ever see
+that 429 in normal use, raise `EXPORTS_AT_ONCE` in `services/privacy.py` and check the memory with the probe.
+
+---
+
+## 6. Incidents
+
+1. **Say so.** Tell the other maintainers and, if members are affected, the team (the channel the team uses for announcements).
+2. **Find what's broken:**
+   - Site down: `curl -sI https://quiz.iscracingteam.com/healthz` and `curl -s https://quiz.iscracingteam.com/readyz`, then `docker ps --filter name=quiz-`, then the api's logs. `/healthz` fine but `/readyz` 503: the app can't reach the database (is `quiz-prod-db-1` running? does `APP_PASSWORD` match the role?). If the containers are healthy but the site isn't reachable, it's Nginx, the certificate or DNS: call the consultant.
+   - Broken right after a deploy: roll back ([section 3](#3-roll-back)) first, investigate afterwards.
+   - Disk full: `df -h`, `docker system df`. Old dumps are pruned automatically; ask the consultant before deleting anything else.
+   - Wrong scores or data after a release: roll back; if data must be undone, restore the pre-deploy dump (everything since is lost; announce it).
+   - Nightly jobs not running: [section 5.2](#52-did-the-nightly-jobs-run).
+3. **Suspected breach** (leaked `.env`, someone acting as an admin who isn't):
+   - Keep the evidence: save the logs (`docker logs quiz-prod-api-1 > ~/incident-api.log`) and the audit log (Admin shows it).
+   - Sign everyone out: in the superuser shell, `DELETE FROM sessions;`.
+   - Rotate the database passwords ([section 7](#7-secrets-rotation)); demote or disable the account involved from Admin.
+   - Tell the board at once: a personal data breach may have to be reported to the Spanish data protection authority (AEPD) within 72 hours (GDPR article 33). The board decides.
+4. **Write it down** afterwards in a GitHub issue: what happened, when, the impact, the fix, and what changes so it doesn't happen again (usually a `fix/` branch, and a line in [troubleshooting](troubleshooting.md)).
+
+---
+
+## 7. Secrets rotation
+
+Rotate the database passwords when a maintainer with server access leaves, and yearly otherwise ([maintenance calendar](maintenance.md#every-year)). Set each one inside `psql`, so it never lands in the shell history or the process list:
+```bash
+openssl rand -hex 24                                     # the new password; copy it
+docker exec -it quiz-prod-db-1 psql -U postgres -d quiz
+# in psql:  \password app_rt      (paste it twice), then \q
+```
+Then put it in `/srv/quiz/prod/.env`:
+
+| Role | `.env` variable | Used by |
+|---|---|---|
+| `app_rt` | `APP_PASSWORD` | api and scheduler |
+| `migrator` | `MIGRATOR_PASSWORD` | migrations and restores |
+| `backup_ro` | `BACKUP_PASSWORD` | backup service |
+| `postgres` | `POSTGRES_PASSWORD` | only when the volume is first created; rotate it with `\password postgres` all the same |
+
+Finally redeploy the same tag, which recreates every container whose settings changed: `deploy/deploy.sh prod $(cat /srv/quiz/prod/deployed-tag)`. The `db` service receives all four passwords in its environment (for first-time set-up), so changing any of them recreates the database container too: a short outage of a few seconds while Postgres restarts on the same volume. The api reconnects by itself. If `APP_PASSWORD` in `.env` doesn't match what you set in `psql`, the deploy fails at `readyz` ([section 2.2](#22-when-a-deploy-fails)): fix whichever is wrong and deploy again. Do it outside a live quiz. Update the copy in the password manager. Same for staging.
+
+There is one more secret, inside the database: the `hint_salt` row of the `settings` table, created automatically. It draws hints, the daily question and critical hits. It needs no rotation; changing it would change every hint and the next daily draws.
+
+---
+
+## 8. Every September and every handover
+
+The season rollover, newcomers, leavers and the yearly checks are in the [maintenance calendar](maintenance.md#every-september). Handing over server and GitHub access is in [handover.md](handover.md#the-handover-procedure).
