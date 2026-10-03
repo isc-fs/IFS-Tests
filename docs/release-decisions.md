@@ -32,7 +32,7 @@ Stage C (the server admin, the website's maintainer, DNS) runs alongside; its st
 
 **Lands in:** `web/src/routes/About.tsx`, [security](security.md), [ADR 0006](adr/0006-personal-data.md) Consequences (as answered).
 
-**Decided:** 2 October 2026, the board: the association, ISC, represented by its board, is responsible for the data. Still needed (3 October): a role address for data requests (the president's contact is the likely one; a shared address such as a board mailbox is better than a personal one in a public notice). The privacy page changes once it's known.
+**Decided:** 2 October 2026, the board: the association, ISC, represented by its board, is responsible for the data. 3 October: its address (Calle de Alberto Aguilera, 23, Madrid) and `direccion.isc@clubisc.com` for data requests, both on the privacy page from `v1.0.0`. The president isn't named on the page: the notice identifies the association, and a role address doesn't go stale.
 
 ## B2. A data processing agreement with Hetzner
 
