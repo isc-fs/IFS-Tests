@@ -6,7 +6,7 @@ How MingoQuiz goes from `dev` to its first release, `v1.0.0`, running in prod on
 
 ---
 
-**Where the release stands (3 October 2026).** Stage A is done. Stage B is answered apart from the contact address for data requests (B1) and the first admins and reviewers (B5, after deployment). Stage C is done on the server apart from the website's hook (C.4), which `deploy/nginx.sh` (C.7) waits on. Stage D has started: staging runs `sha-6aa8a87d1248` with the bank loaded, and the roll back, restore drill and maintenance passed (the table in stage D). Nothing is in prod. The checklist is kept in issue #89.
+**Where the release stands (3 October 2026, morning).** Stages A and C are done: `https://quiz-staging.iscracingteam.com` is live behind the website's Nginx, which is unchanged for the website ([ADR 0009](adr/0009-website-hook-as-compose-override.md)). Stage B is answered apart from the contact address for data requests (B1) and the first admins and reviewers (B5, after deployment). Stage D is under way (the table in stage D): what's left is the browser smoke test, a live quiz with phones and the reboot test. Nothing is in prod. The checklist is kept in issue #89.
 
 ## 1. Where we start (1 October 2026)
 
@@ -53,7 +53,7 @@ A stand-in built from that exact `site.conf`, the same mounts and the hook passe
 
 | The repository assumes | Where | How to check | If it's false |
 |---|---|---|---|
-| `isc-web` mounts `/srv/quiz/nginx`, includes `/etc/nginx/quiz/*.conf` at the end of `site.conf` and joins `proxy` | [runbook 1.3](runbook.md#13-network-nginx-and-dns), step 3 | **(website)** the change is merged; then the `docker inspect` checks in step 3 | `deploy/nginx.sh` refuses or warns, naming the missing part |
+| `isc-web` mounts `/srv/quiz/nginx`, loads `/etc/nginx/quiz/*.conf` after the website's own configuration and joins `proxy` | [runbook 1.3](runbook.md#13-network-nginx-and-dns), step 3 | **(website)** the change is merged; then the `docker inspect` checks in step 3 | `deploy/nginx.sh` refuses or warns, naming the missing part |
 | The `proxy` network exists with `10.213.0.0/24` | `docker network create --subnet` | **Settled (3 October):** `proxy`, `10.213.0.0/24`, not internal | — |
 | Outbound HTTPS is open | Pulling from `ghcr.io`; the bank mirror (`api.fs-quiz.eu`); the backup heartbeat | **Settled (scan, 2 October):** `ghcr.io`, `api.fs-quiz.eu`, `hc-ping.com` and `github.com` all answer from the server | — |
 | Room for both stacks | Limits in `deploy/compose.yaml`: about 1.8 GiB and 2.5 CPUs per environment | **Settled (scan, 2 October):** 15 GiB of RAM (14 GiB available) and 8 vCPUs, with only the website running | — |
@@ -123,10 +123,10 @@ The server is known now (section 2): the quiz sits behind the website's containe
 | C.1 | A Linux account in the `docker` group for each quiz maintainer | Server admin | [1.1](runbook.md#11-access-consultant) | Account `webo` exists (SSH key, password and 2FA, in `sudo`, in `AllowUsers`; **expires 31 December 2026**: renew before). **Not in `docker`**: `sudo usermod -aG docker webo` |
 | C.2 | `/srv/quiz/{staging,prod,nginx}`, the checkout in `/srv/quiz/repo`, both `.env` files (`chmod 600`, fresh passwords, `FORWARDED_ALLOW_IPS=10.213.0.0/24`) | Server admin, then maintainer | [1.1](runbook.md#11-access-consultant), [1.2](runbook.md#12-code-and-secrets-maintainer) | Folders exist, **owned by `presidencia`** (`sudo chown -R webo:webo /srv/quiz`); no checkout or `.env` yet |
 | C.3 | The `proxy` network: `docker network create --subnet 10.213.0.0/24 proxy`, **before C.4** (the website's deploy fails while its compose file names a network that doesn't exist) | Maintainer | [1.3](runbook.md#13-network-nginx-and-dns), step 1 | **Done:** `proxy`, `10.213.0.0/24`, not internal (3 October scan) |
-| C.4 | The hook in the website's repository: one volume, the `proxy` network, and the `include` as the last line of `site.conf` | Website maintainer | [1.3](runbook.md#13-network-nginx-and-dns), step 3 | **Not merged yet** (`isc-web` mounts neither `/srv/quiz/nginx` nor joins `proxy`); safe to push now that `proxy` exists |
+| C.4 | The hook: `/srv/isc-web/docker-compose.override.yml` (a Compose override the website's deploy keeps and applies; [ADR 0009](adr/0009-website-hook-as-compose-override.md)), not a change to the website's repository | Maintainer (`sudo`) | [1.3](runbook.md#13-network-nginx-and-dns), step 3 | **Done (3 October):** checked with `docker compose config` and `nginx -t` in a throwaway container, applied with `docker compose up -d` (the website down about a second) |
 | C.5 | DNS at Arsys: `A` records `quiz` and `quiz-staging` → `46.62.206.29`, kept in the move to Squarespace | Whoever holds the Arsys panel | [1.3](runbook.md#13-network-nginx-and-dns), step 4 | **Done:** both resolve to `46.62.206.29` |
 | C.6 | The certificate, by webroot with the reload hook, after C.5 resolves | Server admin | [1.3](runbook.md#13-network-nginx-and-dns), step 5 | **Done:** `quiz.iscracingteam.com` for both names, until 31 December 2026, webroot `/srv/isc-web/certbot-www`, `renew_hook` reloads `isc-web` |
-| C.7 | `deploy/nginx.sh` | Maintainer | [1.3](runbook.md#13-network-nginx-and-dns), step 6 | Waits on C.1, C.2, C.4, and #105 on `dev` (the server's checkout needs the script) |
+| C.7 | `deploy/nginx.sh` | Maintainer | [1.3](runbook.md#13-network-nginx-and-dns), step 6 | **Done (3 October):** `https://quiz-staging.iscracingteam.com/readyz` answers `ok` with a valid certificate; the website, its redirects, its certificate and the bare IP unchanged; no log line for the quiz's requests |
 | C.8 | Remaining checks: Hetzner backups on; the prod `.env` in the password manager | Server admin, maintainer | section 2 | Outbound HTTPS and room: **done**. Backups: to confirm in the Hetzner Console |
 
 A second, `sudo` scan on 3 October (`~/mingoquiz-scan.sh` on the server, read-only) confirmed everything ADR 0008 assumes: `isc-web` with Nginx 1.27.5 and a valid configuration, `/etc/letsencrypt` and `/var/www/certbot` mounted, port 80 as `default_server`, `ufw` allowing only 22, 80 and 443 in and everything out, Docker 29.7.2 with Compose v5.5.1, the 04:00 automatic reboot on, SSH by key plus password and 2FA.
@@ -155,8 +155,8 @@ Rehearse the whole release on staging with the commit that will become `v1.0.0`.
 |---|---|
 | D.1 First deploy | **Done:** `sha-6aa8a87d1248`, migrations 0001–0024, smoke test 6/6, about 1 minute |
 | D.2 Admin and bank | **Done:** one admin; 1,063 questions in 121 quizzes (80 ungraded, 20 hidden), 504 API calls and 374 images in 9 minutes; three solution images FS-Quiz answered 500 for |
-| D.3 Smoke from a browser | Waits on the website's hook (C.4) and `deploy/nginx.sh` (C.7) |
-| D.4 Live quiz with phones | Waits on C.4 and C.7 |
+| D.3 Smoke from a browser | Ready: `https://quiz-staging.iscracingteam.com` is up; the maintainer signs in and runs the list in step 3 |
+| D.4 Live quiz with phones | Ready; needs a team meeting |
 | D.5 Roll back and forward | **Done:** to `sha-1584a29e8d38` and back, 56 s and 52 s, smoke test 6/6 both ways. Each listed the `deploy/nginx.sh` step, since the older image has no `quiz.conf` (expected, runbook 2) |
 | D.6 Restore drill | **Done:** staging's own pre-deploy dump restored in 51 s (target 2 hours); users, questions and quizzes as before; the safety dump kept |
 | D.7 Maintenance by hand | **Done:** every step ran, all counts 0 on an empty staging |
@@ -220,8 +220,8 @@ A  [x] CI green on dev (leaderboard tests)    [x] sweep 2 blockers merged   [x] 
    [x] GHCR package public  [x] version 1.0.0 in pyproject.toml
 B  [ ] controller + contact on /privacy  [x] Hetzner DPA  [x] IP log promise: no quiz access log (B7)
    [x] offsite copy decided (deferred)  [x] alerts to the MingoQuiz maintainer (set up in D)  [ ] 2 admins + 2 reviewers named  [x] TD scoring answers (after deployment)
-C  [ ] maintainers in docker group  [ ] /srv/quiz + .env files  [x] proxy network  [ ] website hook merged
-   [x] DNS quiz + quiz-staging at Arsys  [x] certificate  [ ] deploy/nginx.sh  [ ] section 2 checks  [ ] prod .env in password manager
+C  [ ] maintainers in docker group  [ ] /srv/quiz + .env files  [x] proxy network  [x] website hook (override, ADR 0009)
+   [x] DNS quiz + quiz-staging at Arsys  [x] certificate  [x] deploy/nginx.sh  [ ] section 2 checks  [ ] prod .env in password manager
 D  [x] first staging deploy  [x] bank loaded  [ ] smoke  [ ] live quiz load test  [x] roll back/forward
    [x] restore drill (51 s)  [x] maintenance by hand  [ ] nightly backup + heartbeat  [ ] reboot test
 E  [ ] release notes  [ ] dev -> main merged, CI green  [ ] v1.0.0 tagged and published  [ ] GitHub release

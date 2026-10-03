@@ -201,10 +201,16 @@ These look like bugs to users and reviewers. They aren't; point people here or t
 
 ### `deploy/nginx.sh` refuses or warns
 
-- **`doesn't mount /srv/quiz/nginx at /etc/nginx/quiz`:** the website's `docker-compose.yml` lacks the hook, or its last deploy failed (the website keeps serving its previous version when a build fails: `journalctl -u isc-web-deploy -n 50`). See [runbook 1.3](runbook.md#13-network-nginx-and-dns), step 3.
+- **`doesn't mount /srv/quiz/nginx at /etc/nginx/quiz`:** `/srv/isc-web/docker-compose.override.yml` is missing, or `isc-web` was recreated without it. Check the file exists, that the website's deploy still runs `docker compose` without `-f` and doesn't clean untracked files (`cat /usr/local/bin/isc-web-autodeploy`), and that its last deploy didn't fail (`journalctl -u isc-web-deploy -n 50`). See [runbook 1.3](runbook.md#13-network-nginx-and-dns), step 3, and [ADR 0009](adr/0009-website-hook-as-compose-override.md).
 - **`isn't running`:** `isc-web` is down, so the website is too: `cd /srv/isc-web && docker compose ps`, then the website's own procedure.
 - **`Nginx rejected the new quiz.conf`:** the lines above it are `nginx -t`'s error. Nothing changed for the website or the quiz. A missing certificate (`cannot load certificate`) means step 5 of runbook 1.3 hasn't run; otherwise fix `deploy/nginx/quiz.conf` in a pull request.
-- **Warning `doesn't include /etc/nginx/quiz/*.conf yet`:** the file is in place but the website's Nginx configuration lacks the `include` line (runbook 1.3, step 3). The quiz isn't served until it's added.
+- **Warning `doesn't include /etc/nginx/quiz/*.conf yet`:** `quiz.conf` is in place but `isc-web` doesn't load it: `/srv/quiz/isc-web-include.conf` is missing or not mounted as `conf.d/zz-quiz.conf` (runbook 1.3, steps 2 and 3). The quiz isn't served until it is.
+
+### The quiz is unreachable but the website works
+
+- **Symptom:** `https://quiz-staging.` or `https://quiz.iscracingteam.com` answers with the website, or `502`, while `docker ps` shows the quiz's containers healthy.
+- **Cause:** `isc-web` lost the quiz's hook: a website deploy recreated it without `/srv/isc-web/docker-compose.override.yml` (the file was deleted, the deploy started naming its compose file with `-f`, or the website's repository gained a file with that name). `502` alone, with the hook in place, means the quiz's api is down.
+- **Fix:** `docker inspect isc-web -f '{{range .Mounts}}{{.Destination}} {{end}}'` must list `/etc/nginx/quiz` and `/etc/nginx/conf.d/zz-quiz.conf`. If not, restore the override ([runbook 1.3](runbook.md#13-network-nginx-and-dns), step 3), run `docker compose up -d` in `/srv/isc-web`, then `deploy/nginx.sh`, and tell the website's maintainer.
 
 ### The quiz is down for a few seconds now and then, the website too
 

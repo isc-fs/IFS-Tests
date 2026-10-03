@@ -3,10 +3,11 @@
 #
 #   deploy/nginx.sh
 #
-# The website's container (isc-web) owns ports 80 and 443 and mounts <QUIZ_ROOT>/nginx at /etc/nginx/quiz,
-# whose *.conf it includes. This copies the checkout's quiz.conf there, has Nginx test the whole configuration,
-# and reloads it; if the test fails it puts the previous file back, so a bad quiz.conf never reaches the
-# website. Run it from a checkout of the repo on the server, after `git pull`, whenever deploy.sh says so.
+# The website's container (isc-web) owns ports 80 and 443 and, through /srv/isc-web/docker-compose.override.yml
+# (ADR 0009), mounts <QUIZ_ROOT>/nginx at /etc/nginx/quiz, whose *.conf it includes. This copies the checkout's
+# quiz.conf there, has Nginx test the whole configuration, and reloads it; if the test fails it puts the previous
+# file back, so a bad quiz.conf never reaches the website. Run it from a checkout of the repo on the server,
+# after `git pull`, whenever deploy.sh says so.
 set -euo pipefail
 
 die() { echo "nginx: $*" >&2; exit 1; }
@@ -23,7 +24,7 @@ dest=$dir/quiz.conf
   die "the website's Nginx container $container isn't running"
 docker inspect -f '{{range .Mounts}}{{.Source}}={{.Destination}} {{end}}' "$container" |
   grep -qw -- "$dir=/etc/nginx/quiz" ||
-  die "$container doesn't mount $dir at /etc/nginx/quiz: the website's docker-compose.yml needs the change in runbook 1.3"
+  die "$container doesn't mount $dir at /etc/nginx/quiz: /srv/isc-web/docker-compose.override.yml is missing or not applied (runbook 1.3, step 3)"
 
 if [[ -f $dest ]] && cmp -s "$src" "$dest"; then
   log "quiz.conf is already the installed one; nothing to do"

@@ -44,25 +44,42 @@ Store a copy of the prod `.env` in the team's password manager, not in a shared 
 
 ### 1.3 Network, Nginx and DNS
 
-The team's website runs on the same server as the container `isc-web` (Nginx), from its own repository, and owns ports 80 and 443; the quiz sits behind it ([ADR 0008](adr/0008-behind-the-website-nginx.md)). `isc-web` is rebuilt and recreated from the website's repository on every push to it, so anything it needs from the quiz is set up once in that repository, never by hand in `/srv/isc-web`. In this order (the website's deploy fails while step 3 refers to a network that doesn't exist yet):
+The team's website runs on the same server as the container `isc-web` (Nginx), from its own repository, and owns ports 80 and 443; the quiz sits behind it ([ADR 0008](adr/0008-behind-the-website-nginx.md)). `isc-web` is rebuilt and recreated from the website's repository on every push to it, and its files in `/srv/isc-web` are reset to that repository each time, so the quiz never edits them: it adds a file of its own that the website's deploy keeps and applies ([ADR 0009](adr/0009-website-hook-as-compose-override.md)). In this order (once step 3 exists, the website's deploy fails if the `proxy` network of step 1 is missing):
 
 1. **Shared network** (maintainer, on the server). Check the subnet is free (`ip route | grep 10.213.` and `docker network inspect $(docker network ls -q) -f '{{.Name}} {{range .IPAM.Config}}{{.Subnet}}{{end}}'` show nothing in `10.213.0.0/24`), then:
    ```bash
    docker network create --subnet 10.213.0.0/24 proxy
    ```
    Both `.env` files keep `PROXY_NETWORK=proxy` and `FORWARDED_ALLOW_IPS=10.213.0.0/24` (as in `deploy/env.example`): uvicorn trusts the client address Nginx forwards only from that subnet. A subnet rather than `isc-web`'s address, because every website deploy recreates the container.
-2. **The quiz's Nginx folder** (maintainer, on the server): `mkdir -p /srv/quiz/nginx`. It stays empty until step 6; an empty folder changes nothing for the website.
-3. **The hook in the website's repository** (website maintainer, through their repository; the server picks it up within two minutes of the push). In `docker-compose.yml`, on the `web` service (container `isc-web`), add one volume and the networks, and declare `proxy` at the end:
-   ```yaml
+2. **The quiz's Nginx folder and include** (maintainer, on the server): `mkdir -p /srv/quiz/nginx` (it stays empty until step 6; an empty folder changes nothing for the website), and the one-line include `isc-web` will load after its own configuration:
+   ```bash
+   printf '%s\n' 'include /etc/nginx/quiz/*.conf;' > /srv/quiz/isc-web-include.conf
+   ```
+3. **The hook: a Compose override next to the website's compose file** (maintainer, with `sudo`, because `/srv/isc-web` belongs to `iscdeploy`). The website's deploy (`/usr/local/bin/isc-web-autodeploy`) resets its tracked files with `git reset --hard` and runs `docker compose up -d --build` without `-f`, so this untracked file survives every website deploy and is applied each time. Check that is still true before relying on it (`cat /usr/local/bin/isc-web-autodeploy`):
+   ```bash
+   sudo tee /srv/isc-web/docker-compose.override.yml > /dev/null <<'EOF'
+   # MingoQuiz (quiz.iscracingteam.com) behind this Nginx: isc-fs/IFS-Tests, ADR 0009 and runbook 1.3.
+   # Not part of the website's repository: the deploy's git reset --hard keeps it, and docker compose reads it on its own.
+   services:
+     web:
        volumes:
-         # ...the three it has (site.conf, certbot-www, /etc/letsencrypt), then:
          - /srv/quiz/nginx:/etc/nginx/quiz:ro
-       networks: [default, proxy]       # default keeps it on the network it uses today
+         - /srv/quiz/isc-web-include.conf:/etc/nginx/conf.d/zz-quiz.conf:ro
+       networks: [default, proxy]
    networks:
      proxy:
        external: true
+   EOF
    ```
-   Its `logging` (json-file, 3 × 10 MB) stays as it is. In its Nginx configuration (`site.conf` under its `deploy/nginx` folder), add as the **last** line, after every `server {}` block: `include /etc/nginx/quiz/*.conf;`. Last, so the website's blocks stay the default for requests to unknown names or to the bare IP. Then check on the server: `docker inspect isc-web -f '{{range .Mounts}}{{.Source}}={{.Destination}} {{end}}'` lists `/srv/quiz/nginx=/etc/nginx/quiz`, `docker inspect isc-web -f '{{range $n, $_ := .NetworkSettings.Networks}}{{$n}} {{end}}'` lists `proxy`, and the website still loads.
+   Before applying it, check the combined configuration and let Nginx test it in a throwaway container, without touching `isc-web`:
+   ```bash
+   cd /srv/isc-web && docker compose config      # the web service shows its three volumes plus these two, and both networks
+   docker run --rm --network none \
+     -v /srv/isc-web/deploy/nginx/site.conf:/etc/nginx/conf.d/default.conf:ro -v /srv/isc-web/certbot-www:/var/www/certbot:ro \
+     -v /etc/letsencrypt:/etc/letsencrypt:ro -v /srv/quiz/nginx:/etc/nginx/quiz:ro \
+     -v /srv/quiz/isc-web-include.conf:/etc/nginx/conf.d/zz-quiz.conf:ro isc-web:latest nginx -t
+   ```
+   Then apply it (the website is down for a second or two while `isc-web` is recreated; no rebuild): `cd /srv/isc-web && docker compose up -d`. Check `docker inspect isc-web -f '{{range .Mounts}}{{.Source}}={{.Destination}} {{end}}'` lists both mounts, `docker inspect isc-web -f '{{range $n, $_ := .NetworkSettings.Networks}}{{$n}} {{end}}'` lists `proxy`, and the website still loads. Tell the website's maintainer the file exists, and ask them to say if their deploy ever names its compose file (`-f`), cleans untracked files, or their repository gains a file with this name. To undo it: delete the file and run `docker compose up -d` there again.
 4. **DNS** (whoever holds the domain's DNS: Arsys today, `dns9`/`dns10.servidoresdns.net`): `A` records for `quiz` and `quiz-staging` pointing at `46.62.206.29`, like the website's. No `AAAA`: the website has none. When the domain moves to Squarespace Domains, these two records move with the website's. Check: `dig +short quiz.iscracingteam.com`.
 5. **Certificate** (server admin, on the server), before step 6: `quiz.conf` names this certificate, so Nginx refuses it until it exists. The website's certificate renews through a webroot (`/srv/isc-web/certbot-www`, which `isc-web` serves at `/var/www/certbot`) with a hook that reloads `isc-web`; the quiz's is issued the same way. Until step 6 the website's catch-all server on port 80 answers the challenge for the new names; afterwards `quiz.conf`'s own port-80 server does, from the same folder:
    ```bash
