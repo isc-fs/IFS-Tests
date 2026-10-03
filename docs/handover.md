@@ -27,7 +27,7 @@ No release has been tagged yet, so nothing has been deployed to prod: `deploy/de
 
 | Question | Answer |
 |---|---|
-| Is staging running, and on which tag (`/srv/quiz/staging/deployed-tag`)? | Yes, `sha-6aa8a87d1248` since 3 October 2026 (bank loaded, one admin); not reachable from outside until the website's hook ([runbook 1.3](runbook.md#13-network-nginx-and-dns), step 3) |
+| Is staging running, and on which tag (`/srv/quiz/staging/deployed-tag`)? | Yes, `sha-6aa8a87d1248` since 3 October 2026 (bank loaded, one admin), at `https://quiz-staging.iscracingteam.com` |
 | Is prod running, and on which tag? | No: prod comes with `v1.0.0` ([release plan](release-plan.md)) |
 | Date of the last restore drill | 3 October 2026, on staging with its own pre-deploy dump: 51 seconds |
 | Date the database passwords were last rotated | |
@@ -75,7 +75,7 @@ If this table is empty or out of date: ask the owners of the `isc-fs` GitHub org
 | Dependency updates | Dependabot, `.github/dependabot.yml` | Weekly; see the [maintenance calendar](maintenance.md#weekly-maintainer-about-15-minutes) |
 | Review ownership | `.github/CODEOWNERS` | Names the maintainer's GitHub account for migrations, workflows, deployment and security code; update it at every handover |
 | Server | Hetzner Cloud CX33 (EU), `46.62.206.29`, shared with the team's website ([ADR 0003](adr/0003-self-hosted-on-team-server.md)) | Administered by the consultant |
-| Nginx (ports 80 and 443) | The website's container `isc-web`, from `/srv/isc-web`, redeployed from the website's repository by a timer | The quiz's rules live in `/srv/quiz/nginx`, installed by `deploy/nginx.sh` ([ADR 0008](adr/0008-behind-the-website-nginx.md), [runbook 1.3](runbook.md#13-network-nginx-and-dns)) |
+| Nginx (ports 80 and 443) | The website's container `isc-web`, from `/srv/isc-web`, redeployed from the website's repository by a timer | The quiz's rules live in `/srv/quiz/nginx`, installed by `deploy/nginx.sh`; `isc-web` loads them through `/srv/isc-web/docker-compose.override.yml`, a file of ours outside the website's repository ([ADR 0008](adr/0008-behind-the-website-nginx.md), [ADR 0009](adr/0009-website-hook-as-compose-override.md), [runbook 1.3](runbook.md#13-network-nginx-and-dns)) |
 | App on the server | `/srv/quiz/repo` (a checkout), `/srv/quiz/staging` and `/srv/quiz/prod` (each with `.env`, `deployed-tag`, `deploy-history`) | Compose projects `quiz-staging` and `quiz-prod` ([runbook](runbook.md)) |
 | Data | Docker volumes per environment: `quiz-prod_pgdata` (database), `quiz-prod_media` (question images), `quiz-prod_fsquiz` (raw FS-Quiz mirror), `quiz-prod_backups` (dumps); the same with `quiz-staging_` | Never in the repository |
 | Backups | Nightly dumps in the `backups` volume, 14 days; a dump before each deploy; Hetzner's daily snapshots of the whole server | No offsite copy yet ([runbook 4](runbook.md#4-backups-and-restore)) |

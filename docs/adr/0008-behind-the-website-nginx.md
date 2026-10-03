@@ -1,6 +1,7 @@
 # 0008 — Behind the website's Nginx container
 
 - **Status:** accepted · 2026-10-02. Refines ADR 0003 where the server turned out different from what it assumed.
+  The hook in the website's repository is superseded by a Compose override on the server ([ADR 0009](0009-website-hook-as-compose-override.md)).
 - **Deciders:** Álvaro González (Driverless TD)
 
 ## Context
