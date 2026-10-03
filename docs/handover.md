@@ -18,17 +18,17 @@ As of 3 October 2026 (update this section at each handover):
 | 2 Platform foundation: skeleton, server deploy, accounts, bank import | Done |
 | 3 Training MVP: practice, daily, mock, review tools, leaderboard, XP, learning aids, MingoQuiz name | Done |
 | 4 Team play: live quiz | Done |
-| 5 Launch | In progress: privacy (`feat/17`), the ranked LP system (`feat/18`) and the fixes `fix/1` to `fix/4` (audit retention, live quizzes, accounts and privacy, operations and housekeeping) are merged into `dev`; this documentation is `feat/19`; `feat/20-launch` is in progress: the [release plan](release-plan.md) and its stage A (dropping `users.xp`, the release gate, version 1.0.0, the sweep 2 blockers in `fix/26`–`fix/29`) are in pull requests; the load test and the restore drill wait for the server (stage D) |
+| 5 Launch | Done: `v1.0.0` released and in prod on 3 October 2026 ([release plan](release-plan.md), [release notes](release-notes/v1.0.0.md)). Inviting the team is next |
 | 6 After launch | Deferred ideas, to prioritise with the team |
 
-No release has been tagged yet, so nothing has been deployed to prod: `deploy/deploy.sh` only takes release tags (`vX.Y.Z`) for prod, and the repository has none. The first release is `v1.0.0` at the end of phase 5; how it gets there is in the [release plan](release-plan.md).
+`v1.0.0` is the first release, tagged on `main` on 3 October 2026; prod and staging both run it. Later releases follow [runbook 2.1](runbook.md#21-release).
 
 **To fill in** at each handover:
 
 | Question | Answer |
 |---|---|
-| Is staging running, and on which tag (`/srv/quiz/staging/deployed-tag`)? | Yes, `sha-6aa8a87d1248` since 3 October 2026 (bank loaded, one admin), at `https://quiz-staging.iscracingteam.com` |
-| Is prod running, and on which tag? | No: prod comes with `v1.0.0` ([release plan](release-plan.md)) |
+| Is staging running, and on which tag (`/srv/quiz/staging/deployed-tag`)? | Yes, `v1.0.0` since 3 October 2026, at `https://quiz-staging.iscracingteam.com`; it holds test accounts (the e2e suite's, an `E2E Admin`) |
+| Is prod running, and on which tag? | Yes, `v1.0.0` since 3 October 2026, at `https://quiz.iscracingteam.com`; reboot-tested the same day |
 | Date of the last restore drill | 3 October 2026, on staging with its own pre-deploy dump: 51 seconds |
 | Date the database passwords were last rotated | |
 | Open incidents or known bugs not yet in an issue | |

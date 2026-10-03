@@ -197,6 +197,13 @@ It runs `ifs-tests mirror --refresh --images` then `ifs-tests push` with the dep
 
 Do this on staging first. Each environment has its own mirror, so each refresh costs FS-Quiz its own requests: don't repeat it without reason ([AGENTS.md](../AGENTS.md), server etiquette).
 
+To load a second environment without asking FS-Quiz again (its first load, for example), copy the mirror the other one already has into its `fsquiz` volume, then push it with `--no-mirror`. The environment must have been deployed once, so the volume exists; this is how prod got its bank on 3 October 2026 (26 seconds, no requests):
+```bash
+docker run --rm --user 0 -v quiz-staging_fsquiz:/from:ro -v quiz-prod_fsquiz:/to \
+  --entrypoint sh ghcr.io/isc-fs/ifs-tests:<deployed tag> -c 'cp -a /from/. /to/'
+deploy/refresh-bank.sh prod --no-mirror
+```
+
 After deploying a release that changes how answers are parsed or which questions are graded (`deploy.sh` ends with `deploy: to do: run deploy/refresh-bank.sh <env> --no-mirror`, [section 2](#2-deploy)), load the mirror already in the volume again, without asking FS-Quiz anything: `deploy/refresh-bank.sh <env> --no-mirror`. The first push after migration 0017 also records FS-Quiz's answer ID on every option.
 
 ---

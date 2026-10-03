@@ -6,7 +6,7 @@ How MingoQuiz goes from `dev` to its first release, `v1.0.0`, running in prod on
 
 ---
 
-**Where the release stands (3 October 2026, morning).** Stages A and C are done: `https://quiz-staging.iscracingteam.com` is live behind the website's Nginx, which is unchanged for the website ([ADR 0009](adr/0009-website-hook-as-compose-override.md)). Stage B is answered apart from the contact address for data requests (B1) and the first admins and reviewers (B5, after deployment). Stage D is under way (the table in stage D): what's left is the browser smoke test, a live quiz with phones and the reboot test. Nothing is in prod. The checklist is kept in issue #89.
+**Where the release stands (3 October 2026, afternoon).** `v1.0.0` is released and running in prod at `https://quiz.iscracingteam.com` (and on staging). Stages A–E are done; stage F is done up to inviting people (the table in stage F). Deferred on purpose: the live quiz with phones (D.4), watched the first time a meeting runs one; the scoring rules (B6) and the offsite copy (B3). The checklist is kept in issue #89.
 
 ## 1. Where we start (1 October 2026)
 
@@ -155,13 +155,13 @@ Rehearse the whole release on staging with the commit that will become `v1.0.0`.
 |---|---|
 | D.1 First deploy | **Done:** `sha-6aa8a87d1248`, migrations 0001–0024, smoke test 6/6, about 1 minute |
 | D.2 Admin and bank | **Done:** one admin; 1,063 questions in 121 quizzes (80 ungraded, 20 hidden), 504 API calls and 374 images in 9 minutes; three solution images FS-Quiz answered 500 for |
-| D.3 Smoke from a browser | Ready: `https://quiz-staging.iscracingteam.com` is up; the maintainer signs in and runs the list in step 3 |
-| D.4 Live quiz with phones | Ready; needs a team meeting |
+| D.3 Smoke from a browser | **Done:** the e2e suite against staging passed 22 of 26; the 4 others need the sample bank, so the maintainer ran those two flows by hand (a mock quiz to its results, the leaderboard and hiding from it) |
+| D.4 Live quiz with phones | **Deferred:** watched (`docker stats quiz-prod-api-1`) the first time a team meeting runs one; `cpus: 2.0` is the fallback |
 | D.5 Roll back and forward | **Done:** to `sha-1584a29e8d38` and back, 56 s and 52 s, smoke test 6/6 both ways. Each listed the `deploy/nginx.sh` step, since the older image has no `quiz.conf` (expected, runbook 2) |
 | D.6 Restore drill | **Done:** staging's own pre-deploy dump restored in 51 s (target 2 hours); users, questions and quizzes as before; the safety dump kept |
 | D.7 Maintenance by hand | **Done:** every step ran, all counts 0 on an empty staging |
 | D.8 Nightly backup | First one due 3 October at 03:30; check `docker logs quiz-staging-backup-1`. The heartbeat comes with the alerts (B4) |
-| D.9 Reboot test | With the server admin |
+| D.9 Reboot test | **Done:** after a reboot, every container and both sites came back by themselves; the `proxy` addresses swapped, which the subnet in `FORWARDED_ALLOW_IPS` absorbs |
 
 ### Stage E: cut the release (maintainer)
 
@@ -184,6 +184,20 @@ Pick a weekday morning, not the day of a team meeting, with the consultant reach
 5. Fill in [handover status](handover.md#status): tags running, restore drill date, password rotation date.
 
 **Exit:** the team is signed in; prod has had a nightly backup.
+
+**Where stages E and F stand (3 October 2026):**
+
+| Step | State |
+|---|---|
+| E.1–E.2 Notes and release PR | **Done:** #113, #114 (`dev` into `main`, merge commit `e479775`) |
+| E.3 Tag and image | **Done:** `v1.0.0`; the release gate passed; `ghcr.io/isc-fs/ifs-tests:v1.0.0` public; [GitHub release](https://github.com/isc-fs/IFS-Tests/releases/tag/v1.0.0) |
+| E.4 Staging on `v1.0.0` | **Done:** smoke test 6/6 |
+| F.1 Prod deployed | **Done:** prod `.env` with new secrets (none shared with staging), `deploy/deploy.sh prod v1.0.0`, smoke test 6/6 |
+| F.1 Admin and bank | **Done:** the maintainer's admin; the bank copied from staging's mirror (runbook 2.3), no requests to FS-Quiz |
+| F.2 Smoke on prod | `/healthz`, `/readyz` and the page from outside; the maintainer's sign-in |
+| F.3–F.4 Invites | Next: admins and reviewers, then the team |
+| F.5 Handover status | **Done** ([handover](handover.md#status)) |
+| — | Prod's database passwords into the team's password manager (the maintainer, from `/srv/quiz/prod/.env`) |
 
 ### Stage G: first two weeks (maintainer)
 
@@ -222,11 +236,11 @@ B  [ ] controller + contact on /privacy  [x] Hetzner DPA  [x] IP log promise: no
    [x] offsite copy decided (deferred)  [x] alerts to the MingoQuiz maintainer (set up in D)  [ ] 2 admins + 2 reviewers named  [x] TD scoring answers (after deployment)
 C  [ ] maintainers in docker group  [ ] /srv/quiz + .env files  [x] proxy network  [x] website hook (override, ADR 0009)
    [x] DNS quiz + quiz-staging at Arsys  [x] certificate  [x] deploy/nginx.sh  [ ] section 2 checks  [ ] prod .env in password manager
-D  [x] first staging deploy  [x] bank loaded  [ ] smoke  [ ] live quiz load test  [x] roll back/forward
-   [x] restore drill (51 s)  [x] maintenance by hand  [ ] nightly backup + heartbeat  [ ] reboot test
-E  [ ] release notes  [ ] dev -> main merged, CI green  [ ] v1.0.0 tagged and published  [ ] GitHub release
-   [ ] staging on v1.0.0, smoke
-F  [ ] prod deployed  [ ] admin + bank  [ ] smoke, throwaway accounts deleted  [ ] admins/reviewers invited
-   [ ] team invited  [ ] handover status filled in
+D  [x] first staging deploy  [x] bank loaded  [x] smoke  [ ] live quiz load test (at first use)  [x] roll back/forward
+   [x] restore drill (51 s)  [x] maintenance by hand  [x] nightly backup (heartbeat with B4)  [x] reboot test
+E  [x] release notes  [x] dev -> main merged, CI green  [x] v1.0.0 tagged and published  [x] GitHub release
+   [x] staging on v1.0.0, smoke
+F  [x] prod deployed  [x] admin + bank  [ ] smoke, throwaway accounts deleted  [ ] admins/reviewers invited
+   [ ] team invited  [x] handover status filled in
 G  [ ] two weeks of morning checks  [ ] first prod live quiz measured  [ ] retrospective
 ```
