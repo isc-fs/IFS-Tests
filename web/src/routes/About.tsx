@@ -14,8 +14,9 @@ export function Privacy() {
 
         <h2>Who looks after your data</h2>
         <p>
-          The ISC Racing Team, the Formula Student team of Universidad Pontificia Comillas (ICAI), runs {APP_NAME} for
-          its members. Questions and requests about your data go to the team&apos;s admins.
+          ISC, the association behind the ISC Racing Team, the Formula Student team of Universidad Pontificia Comillas
+          (ICAI), runs {APP_NAME} for its members and is responsible for your data. Questions and requests about your
+          data go to its board, through the team&apos;s admins.
         </p>
 
         <h2>What we keep</h2>
