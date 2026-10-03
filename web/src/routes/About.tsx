@@ -15,8 +15,9 @@ export function Privacy() {
         <h2>Who looks after your data</h2>
         <p>
           ISC, the association behind the ISC Racing Team, the Formula Student team of Universidad Pontificia Comillas
-          (ICAI), runs {APP_NAME} for its members and is responsible for your data. Questions and requests about your
-          data go to its board, through the team&apos;s admins.
+          (ICAI), runs {APP_NAME} for its members and is responsible for your data. Its address is Calle de Alberto
+          Aguilera, 23, Madrid, Spain. For any question or request about your data, write to{' '}
+          <a href="mailto:direccion.isc@clubisc.com">direccion.isc@clubisc.com</a>; the team&apos;s admins can help too.
         </p>
 
         <h2>What we keep</h2>
@@ -124,16 +125,16 @@ export function Privacy() {
           </li>
           <li>
             <strong>Object or restrict:</strong> you can object to any of this, or ask us to pause using your data while
-            a question about it is settled. Ask an admin; we stop unless there is a compelling reason, which we&apos;ll
-            explain.
+            a question about it is settled. Write to the address above or ask an admin; we stop unless there is a
+            compelling reason, which we&apos;ll explain.
           </li>
           <li>
             <strong>Hide from the leaderboard:</strong> a switch in your profile.
           </li>
         </ul>
         <p>
-          We answer requests within a month. If something isn&apos;t right, talk to the team&apos;s admins first; you
-          can also complain to the Spanish data protection authority, the AEPD (
+          We answer requests within a month. If something isn&apos;t right, write to us or talk to the team&apos;s
+          admins first; you can also complain to the Spanish data protection authority, the AEPD (
           <a href="https://www.aepd.es">aepd.es</a>).
         </p>
         <p className="muted">Last updated {UPDATED}.</p>
