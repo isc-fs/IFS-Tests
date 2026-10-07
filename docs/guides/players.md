@@ -31,7 +31,9 @@ There is no public sign-up. An admin sends you an invite link; it works once and
    - **Where are you on the team?**: your position. Pick the one that is true; only an admin can change it later.
    - **Password**: at least 10 characters (a few random words work well), at most 128. Very common passwords are
      refused, and so is a password containing your email name or display name.
-3. Press **Create account**. You land on **Home**, signed in.
+3. Press **Create account**. You land on **Home**, signed in. Home leads with **Today's questions**: what's left
+   to answer in each area, your streak, and the way in. Your rank and level cards follow, then the other ways to
+   train.
 
 ### Your position and where it places you
 
@@ -217,7 +219,8 @@ have up to 20 waiting.
 quiz (a question FS-Quiz gives no time gets 2 minutes for single choice, 2 min 30 s for multiple choice, 4 minutes
 for typed answers). You see your results only at the end.
 
-1. Filter by **Class** (EV, CV, DV) or type in **Event or year**.
+1. Quizzes are grouped by year, newest first. The newest year is open; open an older one, or filter by **Class**
+   (EV, CV, DV) or type in **Event or year**, which opens every year that matches.
 2. Each quiz shows its number of questions, its total time (the sum of its questions' clocks), your best score,
    and the bar to beat: what the last team to get a slot achieved, when FS-Quiz records it.
 3. Press **Start**.

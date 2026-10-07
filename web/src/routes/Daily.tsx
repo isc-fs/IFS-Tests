@@ -14,13 +14,11 @@ import { LearningAids } from '../components/LearningAids'
 import { Page } from '../components/Page'
 import { QuestionCard } from '../components/QuestionCard'
 import { queryClient, resend } from '../lib/api'
-import { AREAS } from '../lib/areas'
+import { AREAS, duration } from '../lib/areas'
 import { lp, tenths } from '../lib/rank'
 import { xp } from '../lib/xp'
 
 type Area = 'mech' | 'elec' | 'rules'
-
-const duration = (s: number) => (s % 60 ? `${Math.floor(s / 60)} min ${s % 60} s` : `${s / 60} min`)
 
 function outcome(a: {
   correct: boolean | null

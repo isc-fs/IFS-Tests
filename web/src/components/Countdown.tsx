@@ -1,15 +1,18 @@
 import { useEffect, useRef, useState } from 'react'
 
+const secondsTo = (end: number, offset: number) => Math.max(0, Math.ceil((end - (Date.now() + offset)) / 1000))
+
 /** Seconds left until `deadline`, measured against the server's clock (the browser's may be off). */
 export function useSecondsLeft(deadline: string, serverNow: string) {
   const [offset] = useState(() => new Date(serverNow).getTime() - Date.now())
   const end = new Date(deadline).getTime()
-  const left = () => Math.max(0, Math.ceil((end - (Date.now() + offset)) / 1000))
-  const [seconds, setSeconds] = useState(left)
+  const [seconds, setSeconds] = useState(() => secondsTo(end, offset))
   useEffect(() => {
-    const id = window.setInterval(() => setSeconds(left()), 250)
+    const tick = () => setSeconds(secondsTo(end, offset))
+    tick()
+    const id = window.setInterval(tick, 250)
     return () => window.clearInterval(id)
-  })
+  }, [end, offset])
   return seconds
 }
 
@@ -36,9 +39,8 @@ export function Countdown({
   const warning = seconds <= 10 ? 'Ten seconds left.' : seconds <= 60 ? 'One minute left.' : ''
   return (
     <div className={`countdown ${seconds <= 10 ? 'urgent' : ''}`}>
-      <span role="timer" aria-label="Time left">
-        {mmss(seconds)}
-      </span>
+      <span className="sr-only">Time left: </span>
+      <span role="timer">{mmss(seconds)}</span>
       <span className="sr-only" aria-live="assertive">
         {seconds === 0 ? "Time's up." : warning}
       </span>

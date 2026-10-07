@@ -24,6 +24,8 @@ Words you don't know are in the [glossary](glossary.md).
 | Using the app, by role | [guides/](guides/) |
 | Scoring: rank, LP, XP, levels, seasons, leaderboards, and how to retune them | [game-rules.md](game-rules.md) |
 | How the system is built: components, modules, jobs, locking, answer secrecy | [architecture.md](architecture.md) |
+| Who the app is for, what it's for, and the product constraints on any design work | [PRODUCT.md](../PRODUCT.md) |
+| The visual system: colours, type, layout, components, do's and don'ts | [DESIGN.md](../DESIGN.md), mirrored for design tools in `.impeccable/design.json` |
 | Tables, columns, personal data, migrations | [data-model.md](data-model.md) |
 | HTTP API: routes, auth, errors, the generated client | [api.md](api.md) |
 | Setting up, everyday commands, recipes for common changes, conventions | [development.md](development.md) |

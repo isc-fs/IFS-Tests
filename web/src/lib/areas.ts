@@ -24,3 +24,6 @@ export const AREA_TOPICS: Record<string, string[]> = {
   rules: ['scoring'],
   unclassified: [],
 }
+
+/** A question's time budget, as people read it: "2 min" or "1 min 30 s". */
+export const duration = (s: number) => (s % 60 ? `${Math.floor(s / 60)} min ${s % 60} s` : `${s / 60} min`)
