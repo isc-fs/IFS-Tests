@@ -49,8 +49,8 @@ The person chooses their own position when they join. Check it afterwards in **M
 
 ## Members
 
-**Members (*n*)** lists every account in alphabetical order. With more than five, **Find a member** filters by name,
-email, vertical, role or status.
+**Members (*n*)** lists every account in alphabetical order, the first 20 until you press **Show all *n* members**.
+With more than five, **Find a member** filters by name, email, vertical, role or status, and searches everyone.
 
 Each row shows:
 

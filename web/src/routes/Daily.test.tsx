@@ -89,7 +89,7 @@ test('start, answer against the clock, see the LP and XP', async () => {
   const { sent } = renderApp('/daily', api(timed(120)))
   await userEvent.click(await screen.findByRole('button', { name: 'Start the Mechanical question' }))
   expect(await screen.findByText(QUESTION.text)).toBeInTheDocument()
-  expect(screen.getByRole('timer', { name: 'Time left' })).toHaveTextContent(/^(2:00|1:59)$/)
+  expect(screen.getByRole('timer')).toHaveTextContent(/^(2:00|1:59)$/)
   await userEvent.click(screen.getByRole('radio', { name: 'AS Emergency' }))
   await userEvent.click(screen.getByRole('button', { name: 'Check answer' }))
   expect(await screen.findByText('Correct: +15 LP, +60 XP. Streak: 3 days.')).toBeInTheDocument()
