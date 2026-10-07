@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { expect, test } from 'vitest'
-import { MEMBER, renderApp } from '../test/render'
+import { MEMBER, progress, renderApp } from '../test/render'
 
 const base = {
   quizzes: ['FSG 2024 EV'],
@@ -44,6 +44,18 @@ const api = (next: unknown, answer: unknown) => ({
   'POST /api/practice/questions/7/answer': { body: answer },
   'POST /api/practice/questions/8/answer': { body: answer },
   'POST /api/practice/questions/9/answer': { body: answer },
+})
+
+const waiting = { ...api(null, {}), 'GET /api/practice/next': () => new Promise<never>(() => {}) }
+
+test('ranks with learning aids get the wide column before the question arrives', async () => {
+  renderApp('/practice', waiting)
+  expect(await screen.findByText('Picking a question…')).toHaveClass('aids-ahead')
+})
+
+test('ranks past the learning aids keep the narrow column while a question loads', async () => {
+  renderApp('/practice', { ...waiting, 'GET /api/me': { body: { ...MEMBER, progress: progress(1600) } } })
+  expect(await screen.findByText('Picking a question…')).not.toHaveClass('aids-ahead')
 })
 
 test('a choice question: say what is missing, then grade and explain', async () => {
