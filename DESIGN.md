@@ -249,6 +249,8 @@ Responsive behaviour is structural, not scaled:
 - The top nav wraps onto a second row rather than collapsing into a menu.
 - Long lists are capped or grouped: Admin shows the first 20 members; Mock groups quizzes by year with the newest open.
 
+The content area is at least one screen tall, so the footer always starts below the fold: content arriving never pushes it out of view. Ranks that get learning aids take Practice's wide column before the question loads.
+
 Reflow holds at 320px (400 % zoom) with no horizontal scroll.
 
 ## Elevation & Depth
