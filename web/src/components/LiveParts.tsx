@@ -81,7 +81,10 @@ export function Tables({ s, showScore }: { s: LiveState; showScore?: boolean }) 
           key={t.id}
           className={[t.answered && 'answered', t.id === s.my_table_id && 'mine'].filter(Boolean).join(' ')}
         >
-          <strong>{t.name}</strong>
+          <strong>
+            {t.name}
+            {t.id === s.my_table_id && <span className="badge">Yours</span>}
+          </strong>
           <span className="muted">
             {t.member_ids
               .map((id) =>

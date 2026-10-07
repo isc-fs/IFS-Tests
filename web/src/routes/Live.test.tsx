@@ -155,6 +155,12 @@ test('the captain sends the table answer, and can take a teammate proposal', asy
   await waitFor(() => expect(sent('POST /api/live/sessions/ABC234/answer')[0].body).toEqual({ options: [71] }))
 })
 
+test("a player's own table is labelled as theirs in the final standings", async () => {
+  at('/live/ABC234', { ...MEMBER, id: 2 }, finished)
+  const yours = await screen.findByText('Yours')
+  expect(yours.closest('li')).toHaveClass('mine')
+})
+
 test('a member proposes; only the captain sends', async () => {
   const { sent } = at('/live/ABC234', { ...MEMBER, id: 2 }, open, {
     'PUT /api/live/sessions/ABC234/proposal': { status: 204 },
