@@ -1,0 +1,314 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-07T15:37:30+00:00",
+  "title": "Design System: MingoQuiz",
+  "extensions": {
+    "colorMeta": {
+      "isc-green": {
+        "role": "primary",
+        "displayName": "ISC Green",
+        "canonical": "#064229",
+        "note": "RAL 6005",
+        "tonalRamp": [
+          "#07130d",
+          "#04311e",
+          "#054228",
+          "#064229",
+          "#0a5334",
+          "#0d6b43",
+          "#5f9a7d",
+          "#e7f3ec"
+        ]
+      },
+      "isc-gold": {
+        "role": "secondary",
+        "displayName": "ISC Gold",
+        "canonical": "#ffb81d",
+        "note": "RAL 1003",
+        "tonalRamp": [
+          "#5c4209",
+          "#8c6510",
+          "#c88a00",
+          "#e6a61a",
+          "#ffb81d",
+          "#ffc94f",
+          "#ffe3a3",
+          "#fff6e0"
+        ]
+      },
+      "isc-gold-ink": {
+        "role": "secondary",
+        "displayName": "ISC Gold Ink",
+        "canonical": "#8c6510"
+      },
+      "isc-paper": {
+        "role": "neutral",
+        "displayName": "ISC Paper",
+        "canonical": "#f7f5f1",
+        "tonalRamp": [
+          "#404040",
+          "#5d5d5d",
+          "#828282",
+          "#8c8983",
+          "#dfdbd2",
+          "#f2efe6",
+          "#f7f5f1",
+          "#ffffff"
+        ]
+      },
+      "isc-graphite": {
+        "role": "neutral",
+        "displayName": "ISC Graphite",
+        "canonical": "#404040"
+      },
+      "error": {
+        "role": "semantic",
+        "displayName": "Error",
+        "canonical": "#b3261e"
+      },
+      "ok-bg": {
+        "role": "semantic",
+        "displayName": "OK Background",
+        "canonical": "#e7f3ec"
+      },
+      "error-bg": {
+        "role": "semantic",
+        "displayName": "Error Background",
+        "canonical": "#fdecea"
+      },
+      "mingo-mid": {
+        "role": "rank",
+        "displayName": "Mingo Bronze",
+        "canonical": "#b87a45"
+      },
+      "jefe-mid": {
+        "role": "rank",
+        "displayName": "Jefe Silver",
+        "canonical": "#8d9aa6"
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "The page title (h1), one per page."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Panel and section titles (h2)."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Rows inside a panel (h3)."
+      },
+      "lede": {
+        "displayName": "Lede",
+        "purpose": "The introductory paragraph under a page title."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Questions, answers, prose."
+      },
+      "small": {
+        "displayName": "Small",
+        "purpose": "Muted secondary text, notices, chips, field labels."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Mono uppercase line above titles, badges, counts."
+      }
+    },
+    "shadows": [
+      {
+        "name": "pop",
+        "value": "0 8px 32px rgba(4, 49, 30, 0.28)",
+        "purpose": "Overlays only (menus, dialogs); none exist yet."
+      },
+      {
+        "name": "current-step-ring",
+        "value": "0 0 0 4px color-mix(in srgb, var(--isc-gold) 20%, transparent)",
+        "purpose": "The current division on the rank road."
+      },
+      {
+        "name": "promotion-glow",
+        "value": "drop-shadow(0 0 10px var(--isc-gold))",
+        "purpose": "A new-tier emblem, animated, only when motion is allowed."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease",
+        "value": "cubic-bezier(0.2, 0.6, 0.2, 1)",
+        "purpose": "Brand default easing (--isc-ease)."
+      },
+      {
+        "name": "dur-fast",
+        "value": "120ms",
+        "purpose": "Brand fast duration."
+      },
+      {
+        "name": "dur-base",
+        "value": "200ms",
+        "purpose": "Brand base duration."
+      },
+      {
+        "name": "dur-slow",
+        "value": "320ms",
+        "purpose": "Brand slow duration."
+      },
+      {
+        "name": "emblem-pop",
+        "value": "700ms cubic-bezier(0.2, 1.4, 0.4, 1)",
+        "purpose": "Promotion emblem entrance; deliberate overshoot, reduced-motion gated."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "phone",
+        "value": "560px",
+        "note": "max-width: rows stack"
+      },
+      {
+        "name": "rows",
+        "value": "720px",
+        "note": "min-width: list rows go side by side"
+      },
+      {
+        "name": "wide",
+        "value": "1180px",
+        "note": "min-width: Practice three columns"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The screen's one main action.",
+      "html": "<button class=\"ds-btn-primary\">Check answer</button>",
+      "css": ".ds-btn-primary { font-family: var(--isc-font-body, 'IBM Plex Sans', system-ui, sans-serif); font-size: 16px; font-weight: 600; min-height: 44px; padding: 10px 20px; border: 0; border-radius: 6px; background: var(--isc-green, #064229); color: var(--isc-white, #ffffff); cursor: pointer; } .ds-btn-primary:hover { background: var(--isc-green-600, #0a5334); } .ds-btn-primary:focus-visible { outline: 2px solid var(--isc-green, #064229); outline-offset: 2px; box-shadow: 0 0 0 5px var(--isc-gold, #ffb81d); }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Every action that isn't the main one.",
+      "html": "<button class=\"ds-btn-secondary\">Choose a quiz</button>",
+      "css": ".ds-btn-secondary { font-family: var(--isc-font-body, 'IBM Plex Sans', system-ui, sans-serif); font-size: 16px; font-weight: 600; min-height: 44px; padding: 10px 20px; border: 1px solid var(--isc-green, #064229); border-radius: 6px; background: var(--isc-white, #ffffff); color: var(--isc-green, #064229); cursor: pointer; } .ds-btn-secondary:hover { background: var(--isc-cream, #f2efe6); } .ds-btn-secondary:focus-visible { outline: 2px solid var(--isc-green, #064229); outline-offset: 2px; box-shadow: 0 0 0 5px var(--isc-gold, #ffb81d); }"
+    },
+    {
+      "name": "Lead Panel",
+      "kind": "card",
+      "refersTo": "panel-lead",
+      "description": "The one dark green lead of a screen, with its gold action.",
+      "html": "<section class=\"ds-lead\"><h2>Today's questions</h2><p class=\"ds-lead-left\">2 to answer</p><button class=\"ds-lead-btn\">Answer today's questions</button></section>",
+      "css": ".ds-lead { font-family: var(--isc-font-body, 'IBM Plex Sans', system-ui, sans-serif); background: var(--isc-green, #064229); color: var(--isc-white, #ffffff); border-radius: 8px; padding: 24px; display: grid; gap: 12px; justify-items: start; } .ds-lead h2 { margin: 0; font-family: var(--isc-font-display, Jost, sans-serif); font-size: 24px; font-weight: 600; } .ds-lead-left { margin: 0; font-family: var(--isc-font-display, Jost, sans-serif); font-weight: 600; font-size: 20px; color: var(--isc-gold, #ffb81d); } .ds-lead-btn { font: inherit; font-weight: 600; min-height: 44px; padding: 10px 20px; border: 0; border-radius: 6px; background: var(--isc-gold, #ffb81d); color: var(--isc-green-900, #04311e); cursor: pointer; } .ds-lead-btn:hover { background: var(--isc-gold-400, #ffc94f); } .ds-lead-btn:focus-visible { outline: 2px solid var(--isc-white, #ffffff); outline-offset: 3px; }"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Label above, 44px field, hint below.",
+      "html": "<label class=\"ds-field\"><span>Display name</span><input class=\"ds-input\" value=\"Sara P.\"><small>2 to 24 characters.</small></label>",
+      "css": ".ds-field { font-family: var(--isc-font-body, 'IBM Plex Sans', system-ui, sans-serif); display: grid; gap: 6px; color: var(--isc-graphite, #404040); } .ds-field span { font-size: 14px; font-weight: 600; } .ds-field small { font-size: 13px; color: var(--isc-graphite-600, #5d5d5d); } .ds-input { font: inherit; min-height: 44px; padding: 10px 12px; border: 1px solid var(--isc-stone, #8c8983); border-radius: 6px; background: var(--isc-white, #ffffff); color: var(--isc-graphite, #404040); } .ds-input:focus-visible { outline: 2px solid var(--isc-green, #064229); outline-offset: 2px; box-shadow: 0 0 0 5px var(--isc-gold, #ffb81d); }"
+    },
+    {
+      "name": "Area Chips",
+      "kind": "chip",
+      "refersTo": "chip",
+      "description": "Pill filters with a mono count; the current one turns green.",
+      "html": "<nav class=\"ds-chips\"><a aria-current=\"page\" href=\"#\">All <span>1064</span></a><a href=\"#\">Mechanical <span>398</span></a></nav>",
+      "css": ".ds-chips { font-family: var(--isc-font-body, 'IBM Plex Sans', system-ui, sans-serif); display: flex; flex-wrap: wrap; gap: 8px; } .ds-chips a { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 6px 14px; border: 1px solid var(--isc-sand, #dfdbd2); border-radius: 999px; background: var(--isc-white, #ffffff); color: var(--isc-graphite, #404040); text-decoration: none; font-size: 14px; } .ds-chips a span { font-family: var(--isc-font-mono, 'IBM Plex Mono', monospace); font-size: 13px; opacity: 0.8; } .ds-chips a[aria-current] { background: var(--isc-green, #064229); border-color: var(--isc-green, #064229); color: var(--isc-white, #ffffff); } .ds-chips a:focus-visible { outline: 2px solid var(--isc-green, #064229); outline-offset: 2px; box-shadow: 0 0 0 5px var(--isc-gold, #ffb81d); }"
+    },
+    {
+      "name": "Answer Option",
+      "kind": "custom",
+      "refersTo": "answer-option",
+      "description": "A whole-row choice with a mono letter; graded right or wrong.",
+      "html": "<div class=\"ds-options\"><label class=\"ds-opt\"><input type=\"radio\" name=\"o\"><b>A</b> Joe</label><label class=\"ds-opt ds-right\"><input type=\"radio\" name=\"o\" checked><b>B</b> Jack</label><label class=\"ds-opt ds-wrong\"><input type=\"radio\" name=\"o\"><b>C</b> Pol</label></div>",
+      "css": ".ds-options { font-family: var(--isc-font-body, 'IBM Plex Sans', system-ui, sans-serif); display: grid; gap: 8px; } .ds-opt { display: flex; gap: 12px; align-items: center; min-height: 44px; padding: 12px 14px; border: 1px solid var(--isc-sand, #dfdbd2); border-radius: 6px; background: var(--isc-white, #ffffff); color: var(--isc-graphite, #404040); cursor: pointer; } .ds-opt b { font-family: var(--isc-font-mono, 'IBM Plex Mono', monospace); font-weight: 600; } .ds-opt input { width: 20px; height: 20px; margin: 0; } .ds-right { border-color: var(--isc-green, #064229); background: var(--ok-bg, #e7f3ec); } .ds-wrong { border-color: #b3261e; background: var(--error-bg, #fdecea); } .ds-opt:focus-within { outline: 2px solid var(--isc-green, #064229); outline-offset: 2px; box-shadow: 0 0 0 5px var(--isc-gold, #ffb81d); }"
+    },
+    {
+      "name": "Top Navigation",
+      "kind": "nav",
+      "refersTo": "",
+      "description": "Green bar, Jost wordmark, gold underline on the active link.",
+      "html": "<header class=\"ds-nav\"><strong>MingoQuiz</strong><nav><a class=\"on\" href=\"#\">Home</a><a href=\"#\">Daily</a><a href=\"#\">Practice</a></nav></header>",
+      "css": ".ds-nav { font-family: var(--isc-font-body, 'IBM Plex Sans', system-ui, sans-serif); display: flex; flex-wrap: wrap; align-items: center; gap: 8px 24px; padding: 0 24px; background: var(--isc-green, #064229); } .ds-nav strong { margin-right: auto; font-family: var(--isc-font-display, Jost, sans-serif); font-size: 24px; font-weight: 600; color: var(--isc-white, #ffffff); } .ds-nav nav { display: flex; flex-wrap: wrap; gap: 0 16px; } .ds-nav a { display: inline-flex; align-items: center; min-height: 44px; color: rgba(255,255,255,0.82); text-decoration: none; border-bottom: 2px solid transparent; } .ds-nav a.on, .ds-nav a:hover { color: var(--isc-white, #ffffff); border-bottom-color: var(--isc-gold, #ffb81d); } .ds-nav a:focus-visible { outline: 2px solid var(--isc-gold, #ffb81d); outline-offset: 2px; }"
+    },
+    {
+      "name": "Badge",
+      "kind": "chip",
+      "refersTo": "badge",
+      "description": "Small mono tag: You, Yours, locked, area.",
+      "html": "<span class=\"ds-badge\">Yours</span> <span class=\"ds-badge ds-warn\">Locked</span>",
+      "css": ".ds-badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-family: var(--isc-font-mono, 'IBM Plex Mono', monospace); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; background: var(--isc-cream, #f2efe6); color: var(--isc-gold-ink, #8c6510); } .ds-warn { background: var(--error-bg, #fdecea); color: var(--error-ink, #8a1c14); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Team Garage",
+    "overview": "MingoQuiz is the team's own clubhouse for quiz training: the ISC livery on the walls, the team's ranks and slang on the scoreboard, a place where a first-season Mingo feels welcome and a Technical Director still has something to prove. The look is the ISC brand worn at home. Racing green (RAL 6005) and gold (RAL 1003) carry the identity; warm paper and cream make the long reading sessions comfortable; everything else stays out of the way.\n\nInside that garage, components are scoreboard-clear. State comes first: right or wrong, time left, rank and level read at a glance, the one thing to do next made obvious. Decoration comes last. The game layer (ranks, emblems, streaks, promotions) is where personality shows: the Mingo/Jefe/DT metals, the gold promotion glow, the playful copy. The working surfaces (a question, a form, the admin lists) stay calm, flat and plain.\n\nThe surface is light paper with white panels, flat at rest. Depth comes from borders, tone and the green ground, not shadows. Corners are softer than the parent brand's square default, on purpose: this is a game the team plays, not a sponsor deck.",
+    "keyCharacteristics": [
+      "ISC brand tokens used verbatim; app-only colours (states, rank metals) layered on top.",
+      "Light paper ground, white panels, one dark green lead per screen at most.",
+      "Gold marks what is current, live or earned; it never decorates.",
+      "Jost for headings, IBM Plex Sans for reading, IBM Plex Mono for labels, counts and clocks.",
+      "Flat by default; 44 px targets; softer 6/8 px corners and pill chips."
+    ],
+    "rules": [
+      {
+        "name": "The Verbatim Brand Rule",
+        "body": "`web/src/styles/tokens.css` is a copy of `isc-fs/IFS-Web` and is never edited here. A colour MingoQuiz needs that the brand lacks goes in the app layer in `global.css`, named for its role.",
+        "section": "colors"
+      },
+      {
+        "name": "The Earned Gold Rule",
+        "body": "Gold marks the current, the live and the earned: where you are, what's running, what you won. If an element is gold and none of those apply, it's decoration; remove it.",
+        "section": "colors"
+      },
+      {
+        "name": "The Gold Ink Rule",
+        "body": "On paper or white, text is never ISC Gold or ISC Gold 700; it is ISC Gold Ink. Bright gold sets text only on green.",
+        "section": "colors"
+      },
+      {
+        "name": "The Scoreboard Mono Rule",
+        "body": "Numbers people compare (counts, LP and XP figures, the clock) and short system labels use IBM Plex Mono. Sentences never do.",
+        "section": "typography"
+      },
+      {
+        "name": "The One Display Rule",
+        "body": "One `h1` per page, in Jost. Larger display sizes appear only on the live projector screen, scaled for a room.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat Garage Rule",
+        "body": "Nothing casts a shadow at rest. A shadow means \"this floats above the page\" (an overlay) or \"you just earned this\" (a promotion); nothing else.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Friendly Corner Rule",
+        "body": "Controls 6px, containers 8px, tags round. Don't introduce other radii.",
+        "section": "shapes"
+      }
+    ],
+    "dos": [
+      "**Do** take colours, type, spacing and motion from the `--isc-*` tokens; add app-only values to the `:root` block at the top of `global.css`, named for their role (`--ok-bg`, `--mingo-mid`).",
+      "**Do** keep every control at least 44px tall (chips 40px) and make whole rows clickable where the row is the choice.",
+      "**Do** give each screen one obvious next action: one primary (or on-green gold) button, everything else secondary or a link.",
+      "**Do** set text on paper or white in ISC Graphite (body), ISC Graphite 600 (muted), ISC Green (headings) or ISC Gold Ink (labels). All pass 4.5:1.",
+      "**Do** group long lists (by year, capped with \"Show all\") instead of letting a page run to tens of thousands of pixels.",
+      "**Do** gate every animation behind `prefers-reduced-motion: no-preference`, and make sure the state still reads without it.",
+      "**Do** keep the FS-Quiz attribution visible wherever questions appear."
+    ],
+    "donts": [
+      "**Don't** edit `tokens.css` or redefine the brand core (`--isc-green`, `--isc-gold`).",
+      "**Don't** use bright gold (ISC Gold, ISC Gold 700) for text on paper or white.",
+      "**Don't** add shadows to panels or cards at rest; the pop shadow is for overlays only.",
+      "**Don't** use coloured side stripes (a thick left or right border) to mark state; use a badge (\"You\", \"Yours\") or a full border.",
+      "**Don't** stack identical cards as a page's structure; lead with one panel and list the rest as rows.",
+      "**Don't** use inline `style` attributes or injected `<style>`: the CSP (`style-src 'self'`) blocks them. Styles live in `global.css`.",
+      "**Don't** introduce radii other than 2/6/8px and pills, or a fourth typeface."
+    ]
+  }
+}
