@@ -132,7 +132,7 @@ Locally, `/api/docs` shows the interactive OpenAPI page.
 | `web/src/components/` | Shared UI: `Page.tsx`, `Form.tsx`, `QuestionCard.tsx`, `RankCard.tsx`, … |
 | `web/src/lib/` | API client setup (`api.ts`) and helpers mirroring server rules (`rank.ts`, `xp.ts`, `live.ts`, `areas.ts`) |
 | `web/src/api/` | Client generated from `web/openapi.json`. Never edit by hand. |
-| `web/src/styles/` | `tokens.css` (colours, spacing) and `global.css` |
+| `web/src/styles/` | `tokens.css` (the ISC design tokens, copied verbatim from IFS-Web: never edit them here) and `global.css`, whose `:root` adds the app's own colours (states, rank metals) |
 | `web/src/test/` | `render.tsx`: the helper component tests use |
 | `web/e2e/` | Playwright journeys |
 | `deploy/` | Production compose file, `deploy.sh`, `restore.sh`, `refresh-bank.sh`, database roles and backups, Nginx snippet: see the [runbook](runbook.md) |

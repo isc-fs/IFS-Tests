@@ -1,6 +1,19 @@
 :root {
   --gutter: clamp(16px, 4vw, 48px);
   --radius: 8px;
+
+  /* App colours on top of the ISC tokens, which have no states or rank metals. */
+  --ok-bg: #e7f3ec;
+  --ok-ink: var(--isc-green-800);
+  --error-bg: #fdecea;
+  --error-ink: #8a1c14;
+  /* Rank metals: emblems shade from -hi to -lo; the season strip fills with -mid. */
+  --mingo-hi: #e3a86b;
+  --mingo-mid: #b87a45;
+  --mingo-lo: #8a5a2b;
+  --jefe-hi: #e9eef2;
+  --jefe-mid: #8d9aa6;
+  --jefe-lo: #7d8a96;
 }
 
 *,
@@ -128,6 +141,8 @@ h3 {
   flex: 1;
   width: 100%;
   max-width: 960px;
+  /* A screen tall at least: the footer starts below the fold, so content arriving doesn't push it out of view. */
+  min-height: 100dvh;
   margin: 0 auto;
   padding: clamp(32px, 6vw, 72px) var(--gutter);
 }
@@ -301,12 +316,12 @@ button.danger:hover {
   margin: 0 0 8px;
 }
 .notice.error {
-  background: #fdecea;
-  color: #8a1c14;
+  background: var(--error-bg);
+  color: var(--error-ink);
 }
 .notice.ok {
-  background: #e7f3ec;
-  color: var(--isc-green-800);
+  background: var(--ok-bg);
+  color: var(--ok-ink);
 }
 .notice.info {
   background: var(--isc-l-bg-alt);
@@ -324,8 +339,8 @@ button.danger:hover {
   color: var(--isc-gold-ink);
 }
 .badge.warn {
-  background: #fdecea;
-  color: #8a1c14;
+  background: var(--error-bg);
+  color: var(--error-ink);
 }
 .copy {
   display: flex;
@@ -448,11 +463,11 @@ button.danger:hover {
 }
 .choice.right {
   border-color: var(--isc-green);
-  background: #e7f3ec;
+  background: var(--ok-bg);
 }
 .choice.wrong {
   border-color: var(--isc-c-error);
-  background: #fdecea;
+  background: var(--error-bg);
 }
 .choice-note {
   grid-column: 2;
@@ -652,11 +667,11 @@ textarea {
 }
 .season-strip .strip-mingo.done,
 .season-strip .strip-mingo.current {
-  background: #b87a45;
+  background: var(--mingo-mid);
 }
 .season-strip .strip-jefe.done,
 .season-strip .strip-jefe.current {
-  background: #8d9aa6;
+  background: var(--jefe-mid);
 }
 .season-strip .strip-dt.done,
 .season-strip .strip-dt.current,
@@ -822,19 +837,130 @@ details[open] > summary::before {
   margin-top: 24px;
 }
 
+/* Home: today's daily questions lead on the brand's dark ground; the other modes follow as one quieter list. */
+.today {
+  background: var(--isc-c-bg);
+  border-color: var(--isc-green);
+}
+.today h2 {
+  color: var(--isc-white);
+  font-size: var(--isc-fs-h2);
+}
+.today-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 16px;
+}
+.today-left {
+  margin: 0;
+  font-family: var(--isc-font-display);
+  font-size: var(--isc-fs-h3);
+  font-weight: 600;
+  color: var(--isc-gold);
+}
+.today-areas {
+  list-style: none;
+  margin: 20px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+  column-gap: 24px;
+}
+.today-areas li {
+  display: grid;
+  gap: 2px;
+  padding: 12px 0;
+  border-top: 1px solid var(--isc-c-border-strong);
+}
+.today-area {
+  font-weight: 600;
+}
+.today-areas .done .muted {
+  color: var(--isc-gold);
+}
+.today-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+  margin-top: 20px;
+}
+.today-foot p {
+  margin: 0;
+}
+.today .button:not(.secondary) {
+  background: var(--isc-gold);
+  color: var(--isc-green-900);
+}
+.today .button:not(.secondary):hover {
+  background: var(--isc-gold-400);
+}
+@media (max-width: 560px) {
+  .today-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+.today :focus-visible {
+  outline-color: var(--isc-white);
+  outline-offset: 3px;
+  box-shadow: none;
+}
+.modes {
+  margin-top: 8px;
+}
+.mode {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 12px 24px;
+  padding: 16px 0;
+  border-top: 1px solid var(--isc-c-border);
+}
+.mode:first-child {
+  border-top: 0;
+}
+.mode h3 {
+  margin: 0;
+}
+.mode p {
+  margin: 4px 0 0;
+}
+@media (max-width: 560px) {
+  .mode {
+    grid-template-columns: 1fr;
+  }
+  .mode .button {
+    justify-self: start;
+  }
+}
+
+/* Mock: quizzes grouped by year, newest open. */
+.quiz-year {
+  margin-top: 24px;
+}
+.quiz-year summary h2 {
+  font-size: var(--isc-fs-h3);
+}
+.quiz-year summary .muted {
+  font-weight: 400;
+}
+
 /* Rank emblems: the tier sets the metal, the top titles have their own colours. */
 .emblem {
   flex: none;
   overflow: visible;
 }
 .emblem-mingo {
-  --hi: #e3a86b;
-  --lo: #8a5a2b;
+  --hi: var(--mingo-hi);
+  --lo: var(--mingo-lo);
   --ink: #fff7ee;
 }
 .emblem-jefe {
-  --hi: #e9eef2;
-  --lo: #7d8a96;
+  --hi: var(--jefe-hi);
+  --lo: var(--jefe-lo);
   --ink: var(--isc-green);
 }
 .emblem-dt {
@@ -951,7 +1077,7 @@ details[open] > summary::before {
 }
 .road-step.current {
   border: 2px solid var(--isc-gold);
-  box-shadow: 0 0 0 4px rgb(255 184 29 / 0.2);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--isc-gold) 20%, transparent);
 }
 .road-xp {
   font-family: var(--isc-font-mono);
@@ -1091,7 +1217,8 @@ details[open] > summary::before {
 }
 
 /* Formulas and reading beside the question, for the levels that still get them. */
-.content:has(.with-aids) {
+.content:has(.with-aids),
+.content:has(.aids-ahead) {
   max-width: 1320px;
 }
 .with-aids {
@@ -1373,9 +1500,6 @@ details[open] > summary::before {
 .live-answers li.mine {
   font-weight: 600;
 }
-.live-tables li.mine {
-  box-shadow: inset 4px 0 0 var(--isc-gold);
-}
 .host-actions {
   position: sticky;
   bottom: 0;
@@ -1498,7 +1622,7 @@ details[open] > summary::before {
 }
 .bonus-crit {
   background: var(--isc-gold);
-  color: var(--isc-green-900, #06281a);
+  color: var(--isc-green-900);
 }
 .bonus.level {
   background: var(--isc-green);

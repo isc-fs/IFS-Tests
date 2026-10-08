@@ -8,7 +8,7 @@ import { ErrorNotice, Notice } from '../components/Form'
 import { LearningAids } from '../components/LearningAids'
 import { Page } from '../components/Page'
 import { QuestionCard } from '../components/QuestionCard'
-import { errorMessage, queryClient } from '../lib/api'
+import { errorMessage, queryClient, useMe } from '../lib/api'
 import { AREAS, TOPICS } from '../lib/areas'
 
 type Filter = { area?: string; topic?: string }
@@ -111,9 +111,13 @@ function Session({ area, topic, onGraded }: Filter & { onGraded: (correct: boole
   }
 
   const question = current.data
+  const aids = useMe().data?.progress?.rank.aids
   return (
     <>
-      {current.isPending && <p className="muted">Picking a question…</p>}
+      {current.isPending && (
+        // Ranks that get learning aids take the wide column from the start, so the page doesn't widen on arrival.
+        <p className={aids?.formulas || aids?.learn_more ? 'muted aids-ahead' : 'muted'}>Picking a question…</p>
+      )}
       {current.isError && (
         <Notice tone="error">
           {errorMessage(current.error)} {!area && 'Ask an admin to load the question bank.'}

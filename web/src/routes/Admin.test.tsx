@@ -87,6 +87,26 @@ test('the member list can be filtered once the team grows', async () => {
   expect(screen.getByText(/Nobody matches/)).toBeInTheDocument()
 })
 
+test('a long member list shows the first 20 until asked; the search looks through everyone', async () => {
+  const many = Array.from({ length: 25 }, (_, i) => ({
+    ...USERS[1],
+    id: 10 + i,
+    display_name: `Member ${String(i).padStart(2, '0')}`,
+    email: `m${i}@alu.comillas.edu`,
+  }))
+  renderApp('/admin', { ...base, 'GET /api/admin/users': { body: many } })
+  expect(await screen.findByRole('heading', { name: 'Members (25)' })).toBeInTheDocument()
+  expect(document.querySelectorAll('.members fieldset')).toHaveLength(20)
+  await userEvent.type(screen.getByLabelText('Find a member'), 'Member 24')
+  expect(await row('Member 24')).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: /Show all/ })).toBeNull()
+  await userEvent.clear(screen.getByLabelText('Find a member'))
+  await userEvent.click(screen.getByRole('button', { name: 'Show all 25 members' }))
+  expect(document.querySelectorAll('.members fieldset')).toHaveLength(25)
+  await userEvent.click(screen.getByRole('button', { name: 'Show the first 20' }))
+  expect(document.querySelectorAll('.members fieldset')).toHaveLength(20)
+})
+
 test('disabling a member asks first; cancelling sends nothing', async () => {
   const confirm = vi.fn(() => false)
   vi.stubGlobal('confirm', confirm)

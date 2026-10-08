@@ -195,12 +195,16 @@ const rankAt = (points: number) => {
 const askPosition = (u: AdminUser, p: Position) =>
   `Change ${u.display_name}'s position to ${POSITION_NAMES[p]}? Their rank goes from ${rankAt(u.rank_by_position[u.position] ?? u.rank_points)} to ${rankAt(u.rank_by_position[p] ?? u.rank_points)}.`
 
+/** A long list stays usable: the first few, then all of them on request or through the search. */
+const FIRST = 20
+
 const matches = (u: AdminUser, q: string) =>
   [u.display_name, u.email, u.vertical ?? '', u.role, u.status].some((s) => s.toLowerCase().includes(q))
 
 function Members({ selfId }: { selfId: number }) {
   const users = useQuery(usersOptions())
   const [query, setQuery] = useState('')
+  const [all, setAll] = useState(false)
   const [changed, setChanged] = useState('')
   const heading = useRef<HTMLHeadingElement>(null)
   const deleted = (message: string) => {
@@ -228,7 +232,8 @@ function Members({ selfId }: { selfId: number }) {
     update.mutate({ path: { user_id: u.id }, body })
   }
   const q = query.trim().toLowerCase()
-  const shown = users.data?.filter((u) => matches(u, q))
+  const shown = users.data?.filter((u) => matches(u, q)) ?? []
+  const capped = !q && !all && shown.length > FIRST
 
   return (
     <section className="panel stack" aria-labelledby="members-title">
@@ -246,9 +251,9 @@ function Members({ selfId }: { selfId: number }) {
       )}
       <ErrorNotice error={update.error} />
       {changed && <Notice tone="ok">{changed}</Notice>}
-      {q && shown?.length === 0 && <p className="muted">Nobody matches “{query.trim()}”.</p>}
+      {q && shown.length === 0 && <p className="muted">Nobody matches “{query.trim()}”.</p>}
       <ul className="list members">
-        {shown?.map((u) => {
+        {(capped ? shown.slice(0, FIRST) : shown).map((u) => {
           const self = u.id === selfId
           const locked = u.locked_until && new Date(u.locked_until) > new Date()
           return (
@@ -328,6 +333,11 @@ function Members({ selfId }: { selfId: number }) {
           )
         })}
       </ul>
+      {!q && shown.length > FIRST && (
+        <button type="button" className="link-button" onClick={() => setAll(!all)}>
+          {all ? `Show the first ${FIRST}` : `Show all ${shown.length} members`}
+        </button>
+      )}
     </section>
   )
 }

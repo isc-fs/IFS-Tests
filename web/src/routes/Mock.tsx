@@ -78,6 +78,9 @@ export default function Mock() {
   const shown = quizzes.data?.filter(
     (quiz) => (!vehicle || quiz.vehicle_class === vehicle) && quiz.label.toLowerCase().includes(q),
   )
+  const byYear = new Map<number, MockQuiz[]>()
+  for (const quiz of shown ?? []) byYear.set(quiz.year, [...(byYear.get(quiz.year) ?? []), quiz])
+  const years = [...byYear].sort(([a], [b]) => b - a)
 
   return (
     <Page title="Mock quizzes" eyebrow="Past registration quizzes, on their real clock">
@@ -106,16 +109,29 @@ export default function Mock() {
       <ErrorNotice error={start.error ?? quizzes.error} />
       {quizzes.isPending && <p className="muted">Loading quizzes…</p>}
       {shown?.length === 0 && <p className="muted">No quizzes match.</p>}
-      <ul className="list quizzes">
-        {shown?.map((quiz) => (
-          <QuizRow
-            key={quiz.id}
-            quiz={quiz}
-            busy={start.isPending}
-            onStart={() => start.mutate({ path: { quiz_id: quiz.id } })}
-          />
-        ))}
-      </ul>
+      {years.map(([year, list], i) => (
+        // The newest year is open; older ones open on demand, or when filtering or holding a run in progress.
+        <details
+          key={year}
+          className="quiz-year"
+          open={i === 0 || !!q || !!vehicle || list.some((quiz) => quiz.open_session)}
+        >
+          <summary>
+            <h2>{year}</h2>
+            <span className="muted">{list.length === 1 ? '1 quiz' : `${list.length} quizzes`}</span>
+          </summary>
+          <ul className="list quizzes">
+            {list.map((quiz) => (
+              <QuizRow
+                key={quiz.id}
+                quiz={quiz}
+                busy={start.isPending}
+                onStart={() => start.mutate({ path: { quiz_id: quiz.id } })}
+              />
+            ))}
+          </ul>
+        </details>
+      ))}
     </Page>
   )
 }

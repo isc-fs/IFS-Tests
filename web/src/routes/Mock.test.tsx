@@ -112,6 +112,24 @@ test('quizzes can be filtered and show your best and the bar to beat', async () 
   expect(screen.getByText('No quizzes match.')).toBeInTheDocument()
 })
 
+test('quizzes are grouped by year, newest first; older years open on demand or when searching', async () => {
+  const quizzes = [
+    quiz(3, 'FSG 2023 EV', 'ev', { year: 2023 }),
+    ...QUIZZES,
+    quiz(4, 'FSN 2023 CV', 'cv', { year: 2023 }),
+  ]
+  renderApp('/mock', { 'GET /api/me': { body: MEMBER }, 'GET /api/mock/quizzes': { body: quizzes } })
+  const years = await screen.findAllByRole('heading', { level: 2 })
+  expect(years.map((h) => h.textContent)).toEqual(['2025', '2023'])
+  const group = (year: string) => screen.getByRole('heading', { name: year }).closest('details') as HTMLDetailsElement
+  expect(group('2025').open).toBe(true)
+  expect(group('2023').open).toBe(false)
+  expect(within(group('2023')).getByText('2 quizzes')).toBeInTheDocument()
+  await userEvent.type(screen.getByLabelText('Event or year'), 'fsn')
+  expect(group('2023').open).toBe(true)
+  expect(screen.queryByRole('heading', { name: '2025' })).toBeNull()
+})
+
 test('a run: one question at a time, then the results', async () => {
   const { router, sent } = renderApp('/mock', {
     'GET /api/me': { body: MEMBER },
