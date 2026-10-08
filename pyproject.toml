@@ -1,6 +1,6 @@
 [project]
 name = "ifs-tests"
-version = "1.0.0"
+version = "1.1.0"
 description = "Formula Student registration quiz practice, built on the FS-Quiz question bank"
 authors = [{ name = "ISC Racing Team" }]
 requires-python = ">=3.13"
