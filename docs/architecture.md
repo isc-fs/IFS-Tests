@@ -57,7 +57,7 @@ Everything under `src/ifs_tests/` (empty `__init__.py` files left out).
 | Module | Owns |
 |---|---|
 | `__init__.py` | The package version (from the installed package metadata), shown by `/healthz` and the OpenAPI document |
-| `settings.py` | Configuration from `IFS_*` environment variables or `.env`: environment, database URL, public origin, paths, database pool size; cookie name and CSRF origins derived from them; refuses to start staging or prod without `https://` |
+| `settings.py` | Configuration from `IFS_*` environment variables or `.env`: environment, database URL, public origin, paths, database pool size, the season-1b date and the AI canary flag (the routes pass them to services as a `Policy`); cookie name and CSRF origins derived from them; refuses to start staging or prod without `https://` |
 | `cli.py` | The `ifs-tests` command: `mirror`, `stats`, `show`, `topics`, `push`, `openapi`, `create-admin`, `invite`, `reset-link`, `maintenance`, `scheduler` |
 | `scheduler.py` | A minimal daily job runner for the `scheduler` container (Madrid times, a heartbeat file for the health check, touched only while the database answers) |
 | **api/** | |
@@ -103,6 +103,7 @@ Everything under `src/ifs_tests/` (empty `__init__.py` files left out).
 | `domain/mock.py` | Seasons (September to August) and the "bar to beat" |
 | `domain/rank.py` | Rank points, divisions, LP per answer, placement, season reset, training wheels per division |
 | `domain/xp.py` | XP per answer and its bonuses, account level, rested XP, question difficulty |
+| `domain/signals.py` | Ranked-play signals (ADR 0010): the `Policy` a request runs under, clamping what the page reports to what the attempt allows, the reopening grace, the decoy rule (the random choice is injected) and the 90-day retention |
 | `domain/leaderboard.py` | Periods, competition ranking with ties, the vertical board |
 | `domain/live.py` | Join codes, sub-departments and seating, captains, which table answers each question (`route`), speed points, when an unfinished session counts as abandoned |
 | **services/** | |
@@ -114,6 +115,7 @@ Everything under `src/ifs_tests/` (empty `__init__.py` files left out).
 | `services/daily.py` | Choosing the day's questions (`ensure_daily`), start, answer, closing abandoned ones |
 | `services/mock.py` | Mock runs: start, advance, time-outs, answer, summary |
 | `services/live.py` | Live quiz sessions end to end: seating, routing (and, in the lobby, how often each table would get a question: `domain/live.reach`), answers and proposals, the state view shared per version (`Room`), what the event streams watch (`watch`), sharing XP after questions close, finishing abandoned sessions, the results CSV |
+| `services/signals.py` | The `Policy` for a request from `Settings` and the clock, the AI canary's decoy draw (from the options table alone, never the key) and the nightly purge of signals past their retention |
 | `services/xp.py` | Scoring one answer in both currencies under the player's row lock (`lock`, `grant`), difficulty recalibration |
 | `services/streaks.py` | Streak days (with the freezes due applied from midnight) and the nightly streak-freeze job that stores them |
 | `services/season.py` | The 1 September rank reset |
@@ -198,7 +200,7 @@ Two uvicorn workers, many threads and the scheduler all write to the same rows. 
 | **Account deletion:** hosted live sessions (`FOR NO KEY UPDATE`, id order), then `ADMIN_LOCK`, then the user row (`FOR UPDATE`). | `services/privacy._lock` | The same order as answering and as admin changes. |
 | **Admin changes queue on a Postgres advisory lock**, `pg_advisory_xact_lock(ADMIN_LOCK)` with `ADMIN_LOCK = 7_000_001`, taken before reading who the active admins are. | `services/accounts._active_admin_ids`, used by `update_user`, `privacy._lock`, `mark_alumni`; then `accounts.check_still_admin` | Two admins demoting or deleting each other can't leave zero admins, and the one who acts second, who is no longer an active admin by then, is refused (403) rather than acting as an admin who was just demoted or deleted (with three admins both used to succeed). An advisory lock rather than locking admin rows, because an admin playing a live quiz has their row locked by sharing. |
 | **The daily pick** takes `pg_advisory_xact_lock(0x1F5DA11)` and re-reads the choice before writing. | `services/daily.ensure_daily` | The scheduler and the first visitors of the day get the same question. |
-| **Nightly jobs do one player per transaction** (one attempt, one mock question or run, one live session or live answer, one player's rank or freezes). | `daily.close_expired`, `mock.close_expired`, `mock.end_stale`, `live.finish_abandoned`, `live.share`, `season.rollover`, `streaks.nightly` | The job never holds many player rows at once, so it can't deadlock with a live quiz sharing XP to a room. `privacy.purge` is the exception: its deletions commit together at the end of `maintenance.run`. |
+| **Nightly jobs do one player per transaction** (one attempt, one mock question or run, one live session or live answer, one player's rank or freezes). | `daily.close_expired`, `mock.close_expired`, `mock.end_stale`, `live.finish_abandoned`, `live.share`, `season.rollover`, `streaks.nightly`, `signals.purge` | The job never holds many player rows at once, so it can't deadlock with a live quiz sharing XP to a room. `signals.purge` takes the player lock first, the order account deletion takes. `privacy.purge` is the exception: its deletions commit together at the end of `maintenance.run`. |
 | **Idempotent writes** use conditional updates and unique indexes: `UPDATE ... WHERE submitted_at IS NULL RETURNING`, `INSERT ... ON CONFLICT DO NOTHING` on the partial unique indexes for daily attempts and open mock runs. | daily and mock start and answer, live answers and joins | A double submit or a retry returns the stored result; only the request that recorded the answer grants XP. |
 | **Bank import locks every FS-Quiz question** (`FOR UPDATE`); reviewer edits lock the one question. | `services/bank.import_bank`, `services/review._question` | A reviewer's change during an import isn't overwritten by stale values. |
 | **Sign-in and password checks hash with no transaction open**, then lock the user row (`FOR UPDATE`) only to record the outcome. | `services/accounts.login`, `change_password`, `reset_password`, `privacy.delete_self` | Argon2 takes tens of milliseconds and 19 MiB; holding a connection or lock meanwhile would starve the pool. Parallel wrong guesses still each count. |
@@ -222,6 +224,7 @@ FS-Quiz answers are public on fs-quiz.eu, so the goal is narrower: the server ne
 | Live reveals (`services/live._score`, `api/routes/live.py`) | Blanked the same way, and the tables' answers are hidden |
 | Data export (`services/privacy.export`) | Right/wrong, XP and LP hidden for open mock runs and unfinished live quizzes |
 
+- **The canary's decoy is not an answer.** With `IFS_CANARY` on, a ranked `choice-one` question gets a decoy option (`attempts.decoy_option_id`, shown in `TimedQuestion` only). `services/signals.decoy_for` draws it with `secrets.choice` from the options table alone, with the same predicate and order `questions.show` uses (non-retired, by position then id), and never imports or queries the key, so it is uniform over all the options whatever the answer is. `tests/api/test_signals.py` guards this: `test_the_draw_never_reads_the_key` fails on any statement touching `answer_keys` while the draw runs, and `test_the_decoy_is_drawn_uniformly_from_the_displayed_options` checks the spread with the key first and last.
 - **Unpredictable draws.** The daily pick, hints and the XP "critical" roll are seeded with a server secret (`hint_salt` in the `settings` table), so nobody can recompute tomorrow's question or run a hint backwards from the public bank.
 - **The clock is the server's.** Deadlines are stored when a question is shown; answers after the deadline plus 3 seconds of grace are recorded as late and wrong; abandoned questions are closed as late by the next visit or the nightly job.
 

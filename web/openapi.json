@@ -1169,7 +1169,7 @@
      "content": {
       "application/json": {
        "schema": {
-        "$ref": "#/components/schemas/AnswerIn"
+        "$ref": "#/components/schemas/TimedAnswerIn"
        }
       }
      }
@@ -3961,6 +3961,17 @@
        }
       ],
       "title": "Submitted At"
+     },
+     "signals": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/ExportSignals"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "Ranked play from season 1b on: what the page saw while the clock ran, how often the question was reopened, and the canary's decoy; null otherwise, and 90 days after the season ended"
      }
     },
     "additionalProperties": false,
@@ -3980,7 +3991,8 @@
      "day",
      "started_at",
      "deadline_at",
-     "submitted_at"
+     "submitted_at",
+     "signals"
     ],
     "title": "ExportAnswer"
    },
@@ -4424,6 +4436,89 @@
      "expires_at"
     ],
     "title": "ExportSignIn"
+   },
+   "ExportSignals": {
+    "properties": {
+     "away_declared_s": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Away Declared S"
+     },
+     "away_undeclared_s": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Away Undeclared S"
+     },
+     "pasted": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Pasted",
+      "description": "Null for answers that aren't free text: not recorded"
+     },
+     "long_copies": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Long Copies"
+     },
+     "resumes": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Resumes",
+      "description": "Times the running question was reopened; approximate"
+     },
+     "decoy_option_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Decoy Option Id"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "away_declared_s",
+     "away_undeclared_s",
+     "pasted",
+     "long_copies",
+     "resumes",
+     "decoy_option_id"
+    ],
+    "title": "ExportSignals"
    },
    "Feedback": {
     "properties": {
@@ -5496,6 +5591,16 @@
       "title": "Unsure",
       "description": "\"I'm not sure\": no answer; the official one shown for half a wrong answer's LP",
       "default": false
+     },
+     "signals": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Signals"
+       },
+       {
+        "type": "null"
+       }
+      ]
      },
      "attempt_id": {
       "type": "integer",
@@ -6853,6 +6958,44 @@
     ],
     "title": "SeatIn"
    },
+   "Signals": {
+    "properties": {
+     "away_declared_s": {
+      "type": "number",
+      "maximum": 10000000.0,
+      "minimum": 0.0,
+      "title": "Away Declared S",
+      "description": "Seconds away after telling the page (a rulebook link, 'Looking something up'). Whole seconds; fractions are rounded, and the total is clamped to the attempt's own time",
+      "default": 0
+     },
+     "away_undeclared_s": {
+      "type": "number",
+      "maximum": 10000000.0,
+      "minimum": 0.0,
+      "title": "Away Undeclared S",
+      "description": "Seconds the tab was hidden or unfocused without saying. Whole seconds; clamped like away_declared_s",
+      "default": 0
+     },
+     "pasted": {
+      "type": "boolean",
+      "title": "Pasted",
+      "description": "Text was pasted into the answer box (kept for free-text answers only; pasting a translation is allowed play)",
+      "default": false
+     },
+     "long_copies": {
+      "type": "integer",
+      "maximum": 100000.0,
+      "minimum": 0.0,
+      "title": "Long Copies",
+      "description": "Copies of 80 or more characters of the question (stored up to 1000)",
+      "default": 0
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "title": "Signals",
+    "description": "What the page saw while a ranked clock ran. The browser reports them, so they are advisory (ADR 0010);\nnone of them means anything on its own."
+   },
    "SolutionOut": {
     "properties": {
      "text": {
@@ -7123,6 +7266,59 @@
     ],
     "title": "TableIn"
    },
+   "TimedAnswerIn": {
+    "properties": {
+     "options": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "integer",
+         "maximum": 2147483647.0,
+         "minimum": 1.0
+        },
+        "type": "array",
+        "maxItems": 40
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Options"
+     },
+     "value": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 200
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Value"
+     },
+     "unsure": {
+      "type": "boolean",
+      "title": "Unsure",
+      "description": "\"I'm not sure\": no answer; the official one shown for half a wrong answer's LP",
+      "default": false
+     },
+     "signals": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Signals"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "title": "TimedAnswerIn",
+    "description": "Daily and mock answers may carry signals; practice and live answers (AnswerIn) refuse them."
+   },
    "TimedQuestion": {
     "properties": {
      "attempt_id": {
@@ -7141,6 +7337,18 @@
       "type": "string",
       "format": "date-time",
       "title": "Server Now"
+     },
+     "decoy_option_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Decoy Option Id",
+      "description": "With the AI canary on: the option the clipboard note names to AI assistants. Drawn at random from all the options, so it says nothing about the answer; null when the canary is off or the option is no longer offered"
      }
     },
     "type": "object",

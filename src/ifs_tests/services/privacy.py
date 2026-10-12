@@ -34,6 +34,7 @@ from ..db.models import (
 )
 from ..domain import accounts as rules
 from ..domain import rank as rank_rules
+from ..domain import signals as signal_rules
 from . import live
 from .accounts import AccountError, _active_admin_ids, _record_failure, audit, check_still_admin
 
@@ -54,9 +55,17 @@ def export_slot() -> Iterator[None]:
         _exporting.release()
 
 
-def export(db: DB, user: User, now: datetime) -> dict[str, Any]:
+def _signals(a: Any) -> dict[str, Any] | None:
+    """The ranked-play signals of an answer; none when they weren't collected (a row carries them iff `resumes`)."""
+    if a.resumes is None:
+        return None
+    return {c: getattr(a, c) for c in signal_rules.COLUMNS}
+
+
+def export(db: DB, user: User, now: datetime, signals: bool = True) -> dict[str, Any]:
     """Everything stored about `user`, as they could read it back. Nothing that reveals an answer early:
-    right and wrong stay hidden for a mock run still going and a live quiz not finished."""
+    right and wrong stay hidden for a mock run still going and a live quiz not finished. `signals` is False for
+    an admin's copy: raw per-person ranked-play signals never travel that way (ADR 0010)."""
     open_runs = set(
         db.scalars(
             select(MockSession.id).where(MockSession.user_id == user.id, MockSession.finished_at.is_(None))
@@ -92,6 +101,12 @@ def export(db: DB, user: User, now: datetime) -> dict[str, Any]:
             Attempt.submitted_at,
             Attempt.session_id,
             Attempt.live_session_id,
+            Attempt.away_declared_s,
+            Attempt.away_undeclared_s,
+            Attempt.pasted,
+            Attempt.long_copies,
+            Attempt.resumes,
+            Attempt.decoy_option_id,
         )
         .where(Attempt.user_id == user.id)
         .order_by(Attempt.created_at, Attempt.id)
@@ -117,6 +132,7 @@ def export(db: DB, user: User, now: datetime) -> dict[str, Any]:
                 "started_at": a.created_at,
                 "deadline_at": a.deadline_at,
                 "submitted_at": a.submitted_at,
+                "signals": _signals(a) if signals else None,
             }
         )
     mock_runs = [
@@ -280,11 +296,12 @@ def export(db: DB, user: User, now: datetime) -> dict[str, Any]:
 
 
 def export_for(db: DB, actor: User, user_id: int, now: datetime) -> dict[str, Any]:
-    """An admin fetching the export for someone who can't sign in (alumni, disabled)."""
+    """An admin fetching the export for a member, without their ranked-play signals (the member's own download
+    has them; the integrity report reaches them with two people)."""
     user = db.get(User, user_id)
     if user is None:
         raise AccountError("No such user.", 404)
-    data = export(db, user, now)
+    data = export(db, user, now, signals=False)
     audit(db, actor, "user.export", f"user:{user.id}")
     db.commit()
     return data

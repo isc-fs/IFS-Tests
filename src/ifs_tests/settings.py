@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+from datetime import date
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import model_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -22,6 +23,17 @@ class Settings(BaseSettings):
     # Connections per process; deploy/compose.yaml sizes them against Postgres's max_connections.
     db_pool_size: int = 5
     db_max_overflow: int = 5
+    # Season 1b (ADR 0010): the Madrid day the mid-season rules start. Unset: season 1a everywhere, and nothing
+    # in services/signals is collected.
+    rules_1b_from: date | None = None
+    # AI canary (ADR 0010): draw a decoy option for each ranked choice question, which the page names in the note
+    # it adds to long copies. Off until the recall pilot says otherwise; the draw never looks at the answer key.
+    canary: bool = False
+
+    @field_validator("rules_1b_from", mode="before")
+    @classmethod
+    def blank_is_unset(cls, v: object) -> object:
+        return None if v == "" else v  # compose passes the variable through even when .env leaves it empty
 
     @model_validator(mode="after")
     def deployed_means_https(self) -> Settings:

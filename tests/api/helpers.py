@@ -1,12 +1,18 @@
 from __future__ import annotations
 
+from datetime import date, datetime
 from typing import Any
 
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from ifs_tests.db.models import AnswerKey, AnswerOption, Question
+from ifs_tests.db.models import AnswerKey, AnswerOption, DailyQuestion, Question
+from ifs_tests.domain.daily import madrid_day
+
+# app_settings (tests/conftest.py) for the apps under test: season 1b started long ago, with and without the canary.
+GATED: dict[str, Any] = {"rules_1b_from": date(2020, 1, 1)}
+CANARY: dict[str, Any] = {**GATED, "canary": True}
 
 ADMIN = {"email": "admin@alu.comillas.edu", "password": "pit lane boss 2026"}
 PASSWORD = "tractive system 900V!"
@@ -78,3 +84,19 @@ def shape(db: Session, qid: int) -> dict[str, Any]:
         "options": len(options(db, qid)),
         "right_options": right,
     }
+
+
+def set_daily(db: Session, day: date, qid: int) -> str:
+    area = db.get_one(Question, qid).area
+    db.execute(delete(DailyQuestion).where(DailyQuestion.day == day, DailyQuestion.area == area))
+    db.add(DailyQuestion(day=day, area=area, question_id=qid))
+    db.commit()
+    return area
+
+
+def start_daily(c: TestClient, db: Session, now: datetime, qid: int) -> dict[str, Any]:
+    """Make `qid` the day's question in its area and start it."""
+    area = set_daily(db, madrid_day(now), qid)
+    r = c.post(f"/api/daily/{area}/start")
+    assert r.status_code == 200, r.text
+    return dict(r.json())

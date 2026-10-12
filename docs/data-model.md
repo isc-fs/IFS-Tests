@@ -31,6 +31,7 @@ erDiagram
     questions ||--o{ quiz_questions : "appears in"
     quizzes ||--o{ quiz_questions : lists
     questions ||--o{ attempts : "answered in"
+    answer_options |o--o{ attempts : "canary decoy (SET NULL)"
     questions ||--o{ daily_questions : "chosen as"
     questions ||--o{ reports : about
     quizzes ||--o{ mock_sessions : "replayed in"
@@ -171,7 +172,7 @@ The rulebooks, handbooks and other documents a quiz was based on. Linked, never 
 
 The choices of a choice question: `question_id` (→ `questions`, `ON DELETE CASCADE`, indexed), `position`, `text`, `fsquiz_id` (FS-Quiz's answer ID; null only for rows loaded before migration 0017, until the next `push` fills it) and `retired`. Which options are correct is **not** here.
 
-An option's `id` is stable: `attempts.answer`, `live_answers.answer` and choice keys point at it. A re-import updates options in place, matched by `fsquiz_id` (or by text for rows without one), and never deletes them: an option FS-Quiz removed becomes `retired`, which players are never offered again and can't pick in a new answer, but which still shows in the answers that picked it.
+An option's `id` is stable: `attempts.answer`, `attempts.decoy_option_id`, `live_answers.answer` and choice keys point at it. A re-import updates options in place, matched by `fsquiz_id` (or by text for rows without one), and never deletes them: an option FS-Quiz removed becomes `retired`, which players are never offered again and can't pick in a new answer, but which still shows in the answers that picked it.
 
 ### `answer_keys`
 
@@ -218,8 +219,22 @@ One answer to one question, in any mode. **Personal data.** The largest table.
 | `session_id` | Mock run → `mock_sessions`, `ON DELETE CASCADE`, indexed |
 | `live_session_id` | Live quiz → `live_sessions`, `ON DELETE CASCADE`, indexed |
 | `points` | Season points of an early design (migration 0005). Unused since 0008; always written as 0 |
+| `away_declared_s` | Ranked play (see below): whole seconds the page was away after the player said so (a rulebook link, "Looking something up"), clamped to the attempt's own time |
+| `away_undeclared_s` | Whole seconds the tab was hidden or unfocused without saying so, clamped to what is left of the attempt's time after `away_declared_s` |
+| `pasted` | Text was pasted into the answer box. Recorded for `text` answers only; null for every other kind of answer, which means *not recorded*, not "no paste" (a number pasted from a calculator is honest play) |
+| `long_copies` | Copies of 80 or more characters of the question, capped at 1000 (`smallint`) |
+| `resumes` | How often the running question was reopened, counted by the server, capped at 1000 (`smallint`). 0 when the attempt is created under ranked collection; also the marker that the row carries signals |
+| `decoy_option_id` | The AI canary's decoy: one option of the question, drawn uniformly from all its non-retired options when the attempt was created, with the answer key never consulted. → `answer_options`, `ON DELETE SET NULL` |
+
+**Ranked-play signals** (the six columns from `away_declared_s` down; ADR 0010). They exist for daily and counted mock attempts created on or after `IFS_RULES_1B_FROM` (Madrid day; unset means never, see [development.md](development.md#working-on-the-frontend-or-the-api-with-live-reload)). They are null for practice, live and replay (uncounted mock) rows, for anything created before that day, and 90 days after the season ends. **A row carries them if and only if `resumes` is set**: the answer stores the four page-reported values only on such a row, a reopening is counted only on such a row, the export's `signals` block is null exactly when `resumes` is null, and the purge nulls all six together. So null always means "not collected", never zero. They are advisory, and the page reports four of them and could lie ([security.md](security.md#threats-and-controls)); XP, LP, streaks and rank never read them. `services/signals.py` (policy, decoy, purge) and `domain/signals.py` (clamping, retention) own the rules.
+
+- The `away_*`, `pasted` and `long_copies` values are written by the request that records the answer (the conditional `UPDATE ... WHERE submitted_at IS NULL`), so a repeat submit never overwrites them and a timeout (`close_expired`, a mock time-out, `end`) writes none. They cover only the page instance that sent the answer.
+- `resumes` counts page loads of a running question at least 10 s after it was shown (`RESUME_GRACE`): a `POST /api/daily/{area}/start` that returns the running attempt, and a `GET /api/mock/sessions/{id}`. Reconnects, a second device and a double load count too, so it is approximate; the 10 s keeps the web app's own refetch right after a start from inflating it. A daily reopening after the question's time ran out is not counted, as in a mock run. Only those two paths count: `POST /api/mock/quizzes/{id}/start` on an open run does not, so a modified client can reload without being counted and a low value proves nothing.
+- The decoy's *n* (the number of options it was drawn from) is the non-retired count at the draw; options retired later are not dated. It is drawn only for `choice-one` questions with at least three such options, and only while `IFS_CANARY` is on. The API shows it only while the canary is on and the option is still offered.
 
 Indexes: `ix_attempts_user_question` (`user_id`, `question_id`), which also serves most per-user queries; **`ix_attempts_lp_day`** on (`user_id`, the Madrid day an answer's LP belongs to: `coalesce(day, date(timezone('Europe/Madrid', created_at)))`) `WHERE lp != 0 AND mode IN ('daily', 'practice')` (migration 0019), through which the leaderboards read each member's play in a period instead of all history (`models.LP_DAY` and `models.RANKED_PLAY` are the expression and predicate, written with literals for the same reason as below; a mock run's LP goes by the run's `started_at` instead, through `ix_mock_sessions_user_id` and `ix_attempts_session_id`); and the **partial unique index `uq_attempts_daily`** on (`user_id`, `day`, `area`) `WHERE mode = 'daily'`: one daily attempt per player, day and area. `services/daily.start` relies on it with `INSERT ... ON CONFLICT DO NOTHING`; the predicate must be written as the literal `text("mode = 'daily'")`, because a bound parameter stops Postgres matching the partial index once psycopg prepares the statement.
+
+The partial index **`ix_attempts_decoy_option_id`** on `decoy_option_id` `WHERE decoy_option_id IS NOT NULL` (migration 0025) is empty while the canary is off. It only serves the `SET NULL` when someone deletes an `answer_options` row by hand (the app only retires options), so that delete doesn't scan `attempts`.
 
 ### `practice_hints`
 
@@ -344,7 +359,7 @@ Only on the server, outside Alembic and the models: `deploy/deploy.sh` creates i
 | `invites` | `invite`: the one they signed up with (role, vertical, note, used) | Note cleared, `used_by`/`created_by` set null |
 | `password_resets` | `password_resets`: created, expires, used (never the token hash) | Cascade (`user_id`); `created_by` set null |
 | `streak_freezes` | `streak_freezes_used` (the days) | Cascade |
-| `attempts` | `answers`, with the deadline of timed answers (right/wrong, XP and LP hidden while a mock run or live quiz is unfinished); not the unused `points` | Cascade |
+| `attempts` | `answers`, with the deadline of timed answers (right/wrong, XP and LP hidden while a mock run or live quiz is unfinished) and, for ranked answers from season 1b, the page's signals and the canary decoy (`signals`, null otherwise); not the unused `points` | Cascade |
 | `practice_hints` | `pending_hints` | Cascade |
 | `mock_sessions` | `mock_runs`, with the questions a run didn't reach (`unreached`, `unreached_graded`) | Cascade (and their attempts) |
 | `reports` | `reports` | `user_id` set null; the message stays |
@@ -355,7 +370,7 @@ Only on the server, outside Alembic and the models: `deploy/deploy.sh` creates i
 | `live_proposals` | `live.proposals` | Cascade |
 | `audit_log` | `account_history` (entries about them), `actions` (what they did, with other people shown only as "user") | Kept with the numeric IDs; purged after two years |
 
-Retention: alumni and disabled accounts are deleted 365 days after `left_at`; the audit log keeps two years; closed invite and reset links 30 days; backups 14 days. All of these run in the nightly job (see [architecture.md](architecture.md#background-work)).
+Retention: alumni and disabled accounts are deleted 365 days after `left_at`; the audit log keeps two years; closed invite and reset links 30 days; backups 14 days. Ranked-play signals are nulled 90 days after the season they belong to ends (`services/signals.purge`, `domain/signals.KEEP`; a season ends on 31 August), so up to about 15 months after a September answer, and like everything else they survive in backups for 14 more days. The purge nulls the six columns and keeps the attempt. All of these run in the nightly job (see [architecture.md](architecture.md#background-work)).
 
 `test_every_personal_column_is_exported_or_deliberately_left_out` in `tests/api/test_privacy.py` keeps this table honest: it lists every `users` column, every column pointing at a user and every other column of those tables, with where each lands in the export or why it is left out (an admin's work on someone else's account, such as `invites.created_by`, is in the admin's own `actions` instead), and fails when a new one appears in neither list. The export's models refuse keys they don't declare, so a field built in `privacy.export` but missing from its model fails instead of vanishing from the file.
 
@@ -389,6 +404,7 @@ Retention: alumni and disabled accounts are deleted 365 days after `left_at`; th
 | 0022 | `mock_sessions.unreached` and `unreached_graded`, so upstream deletions don't rewrite a finished run's summary; backfilled for finished runs from the quiz as it stood. Expand only: the previous release ignores them, and a run it finishes during the deploy keeps them null (counted as the quiz stands) |
 | 0023 | `daily_questions.drawn_at`, so a mock question closed after midnight but before the day's draw (whose answer the summary showed) doesn't count as hidden for that daily. Expand only: null rows count from midnight, as before |
 | 0024 | Drops `users.xp`, the lifetime XP of the release before ADR 0007: the contract step of 0014. Safe because no deployed release maps it: prod never ran one, and `v1.0.0` is the first image without it |
+| 0025 | `attempts.away_declared_s`, `away_undeclared_s`, `pasted`, `long_copies`, `resumes`, `decoy_option_id` (→ `answer_options`, `SET NULL`, partial index): ranked-play signals and the AI canary's decoy (ADR 0010). Expand only: all nullable, the previous release ignores them. Downgrading loses the stored signals |
 
 ### Expand/contract
 

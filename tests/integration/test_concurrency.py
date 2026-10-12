@@ -5,7 +5,7 @@ from __future__ import annotations
 import threading
 import time
 from collections.abc import Callable
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -21,13 +21,15 @@ from ifs_tests.db.models import AnswerOption, Attempt, DailyQuestion, MockSessio
 from ifs_tests.domain import rank as rank_rules
 from ifs_tests.domain import xp as xp_rules
 from ifs_tests.domain.daily import madrid_day
+from ifs_tests.domain.signals import OFF, Policy, Signals
 from ifs_tests.services import accounts, daily, leaderboard, live, mock, practice, privacy, review, streaks
 from ifs_tests.services import bank as bank_service
+from ifs_tests.services import signals as signal_service
 from ifs_tests.services import xp as xp_service
 from ifs_tests.services.bank import import_bank
 from ifs_tests.services.errors import UserError
 
-from ..api.helpers import right_answer
+from ..api.helpers import right_answer, set_daily
 from .conftest import NOW
 
 pytestmark = pytest.mark.integration
@@ -148,6 +150,191 @@ def test_a_double_start_gives_one_attempt_and_one_deadline(
     )
     assert len({(a.id, a.deadline_at) for a in results}) == 1, results
     assert db.scalar(select(func.count()).select_from(Attempt)) == 1
+
+
+ON = Policy(collect=True, canary=True)
+
+
+def failed(results: list[Any]) -> list[Any]:
+    return [r for r in results if isinstance(r, Exception)]
+
+
+def test_a_double_start_with_the_canary_draws_one_decoy_and_counts_no_reopening(
+    db: Session, app_engine: Engine, daily_player: User
+) -> None:
+    qid = db.scalars(select(Question.id).where(Question.fsquiz_id == 90001)).one()  # four options
+    set_daily(db, madrid_day(NOW), qid)
+    results = race(
+        app_engine, *[lambda s: daily.start(s, s.get_one(User, daily_player.id), "mech", NOW, ON)[1]] * 4
+    )
+    assert not failed(results), results
+    row = db.scalars(select(Attempt)).one()
+    # whoever's insert won, everyone got that row: its decoy and no second draw
+    assert {(a.id, a.decoy_option_id) for a in results} == {(row.id, row.decoy_option_id)}
+    assert row.decoy_option_id is not None and row.resumes == 0
+
+
+def test_parallel_reopenings_of_a_daily_question_are_all_counted(
+    db: Session, app_engine: Engine, daily_player: User
+) -> None:
+    _, a = daily.start(db, daily_player, "mech", NOW, ON)
+    later = NOW + timedelta(seconds=15)
+    results = race(
+        app_engine, *[lambda s: daily.start(s, s.get_one(User, daily_player.id), "mech", later, ON)[1]] * 4
+    )
+    assert not failed(results), results
+    row = db.get_one(Attempt, a.id)
+    db.refresh(row)
+    assert row.resumes == 4  # one atomic update each: none lost, none doubled
+
+
+def test_parallel_page_loads_of_a_mock_run_are_all_counted(
+    db: Session, app_engine: Engine, daily_player: User
+) -> None:
+    run = mock.start(db, daily_player, 9002, NOW)
+    current = mock.state(db, daily_player, run.id, NOW, ON).current
+    assert current is not None
+    later = NOW + timedelta(seconds=15)
+    results = race(
+        app_engine,
+        *[
+            lambda s: (
+                mock.state(
+                    s, s.get_one(User, daily_player.id), run.id, later, ON, resumed=True
+                ).session.position
+            )
+        ]
+        * 4,
+    )
+    assert not failed(results), results
+    row = db.get_one(Attempt, current[1].id)
+    db.refresh(row)
+    assert (row.resumes, row.submitted_at) == (4, None)
+
+
+def test_a_double_submit_stores_one_consistent_set_of_signals(
+    db: Session, app_engine: Engine, daily_player: User
+) -> None:
+    _, attempt = daily.start(db, daily_player, "rules", NOW, ON)
+    later = NOW + timedelta(seconds=30)
+    jobs = [
+        (
+            lambda s, i=i: daily.answer(
+                s,
+                s.get_one(User, daily_player.id),
+                attempt.id,
+                [],
+                None,
+                later,
+                signals=Signals(away_declared_s=i, long_copies=10 * i),
+                policy=ON,
+            )
+        )
+        for i in (1, 2, 3, 4)
+    ]
+    assert not failed(race(app_engine, *jobs))
+    row = db.get_one(Attempt, attempt.id)
+    db.refresh(row)
+    assert row.away_declared_s in (1, 2, 3, 4)
+    assert row.long_copies == 10 * row.away_declared_s  # one request's signals, never a mix of two
+
+
+def test_a_double_submit_in_a_mock_quiz_stores_one_consistent_set_of_signals(
+    db: Session, app_engine: Engine, daily_player: User
+) -> None:
+    run = mock.start(db, daily_player, 9002, NOW)
+    current = mock.state(db, daily_player, run.id, NOW, ON).current
+    assert current is not None
+    attempt = current[1].id
+    later = NOW + timedelta(seconds=30)
+    jobs = [
+        (
+            lambda s, i=i: (
+                mock.answer(
+                    s,
+                    s.get_one(User, daily_player.id),
+                    run.id,
+                    attempt,
+                    [],
+                    None,
+                    later,
+                    signals=Signals(away_declared_s=i, long_copies=10 * i),
+                    policy=ON,
+                ).session.position
+            )
+        )
+        for i in (1, 2, 3, 4)
+    ]
+    results = race(app_engine, *jobs)
+    assert results == [1, 1, 1, 1], results
+    row = db.get_one(Attempt, attempt)
+    db.refresh(row)
+    assert row.away_declared_s in (1, 2, 3, 4) and row.long_copies == 10 * row.away_declared_s
+
+
+def test_the_signals_purge_runs_beside_an_account_deletion_and_an_answer(
+    db: Session, app_engine: Engine, daily_player: User
+) -> None:
+    admin = accounts.create_first_admin(db, "a@x.com", "Alpha", "pit lane boss 2026", NOW)
+    others = [User(email=f"p{i}@x.com", password_hash="x", display_name=f"P{i}") for i in range(2)]
+    db.add_all(others)
+    db.commit()
+    players = [daily_player, *others]
+    gone_id, player_id = others[0].id, daily_player.id
+    old = datetime(2025, 10, 1, 10, tzinfo=UTC)  # last season: its signals are due for the nightly purge
+    for u in players:
+        _, a = daily.start(db, u, "mech", old, ON)
+        daily.answer(
+            db, u, a.id, [], None, old + timedelta(seconds=30), signals=Signals(long_copies=3), policy=ON
+        )
+    assert db.scalar(select(func.count()).select_from(Attempt).where(Attempt.resumes.is_not(None))) == 3
+    _, running = daily.start(db, daily_player, "elec", NOW, ON)  # and this season's, still being answered
+    results = race(
+        app_engine,
+        lambda s: signal_service.purge(s, NOW + timedelta(days=400)),
+        lambda s: privacy.delete_user(s, s.get_one(User, admin.id), gone_id, NOW),
+        lambda s: daily.answer(
+            s,
+            s.get_one(User, player_id),
+            running.id,
+            [],
+            None,
+            NOW + timedelta(seconds=30),
+            signals=Signals(away_declared_s=5),
+            policy=ON,
+        ),
+    )
+    # Like every nightly job, a player deleted between listing and locking them is a UserError, not a deadlock
+    assert not [r for r in failed(results) if not isinstance(r, UserError)], results
+    db.expire_all()
+    assert db.get(User, gone_id) is None
+    old_rows = db.scalars(select(Attempt).where(Attempt.day == date(2025, 10, 1))).all()
+    assert len(old_rows) == 2
+    if not isinstance(results[0], Exception):
+        assert results[0] in (2, 3)  # the deleted player's row may or may not have been purged first
+        assert all(a.resumes is None and a.long_copies is None for a in old_rows)
+    now_row = db.get_one(Attempt, running.id)
+    assert (now_row.away_declared_s, now_row.resumes) == (5, 0)  # this season's stays
+    signal_service.purge(
+        db, NOW + timedelta(days=400)
+    )  # a purge that met the deleted player finishes the job
+    db.expire_all()
+    assert all(
+        a.resumes is None and a.long_copies is None
+        for a in db.scalars(select(Attempt).where(Attempt.day == date(2025, 10, 1)))
+    )
+    assert signal_service.purge(db, NOW + timedelta(days=400)) == 0
+
+
+def test_a_policy_left_off_never_writes_the_signal_columns_even_in_a_race(
+    db: Session, app_engine: Engine, daily_player: User
+) -> None:
+    results = race(
+        app_engine, *[lambda s: daily.start(s, s.get_one(User, daily_player.id), "mech", NOW, OFF)[1]] * 4
+    )
+    assert not failed(results), results
+    row = db.scalars(select(Attempt)).one()
+    assert (row.resumes, row.decoy_option_id, row.long_copies) == (None, None, None)
 
 
 def test_a_double_submit_is_graded_once(db: Session, app_engine: Engine, daily_player: User) -> None:

@@ -5,8 +5,20 @@ from __future__ import annotations
 from typing import Any
 
 from ..bank.client import DOC_URL
+from ..db.models import Attempt
+from ..domain import signals as rules
 from ..services.questions import Checked, Doc, Shown
-from .schemas import DocLink, Feedback, KeyIn, Option, PlayQuestion, QuestionDocs, SolutionOut, media_url
+from .schemas import (
+    DocLink,
+    Feedback,
+    KeyIn,
+    Option,
+    PlayQuestion,
+    QuestionDocs,
+    SolutionOut,
+    TimedAnswerIn,
+    media_url,
+)
 
 
 def play_question(shown: Shown) -> PlayQuestion:
@@ -64,3 +76,14 @@ def feedback(checked: Checked) -> Feedback:
         correct_options=checked.correct_options,
         solutions=[SolutionOut(text=t, images=[media_url(i) for i in imgs]) for t, imgs in checked.solutions],
     )
+
+
+def signals_sent(body: TimedAnswerIn) -> rules.Signals | None:
+    return rules.Signals(**body.signals.model_dump()) if body.signals else None
+
+
+def decoy_shown(attempt: Attempt, shown: Shown, policy: rules.Policy) -> int | None:
+    """Only while the canary is on, and only an option the player is actually seeing."""
+    if not policy.canary or attempt.decoy_option_id is None:
+        return None
+    return attempt.decoy_option_id if any(o.id == attempt.decoy_option_id for o in shown.options) else None

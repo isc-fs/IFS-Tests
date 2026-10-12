@@ -88,7 +88,7 @@ No session needed; the CSRF header still is.
 | `GET /api/admin/users` | All accounts, alphabetically |
 | `PATCH /api/admin/users/{user_id}` | Change email, role, status or position; only the fields sent (not your own role or status; never the last active admin). A new email is validated as at sign-up (400 "Enter a valid email address.", 409 "An account with this email already exists.", both as field errors on `email`) and audited as `user.email` without the addresses. A position change first applies a season reset still pending |
 | `DELETE /api/admin/users/{user_id}` | Delete someone else's account |
-| `GET /api/admin/users/{user_id}/export` | Someone's data export, for a person who can't sign in; audited; the same 429 as `/api/me/export` |
+| `GET /api/admin/users/{user_id}/export` | Someone's data export, for a person who can't sign in (alumni, disabled); without the answers' ranked-play `signals` (null), whatever the status; audited; the same 429 as `/api/me/export` |
 | `POST /api/admin/alumni` | Mark a list of accounts as alumni (season rollover) |
 | `POST /api/admin/users/{user_id}/reset-link` | Create a 24-hour password reset link |
 | `POST /api/admin/users/{user_id}/revoke-sessions` | Sign someone out everywhere |
@@ -105,7 +105,7 @@ No session needed; the CSRF header still is.
 | `GET /api/practice/areas` | Playable questions per area and topic, and the caller's progress |
 | `GET /api/practice/next` | A random question the caller has practised least (`area`, `topic`, `skip`); never one running elsewhere |
 | `GET /api/practice/questions/{question_id}` | One playable question (no answer); 409 if it is running elsewhere for the caller |
-| `POST /api/practice/questions/{question_id}/answer` | Grade an answer (or "I'm not sure") and return the official answer, solutions, XP |
+| `POST /api/practice/questions/{question_id}/answer` | Grade an answer (or "I'm not sure") and return the official answer, solutions, XP. Refuses a `signals` block (422): only daily and mock answers take one |
 | `POST /api/practice/questions/{question_id}/hint` | A hint for the next answer to this question (409 if it is running elsewhere, 403 from DT I) |
 
 ### `/api/daily` (`api/routes/daily.py`): `Member`
@@ -113,8 +113,8 @@ No session needed; the CSRF header still is.
 | Method and path | Purpose |
 |---|---|
 | `GET /api/daily` | Today's state per area, streak, XP and LP today; closes the caller's abandoned daily questions. Each area has its `day`: the day before for a question started before midnight, still running or answered since midnight, until the new day's question in that area is started |
-| `POST /api/daily/{area}/start` | Start the clock (`area` is `mech`, `elec` or `rules`); reveals the question and the deadline with the server's clock. Returns the running attempt if already started |
-| `POST /api/daily/attempts/{attempt_id}/answer` | Submit once; a retry returns the stored result. A typed answer the grader can't read (units, `%`, `2,778` unless the question asks for three decimals or a decimal comma, one value for a list) is refused with 400 and a `value` field error saying what to type, before anything is recorded; the same holds for every answer route |
+| `POST /api/daily/{area}/start` | Start the clock (`area` is `mech`, `elec` or `rules`); reveals the question and the deadline with the server's clock. Returns the running attempt if already started; a start of a running question at least 10 s after it was shown counts as a reopening (`attempts.resumes`, [signals](#signals-in-ranked-play)). With the AI canary on, the response carries `decoy_option_id` |
+| `POST /api/daily/attempts/{attempt_id}/answer` | Submit once; a retry returns the stored result. An optional `signals` block (time away, paste, long copies) is stored with the answer from season 1b on, clamped to the attempt's own time, and ignored before; a body without it works as ever. A typed answer the grader can't read (units, `%`, `2,778` unless the question asks for three decimals or a decimal comma, one value for a list) is refused with 400 and a `value` field error saying what to type, before anything is recorded; the same holds for every answer route |
 | `GET /api/daily/{area}/review` | Today's answered question with its result and `day`; before today's question in that area is started, the one from the day before answered (or run out) since midnight. 409 otherwise |
 | `POST /api/daily/attempts/{attempt_id}/hint` | A hint on the running daily question |
 
@@ -124,8 +124,8 @@ No session needed; the CSRF header still is.
 |---|---|
 | `GET /api/mock/quizzes` | Past quizzes with question counts, the bar to beat, the caller's best score and open run |
 | `POST /api/mock/quizzes/{quiz_id}/start` | Start a run, or return the one already open |
-| `GET /api/mock/sessions/{session_id}` | The run: the current question with its deadline, or the summary once finished |
-| `POST /api/mock/sessions/{session_id}/answer` | Answer the question on screen and move on |
+| `GET /api/mock/sessions/{session_id}` | The run: the current question with its deadline, or the summary once finished. A GET at least 10 s after the question was shown counts as a reopening; `current.decoy_option_id` with the AI canary on |
+| `POST /api/mock/sessions/{session_id}/answer` | Answer the question on screen and move on. Optional `signals`, kept only on counted runs and from season 1b on |
 | `POST /api/mock/sessions/{session_id}/end` | End the run early: the question on screen counts as out of time, the ones not reached aren't scored; returns the summary |
 | `POST /api/mock/sessions/{session_id}/attempts/{attempt_id}/hint` | A hint on the running question |
 
@@ -196,6 +196,17 @@ No session needed; the CSRF header still is.
 
 `GET /api/live/sessions/{code}/events` returns `text/event-stream` with `Cache-Control: no-store` and `X-Accel-Buffering: no` (so Nginx doesn't buffer it). It first runs the same access check as the state endpoint, then once a second sends `data: <version>.<proposals>` whenever that pair changes, or the comment `: still here` after 15 quiet seconds. `version` is the session's, which goes up on every change but a proposal; `proposals` counts the proposals made to the viewer's own table (0 for the host and anyone unseated), so a proposal wakes only the screens at that table. The pair comes from one snapshot per session and worker, read at most every 0.5 s (`services/live.watch`, which also closes a question whose time ran out). After 300 seconds the stream ends and the browser's `EventSource` reconnects. The browser refetches `GET /api/live/sessions/{code}` when a message arrives, polls it every 15 seconds while the stream is open and every 5 while it is down, and stops both once the quiz is finished (`web/src/lib/live.ts`); the stream never carries state, so it can't show more than that GET would. Nginx serves the stream from its own location with buffering off and at most 160 open streams per address (2 per person for 80 people behind one campus IP); other `/api/` requests have their own cap of 160 in flight per address.
 
+## Signals in ranked play
+
+What the page reports while a ranked clock runs, and the AI canary's decoy (ADR 0010). The columns and their retention are in [data-model.md](data-model.md#attempts); the limits of what they prove are in [security.md](security.md#threats-and-controls).
+
+- **Input.** `signals` is optional in the body of the daily answer and the mock answer (`TimedAnswerIn`; `MockAnswerIn` extends it): `away_declared_s`, `away_undeclared_s` (seconds, 0 to 10⁷, fractions allowed), `pasted` (bool) and `long_copies` (0 to 100,000). Negative values, larger ones, unknown keys and wrong types (a string or a boolean where a number goes, a fraction for `long_copies`) are 422; honest large values (a tab left open for days) are accepted and clamped on storage. A request without `signals` (an older web app) behaves as it always did. Practice and live answers use `AnswerIn`, which forbids the field: sending it there is 422.
+- **Gate.** Until the Madrid day `IFS_RULES_1B_FROM`, a `signals` block is accepted with 200 and discarded, and nothing is drawn or counted. From that day on, daily and counted mock attempts created then carry signals; practice, live and replays never do. The web app doesn't send the block yet (the client ships later), so for now a collected attempt has `resumes` set and the four page-reported columns null.
+- **Storage.** Written only by the request that records the answer, never by a repeat submit or a timeout. Away seconds are rounded and clamped so their sum never exceeds the attempt's own time (until the answer, or the deadline plus the 3 s of grace if later); `long_copies` is stored up to 1000; `pasted` only for free-text answers. Nothing changes in the response, the XP or the LP.
+- **Reopenings** are counted by the server, never sent: a `POST /api/daily/{area}/start` that returns a running attempt (not one whose time has run out), or a `GET /api/mock/sessions/{id}` that returns a running one, at least 10 s after the question was shown. `POST /api/mock/quizzes/{id}/start` on an open run, answers and the web app's refetch right after a start don't count.
+- **Decoy.** `TimedQuestion.decoy_option_id` (daily start, mock `current`) is null unless `IFS_CANARY` is on, the gate has been reached and the stored decoy is among the options returned in the same response. Besides `TimedQuestion` it appears only in the person's own export (`answers[].signals`); never in `PlayQuestion`, results or summaries. It is not an answer: it is drawn from the options table alone, never from the key.
+- **Export.** Each answer in `GET /api/me/export` carries `signals` with the six values, or null when the row carries none. The admin export always has null there.
+
 ## Conventions for new endpoints
 
 - Put the route in the router of its area in `api/routes/`, keep the handler thin (parse, call a service, build the response), and write the logic in a service function that takes `db`, the acting user and `now`.
@@ -203,4 +214,5 @@ No session needed; the CSRF header still is.
 - Request bodies derive from `In` (unknown fields and NUL characters are 422); responses are explicit `Out`/`BaseModel` schemas listing their fields. Give every path ID the `ge=1, le=2**31 - 1` range the other routes use.
 - If the response may carry an answer, add it to `MAY_REVEAL` in `tests/api/test_security.py` only after checking it can't reveal a running question (see [architecture.md](architecture.md#answer-secrecy)). `test_every_api_route_needs_a_member_and_admin_routes_an_admin` in the same file checks every new route answers 401 when signed out.
 - Raise `UserError` with a sentence the user can act on, the right status and `fields` for form inputs.
+- Signals belong to `TimedAnswerIn` only; never add them to `AnswerIn`. Settings reach services as a `Policy` computed by the route from `AppSettings` (`services/signals.policy`), never from `get_settings()` inside a service.
 - Regenerate `web/openapi.json` and `web/src/api/`, and add an API test. The step-by-step recipe is in [development.md](development.md).

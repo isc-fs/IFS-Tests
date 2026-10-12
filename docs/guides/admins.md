@@ -148,7 +148,8 @@ that you changed their email, but not the old or new address. It works on your o
 ### Downloading someone's data
 
 For someone who asks for a copy of their data and can't sign in (alumni, disabled). Members who can sign in download
-it themselves from **Profile → Your data**.
+it themselves from **Profile → Your data**. The file you download leaves out the ranked-play signals of their answers
+(the member's own download has them).
 
 Press **Download their data**. Your browser saves a JSON file with everything MingoQuiz keeps about them. Send it to
 them privately and delete your copy. The download is logged.

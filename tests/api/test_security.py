@@ -121,3 +121,59 @@ def test_answers_only_travel_in_the_responses_meant_for_them(app_client: TestCli
                 schema = response.get("content", {}).get("application/json", {}).get("schema", {})
                 leaked = _fields(schema, components, set()) & ANSWER_FIELDS
                 assert not leaked, (method, path, leaked)
+
+
+def _refs(node: object, name: str) -> bool:
+    """Whether a schema fragment points at the component `name`."""
+    if isinstance(node, dict):
+        return node.get("$ref") == f"#/components/schemas/{name}" or any(
+            _refs(v, name) for v in node.values()
+        )
+    if isinstance(node, list):
+        return any(_refs(v, name) for v in node)
+    return False
+
+
+def test_the_canary_decoy_is_in_the_timed_question_and_the_export_only(app_client: TestClient) -> None:
+    components = app_client.get("/api/openapi.json").json()["components"]["schemas"]
+    assert "decoy_option_id" not in components["PlayQuestion"]["properties"]  # practice and live never get it
+    assert "decoy_option_id" in components["TimedQuestion"]["properties"]
+    declaring = {n for n, c in components.items() if "decoy_option_id" in c.get("properties", {})}
+    assert declaring == {"TimedQuestion", "ExportSignals"}
+    assert "decoy_option_id" not in ANSWER_FIELDS  # and it is not one of the fields the scan above guards
+    for n in ("DailyResult", "MockItem", "Feedback"):
+        assert "decoy_option_id" not in components[n]["properties"], n
+
+
+def test_signals_can_only_be_sent_with_a_daily_or_a_mock_answer(app_client: TestClient) -> None:
+    spec = app_client.get("/api/openapi.json").json()
+    components = spec["components"]["schemas"]
+    holders = {n for n, c in components.items() if n != "Signals" and _refs(c, "Signals")}
+    assert holders == {"TimedAnswerIn", "MockAnswerIn"}
+    assert components["Signals"]["additionalProperties"] is False
+    for plain in ("AnswerIn", "KeyIn"):  # practice and live answers, and what a result echoes back
+        assert "signals" not in components[plain]["properties"]
+        assert components[plain]["additionalProperties"] is False
+    takes = {
+        (method, path)
+        for path, ops in spec["paths"].items()
+        for method, op in ops.items()
+        if any(_refs(op.get("requestBody", {}), n) for n in ("TimedAnswerIn", "MockAnswerIn"))
+    }
+    assert takes == {
+        ("post", "/api/daily/attempts/{attempt_id}/answer"),
+        ("post", "/api/mock/sessions/{session_id}/answer"),
+    }
+    assert not any(
+        _refs(op.get("requestBody", {}), "Signals") for ops in spec["paths"].values() for op in ops.values()
+    )  # never as a body of its own
+    for path in ("/api/practice/questions/{question_id}/answer", "/api/live/sessions/{code}/answer"):
+        body = spec["paths"][path]["post"]["requestBody"]
+        assert _refs(body, "AnswerIn") and not _refs(body, "TimedAnswerIn")
+
+
+def test_the_signals_the_export_returns_are_exactly_the_columns_ranked_play_stores() -> None:
+    from ifs_tests.api.schemas import ExportSignals
+    from ifs_tests.domain.signals import COLUMNS
+
+    assert set(ExportSignals.model_fields) == set(COLUMNS)

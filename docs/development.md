@@ -109,6 +109,8 @@ Settings are environment variables with the `IFS_` prefix, or a `.env` file in t
 | `IFS_BANK_DIR` | `data/fsquiz` | The mirror that `mirror` writes and `push` reads |
 | `IFS_DB_POOL_SIZE` | `5` | Database connections each process keeps open (per uvicorn worker) |
 | `IFS_DB_MAX_OVERFLOW` | `5` | Extra connections a process may open under load. On the server the scheduler runs with 2 + 0, and the sizes are budgeted against Postgres's `max_connections` ([runbook 5](runbook.md#5-everyday-operations)) |
+| `IFS_RULES_1B_FROM` | unset | The Madrid day the season-1b rules start (`YYYY-MM-DD`; empty counts as unset). Unset means not yet: nothing in ADR 0010 is collected (no signals, no decoy). On the server it reaches the containers through `deploy/compose.yaml` from the environment's `.env` |
+| `IFS_CANARY` | `false` | Draw the AI canary's decoy option for ranked choice questions. Needs `IFS_RULES_1B_FROM` reached; off until the recall pilot says otherwise |
 
 Locally, `/api/docs` shows the interactive OpenAPI page.
 

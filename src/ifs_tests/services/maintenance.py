@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session as DB
 
 from ..auth.sessions import purge_expired
 from ..db.models import Invite, PasswordReset
-from . import daily, live, mock, privacy, season, streaks, xp
+from . import daily, live, mock, privacy, season, signals, streaks, xp
 
 KEEP_CLOSED_LINKS = timedelta(days=30)
 
@@ -32,6 +32,7 @@ def run(db: DB, now: datetime) -> dict[str, int]:
         "difficulty_changed": xp.recalibrate(db),
         "ranks_reset": season.rollover(db, now),
         **streaks.nightly(db, now),
+        "signals_purged": signals.purge(db, now),
         **privacy.purge(db, now),
     }
     db.commit()

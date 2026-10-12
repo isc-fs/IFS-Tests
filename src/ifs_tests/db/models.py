@@ -401,6 +401,16 @@ class Attempt(Base):
     live_session_id: Mapped[int | None] = mapped_column(
         ForeignKey("live_sessions.id", ondelete="CASCADE"), index=True
     )
+    # Ranked play from season 1b on (daily, counted mock): what the page reported with the answer and how often
+    # the question was reopened; null elsewhere, and 90 days after the season (ADR 0010, services/signals).
+    # Advisory: the page reports them and could lie. A row carries them iff `resumes` is set.
+    away_declared_s: Mapped[int | None]
+    away_undeclared_s: Mapped[int | None]
+    pasted: Mapped[bool | None]
+    long_copies: Mapped[int | None] = mapped_column(SmallInteger)
+    resumes: Mapped[int | None] = mapped_column(SmallInteger)
+    # The AI canary's decoy, drawn from all the question's options when IFS_CANARY is on; says nothing about the key.
+    decoy_option_id: Mapped[int | None] = mapped_column(ForeignKey("answer_options.id", ondelete="SET NULL"))
 
 
 class PracticeHint(Base):
@@ -520,6 +530,13 @@ Index(
     Attempt.area,
     unique=True,
     postgresql_where=Attempt.mode == "daily",
+)
+
+# Empty while the canary is off; serves the SET NULL when an option is deleted by hand.
+Index(
+    "ix_attempts_decoy_option_id",
+    Attempt.decoy_option_id,
+    postgresql_where=Attempt.decoy_option_id.is_not(None),
 )
 
 # The Madrid day a daily or practice answer's LP belongs to, and those answers that moved someone's rank: the

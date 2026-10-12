@@ -7,6 +7,7 @@ import sys
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import pytest
 from alembic import command
@@ -87,8 +88,17 @@ PUBLIC_ORIGIN = "https://testserver"
 
 
 @pytest.fixture
-def app_client(app_engine: Engine, clock: Clock, db: Session) -> Iterator[TestClient]:
-    app = create_app(Settings(env="test", public_origin=PUBLIC_ORIGIN))
+def app_settings(request: pytest.FixtureRequest) -> dict[str, Any]:
+    """Settings of the app under test beyond the defaults. Passed explicitly so a developer's .env can't change a
+    test's outcome; a module overrides this fixture, a test parametrises it with indirect=True."""
+    return {"rules_1b_from": None, "canary": False, **getattr(request, "param", {})}
+
+
+@pytest.fixture
+def app_client(
+    app_engine: Engine, clock: Clock, db: Session, app_settings: dict[str, Any]
+) -> Iterator[TestClient]:
+    app = create_app(Settings(env="test", public_origin=PUBLIC_ORIGIN, **app_settings))
     make = sessionmaker(app_engine, expire_on_commit=False)
 
     def _db() -> Iterator[Session]:
