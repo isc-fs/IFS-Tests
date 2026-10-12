@@ -36,8 +36,9 @@ intro: |
   Phase 1 is the groundwork (FS-Quiz mirror, proposal). Phases 2–4 build
   the web app on the team's own server: invite + password accounts,
   practice, mock quizzes, a daily question and a leaderboard. The design
-  is in `docs/architecture.md` and `docs/adr/`. Phase 5 collects ideas for
-  after launch.
+  is in `docs/architecture.md` and `docs/adr/`. Phase 5 is the launch;
+  phase 6 collects deferred ideas; phases 7–10 are the fair-play rules and
+  the season-1b mechanics (ADR 0010).
 
 phases:
   - number: 1
@@ -126,7 +127,51 @@ phases:
         scope: Team-written questions, starting with Driverless
       - name: feat/26-rule-page-links
         scope: Download each rulebook once (polite, cached), index rule numbers to pages, link references like EV 4.7.6 to their page
+      - name: feat/36-rank-open-questions
+        scope: "Decide with the team (ADR 0007, open questions): demotions shown at the end of the day, double LP for a newcomer's first answers, whether repeats move LP"
+
+  - number: 7
+    title: Fair play
+    tag: v1.2.0
+    note: "ADR 0010: the rules per mode in English and Spanish, honest boards and read-only forensics. Branch numbers 28–35 and fix/40 were assigned by the plan; 22–26 and 36 stay in phase 6 for the deferred ideas; 27 moved to phase 8"
+    branches:
+      - name: feat/28-fair-play-policy
+        scope: Fair-play rules per mode in English and Spanish dated to season 1b, the privacy purpose and signals notice, the board caption, ADR 0010, LIA and DPIA
+      - name: feat/29-integrity-report
+        scope: Read-only integrity-report CLI with pseudonymous output, recusal and a two-person reveal; pure statistics with table tests
+      - name: feat/30-board-accuracy
+        scope: Accuracy with Wilson bounds and n beside LP on the boards; ranking order unchanged
+
+  - number: 8
+    title: Season 1b
+    tag: v1.3.0
+    note: "Season 1b mechanisms: a per-player daily with results at day close, option shuffle, and the server side of the announced per-answer totals. The rules apply from 26 October 2026 (IFS_RULES_1B_FROM); each mechanism switches on at a Madrid midnight through its own effective-date setting, chosen at deploy (ADR 0010)"
+    branches:
       - name: feat/27-daily-per-player
-        scope: "Decide with the team (ADR 0007, open questions): a daily question per player so answers can't be passed around, demotions shown at the end of the day, double LP for a newcomer's first answers, whether repeats move LP"
+        scope: A daily question drawn per player from its own Madrid-midnight effective date; today's drawn set withheld from practice, mock summary, review and live picks
+      - name: feat/31-daily-results-at-day-close
+        scope: Daily answers recorded, graded and granted at Madrid day close (settle), so nothing leaks through /me or the rank card
+      - name: feat/32-daily-option-shuffle
+        scope: Option order shuffled per daily attempt, with exclusions for positional and ordered options and a reviewer toggle
+      - name: feat/33-ranked-signals-server
+        scope: Nullable per-answer totals on ranked attempts, uniform decoy draw behind IFS_CANARY, export and purge 90 days after season end, two-step rollout
+
+  - number: 9
+    title: Signals
+    tag: v1.4.0
+    note: "One release after phase 8: the client sends the totals the notice already names, from a Madrid midnight set at deploy, and the report reads them"
+    branches:
+      - name: feat/34-ranked-signals-client
+        scope: Ranked-signals hook (declared and undeclared time away, paste on typed answers, long copies) and the honest AI note on copy
+      - name: feat/35-integrity-signals-and-canary
+        scope: Signals as context columns and canary evidence in the integrity report
+
+  - number: 10
+    title: Contract
+    tag: v1.5.0
+    note: "After the per-player daily is in effect: the shared daily goes"
+    branches:
+      - name: fix/40-drop-shared-daily
+        scope: Contract step in its own release after the per-player daily is in effect; drop daily_questions, ensure_daily and the scheduler job
 
 sidequests: []

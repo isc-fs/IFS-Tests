@@ -28,6 +28,7 @@ Terms you'll meet in MingoQuiz and its docs, in alphabetical order. Each links t
 | **DT** | *Director Técnico*, Technical Director. As a **position**, the person leading a vertical (can host live quizzes). As a **tier**, DT I–V on the ladder. Reaching the tier grants nothing |
 | **Expand/contract** | How migrations are written: first add (expand) what the new release needs while keeping what the old one uses; remove (contract) only in a later release. So the previous release keeps working during a deploy and after a rollback |
 | **Expected score** | In the rank formula, the chance a player at your rank gets a question right. Decides how much LP a right or wrong answer moves. [Game rules 2.2](game-rules.md#22-lp-for-one-answer) |
+| **Fair-play check** | Statistics run on the server over ranked answers, accounts shown as codes, read by two people together; anything that follows starts with a conversation, never an automatic penalty. The most that can follow, decided by the TDs after hearing the member, is being denied attendance at competitions, never on statistics alone. [Game rules 10](game-rules.md#10-fair-play) |
 | **First win** | XP bonus: +50 % on the first 3 right answers of the day |
 | **Freeze** | A streak freeze: earned every 7 days of streak (hold up to 2); the nightly job spends one to save your streak on a day you missed |
 | **FS East, FSCZ, FSN** | Formula Student East (Hungary), Czech Republic and Netherlands: other events whose past quizzes are in the bank |
@@ -52,6 +53,7 @@ Terms you'll meet in MingoQuiz and its docs, in alphabetical order. Each links t
 | **Position** | Someone's job on the team: Mingo, returning member, Department Head, Technical Director. Chosen at sign-up, changed later only by admins. Not the same as the rank or the role |
 | **Practice** | Answering any question by topic, as often as you like, for XP only |
 | **Rank** | How well you answer: rank points shown as a division and LP. Moves up and down; soft reset every September. [Game rules 2](game-rules.md#2-the-rank) |
+| **Ranked play** | Every daily question and every question of the first run of a quiz each season, LP or not; replays are practice. What the fair-play rules cover. [Game rules 10](game-rules.md#10-fair-play) |
 | **Registration quiz** | The short, timed online quiz many European events use to hand out registration slots, on the rules and on vehicle engineering |
 | **Rehearsal** | A live quiz that shows right and wrong only at the end, like the real registration quiz; XP is also held until the end |
 | **Repeat** | A question you already had graded this season, in any mode: it counts a quarter, for LP and XP |
@@ -61,6 +63,7 @@ Terms you'll meet in MingoQuiz and its docs, in alphabetical order. Each links t
 | **Role** | What someone may do in the app: member, reviewer or admin. Not the same as the position |
 | **Rules** | The Formula Student Rules, the rulebook most European events share, defining the car and the competition. Questions show the editions their quiz was based on, and flag later ones. Also the `rules` area |
 | **Season** | 1 September to 31 August, Madrid time, named by the year it starts in. Ranks reset softly on 1 September. [Game rules 2.5](game-rules.md#25-seasons-and-the-reset) |
+| **Season 1b** | The dated mid-season rules update of season 2026, proposed in ADR 0010: from Monday 26 October 2026, Madrid, the fair-play rules apply; the per-player daily, results at day close, the option shuffle and the fair-play totals switch on as each ships, each at a Madrid midnight. Rules only; no LP reset. [Game rules 10](game-rules.md#10-fair-play) |
 | **Smoke test** | The quick checks `deploy/deploy.sh` runs against a new release before accepting it; failure rolls back. [Runbook 2](runbook.md#2-deploy) |
 | **Specialists** | Live quiz routing where each question goes to a table that owns its topic (aero questions to the Aerodynamics table), whose answer is the room's; tables owning the same topic take turns |
 | **Speed points** | An optional live quiz scoring: a right answer earns 1,000 points if instant, down to 500 at the buzzer. Ranks tables in the session; not XP |

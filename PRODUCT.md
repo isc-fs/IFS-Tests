@@ -25,7 +25,7 @@ FS-Quiz is the bank; MingoQuiz is the team's training ground on top of it. What'
 
 ## Operating Context
 
-- Four ways to play: daily questions (one per area per Madrid day, one try, against the clock), practice by topic with that year's rulebooks beside the question, mock quizzes (past quizzes in order on their real clock, results at the end), live quizzes (host laptop + projector screen + players' devices, six-character code or QR).
+- Four ways to play: daily questions (one per area per Madrid day, one try, against the clock), practice by topic with that year's rulebooks beside the question, mock quizzes (past quizzes in order on their real clock, results at the end), live quizzes (host laptop + projector screen + players' devices, six-character code or QR). Ranked play (every daily question and the first run of each mock quiz in a season) has fair-play rules from season 1b; practice has none; live follows the host ([ADR 0010](docs/adr/0010-fair-play-and-integrity.md)).
 - Two progressions: rank (LP, divisions, moves up and down, soft reset each 1 September) and account level (XP, only goes up). Learning aids (reading panel, formulas, hints) come off as a player climbs. Full rules: `docs/game-rules.md`.
 - Invite-only; no public sign-up. Season runs 1 September to 31 August, Madrid time.
 - Terminology is fixed by `docs/glossary.md`.
@@ -33,17 +33,17 @@ FS-Quiz is the bank; MingoQuiz is the team's training ground on top of it. What'
 ## Capabilities and Constraints
 
 - Existing React/Vite SPA served by FastAPI; self-hosted on the team's Hetzner server behind the website's Nginx (ADR 0003, 0008).
-- Strict CSP: no inline scripts, no `dangerouslySetInnerHTML`, no third-party scripts; fonts are self-hosted. No analytics, trackers or adverts; the only cookie is the session.
+- Strict CSP: no inline scripts, no `dangerouslySetInnerHTML`, no third-party scripts; fonts are self-hosted. No analytics, trackers or adverts; the only cookie is the session. One bounded exception, from season 1b: a ranked answer (daily, counted mock) carries per-answer totals (seconds away, split by look-ups opened from the question and the rest; whether a typed answer was pasted; how often a long piece of the question text was copied; reopen count), first-party, announced in the notice in English and Spanish, visible in the export, blanked 90 days after the end of the season, read as pseudonyms by two people and never acted on automatically ([ADR 0010](docs/adr/0010-fair-play-and-integrity.md)).
 - Answer keys never leak before a player has answered (see `AGENTS.md`); any UI showing answers must respect that.
-- Personal data rules in ADR 0006: anything new stored about a person must be exportable and deleted with the account.
+- Personal data rules in ADR 0006: anything new stored about a person must be exportable and deleted with the account; the fair-play signals, their retention and the two-person review are in ADR 0010.
 - FS-Quiz attribution (ODbL) must stay visible wherever questions are shown.
-- Undecided: whether the UI ever moves to Spanish. Today it is English.
+- Undecided: whether the UI ever moves to Spanish. Today it is English, with one deliberate exception: the fair-play rules and a summary of what they add to the privacy notice are also given in Spanish on About, in a `lang="es"` block, because a rule people are held to must be readable by everyone (ADR 0010).
 
 ## Brand Commitments
 
 - **ISC brand is binding.** MingoQuiz must read as an ISC product. Tokens in `web/src/styles/tokens.css` are copied verbatim from `isc-fs/IFS-Web` and stay in sync; the brand core is never redefined (green RAL 6005, gold RAL 1003).
 - Name: **MingoQuiz** for users (`APP_NAME` in `web/src/components/Page.tsx`); repo, package and CLI stay `ifs-tests`.
-- Voice: English UI, playful and game-like, a bit cheeky, never childish. The team's Spanish slang and titles stay as they are: Mingo, Jefe, DT, Gigante Noble, Villano, Leyenda.
+- Voice: English UI (except the Spanish fair-play block on About, ADR 0010), playful and game-like, a bit cheeky, never childish. The team's Spanish slang and titles stay as they are: Mingo, Jefe, DT, Gigante Noble, Villano, Leyenda.
 
 ## Evidence on Hand
 
@@ -56,7 +56,7 @@ FS-Quiz is the bank; MingoQuiz is the team's training ground on top of it. What'
 1. **Train like the real thing.** Real questions, real clocks, real stakes; the closer to a registration quiz, the better.
 2. **Regular beats intense.** The daily question, streaks and the season ladder exist to make training a habit across the year.
 3. **The right person answers.** Areas, topics, tables and specialists route questions to whoever on the team needs to know them.
-4. **Fair and private.** No answer leaks, no peeking, no tracking; scoring rules are public and documented.
+4. **Fair and private.** No answer leaks, no peeking, no tracking; scoring rules are public and documented. One bounded exception: ranked play is checked for answers that broke the published fair-play rules, with per-answer aggregates that are first-party, announced, exported and purged; a person decides, never the app ([ADR 0010](docs/adr/0010-fair-play-and-integrity.md)).
 5. **It's the team's game.** The hierarchy, the slang and the meetings are part of the product, not decoration.
 
 ## Accessibility & Inclusion

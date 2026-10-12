@@ -6,6 +6,7 @@ import { Emblem } from '../components/Emblem'
 import { ErrorNotice } from '../components/Form'
 import { Page } from '../components/Page'
 import { useMe } from '../lib/api'
+import { RULES_FROM } from '../lib/fairPlay'
 import { lp, lpIn, numeral, TOP, tierOf } from '../lib/rank'
 
 const title = (points: number) => {
@@ -109,7 +110,13 @@ function People({ board, period }: { board: PersonBoard; period: Period }) {
   return (
     <section className="panel stack" aria-labelledby="board-title">
       <h2 id="board-title">{heading}</h2>
-      <p className="muted">{ranked ? 'By rank: division, then LP.' : `By LP won ${when}: climbers first.`}</p>
+      <div className="notes">
+        <p className="muted">{ranked ? 'By rank: division, then LP.' : `By LP won ${when}: climbers first.`}</p>
+        <p className="muted">
+          Home games, rulebook open, unsupervised. From {RULES_FROM.en}: no AI, no help from others, no looking the
+          answer up (<Link to="/about#fair-play">fair play</Link>).
+        </p>
+      </div>
       <p className={q.isPending || q.isPlaceholderData ? 'muted' : 'sr-only'} aria-live="polite">
         {q.isPending || q.isPlaceholderData ? 'Loading the board…' : ''}
       </p>

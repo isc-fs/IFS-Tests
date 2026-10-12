@@ -1,6 +1,6 @@
 # Game rules
 
-How MingoQuiz scores answers: the rank, the account level, seasons, streaks, difficulty, the daily question and the leaderboards. This page is the reference; the code is the truth. Every constant below names the file it lives in, and every worked example was computed by calling those functions. If you change a rule, change this page in the same pull request.
+How MingoQuiz scores answers: the rank, the account level, seasons, streaks, difficulty, the daily question, the leaderboards and the fair-play rules. This page is the reference; the code is the truth. Every constant below names the file it lives in, and every worked example was computed by calling those functions. If you change a rule, change this page in the same pull request.
 
 Why the rules are what they are: [ADR 0007](adr/0007-ranked-lp-and-account-level.md) (current design). [ADR 0004](adr/0004-xp-and-levels.md) is the earlier one-currency design, kept as history. Terms: [glossary](glossary.md).
 
@@ -322,6 +322,7 @@ Code: `src/ifs_tests/domain/leaderboard.py`, `src/ifs_tests/services/leaderboard
 - **Top 50** are shown, plus anyone tied at 50th. Anyone outside it still sees their own place.
 - **How fresh:** the Everyone board this season and the vertical board are read on every view. On the area and 7-day boards your own LP is too, but other members' LP can be up to 30 seconds old (`BOARD_TTL` in `src/ifs_tests/services/leaderboard.py`): a new answer reaches everyone else's view of those boards within half a minute. Names, opt-outs and who is active always show at once.
 - **Verticals:** for each vertical with at least 3 members who are active, haven't opted out and played for their rank this season: the average of their rank points, and participation (the share of them with a submitted daily answer in the last 7 Madrid days). Opted-out members are left out of the averages entirely, because otherwise anyone could subtract the named members' ranks and recover theirs. Members without a vertical count for none.
+- **Caption:** every person board says these are home games, unsupervised, with the fair-play rules from season 1b ([§10](#10-fair-play)), and links them. The Verticals board doesn't: it ranks no person.
 
 | Constant | Value | File |
 |---|---|---|
@@ -408,7 +409,7 @@ With a critical on top it would be 203. The same question wrong: 15 XP; "not sur
 
 ### Who decides
 
-The rules are a team decision, not a maintainer's. Propose a change to the Technical Directors (the people who asked for MingoQuiz), agree it, and record it: a small tweak in the pull request description; anything that changes how the game feels (a new currency, removing a mechanic, changing what moves the rank) as a new ADR that supersedes the relevant part of [ADR 0007](adr/0007-ranked-lp-and-account-level.md). Change rules between seasons where you can; mid-season changes are unfair to people who already played under the old ones.
+The rules are a team decision, not a maintainer's. Propose a change to the Technical Directors (the people who asked for MingoQuiz), agree it, and record it: a small tweak in the pull request description; anything that changes how the game feels (a new currency, removing a mechanic, changing what moves the rank) as a new ADR that supersedes the relevant part of [ADR 0007](adr/0007-ranked-lp-and-account-level.md). Change rules between seasons where you can; mid-season changes are unfair to people who already played under the old ones. Exception proposed in [ADR 0010](adr/0010-fair-play-and-integrity.md), effective once the Technical Directors sign it: "season 1b", from Monday 26 October 2026, Madrid (IFS_RULES_1B_FROM in the server configuration), when the fair-play rules ([§10](#10-fair-play)) take effect; the per-player daily, results at Madrid day close, the option shuffle and the fair-play totals follow as each ships, each from a Madrid midnight. It changes rules only; nobody's LP is reset, and what the 1 September reset does with this season's LP is for the TDs to decide before then.
 
 ### What is safe to change
 
@@ -438,16 +439,66 @@ Run it with `uv run pytest tests/unit/test_rank_rules.py`. If a change breaks a 
 
 1. The constants in `src/ifs_tests/domain/` and their unit tests (`tests/unit/test_rank_rules.py`, `tests/unit/test_account_xp.py`, `tests/unit/test_daily_rules.py`, `tests/unit/test_leaderboard_rules.py`).
 2. The frontend mirrors: `web/src/lib/rank.ts` (divisions, 100 LP each, the top at 15) and `web/src/lib/xp.ts` (position names and where each is placed, bonus names). The API sends the ladder, aids and stakes, but these helpers hard-code the shape.
-3. UI copy that states rules in words: `web/src/components/RankCard.tsx` (bonuses, freezes, rested XP), `web/src/components/RankRoad.tsx` (the ladder, the September reset), `web/src/components/QuestionCard.tsx` ("I'm not sure" and hint notes), `web/src/routes/Leaderboard.tsx`, and the privacy notice in `web/src/routes/About.tsx` if what is stored changes.
+3. UI copy that states rules in words: `web/src/components/RankCard.tsx` (bonuses, freezes, rested XP), `web/src/components/RankRoad.tsx` (the ladder, the September reset), `web/src/components/QuestionCard.tsx` ("I'm not sure" and hint notes), `web/src/routes/Leaderboard.tsx`, and the privacy notice in `web/src/routes/About.tsx` if what is stored changes. For the fair-play rules: the fair-play section of `web/src/routes/About.tsx` (English and the `lang="es"` block together), the board caption in `web/src/routes/Leaderboard.tsx` and the date in `web/src/lib/fairPlay.ts`, which must match the server's IFS_RULES_1B_FROM.
 4. This page, the [players' guide](guides/players.md), and ADR 0007 (by superseding it with a new ADR, not rewriting it).
 5. A migration if stored values must move (new placements, a different division size), written expand/contract (see [development](development.md)).
 
 ### Open design questions
 
-From the end of ADR 0007 and roadmap branch `feat/27-daily-per-player` in `.github/roadmap.yaml`, for the team to decide:
+From the end of ADR 0007 and roadmap phase 6 in `.github/roadmap.yaml` (the placeholder `feat/36-rank-open-questions`), for the team to decide:
 
-- **A daily question per player,** so answers can't be passed around (today everyone in an area gets the same one).
+- **A daily question per player:** decided, [ADR 0010](adr/0010-fair-play-and-integrity.md) (season 1b, branch `feat/27-daily-per-player`). Until it ships, everyone in an area gets the same one.
 - **Demotions shown at the end of the day** rather than as they happen.
 - **Double LP for a newcomer's first answers,** to place people faster.
 - **Whether repeats should move LP at all:** a good memory of a small bank inflates the rank.
 - From [ADR 0005](adr/0005-live-quiz.md): which vertical TS Testing belongs to and which topics it owns, and the default topic ownership of each sub-department.
+
+---
+
+## 10. Fair play
+
+The sections above say what moves the rank; this one says what you may use while you play for it. Why the rules are what they are: [ADR 0010](adr/0010-fair-play-and-integrity.md) (proposed; in force once the Technical Directors sign it). The text players are held to is the Fair play section of the app's About page, in English and in Spanish; if the two ever differ, the English text applies (both say so). This page explains it and says what is checked and what can follow.
+
+### Where the rule applies
+
+**Ranked play** is every daily question and every question of the first run of a quiz each season, whether or not it moved LP. Replays are practice. The rule applies to players who hide from the boards too, and to Mingo, Jefe and DT alike. Practice has no rules; live quizzes follow the host.
+
+**From when.** Season 1b starts on Monday 26 October 2026, Madrid, set in the server configuration (IFS_RULES_1B_FROM=2026-10-26), mirrored for the web copy by `RULES_FROM` in `web/src/lib/fairPlay.ts` and shown on About and under every person board. From that date the rules apply. The mechanisms that go with them (the per-player daily, results at day close, the option shuffle, the fair-play totals) switch on as each ships, each at a Madrid midnight, never mid-day. Before the date the previous rule stands ("looking things up is your call"), and nothing played before it is ever a reason for a step about a person.
+
+### Rules per mode
+
+| | Ranked (daily, first mock run) | Practice | Live |
+|---|---|---|---|
+| Reference material: the rulebook and handbooks, a textbook | allowed | allowed | host decides |
+| Your own notes on the material | allowed | allowed | host decides |
+| Notes that list bank questions with their answers, or hold a question's answer | **not allowed** (it counts as looking the answer up, wherever the notes came from) | allowed | host decides |
+| A calculator or Python | allowed | allowed | host decides |
+| A translation tool on the question text | allowed | allowed | host decides |
+| Any AI that reads the question or suggests an answer or a method, on any device | **not allowed** | allowed | host decides |
+| Another person | **not allowed** | allowed | your table, unless the host says otherwise |
+| Finding the answer or a worked solution to this question or any version of it (fs-quiz.eu, a web search, a shared sheet) | **not allowed** | allowed | host decides |
+| Passing a ranked question or answer on before the Madrid day ends (daily) or the other person's run ends (mock); shared sheets of them | **not allowed** | — | — |
+| One account per person, played only by you | always | always | always |
+
+The reference list is closed: a web search for anything else, or any other tool, is a question for a TD first. When the host says nothing, the live default is: the table talks among itself, nothing else.
+
+Boundary lines, the same ones About uses: search the rulebook, not the question; a translation tool, not a chatbot; AI inside your tools (an editor's assistant, a photo or step-by-step solver) counts as AI, and so does an AI answer a search engine shows you (scroll past it); what you remember from studying is yours; unsure about a tool? Ask a TD before you play ranked, and until then don't.
+
+### What is checked
+
+At category level only; the specifics belong to the integrity-report guide that comes with feat/29:
+
+- answer patterns and timing between players, from the answers and times already stored (agreement with someone who answered the same question minutes earlier; latency that doesn't depend on the question). Before the season-1b date these are used only in aggregate, to calibrate the checks, never about a person;
+- answers that follow a public key the reviewers had corrected;
+- from season 1b, the per-answer totals the privacy notice lists: seconds away from the question (look-ups opened from the question apart), whether a typed answer was pasted, long copies of the question text (a count), reopenings (counted by the server).
+
+Run on the server by a read-only command, accounts shown as codes, read by two people together: a Technical Director and a member of ISC's board who doesn't play ranked, neither under review in that run. Thresholds choose what those two look at; they never define what is forbidden: the table above does. A check that ends in nothing keeps nothing, and the output is deleted after the run.
+
+### What happens
+
+1. **A conversation** with a Technical Director. Most checks end before or here.
+2. **For a rule broken,** after hearing you, the TDs decide one step, in proportion to what happened: a warning; off the boards for the rest of the season (LP keeps moving; your account, XP, level and every way to play are untouched; it needs an admin-settable switch, which ships before the first such decision); or, at most, being denied attendance at competitions: the team doesn't take you to its Formula Student events. The decision is one line in the admin log.
+3. **Never on statistics alone.** Denial of attendance is never decided on statistics alone: it needs either your own account or evidence beyond the statistical checks (for example a supervised session), plus the hearing. Statistics only ever start a conversation.
+4. **Appeal.** You can appeal to ISC's board: `direccion.isc@clubisc.com`.
+
+None of it is automatic: never an automatic penalty, and never for an answer given before the season-1b date. Ranks, levels and the boards select nobody: not the team, not who sits the real quiz, not who goes to competitions. Only a fair-play decision, taken by people after hearing you, can reach beyond the game.
