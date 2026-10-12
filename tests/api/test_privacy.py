@@ -15,15 +15,39 @@ from sqlalchemy import Engine, func, inspect, select, text, update
 from sqlalchemy.orm import Session, sessionmaker
 
 from ifs_tests.api.schemas import Export
-from ifs_tests.db.models import Attempt, AuditLog, Base, Invite, LiveAnswer, LiveSession, StreakFreeze, User
+from ifs_tests.db.models import (
+    AnswerOption,
+    Attempt,
+    AuditLog,
+    Base,
+    Invite,
+    LiveAnswer,
+    LiveSession,
+    MockSession,
+    StreakFreeze,
+    User,
+)
 from ifs_tests.db.models import Session as LoginSession
 from ifs_tests.services import maintenance, privacy
 from ifs_tests.services.accounts import AccountError
 
 from ..conftest import Clock
-from .helpers import ADMIN, PASSWORD, invite, login, member, register, right_answer
+from .helpers import (
+    ADMIN,
+    CANARY,
+    GATED,
+    PASSWORD,
+    invite,
+    login,
+    member,
+    register,
+    right_answer,
+    start_daily,
+)
+from .test_boundaries import at
 from .test_live import advance, lobby, room, send, state  # noqa: F401
 from .test_mock import CV, answer, player  # noqa: F401
+from .test_signals import SIGNALS, finish, mock_start, send_daily
 
 pytestmark = pytest.mark.integration
 NewClient = Callable[[], TestClient]
@@ -146,6 +170,12 @@ COLUMNS = {
     ("attempts", "lp"): "answers.lp",
     ("attempts", "hint_used"): "answers.hint_used",
     ("attempts", "passed"): "answers.passed",
+    ("attempts", "away_declared_s"): "answers.signals.away_declared_s",
+    ("attempts", "away_undeclared_s"): "answers.signals.away_undeclared_s",
+    ("attempts", "pasted"): "answers.signals.pasted",
+    ("attempts", "long_copies"): "answers.signals.long_copies",
+    ("attempts", "resumes"): "answers.signals.resumes",
+    ("attempts", "decoy_option_id"): "answers.signals.decoy_option_id",
     ("invites", "role"): "invite.role",
     ("invites", "vertical"): "invite.vertical",
     ("invites", "note"): "invite.note",
@@ -513,6 +543,187 @@ def test_admins_fetch_the_data_of_someone_who_cannot_sign_in(
     assert data["invite"]["note"] == "Marta, aero"
     assert [e["action"] for e in export(app_client)["actions"]][-1] == "user.export"
     assert {e["on"] for e in export(app_client)["actions"]} >= {"invite", "user"}
+
+
+SIGNAL_KEYS = {"away_declared_s", "away_undeclared_s", "pasted", "long_copies", "resumes", "decoy_option_id"}
+KEPT = {"away_declared_s": 30, "away_undeclared_s": 10, "pasted": None, "long_copies": 2, "resumes": 0}
+
+
+def play_daily_with_signals(c: TestClient, db: Session, clock: Clock, qid: int) -> dict[str, Any]:
+    started = start_daily(c, db, clock.now, qid)
+    clock.advance(seconds=40)
+    r = send_daily(c, started, {**right_answer(db, qid), "signals": SIGNALS})
+    assert r.status_code == 200, r.text
+    return started
+
+
+def sign_in_again(c: TestClient, email: str) -> None:
+    login(c, email, PASSWORD)
+
+
+@pytest.mark.parametrize("app_settings", [GATED], indirect=True)
+def test_the_export_carries_my_signals_and_the_nightly_job_forgets_them_after_the_season(
+    app_client: TestClient,
+    admin: User,
+    new_client: NewClient,
+    db: Session,
+    bank: dict[int, int],
+    clock: Clock,
+) -> None:
+    login(app_client)
+    people = {n: new_client() for n in ("Marta", "Leo")}
+    for n, c in people.items():
+        member(app_client, c, f"{n.lower()}@alu.comillas.edu", n)
+        play_daily_with_signals(c, db, clock, bank[90001])
+    practise(people["Marta"], db)
+
+    before = export(people["Marta"])["answers"]
+    by_mode = {a["mode"]: a for a in before}
+    assert set(by_mode) == {"daily", "practice"}
+    assert set(by_mode["daily"]["signals"]) == SIGNAL_KEYS
+    assert by_mode["daily"]["signals"] == {**KEPT, "decoy_option_id": None}
+    assert by_mode["practice"]["signals"] is None  # collected nowhere else
+
+    clock.now = at(date(2027, 11, 29), 23, 59)  # a season's signals go 90 days after it ends: 30 November
+    assert maintenance.run(db, clock.now)["signals_purged"] == 0
+    clock.now = at(date(2027, 11, 30), 0, 1)
+    assert (
+        maintenance.run(db, clock.now)["signals_purged"] == 2
+    )  # both players', in one player per transaction
+    sign_in_again(people["Marta"], "marta@alu.comillas.edu")
+    after = export(people["Marta"])["answers"]
+    assert [{**a, "signals": None} for a in before] == after  # nothing but the signals went
+    assert maintenance.run(db, clock.now)["signals_purged"] == 0  # and a second night finds nothing to do
+    db.expire_all()
+    rows = db.scalars(select(Attempt).where(Attempt.mode == "daily")).all()
+    assert len(rows) == 2 and all(a.resumes is None and a.long_copies is None for a in rows)
+    assert all(a.xp > 0 and a.correct is True for a in rows)
+
+
+@pytest.mark.parametrize("app_settings", [GATED], indirect=True)
+def test_signals_are_forgotten_season_by_season_on_the_daily_and_the_mock_run_alike(
+    player: TestClient,  # noqa: F811
+    db: Session,
+    clock: Clock,
+) -> None:
+    old = mock_start(player)
+    finish(player, db, clock, old, SIGNALS)
+    clock.now = at(date(2027, 9, 15), 10)
+    sign_in_again(player, "marta@alu.comillas.edu")
+    new = mock_start(player)
+    finish(player, db, clock, new, SIGNALS)
+    seasons = {m.id: (m.season, m.counted) for m in db.scalars(select(MockSession))}
+    assert seasons == {old["session_id"]: (2026, True), new["session_id"]: (2027, True)}
+
+    clock.now = at(date(2027, 11, 29), 23, 59)
+    assert maintenance.run(db, clock.now)["signals_purged"] == 0
+    clock.now = at(date(2027, 11, 30), 0, 1)
+    assert (
+        maintenance.run(db, clock.now)["signals_purged"] == 5
+    )  # the 2026 run's five answers, not the 2027 run's
+    db.expire_all()
+    for a in db.scalars(select(Attempt).where(Attempt.session_id == old["session_id"])):
+        assert all(getattr(a, c) is None for c in SIGNAL_KEYS)
+    kept = list(db.scalars(select(Attempt).where(Attempt.session_id == new["session_id"])))
+    assert len(kept) == 5 and all(a.resumes == 0 and a.long_copies == 2 for a in kept)
+    sign_in_again(player, "marta@alu.comillas.edu")
+    by_run = [a["signals"] is None for a in export(player)["answers"]]
+    assert by_run == [True] * 5 + [False] * 5
+    assert maintenance.run(db, clock.now)["signals_purged"] == 0
+
+
+@pytest.mark.parametrize("app_settings", [CANARY], indirect=True)
+def test_the_season_ends_at_the_september_boundary_not_at_the_end_of_the_answer(
+    app_client: TestClient,
+    admin: User,
+    new_client: NewClient,
+    db: Session,
+    bank: dict[int, int],
+    clock: Clock,
+) -> None:
+    login(app_client)
+    c = new_client()
+    member(app_client, c, "marta@alu.comillas.edu", "Marta")
+    clock.now = at(date(2026, 8, 31), 10)
+    last_season = play_daily_with_signals(c, db, clock, bank[90001])
+    clock.now = at(date(2026, 8, 31), 23, 59, 30)
+    sign_in_again(c, "marta@alu.comillas.edu")
+    carried = play_daily_with_signals(
+        c, db, clock, bank[90004]
+    )  # started on 31 August, answered after midnight
+    clock.now = at(date(2026, 9, 1), 10)
+    sign_in_again(c, "marta@alu.comillas.edu")
+    this_season = play_daily_with_signals(c, db, clock, bank[90001])
+    db.expire_all()
+    assert db.get_one(Attempt, carried["attempt_id"]).day == date(2026, 8, 31)
+
+    clock.now = at(date(2026, 11, 29), 23, 59)  # still inside the 90 days: 2025's signals are kept
+    assert maintenance.run(db, clock.now)["signals_purged"] == 0
+    clock.now = at(date(2026, 11, 30), 0, 1)
+    assert maintenance.run(db, clock.now)["signals_purged"] == 2
+    db.expire_all()
+    assert db.get_one(Attempt, last_season["attempt_id"]).resumes is None
+    assert db.get_one(Attempt, carried["attempt_id"]).resumes is None
+    kept = db.get_one(Attempt, this_season["attempt_id"])
+    assert (kept.resumes, kept.long_copies) == (0, 2)
+    assert kept.decoy_option_id is not None  # the canary's draw of a kept season stays with it
+    assert (
+        db.get_one(Attempt, last_season["attempt_id"]).decoy_option_id is None
+    )  # and of a forgotten one goes
+
+
+@pytest.mark.parametrize("app_settings", [GATED], indirect=True)
+def test_the_admin_export_never_carries_signals_whatever_the_status(
+    app_client: TestClient,
+    admin: User,
+    new_client: NewClient,
+    db: Session,
+    bank: dict[int, int],
+    clock: Clock,
+) -> None:
+    login(app_client)
+    marta = new_client()
+    uid = member(app_client, marta, "marta@alu.comillas.edu", "Marta")["id"]
+    play_daily_with_signals(marta, db, clock, bank[90001])
+    url = f"/api/admin/users/{uid}/export"
+    assert app_client.get("/api/admin/users/99999999/export").status_code == 404
+    assert [a["signals"] for a in export(marta)["answers"]] == [
+        {**KEPT, "decoy_option_id": None}
+    ]  # theirs, whole
+
+    def admin_copy() -> list[dict[str, Any]]:
+        r = app_client.get(url)
+        assert r.status_code == 200
+        return list(r.json()["answers"])
+
+    assert [a["signals"] for a in admin_copy()] == [None]  # an active member's too
+    app_client.post("/api/admin/alumni", json={"user_ids": [uid]})
+    assert [a["signals"] for a in admin_copy()] == [None]
+    assert app_client.patch(f"/api/admin/users/{uid}", json={"status": "disabled"}).status_code == 200
+    assert [a["signals"] for a in admin_copy()] == [None]
+    app_client.patch(f"/api/admin/users/{uid}", json={"status": "active"})  # the flip changes nothing
+    assert [a["signals"] for a in admin_copy()] == [None]
+
+
+@pytest.mark.parametrize("app_settings", [CANARY], indirect=True)
+def test_deleting_an_account_takes_its_signals_and_leaves_the_options_alone(
+    app_client: TestClient,
+    admin: User,
+    new_client: NewClient,
+    db: Session,
+    bank: dict[int, int],
+    clock: Clock,
+) -> None:
+    login(app_client)
+    c = new_client()
+    uid = member(app_client, c, "marta@alu.comillas.edu", "Marta")["id"]
+    started = play_daily_with_signals(c, db, clock, bank[90001])
+    assert started["decoy_option_id"] is not None
+    options_before = count(db, AnswerOption)
+    assert c.post("/api/me/delete", json={"password": PASSWORD}).status_code == 204
+    db.expire_all()
+    assert count(db, Attempt, Attempt.user_id == uid) == 0
+    assert count(db, AnswerOption) == options_before
 
 
 # Races (found by review): each runs the conflicting work for real against Postgres.

@@ -240,6 +240,15 @@ class ExportInvite(Exported):
     used_at: datetime | None
 
 
+class ExportSignals(Exported):
+    away_declared_s: int | None
+    away_undeclared_s: int | None
+    pasted: bool | None = Field(description="Null for answers that aren't free text: not recorded")
+    long_copies: int | None
+    resumes: int | None = Field(description="Times the running question was reopened; approximate")
+    decoy_option_id: int | None
+
+
 class ExportAnswer(Exported):
     question_id: int
     question: str
@@ -256,6 +265,10 @@ class ExportAnswer(Exported):
     started_at: datetime
     deadline_at: datetime | None = Field(description="Timed modes: when the clock ran out")
     submitted_at: datetime | None
+    signals: ExportSignals | None = Field(
+        description="Ranked play from season 1b on: what the page saw while the clock ran, how often the question "
+        "was reopened, and the canary's decoy; null otherwise, and 90 days after the season ended"
+    )
 
 
 class ExportMockRun(Exported):
@@ -469,6 +482,47 @@ class AnswerIn(KeyIn):
     )
 
 
+class Signals(In):
+    """What the page saw while a ranked clock ran. The browser reports them, so they are advisory (ADR 0010);
+    none of them means anything on its own."""
+
+    away_declared_s: float = Field(
+        default=0,
+        strict=True,
+        ge=0,
+        le=10_000_000,
+        description="Seconds away after telling the page (a rulebook link, 'Looking something up'). Whole seconds; "
+        "fractions are rounded, and the total is clamped to the attempt's own time",
+    )
+    away_undeclared_s: float = Field(
+        default=0,
+        strict=True,
+        ge=0,
+        le=10_000_000,
+        description="Seconds the tab was hidden or unfocused without saying. Whole seconds; clamped like "
+        "away_declared_s",
+    )
+    pasted: bool = Field(
+        default=False,
+        strict=True,
+        description="Text was pasted into the answer box (kept for free-text answers only; pasting a translation "
+        "is allowed play)",
+    )
+    long_copies: int = Field(
+        default=0,
+        strict=True,
+        ge=0,
+        le=100_000,
+        description="Copies of 80 or more characters of the question (stored up to 1000)",
+    )
+
+
+class TimedAnswerIn(AnswerIn):
+    """Daily and mock answers may carry signals; practice and live answers (AnswerIn) refuse them."""
+
+    signals: Signals | None = None
+
+
 class SolutionOut(BaseModel):
     text: str | None
     images: list[str]
@@ -529,6 +583,12 @@ class TimedQuestion(BaseModel):
     question: PlayQuestion
     deadline_at: datetime
     server_now: datetime
+    decoy_option_id: int | None = Field(
+        default=None,
+        description="With the AI canary on: the option the clipboard note names to AI assistants. Drawn at random "
+        "from all the options, so it says nothing about the answer; null when the canary is off or the option is "
+        "no longer offered",
+    )
 
 
 class DailyResult(BaseModel):
@@ -556,7 +616,7 @@ class MockQuiz(BaseModel):
     open_session: int | None
 
 
-class MockAnswerIn(AnswerIn):
+class MockAnswerIn(TimedAnswerIn):
     attempt_id: int = Field(ge=1, le=2**63 - 1)
 
 

@@ -713,6 +713,10 @@ export type ExportAnswer = {
      * Submitted At
      */
     submitted_at: string | null;
+    /**
+     * Ranked play from season 1b on: what the page saw while the clock ran, how often the question was reopened, and the canary's decoy; null otherwise, and 90 days after the season ended
+     */
+    signals: ExportSignals | null;
 };
 
 /**
@@ -973,6 +977,40 @@ export type ExportSignIn = {
      * Expires At
      */
     expires_at: string;
+};
+
+/**
+ * ExportSignals
+ */
+export type ExportSignals = {
+    /**
+     * Away Declared S
+     */
+    away_declared_s: number | null;
+    /**
+     * Away Undeclared S
+     */
+    away_undeclared_s: number | null;
+    /**
+     * Pasted
+     *
+     * Null for answers that aren't free text: not recorded
+     */
+    pasted: boolean | null;
+    /**
+     * Long Copies
+     */
+    long_copies: number | null;
+    /**
+     * Resumes
+     *
+     * Times the running question was reopened; approximate
+     */
+    resumes: number | null;
+    /**
+     * Decoy Option Id
+     */
+    decoy_option_id: number | null;
 };
 
 /**
@@ -1589,6 +1627,7 @@ export type MockAnswerIn = {
      * "I'm not sure": no answer; the official one shown for half a wrong answer's LP
      */
     unsure?: boolean;
+    signals?: Signals | null;
     /**
      * Attempt Id
      */
@@ -2386,6 +2425,39 @@ export type SeatIn = {
 };
 
 /**
+ * Signals
+ *
+ * What the page saw while a ranked clock ran. The browser reports them, so they are advisory (ADR 0010);
+ * none of them means anything on its own.
+ */
+export type Signals = {
+    /**
+     * Away Declared S
+     *
+     * Seconds away after telling the page (a rulebook link, 'Looking something up'). Whole seconds; fractions are rounded, and the total is clamped to the attempt's own time
+     */
+    away_declared_s?: number;
+    /**
+     * Away Undeclared S
+     *
+     * Seconds the tab was hidden or unfocused without saying. Whole seconds; clamped like away_declared_s
+     */
+    away_undeclared_s?: number;
+    /**
+     * Pasted
+     *
+     * Text was pasted into the answer box (kept for free-text answers only; pasting a translation is allowed play)
+     */
+    pasted?: boolean;
+    /**
+     * Long Copies
+     *
+     * Copies of 80 or more characters of the question (stored up to 1000)
+     */
+    long_copies?: number;
+};
+
+/**
  * SolutionOut
  */
 export type SolutionOut = {
@@ -2541,6 +2613,29 @@ export type TableIn = {
 };
 
 /**
+ * TimedAnswerIn
+ *
+ * Daily and mock answers may carry signals; practice and live answers (AnswerIn) refuse them.
+ */
+export type TimedAnswerIn = {
+    /**
+     * Options
+     */
+    options?: Array<number> | null;
+    /**
+     * Value
+     */
+    value?: string | null;
+    /**
+     * Unsure
+     *
+     * "I'm not sure": no answer; the official one shown for half a wrong answer's LP
+     */
+    unsure?: boolean;
+    signals?: Signals | null;
+};
+
+/**
  * TimedQuestion
  *
  * A question whose clock is running. `server_now` lets the browser correct for its own clock.
@@ -2559,6 +2654,12 @@ export type TimedQuestion = {
      * Server Now
      */
     server_now: string;
+    /**
+     * Decoy Option Id
+     *
+     * With the AI canary on: the option the clipboard note names to AI assistants. Drawn at random from all the options, so it says nothing about the answer; null when the canary is off or the option is no longer offered
+     */
+    decoy_option_id?: number | null;
 };
 
 /**
@@ -3422,7 +3523,7 @@ export type StartDailyResponses = {
 export type StartDailyResponse = StartDailyResponses[keyof StartDailyResponses];
 
 export type AnswerDailyData = {
-    body: AnswerIn;
+    body: TimedAnswerIn;
     path: {
         /**
          * Attempt Id

@@ -13,8 +13,9 @@ from sqlalchemy.orm import Session as DB
 
 from ..db.models import Attempt, DailyQuestion, Question, User
 from ..domain import daily as rules
+from ..domain import signals as signal_rules
 from ..domain.leaderboard import madrid_midnight
-from . import hints, streaks, xp
+from . import hints, signals, streaks, xp
 from .errors import UserError
 from .questions import Checked, check, explain, running
 
@@ -185,13 +186,31 @@ def status(db: DB, user: User, now: datetime) -> Status:
     return Status(day, run, sum(a.xp for a in own), round(sum(a.lp for a in own), 2), areas)
 
 
-def start(db: DB, user: User, area: str, now: datetime) -> tuple[Question, Attempt]:
+def _resumed(db: DB, a: Attempt, now: datetime, policy: signal_rules.Policy) -> None:
+    """Count a reopening of a running question, on the row itself (no lock: one atomic update)."""
+    if not policy.collect or not signal_rules.is_resume(a.created_at, now):
+        return
+    if a.deadline_at and rules.is_late(now, a.deadline_at):  # no longer running: not a reopening
+        return
+    db.execute(
+        update(Attempt)
+        .where(Attempt.id == a.id, Attempt.submitted_at.is_(None), Attempt.resumes.is_not(None))
+        .values(resumes=func.least(Attempt.resumes + 1, signal_rules.MAX_COUNT))
+    )
+    db.commit()
+    db.refresh(a)
+
+
+def start(
+    db: DB, user: User, area: str, now: datetime, policy: signal_rules.Policy = signal_rules.OFF
+) -> tuple[Question, Attempt]:
     """Start the clock, or return the running attempt. The question is only revealed from here."""
     day = rules.madrid_day(now)
     existing = _carried(db, user, day, now).get(area) or _attempt(db, user, day, area)
     if existing is not None:
         if existing.submitted_at:
             raise UserError("You've already answered today's question for this area.", 409)
+        _resumed(db, existing, now, policy)
         return db.get_one(Question, existing.question_id), existing
     qid = ensure_daily(db, day, now).get(area)
     if qid is None:
@@ -214,6 +233,8 @@ def start(db: DB, user: User, area: str, now: datetime) -> tuple[Question, Attem
             day=day,
             area=area,
             deadline_at=now + timedelta(seconds=rules.budget(q.time_s, q.answer_kind)),
+            resumes=0 if policy.collect else None,
+            decoy_option_id=signals.decoy_for(db, q, policy),
         )
         # A literal predicate: once psycopg prepares the statement, a bound parameter here stops
         # Postgres matching the partial unique index and the insert fails.
@@ -244,6 +265,8 @@ def answer(
     value: str | None,
     now: datetime,
     unsure: bool = False,
+    signals: signal_rules.Signals | None = None,
+    policy: signal_rules.Policy = signal_rules.OFF,
 ) -> Result:
     """Submit once. Late answers are recorded and count as wrong; repeats return the stored result."""
     a = db.scalar(
@@ -257,6 +280,7 @@ def answer(
         q = db.get_one(Question, a.question_id)
         checked = check(db, q, options, value, unsure)
         late = rules.is_late(now, a.deadline_at)
+        reported = signals if policy.collect and a.resumes is not None else None
         recorded = db.execute(
             update(Attempt)
             .where(Attempt.id == a.id, Attempt.submitted_at.is_(None))
@@ -266,6 +290,9 @@ def answer(
                 submitted_at=now,
                 late=late,
                 passed=checked.passed,
+                **signal_rules.stored(
+                    reported, signal_rules.elapsed_s(a.created_at, a.deadline_at, now), q.answer_kind
+                ),
             )
             .returning(Attempt.id)
         ).first()

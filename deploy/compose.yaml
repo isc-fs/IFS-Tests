@@ -21,6 +21,8 @@ x-app: &app
     IFS_DATABASE_URL: postgresql+psycopg://app_rt:${APP_PASSWORD:?}@db:5432/quiz
     IFS_PUBLIC_ORIGIN: https://${QUIZ_HOST:?}
     FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:?set to the proxy network's subnet}
+    IFS_RULES_1B_FROM: ${IFS_RULES_1B_FROM:-}
+    IFS_CANARY: ${IFS_CANARY:-false}
   depends_on:
     db: { condition: service_healthy }
 

@@ -45,6 +45,7 @@ def test_maintenance_removes_only_stale_rows_and_is_idempotent(db: Session, cloc
         "freezes_earned": 0,
         "alumni_deleted": 0,
         "audit_purged": 0,
+        "signals_purged": 0,
     }
     assert maintenance.run(db, clock.now) == {"sessions": 2, "invites": 1, "resets": 1, **quiet}
     assert maintenance.run(db, clock.now) == {"sessions": 0, "invites": 0, "resets": 0, **quiet}

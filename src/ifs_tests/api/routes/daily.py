@@ -5,10 +5,10 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Path
 
-from ...services import daily, hints, questions
-from ..deps import Db, Member, Now
-from ..present import feedback, play_question, sent
-from ..schemas import AnswerIn, DailyArea, DailyResult, DailyStatus, HintOut, TimedQuestion
+from ...services import daily, hints, questions, signals
+from ..deps import AppSettings, Db, Member, Now
+from ..present import decoy_shown, feedback, play_question, sent, signals_sent
+from ..schemas import DailyArea, DailyResult, DailyStatus, HintOut, TimedAnswerIn, TimedQuestion
 
 router = APIRouter(prefix="/api/daily", tags=["daily"])
 Area = Literal["mech", "elec", "rules"]
@@ -41,20 +41,36 @@ def daily_status(user: Member, db: Db, now: Now) -> DailyStatus:
 
 
 @router.post("/{area}/start")
-def start_daily(area: Area, user: Member, db: Db, now: Now) -> TimedQuestion:
-    q, attempt = daily.start(db, user, area, now)
+def start_daily(area: Area, user: Member, db: Db, now: Now, settings: AppSettings) -> TimedQuestion:
+    policy = signals.policy(settings, now)
+    q, attempt = daily.start(db, user, area, now, policy)
     assert attempt.deadline_at is not None  # noqa: S101 - set when a daily attempt is created
+    shown = questions.show(db, [q])[0]
     return TimedQuestion(
         attempt_id=attempt.id,
-        question=play_question(questions.show(db, [q])[0]),
+        question=play_question(shown),
         deadline_at=attempt.deadline_at,
         server_now=now,
+        decoy_option_id=decoy_shown(attempt, shown, policy),
     )
 
 
 @router.post("/attempts/{attempt_id}/answer")
-def answer_daily(attempt_id: Id, body: AnswerIn, user: Member, db: Db, now: Now) -> DailyResult:
-    return _result(db, daily.answer(db, user, attempt_id, body.options, body.value, now, body.unsure))
+def answer_daily(
+    attempt_id: Id, body: TimedAnswerIn, user: Member, db: Db, now: Now, settings: AppSettings
+) -> DailyResult:
+    r = daily.answer(
+        db,
+        user,
+        attempt_id,
+        body.options,
+        body.value,
+        now,
+        body.unsure,
+        signals_sent(body),
+        signals.policy(settings, now),
+    )
+    return _result(db, r)
 
 
 @router.get("/{area}/review")

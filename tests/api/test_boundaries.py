@@ -9,15 +9,15 @@ from zoneinfo import ZoneInfo
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ifs_tests.db.models import Attempt, DailyQuestion, Question, User
+from ifs_tests.db.models import Attempt, User
 from ifs_tests.domain import rank as rank_rules
 from ifs_tests.services import maintenance
 
 from ..conftest import Clock
-from .helpers import PASSWORD, login, right_answer
+from .helpers import PASSWORD, login, right_answer, set_daily
 from .test_xp import NewClient, practise, progress, set_rank
 from .test_xp import join as register_as
 
@@ -32,14 +32,6 @@ def at(day: date, hour: int, minute: int = 0, second: int = 0) -> datetime:
 def join(admin: TestClient, c: TestClient, name: str, position: str | None = None) -> dict[str, Any]:
     login(admin)
     return register_as(admin, c, name, position)
-
-
-def set_daily(db: Session, day: date, qid: int) -> str:
-    area = db.get_one(Question, qid).area
-    db.execute(delete(DailyQuestion).where(DailyQuestion.day == day, DailyQuestion.area == area))
-    db.add(DailyQuestion(day=day, area=area, question_id=qid))
-    db.commit()
-    return area
 
 
 def season_board(c: TestClient) -> dict[str, Any]:

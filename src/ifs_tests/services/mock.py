@@ -15,7 +15,8 @@ from sqlalchemy.orm import Session as DB
 from ..db.models import Attempt, Event, MockSession, Question, Quiz, QuizQuestion, User, quiz_events
 from ..domain import daily as timing
 from ..domain import mock as rules
-from . import xp
+from ..domain import signals as signal_rules
+from . import signals, xp
 from .errors import UserError
 from .questions import Checked, check, explain, running
 
@@ -207,7 +208,13 @@ def _finish(db: DB, s: MockSession, attempts: dict[int, Attempt], now: datetime)
     s.finished_at = now
 
 
-def _advance(db: DB, s: MockSession, now: datetime) -> tuple[Question, Attempt] | None:
+def _advance(
+    db: DB,
+    s: MockSession,
+    now: datetime,
+    policy: signal_rules.Policy = signal_rules.OFF,
+    resumed: bool = False,
+) -> tuple[Question, Attempt] | None:
     """The question to show now: start its clock, or close it if its time ran out while away."""
     attempts = _attempts(db, s)
     current = None
@@ -223,12 +230,21 @@ def _advance(db: DB, s: MockSession, now: datetime) -> tuple[Question, Attempt] 
                 session_id=s.id,
                 area=q.area,
                 deadline_at=now + timedelta(seconds=rules.budget(q.time_s, q.answer_kind)),
+                resumes=0 if s.counted and policy.collect else None,
+                decoy_option_id=signals.decoy_for(db, q, policy) if s.counted else None,
             )
             db.add(a)
             db.flush()
             current = q, a
             break
         if a.submitted_at is None and a.deadline_at and not timing.is_late(now, a.deadline_at):
+            if (
+                resumed
+                and policy.collect
+                and a.resumes is not None
+                and signal_rules.is_resume(a.created_at, now)
+            ):
+                a.resumes = min(a.resumes + 1, signal_rules.MAX_COUNT)
             current = q, a
             break
         if a.submitted_at is None:
@@ -361,9 +377,16 @@ def _summary(db: DB, s: MockSession, now: datetime) -> Summary:
     )
 
 
-def state(db: DB, user: User, session_id: int, now: datetime) -> State:
+def state(
+    db: DB,
+    user: User,
+    session_id: int,
+    now: datetime,
+    policy: signal_rules.Policy = signal_rules.OFF,
+    resumed: bool = False,
+) -> State:
     s = _session(db, user, session_id)
-    current = None if s.finished_at else _advance(db, s, now)
+    current = None if s.finished_at else _advance(db, s, now, policy, resumed)
     db.commit()
     return State(
         session=s,
@@ -383,6 +406,8 @@ def answer(
     value: str | None,
     now: datetime,
     unsure: bool = False,
+    signals: signal_rules.Signals | None = None,
+    policy: signal_rules.Policy = signal_rules.OFF,
 ) -> State:
     """Answer the question on screen and move on. Answering it again changes nothing."""
     s = _session(db, user, session_id)
@@ -393,6 +418,7 @@ def answer(
         q = db.get_one(Question, a.question_id)
         checked = check(db, q, options, value, unsure)
         late = timing.is_late(now, a.deadline_at)
+        reported = signals if policy.collect and a.resumes is not None else None
         recorded = db.execute(
             update(Attempt)
             .where(Attempt.id == a.id, Attempt.submitted_at.is_(None))
@@ -402,6 +428,9 @@ def answer(
                 submitted_at=now,
                 late=late,
                 passed=checked.passed,
+                **signal_rules.stored(
+                    reported, signal_rules.elapsed_s(a.created_at, a.deadline_at, now), q.answer_kind
+                ),
             )
             .returning(Attempt.id)
         ).first()
@@ -427,4 +456,4 @@ def answer(
             )
             db.execute(update(Attempt).where(Attempt.id == a.id).values(xp=granted.xp, lp=granted.lp))
         db.commit()
-    return state(db, user, session_id, now)
+    return state(db, user, session_id, now, policy)
