@@ -375,13 +375,16 @@ not; replays are practice.
 - **Practice:** anything goes. **Live quizzes:** the host's room rules; by default your table talks and that's it.
 
 Ranked play is checked statistically on the server, with accounts shown as codes and two people reading the result
-together. If something looks off, the first step is a conversation with a TD; the most that can follow is sitting out
-the boards for the rest of the season, decided by the TDs after hearing you, with an appeal to the board. Nothing is
-automatic, and nothing from before the season-1b date counts. From that date your ranked answers also carry a few
-totals (seconds away from the question, whether a typed answer was pasted, how often you copied a long piece of the
-question or reopened it), which you can see in your own export. If the Spanish text of the About page ever differs
-from the English, the English text applies. The full rules and what is checked:
-[game rules](../game-rules.md#10-fair-play); what is kept and for how long: the **Privacy** page.
+together. If something looks off, the first step is a conversation with a TD. After hearing you, the TDs may give you
+a warning or take you off the boards for the rest of the season; the most that can follow is being denied attendance
+at competitions, with an appeal to the board. That is never decided on statistics alone: it needs your own account or
+evidence beyond the statistical checks (for example a supervised session), plus the hearing. Nothing is automatic,
+nothing from before the season-1b date counts, and ranks, levels and the boards select nobody. From that date, as the
+updates that count them ship, your ranked answers also carry a few totals (seconds away from the question, whether a
+typed answer was pasted, how often you copied a long piece of the question or reopened it), which you can see in your
+own export. If the Spanish text of the About page ever differs from the English, the English text applies. The full
+rules and what is checked: [game rules](../game-rules.md#10-fair-play); what is kept and for how long: the
+**Privacy** page.
 
 ## FAQ
 

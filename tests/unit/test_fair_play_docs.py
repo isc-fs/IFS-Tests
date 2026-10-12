@@ -93,7 +93,7 @@ def test_adr_signoff_block_is_blank() -> None:
     assert len(rows) >= 3
     for row in rows:
         assert all(not cell.strip() for cell in row.strip("|").split("|")), row
-    assert re.search(r"IFS_RULES_1B_FROM`? \(Madrid date\):\s*_+", text)
+    assert re.search(r"IFS_RULES_1B_FROM`? = 2026-10-26 \(Madrid date\), confirmed:\s*_+", text)
     assert re.search(r"Reviewer of the Spanish text:\s*_+", text)
     assert re.search(r"Board acceptance of the ePrivacy position:\s*_+", text)
 
@@ -278,12 +278,77 @@ def test_roadmap_phase_seven_note_matches_where_the_deferred_branches_are() -> N
         assert branch in by_phase[6], branch
 
 
-def test_adr_gates_tie_the_date_to_the_releases_the_notice_and_the_ladder_depend_on() -> None:
+def test_adr_separates_the_rule_date_from_the_mechanisms() -> None:
+    season = squash(section(read(ADR), "### Season 1b", "### Legal basis"))
+    assert "Monday 26 October 2026, Madrid" in season
+    assert "IFS_RULES_1B_FROM=2026-10-26" in season
+    assert "each mechanism's own effective-date setting, chosen at deploy" in season
+    assert "no rule change lands mid-day" in season
+    assert re.search(r"clocks go back on Sunday 25 October", season)
+
+
+def test_adr_gates_are_achievable_before_the_rule_date() -> None:
     text = squash(section(read(ADR), "- **Gates.**", "- **Season 1b changes rules only"))
-    assert re.search(r"later than the release that carries feat/33 and feat/34", text)
+    assert re.search(r"before 26 October 2026, with a target of at least 7 days before, by 19 October", text)
+    assert re.search(r"sign this ADR.*before it goes to production", text)
     assert re.search(r"admin-settable\s+hide", text)
-    assert re.search(r"at least 14 days after the notice went live", text)
     assert re.search(r"fix/40 is a later release again", text)
+    assert not re.search(r"14 days", text)
+
+
+def test_no_doc_or_copy_keeps_the_old_date_or_gates() -> None:
+    for path in [
+        ADR,
+        LIA,
+        DPIA,
+        DOCS / "game-rules.md",
+        DOCS / "guides" / "players.md",
+        DOCS / "glossary.md",
+        ROOT / "web" / "src" / "lib" / "fairPlay.ts",
+        ROOT / ".github" / "roadmap.yaml",
+    ]:
+        text = squash(read(path))
+        assert not re.search(r"1 November 2026|noviembre de 2026|at least 14 days", text), path.name
+        assert "sitting out the boards for the rest of the season" not in text, path.name
+        assert not re.search(r"placeholder date", text, re.I), path.name
+
+
+SAFEGUARD = (
+    r"never decided on statistics alone: it needs either (the member's|your) own account or evidence beyond the "
+    r"statistical checks \(for example a supervised session\), plus the hearing"
+)
+
+
+@pytest.mark.parametrize("path", [ADR, DOCS / "game-rules.md", LIA], ids=lambda p: p.name)
+def test_the_maximum_is_denied_attendance_with_its_safeguard(path: Path) -> None:
+    text = squash(read(path))
+    assert re.search(r"denied attendance at competitions", text), path.name
+    assert re.search(SAFEGUARD, text), path.name
+
+
+def test_adr_ladder_and_art_22() -> None:
+    text = squash(read(ADR))
+    ladder = squash(section(read(ADR), "### Outcomes", "### A "))
+    assert ladder.index("a warning") < ladder.index("off the boards for the rest of the season")
+    assert ladder.index("off the boards") < ladder.index("at most, being denied attendance at competitions")
+    assert "Statistics only ever start a conversation" in ladder
+    assert re.search(
+        r"Art\. 22:\*\* not engaged, because the decision is human, with meaningful review", text
+    )
+    assert re.search(r"that is why these safeguards exist", text)
+
+
+def test_dpia_concludes_a_dpia_is_required_and_names_who_signs() -> None:
+    text = squash(read(DPIA))
+    assert "**A DPIA is required.**" in text
+    assert re.search(r"signed by ISC's board \(junta directiva\)", text)
+    assert re.search(r"\| 1\. Evaluation or scoring, including profiling \| \*\*Yes\*\*", text)
+
+
+def test_lia_weighs_the_higher_impact() -> None:
+    text = squash(read(LIA))
+    assert re.search(r"Severity of the effect: significant at the top of the ladder", text)
+    assert re.search(r"stronger safeguards", text)
 
 
 def test_adr_says_the_english_text_prevails_and_has_a_selection_line_to_sign() -> None:

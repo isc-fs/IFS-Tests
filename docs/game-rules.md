@@ -409,7 +409,7 @@ With a critical on top it would be 203. The same question wrong: 15 XP; "not sur
 
 ### Who decides
 
-The rules are a team decision, not a maintainer's. Propose a change to the Technical Directors (the people who asked for MingoQuiz), agree it, and record it: a small tweak in the pull request description; anything that changes how the game feels (a new currency, removing a mechanic, changing what moves the rank) as a new ADR that supersedes the relevant part of [ADR 0007](adr/0007-ranked-lp-and-account-level.md). Change rules between seasons where you can; mid-season changes are unfair to people who already played under the old ones. Exception proposed in [ADR 0010](adr/0010-fair-play-and-integrity.md), effective once the Technical Directors sign it: "season 1b", a Madrid date set in the server configuration (IFS_RULES_1B_FROM) from which the fair-play rules ([§10](#10-fair-play)), the per-player daily, results at Madrid day close, the option shuffle and the fair-play totals apply. It changes rules only; nobody's LP is reset, and what the 1 September reset does with this season's LP is for the TDs to decide before then.
+The rules are a team decision, not a maintainer's. Propose a change to the Technical Directors (the people who asked for MingoQuiz), agree it, and record it: a small tweak in the pull request description; anything that changes how the game feels (a new currency, removing a mechanic, changing what moves the rank) as a new ADR that supersedes the relevant part of [ADR 0007](adr/0007-ranked-lp-and-account-level.md). Change rules between seasons where you can; mid-season changes are unfair to people who already played under the old ones. Exception proposed in [ADR 0010](adr/0010-fair-play-and-integrity.md), effective once the Technical Directors sign it: "season 1b", from Monday 26 October 2026, Madrid (IFS_RULES_1B_FROM in the server configuration), when the fair-play rules ([§10](#10-fair-play)) take effect; the per-player daily, results at Madrid day close, the option shuffle and the fair-play totals follow as each ships, each from a Madrid midnight. It changes rules only; nobody's LP is reset, and what the 1 September reset does with this season's LP is for the TDs to decide before then.
 
 ### What is safe to change
 
@@ -463,7 +463,7 @@ The sections above say what moves the rank; this one says what you may use while
 
 **Ranked play** is every daily question and every question of the first run of a quiz each season, whether or not it moved LP. Replays are practice. The rule applies to players who hide from the boards too, and to Mingo, Jefe and DT alike. Practice has no rules; live quizzes follow the host.
 
-**From when.** Season 1b: a Madrid date set by the Technical Directors in the server configuration (IFS_RULES_1B_FROM), mirrored for the web copy by `RULES_FROM` in `web/src/lib/fairPlay.ts` and shown on About and under every person board. Before that date the previous rule stands ("looking things up is your call"), and nothing played before it is ever a reason for a step about a person.
+**From when.** Season 1b starts on Monday 26 October 2026, Madrid, set in the server configuration (IFS_RULES_1B_FROM=2026-10-26), mirrored for the web copy by `RULES_FROM` in `web/src/lib/fairPlay.ts` and shown on About and under every person board. From that date the rules apply. The mechanisms that go with them (the per-player daily, results at day close, the option shuffle, the fair-play totals) switch on as each ships, each at a Madrid midnight, never mid-day. Before the date the previous rule stands ("looking things up is your call"), and nothing played before it is ever a reason for a step about a person.
 
 ### Rules per mode
 
@@ -497,7 +497,8 @@ Run on the server by a read-only command, accounts shown as codes, read by two p
 ### What happens
 
 1. **A conversation** with a Technical Director. Most checks end before or here.
-2. **For a rule broken,** after hearing you, the TDs may keep you off the boards for the rest of the season (an admin-settable switch must exist before the season-1b date; see the gates in the ADR). LP keeps moving; your account, XP, level and every way to play are untouched. The decision is one line in the admin log.
-3. **Appeal.** You can appeal to ISC's board: `direccion.isc@clubisc.com`.
+2. **For a rule broken,** after hearing you, the TDs decide one step, in proportion to what happened: a warning; off the boards for the rest of the season (LP keeps moving; your account, XP, level and every way to play are untouched; it needs an admin-settable switch, which ships before the first such decision); or, at most, being denied attendance at competitions: the team doesn't take you to its Formula Student events. The decision is one line in the admin log.
+3. **Never on statistics alone.** Denial of attendance is never decided on statistics alone: it needs either your own account or evidence beyond the statistical checks (for example a supervised session), plus the hearing. Statistics only ever start a conversation.
+4. **Appeal.** You can appeal to ISC's board: `direccion.isc@clubisc.com`.
 
-None of it is automatic: never an automatic penalty, never anything outside the game, and never for an answer given before the season-1b date.
+None of it is automatic: never an automatic penalty, and never for an answer given before the season-1b date. Ranks, levels and the boards select nobody: not the team, not who sits the real quiz, not who goes to competitions. Only a fair-play decision, taken by people after hearing you, can reach beyond the game.

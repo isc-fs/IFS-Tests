@@ -70,9 +70,30 @@ test('ranked play is defined once, for everyone, and the worst outcome is stated
   expect(flat(definition)).toMatch(/Mingo, Jefe and DT alike/)
   const closing = flat(within(fair).getByText(/never an automatic penalty/))
   expect(closing).toMatch(/two people look at it together/)
-  expect(closing).toMatch(/sitting out the boards for the rest of the season/)
-  expect(closing).toMatch(/decided by the Technical Directors after hearing you/)
+  expect(closing).toMatch(/After hearing you, the Technical Directors may give you a warning/)
+  expect(closing).toMatch(/take you off the boards for the rest of the season/)
+  expect(closing).toMatch(/the most that can follow is being denied attendance at competitions/)
   expect(closing).toMatch(/appeal to the board/)
+  expect(closing).toMatch(
+    /That is never decided on statistics alone: it needs your own account or evidence beyond the statistical checks, such as a supervised session, as well as hearing you/,
+  )
+  expect(closing).toMatch(/Statistics only ever start a conversation/)
+})
+
+test('the Spanish block states the same ladder, maximum and safeguard', async () => {
+  const fair = await fairPlay()
+  const es = fair.querySelector<HTMLElement>('[lang="es"]') as HTMLElement
+  const closing = flat(within(es).getByText(/nunca por una penalización automática/))
+  expect(closing).toMatch(/Después de escucharte, los Directores Técnicos pueden darte un aviso/)
+  expect(closing).toMatch(/dejarte fuera de los rankings el resto de la temporada/)
+  expect(closing).toMatch(/lo máximo que puede pasar es quedarte sin ir a las competiciones, con recurso ante la junta/)
+  expect(closing).toMatch(
+    /Eso nunca se decide solo con estadísticas: hace falta lo que cuentes tú o pruebas que vayan más allá de las comprobaciones estadísticas, como una sesión supervisada, y además escucharte/,
+  )
+  const summary = flat(within(es).getByText(/^Qué se guarda:/))
+  expect(summary).toMatch(/El rango, el nivel y los rankings no seleccionan a nadie/)
+  expect(summary).toMatch(/nunca solo con estadísticas, y puede suponer quedarte sin ir a las competiciones/)
+  expect(summary).toContain(`nunca para respuestas anteriores al ${RULES_FROM.es}`)
 })
 
 test('the rules are repeated in Spanish inside one lang="es" block', async () => {
@@ -136,9 +157,15 @@ test('the privacy notice names the fair-play purpose and keeps the human decisio
   await screen.findByRole('heading', { level: 1, name: 'Privacy' })
   expect(screen.getByText(/statistically for answers that broke the fair-play rules/)).toBeInTheDocument()
   expect(screen.getByText(/a person decides what follows, never the app/)).toBeInTheDocument()
-  expect(screen.getByText(/Nothing about you is decided automatically/)).toBeInTheDocument()
-  expect(screen.getByText(/the boards don't pick who sits the real quiz/)).toBeInTheDocument()
-  expect(screen.getByText(/anything that follows a fair-play check starts with a conversation/)).toBeInTheDocument()
+  const why = flat(screen.getByText(/Nothing about you is decided automatically/))
+  expect(why).toMatch(
+    /Ranks, levels and the boards select nobody: they don't pick the team, who sits the real quiz or who goes to competitions/,
+  )
+  expect(why).toMatch(
+    /taken by people after hearing you, and never on statistics alone, it can mean not being taken to competitions/,
+  )
+  expect(why).toMatch(/Anything that follows a fair-play check starts with a conversation/)
+  expect(why).not.toMatch(/mean nothing outside the site/)
 })
 
 test('the privacy notice announces the season-1b totals and what is never recorded', async () => {
@@ -158,6 +185,9 @@ test('the privacy notice announces the season-1b totals and what is never record
     /Never your keystrokes, screen, camera, what is on your clipboard, the pages you visit or your extensions/,
   )
   expect(text).toMatch(/Your own values are in your export/)
+  expect(text).toContain(
+    `Each total is recorded from the site update that adds it, and never for answers before ${RULES_FROM.en}`,
+  )
   // The pre-existing content of the item is still there.
   expect(text).toMatch(/every answer \(typed ones included\)/)
 })

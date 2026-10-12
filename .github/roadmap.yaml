@@ -145,10 +145,10 @@ phases:
   - number: 8
     title: Season 1b
     tag: v1.3.0
-    note: "Behind IFS_RULES_1B_FROM, a Madrid date set by the Technical Directors: a per-player daily with results at day close, option shuffle, and the server side of the announced per-answer totals. The date is set after this phase, phase 9 and an admin-settable hide from the leaderboard have shipped (ADR 0010 gates)"
+    note: "Season 1b mechanisms: a per-player daily with results at day close, option shuffle, and the server side of the announced per-answer totals. The rules apply from 26 October 2026 (IFS_RULES_1B_FROM); each mechanism switches on at a Madrid midnight through its own effective-date setting, chosen at deploy (ADR 0010)"
     branches:
       - name: feat/27-daily-per-player
-        scope: A daily question drawn per player behind the season-1b gate; today's drawn set withheld from practice, mock summary, review and live picks
+        scope: A daily question drawn per player from its own Madrid-midnight effective date; today's drawn set withheld from practice, mock summary, review and live picks
       - name: feat/31-daily-results-at-day-close
         scope: Daily answers recorded, graded and granted at Madrid day close (settle), so nothing leaks through /me or the rank card
       - name: feat/32-daily-option-shuffle
@@ -159,7 +159,7 @@ phases:
   - number: 9
     title: Signals
     tag: v1.4.0
-    note: "One release after phase 8, at least 14 days before the gate date: the client sends the totals and the report reads them"
+    note: "One release after phase 8: the client sends the totals the notice already names, from a Madrid midnight set at deploy, and the report reads them"
     branches:
       - name: feat/34-ranked-signals-client
         scope: Ranked-signals hook (declared and undeclared time away, paste on typed answers, long copies) and the honest AI note on copy
@@ -169,9 +169,9 @@ phases:
   - number: 10
     title: Contract
     tag: v1.5.0
-    note: "After the season-1b date has passed: the shared daily goes"
+    note: "After the per-player daily is in effect: the shared daily goes"
     branches:
       - name: fix/40-drop-shared-daily
-        scope: Contract step in its own release after the gate date; drop daily_questions, ensure_daily and the scheduler job
+        scope: Contract step in its own release after the per-player daily is in effect; drop daily_questions, ensure_daily and the scheduler job
 
 sidequests: []

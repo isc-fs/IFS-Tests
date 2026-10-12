@@ -19,7 +19,8 @@ the controller at launch (release decision B1).
 when the question was shown and answered, whether a hint was used, the mode and the area, the LP and XP it moved;
 for every member, position, vertical and rank state. None of this is new.
 
-**New from season 1b** (ADR 0010, part D), on ranked answers only (daily questions and the first run of each mock
+**New from season 1b** (ADR 0010, part D; from the rule date, 26 October 2026, as the code that records each total
+is deployed), on ranked answers only (daily questions and the first run of each mock
 quiz in a season): seconds away from the question, split between look-ups opened from the question itself and the
 rest; whether a typed answer was pasted; how often a long piece of the question text was copied (a count, never the
 text); how often the question was reopened; and, only while the AI canary flag is on and once the notice names it,
@@ -32,9 +33,11 @@ together: a Technical Director and a member of ISC's board who does not play ran
 run. The output is deleted after the run. A decision, if there is one, is one line in the admin log (kept two years,
 like every admin action). Nothing else is stored: no file of results, no list of people looked at.
 
-**Effect on the person.** A conversation with a TD; at most, after being heard, sitting out the leaderboards for the
-rest of the season (the account, XP, level and every way to play are untouched); appeal to the board. Nothing outside
-the game.
+**Effect on the person.** A conversation with a TD. For a rule broken, after being heard: a warning; off the
+leaderboards for the rest of the season (the account, XP, level and every way to play are untouched); or, at most,
+being denied attendance at competitions (the team does not take the member to its Formula Student events). Denial of
+attendance is never decided on statistics alone: it needs either the member's own account or evidence beyond the
+statistical checks (for example a supervised session), plus the hearing. Appeal to the board.
 
 ## Purpose test
 
@@ -44,10 +47,11 @@ the game.
 - **Real and present:** the symptom exists now (ADR 0010, Context); the rule exists from a published date.
 - **Lawful:** checking that a published rule of a game was followed, by the association that runs the game, with the
   outcomes above.
-- **The boards do not feed roster selection.** Nobody's place on the team, in a sub-department or in the real
-  registration quiz depends on their rank, level or board position; the Technical Directors confirm this by signing
-  the ADR. If that ever changes, this assessment and the screening are redone before the change (a selection use
-  would make Art. 22 and the "evaluation or scoring" DPIA criterion bite fully).
+- **The boards do not feed roster selection.** Nobody's place on the team, in a sub-department, in the real
+  registration quiz or at a competition depends on their rank, level or board position; the Technical Directors
+  confirm this by signing the ADR. If that ever changes, this assessment and the screening are redone before the
+  change. A fair-play decision can, at most, deny a member attendance at competitions: that is the consequence of
+  breaking a published rule, decided by people after a hearing, not a use of the ranks for selection.
 
 ## Necessity test
 
@@ -75,13 +79,14 @@ Attempts stored before the notice were collected to grade answers, keep the rank
 ask a per-person integrity question is a new purpose. ADR 0010 bounds it: pre-date attempts are used at cohort level
 only (how big is the relay problem, where to set thresholds), never resolved to a person, and never a reason for any
 step about a person. Same context, same controller, no new effect on the individual: compatible in the sense of
-Art. 6(4). Per-person checks start at the rule date, after the notice has been live for at least 14 days.
+Art. 6(4). Per-person checks start at the rule date, once the notice is live on production (target: by 19
+October 2026, a week ahead).
 
 ## Balancing test
 
 - **Reasonable expectations.** A member who plays ranked after the date has read, or could read, the rule in English
   and Spanish on About, dated, with the outcomes; the English notice lists the fields, the reviewers and the
-  retention; the team announcement repeated the date and the link at least 14 days earlier. Someone who plays a
+  retention; the team announcement repeated the date and the link before it (target: a week ahead). Someone who plays a
   ranked game with published rules expects the rules to be checked. Before the date nothing is held against anyone.
 - **Intrusion: low.** Aggregates, no content (what was copied, which pages, what was typed), nothing from outside the
   page, nothing in practice or live, nothing continuous: the totals exist only for the minutes a ranked question is
@@ -90,8 +95,13 @@ Art. 6(4). Per-person checks start at the rule date, after the notice has been l
   appears steps out; a board member who does not play ranked is the second reader; the first step is a conversation,
   not a verdict; the decision is taken after hearing the person; appeal lies to the board, not to the TDs. The
   decision is recorded, so it can be reviewed.
-- **Severity of the effect: bounded.** A conversation; at most the boards for a season; never the account, the level,
-  a way to play, the roster or anything outside the site.
+- **Severity of the effect: significant at the top of the ladder.** Most checks end in a conversation or nothing;
+  a warning or a season off the boards stays inside the site. The maximum, being denied attendance at competitions,
+  is a real effect on a member who trains all year to go: higher impact than a leaderboard, so it carries stronger
+  safeguards. It is never decided on statistics alone (the member's own account or evidence beyond the statistical
+  checks, such as a supervised session, plus the hearing); the TDs decide, not the readers of the report; the
+  decision is recorded and can be appealed to the board. The account, the level and every way to play are never
+  touched, and ranks select nobody.
 - **Data subjects.** University students and recent graduates, normally adults. A 17-year-old first-year is possible
   (Mingo joining in September before turning 18): the same safeguards apply, the processing is no different for them,
   and a parent or guardian may exercise their rights with them. No children under 16; no special categories.
@@ -102,9 +112,10 @@ Art. 6(4). Per-person checks start at the rule date, after the notice has been l
   Guidelines 2/2023); the board accepts that risk in the ADR's sign-off or chooses the opt-in fallback. This
   assessment does not add to that analysis; it points at it.
 
-**Outcome of the balance:** the interest is real, the means are the least that work, the intrusion is low, the
-effect is bounded and reversible, the people affected can see, pause, object and appeal. The legitimate interest is
-not overridden.
+**Outcome of the balance:** the interest is real, the means are the least that work, the intrusion is low. The
+effect can be significant, so it is reached only through people: a conversation, a hearing, evidence beyond the
+statistics, a recorded decision and an appeal. The people affected can see, pause, object and appeal. With these
+safeguards the legitimate interest is not overridden.
 
 ## Rights
 
@@ -115,8 +126,10 @@ not overridden.
   the person's grounds against its interest, and explains the result.
 - **Rectification and erasure:** as for everything else (ADR 0006); deleting the account deletes the answers and
   their totals and ends any review with no record.
-- **Not to be subject to a solely automated decision (Art. 22):** no decision is automated; the sentence "Nothing
-  about you is decided automatically" in the notice is tested in the component tests.
+- **Not to be subject to a solely automated decision (Art. 22):** not engaged: no decision is automated, and the
+  step with a significant effect needs evidence beyond the statistics and a hearing, so the human review is
+  meaningful. The sentence "Nothing about you is decided automatically" in the notice is tested in the component
+  tests.
 - **Complaint:** the AEPD, named in the notice.
 
 ## Safeguards
@@ -127,6 +140,8 @@ not overridden.
   laptop; never through the deploy or restore scripts.
 - The report prints no area, vertical, position or rank column: at the team's size any of them re-identifies a code.
 - Two readers, recusal of anyone under review, a code resolved to a name only when both agree.
+- Denial of attendance at competitions never on statistics alone: the member's own account or evidence beyond the
+  statistical checks, plus the hearing; the TDs decide; appeal to the board.
 - Output deleted after the run; no dashboard, no stored results; a decision is one admin-log line.
 - Per-answer totals blanked 90 days after the end of the season they were played in, by the maintenance job
   (`src/ifs_tests/services/privacy.py` owns export and purge); the answer itself stays as before.
@@ -135,13 +150,14 @@ not overridden.
 
 ## Outcome
 
-Proceed under Art. 6(1)(f), with the safeguards above, from the season-1b date, once the notice has been live for 14
-days.
+Proceed under Art. 6(1)(f), with the safeguards above, from the season-1b date (26 October 2026), once the notice is
+live on production (target: by 19 October) and the Technical Directors have signed ADR 0010.
 
 ## Review
 
 Redo this assessment, and the screening, at each season boundary (1 September), and before any of: a new check that
 looks at people rather than cohorts; any machine-learned or model-based scoring in the report; any use of ranks,
-levels or board positions for selection of any kind; a widening of the per-answer totals; the AI canary flag going on.
+levels or board positions for selection of any kind; a change to the outcome ladder; a widening of the per-answer
+totals; the AI canary flag going on.
 
 Signed for the board: ____________________ · Date: ________

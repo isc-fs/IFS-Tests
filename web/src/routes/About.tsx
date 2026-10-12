@@ -40,7 +40,8 @@ export function Privacy() {
             copied a long piece of the question (a count, never what you copied), and how often you reopened the
             question. Leaving the tab is not an offence; these are context for a check, read together by people. Never
             your keystrokes, screen, camera, what is on your clipboard, the pages you visit or your extensions. Your own
-            values are in your export.
+            values are in your export. Each total is recorded from the site update that adds it, and never for answers
+            before {RULES_FROM.en}.
           </li>
           <li>
             <strong>Signing in:</strong> when each of your sign-ins started and was last used, and any password reset
@@ -71,11 +72,12 @@ export function Privacy() {
           statistically for answers that broke the fair-play rules, where a person decides what follows, never the app;
           and to keep the site secure (sign-in records, locks, the admin log and server logs). The legal basis is the
           team&apos;s legitimate interest in preparing its members for the quizzes that decide whether it competes, and
-          in keeping that preparation fair. Nothing about you is decided automatically: ranks and levels mean nothing
-          outside the site, the boards don&apos;t pick who sits the real quiz, and anything that follows a fair-play
-          check starts with a conversation. The checks also read the answers and times already stored, compared between
-          players; answers from before {RULES_FROM.en} are used only in aggregate, to calibrate the checks, never about
-          a person.
+          in keeping that preparation fair. Nothing about you is decided automatically. Ranks, levels and the boards
+          select nobody: they don&apos;t pick the team, who sits the real quiz or who goes to competitions. A fair-play
+          decision can: taken by people after hearing you, and never on statistics alone, it can mean not being taken to
+          competitions. Anything that follows a fair-play check starts with a conversation. The checks also read the
+          answers and times already stored, compared between players; answers from before {RULES_FROM.en} are used only
+          in aggregate, to calibrate the checks, never about a person.
         </p>
 
         <h2>Who sees what</h2>
@@ -237,10 +239,12 @@ export function About() {
           <p>
             Ranked play is checked statistically for answers that broke these rules: passed on, copied, looked up or
             AI-assisted. If something looks off, two people look at it together and anything that follows starts with a
-            conversation, never an automatic penalty. The most that can follow is sitting out the boards for the rest of
-            the season, decided by the Technical Directors after hearing you, with an appeal to the board. Answers given
-            before {RULES_FROM.en} are never a reason for any of it. The same rules follow in Spanish; if the two ever
-            differ, the English text applies; ask a TD.
+            conversation, never an automatic penalty. After hearing you, the Technical Directors may give you a warning
+            or take you off the boards for the rest of the season; the most that can follow is being denied attendance
+            at competitions, with an appeal to the board. That is never decided on statistics alone: it needs your own
+            account or evidence beyond the statistical checks, such as a supervised session, as well as hearing you.
+            Statistics only ever start a conversation. Answers given before {RULES_FROM.en} are never a reason for any
+            of it. The same rules follow in Spanish; if the two ever differ, the English text applies; ask a TD.
           </p>
           <div lang="es" className="prose">
             <h3>Juego limpio</h3>
@@ -291,22 +295,29 @@ export function About() {
             <p>
               Ranked se revisa con estadísticas para detectar respuestas que rompieron estas reglas: chivadas, copiadas,
               buscadas o hechas con IA. Si algo no cuadra, dos personas lo miran juntas y lo que venga después empieza
-              por una conversación, nunca por una penalización automática. Lo máximo que puede pasar es quedarte fuera
-              de los rankings el resto de la temporada, decidido por los Directores Técnicos después de escucharte, con
-              recurso ante la junta. Las respuestas anteriores al {RULES_FROM.es} nunca son motivo de nada de esto. Si
-              alguna vez las versiones en inglés y español difieren, vale el texto en inglés; pregunta a un DT.
+              por una conversación, nunca por una penalización automática. Después de escucharte, los Directores
+              Técnicos pueden darte un aviso o dejarte fuera de los rankings el resto de la temporada; lo máximo que
+              puede pasar es quedarte sin ir a las competiciones, con recurso ante la junta. Eso nunca se decide solo
+              con estadísticas: hace falta lo que cuentes tú o pruebas que vayan más allá de las comprobaciones
+              estadísticas, como una sesión supervisada, y además escucharte. Las estadísticas solo sirven para empezar
+              una conversación. Las respuestas anteriores al {RULES_FROM.es} nunca son motivo de nada de esto. Si alguna
+              vez las versiones en inglés y español difieren, vale el texto en inglés; pregunta a un DT.
             </p>
             <p>
               Qué se guarda: desde la temporada 1b, cada respuesta de ranked guarda también, solo como totales por
               respuesta, los segundos fuera de la pregunta (separando las consultas abiertas desde la propia pregunta,
               como el reglamento, del resto), si una respuesta escrita se pegó, cuántas veces copiaste un trozo largo de
               la pregunta y cuántas veces volviste a abrirla. Nunca tus teclas, tu pantalla, tu cámara, lo que haya en
-              tu portapapeles, las páginas que visitas ni tus extensiones. Salir de la pestaña no es una falta; son
-              contexto para una revisión, que leen personas. Tus valores van en tu exportación, se revisan con tu cuenta
-              convertida en un código y se borran 90 días después de acabar la temporada. Las comprobaciones también
-              usan las respuestas y los tiempos ya guardados, comparados entre jugadores; antes del {RULES_FROM.es} solo
-              se usan en conjunto, para calibrarlas, nunca sobre una persona. Todo, en inglés, en la{' '}
-              <Link to="/privacy">página de privacidad</Link>.
+              tu portapapeles, las páginas que visitas ni tus extensiones. Cada total se guarda desde la actualización
+              de la web que lo añade, y nunca para respuestas anteriores al {RULES_FROM.es}. Salir de la pestaña no es
+              una falta; son contexto para una revisión, que leen personas. Tus valores van en tu exportación, se
+              revisan con tu cuenta convertida en un código y se borran 90 días después de acabar la temporada. Las
+              comprobaciones también usan las respuestas y los tiempos ya guardados, comparados entre jugadores; antes
+              del {RULES_FROM.es} solo se usan en conjunto, para calibrarlas, nunca sobre una persona. Nada se decide
+              automáticamente. El rango, el nivel y los rankings no seleccionan a nadie: no deciden el equipo, quién
+              hace el quiz de verdad ni quién va a las competiciones. Una decisión de juego limpio sí puede: la toman
+              personas después de escucharte, nunca solo con estadísticas, y puede suponer quedarte sin ir a las
+              competiciones. Todo, en inglés, en la <Link to="/privacy">página de privacidad</Link>.
             </p>
           </div>
         </section>
