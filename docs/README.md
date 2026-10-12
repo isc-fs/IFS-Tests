@@ -25,6 +25,8 @@ Words you don't know are in the [glossary](glossary.md).
 | Using the app, by role | [guides/](guides/) |
 | Running and reading the integrity report (pseudonymous, read-only) | [guides/integrity-report.md](guides/integrity-report.md) |
 | Scoring: rank, LP, XP, levels, seasons, leaderboards, and how to retune them | [game-rules.md](game-rules.md) |
+| Fair play: the rules per mode, what is checked, how a check ends | [game-rules.md](game-rules.md#10-fair-play), [ADR 0010](adr/0010-fair-play-and-integrity.md) |
+| Legitimate-interest assessment and DPIA of the fair-play checks | [privacy/](privacy/) |
 | How the system is built: components, modules, jobs, locking, answer secrecy | [architecture.md](architecture.md) |
 | Who the app is for, what it's for, and the product constraints on any design work | [PRODUCT.md](../PRODUCT.md) |
 | The visual system: colours, type, layout, components, do's and don'ts | [DESIGN.md](../DESIGN.md), mirrored for design tools in `.impeccable/design.json` |

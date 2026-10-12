@@ -1531,6 +1531,18 @@ details[open] > summary::before {
   display: grid;
   gap: 6px;
 }
+.prose [lang='es'] {
+  margin-top: 8px;
+  padding-top: 16px;
+  border-top: 1px solid var(--isc-c-border);
+}
+.notes {
+  display: grid;
+  gap: 4px;
+}
+.notes > p {
+  margin: 0;
+}
 .danger-zone {
   padding-top: 16px;
   border-top: 1px solid var(--isc-c-border);

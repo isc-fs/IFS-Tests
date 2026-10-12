@@ -1,6 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { expect, test } from 'vitest'
+import { RULES_FROM } from '../lib/fairPlay'
 import { MEMBER, renderApp } from '../test/render'
 
 const row = (rank: number, display_name: string, score: number, extra = {}) => ({
@@ -176,4 +177,62 @@ test('someone hidden from the board still sees their own place when nobody visib
   })
   expect(await screen.findByText('You: #1')).toBeInTheDocument()
   expect(screen.queryByText(/Nobody has scored/)).toBeNull()
+})
+
+const CAPTION = `Home games, rulebook open, unsupervised. From ${RULES_FROM.en}: no AI, no help from others, no looking the answer up (fair play).`
+const flat = (el: Element) => (el.textContent ?? '').replace(/\s+/g, ' ').trim()
+
+test('person boards carry the home-game caption and link the rules', async () => {
+  renderApp('/leaderboard', api(BOARD))
+  const list = await screen.findByRole('list', { name: 'Everyone, this season' })
+  const caption = screen.getByText(/Home games, rulebook open, unsupervised\. From /)
+  expect(flat(caption)).toBe(CAPTION)
+  expect(screen.getByRole('link', { name: 'fair play' })).toHaveAttribute('href', '/about#fair-play')
+  const sortRule = screen.getByText('By rank: division, then LP.')
+  expect(sortRule.compareDocumentPosition(caption) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  expect(caption.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+})
+
+const PERSON_BOARDS = { everyone: 'Everyone', mech: 'Mechanical', elec: 'Electrical', rules: 'Rules' }
+const PERIODS = { season: 'this season', week: 'last 7 days' }
+test.each(
+  Object.entries(PERSON_BOARDS).flatMap(([b, name]) =>
+    Object.entries(PERIODS).map(([p, when]) => [b, p, `${name}, ${when}`]),
+  ),
+)('the %s board, %s, carries the caption once (%s)', async (board, period, heading) => {
+  renderApp(`/leaderboard?board=${board}&period=${period}`, api({ ...BOARD, board, period }))
+  await screen.findByRole('list', { name: heading })
+  expect(screen.getAllByText(/Home games, rulebook open/)).toHaveLength(1)
+  expect(screen.getAllByRole('link', { name: 'fair play' })).toHaveLength(1)
+})
+
+test('an empty board still carries the caption', async () => {
+  renderApp('/leaderboard', api({ ...BOARD, rows: [], me: null, players: 0 }))
+  expect(await screen.findByText(/Nobody has scored this season yet/)).toBeInTheDocument()
+  expect(screen.getByText(/Home games, rulebook open, unsupervised/)).toBeInTheDocument()
+})
+
+test('the verticals board carries no home-game caption', async () => {
+  renderApp('/leaderboard?board=verticals', {
+    'GET /api/me': { body: MEMBER },
+    'GET /api/leaderboard/verticals': { body: { period: 'season', rows: [] } },
+  })
+  expect(await screen.findByText('No vertical has 3 active members yet.')).toBeInTheDocument()
+  expect(screen.queryByText(/Home games/)).toBeNull()
+  expect(screen.queryByRole('link', { name: 'fair play' })).toBeNull()
+})
+
+test('the verticals table carries no home-game caption either', async () => {
+  renderApp('/leaderboard?board=verticals', {
+    'GET /api/me': { body: MEMBER },
+    'GET /api/leaderboard/verticals': {
+      body: {
+        period: 'season',
+        rows: [{ vertical: 'Mechanical', members: 8, rank_points: 612.25, participation: 0.5 }],
+      },
+    },
+  })
+  expect(await screen.findByRole('table')).toBeInTheDocument()
+  expect(screen.queryByText(/Home games/)).toBeNull()
+  expect(screen.queryByRole('link', { name: 'fair play' })).toBeNull()
 })

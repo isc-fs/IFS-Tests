@@ -337,6 +337,8 @@ counts again in the new season.
 - The top 50 are shown; if you're further down, your place shows underneath.
 - Only active members appear. People who hide themselves aren't named, and aren't counted in their vertical.
 - A vertical shows only with at least 3 counted members.
+- Every person board says so: home games, unsupervised, with the fair-play rules from season 1b; **fair play** links
+  them.
 
 ## Your data
 
@@ -354,6 +356,32 @@ If you are the only admin you can't delete your account until someone else is an
 
 When you leave the team, an admin marks you as alumni: you are signed out and can't sign in again, and the account is
 deleted a year later unless you come back. Download your data before you leave, or ask an admin for a copy.
+
+## Fair play
+
+From season 1b (the date is in the Fair play section of the **About** page, linked from the footer), ranked play has
+rules. Ranked play is every daily question and every question of your first run of a mock quiz this season, LP or
+not; replays are practice.
+
+- **Fine:** the rulebook and handbooks, a textbook, your own notes on the material (not a list of bank questions with
+  their answers; notes that hold a question's answer count as looking it up), a calculator or Python, and a translation
+  tool on the question text. What you remember is yours. The list is closed: for anything else, ask a TD first.
+- **Not fine:** looking up the answer to this question or any version of it (fs-quiz.eu, a web search, a shared
+  sheet), help from another person, and any AI that reads the question or suggests an answer or a method, on any
+  device; an AI answer a search engine shows you counts as AI. Search the rulebook, not the question; a translation
+  tool, not a chatbot. Not sure about a tool? Ask a TD first.
+- **Don't pass it on:** no ranked question or answer to anyone until the Madrid day ends (daily) or they've finished
+  their run (mock), and no shared sheets of them. One account each, played only by you.
+- **Practice:** anything goes. **Live quizzes:** the host's room rules; by default your table talks and that's it.
+
+Ranked play is checked statistically on the server, with accounts shown as codes and two people reading the result
+together. If something looks off, the first step is a conversation with a TD; the most that can follow is sitting out
+the boards for the rest of the season, decided by the TDs after hearing you, with an appeal to the board. Nothing is
+automatic, and nothing from before the season-1b date counts. From that date your ranked answers also carry a few
+totals (seconds away from the question, whether a typed answer was pasted, how often you copied a long piece of the
+question or reopened it), which you can see in your own export. If the Spanish text of the About page ever differs
+from the English, the English text applies. The full rules and what is checked:
+[game rules](../game-rules.md#10-fair-play); what is kept and for how long: the **Privacy** page.
 
 ## FAQ
 
