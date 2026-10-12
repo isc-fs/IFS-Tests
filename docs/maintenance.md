@@ -70,6 +70,7 @@ The registration quizzes run over the winter (FSG's is usually in January). FS-Q
    - **Unclassified**: new questions whose topic the keyword tagger couldn't guess. Set area and topic.
    - **Not graded**: questions the app can't grade automatically; a typed correction can make them gradable.
 3. **Technical Directors: check the new rules.** Questions show later editions of the rulebooks and handbooks they were based on. If a rule changed, hide or correct the affected questions, and check the formulas and reading panels (`src/ifs_tests/content/learning.json`) still hold; a developer changes that file.
+4. **Technical Directors, if the team decided to: review fair play.** After the announcement to members, run the integrity report on prod, staging first, with a maintainer at the server and the salt held by a reviewer ([guide](guides/integrity-report.md), [runbook 5.7](runbook.md#57-integrity-report)). The report keeps no state: read it, decide, delete it.
 
 ---
 

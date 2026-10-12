@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import io
 from collections.abc import Iterator
 from datetime import timedelta
 from pathlib import Path
@@ -9,7 +8,6 @@ import pytest
 from sqlalchemy import Engine, func, select
 from sqlalchemy.orm import Session
 
-from ifs_tests import cli
 from ifs_tests.auth.sessions import create_session
 from ifs_tests.db import session as db_session
 from ifs_tests.db.models import Invite, PasswordReset, User
@@ -18,6 +16,7 @@ from ifs_tests.services import accounts, maintenance
 from ifs_tests.settings import get_settings
 
 from ..conftest import Clock
+from .conftest import run
 
 pytestmark = pytest.mark.integration
 
@@ -62,16 +61,6 @@ def cli_db(db: Session, app_engine: Engine, monkeypatch: pytest.MonkeyPatch) -> 
     yield
     get_settings.cache_clear()
     db_session.reset()
-
-
-def run(args: list[str], stdin: str = "") -> str:
-    import contextlib
-
-    out = io.StringIO()
-    with contextlib.redirect_stdout(out), pytest.MonkeyPatch.context() as m:
-        m.setattr("sys.stdin", io.StringIO(stdin))
-        cli.main(args)
-    return out.getvalue()
 
 
 def test_cli_bootstrap_invite_and_reset(cli_db: None, db: Session) -> None:

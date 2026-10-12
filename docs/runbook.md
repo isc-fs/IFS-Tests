@@ -14,7 +14,7 @@ Names used below:
 | Containers | `quiz-staging-api-1`, `-scheduler-1`, `-db-1`, `-backup-1` | `quiz-prod-api-1`, `-scheduler-1`, `-db-1`, `-backup-1` |
 | Image tags it takes | `sha-<commit>` or `vX.Y.Z` | `vX.Y.Z` only |
 
-The checkout of this repository on the server is `/srv/quiz/repo`; every script below runs from there. The scripts are in [`deploy/`](../deploy/): `deploy/deploy.sh`, `deploy/restore.sh`, `deploy/refresh-bank.sh`, with the stack in `deploy/compose.yaml`.
+The checkout of this repository on the server is `/srv/quiz/repo`; every script below runs from there. The scripts are in [`deploy/`](../deploy/): `deploy/deploy.sh`, `deploy/restore.sh`, `deploy/refresh-bank.sh` and `deploy/integrity-report.sh`, with the stack in `deploy/compose.yaml`.
 
 ---
 
@@ -288,13 +288,14 @@ Staging now holds real member data. Put it back by restoring the safety dump the
 | Deployed version | `cat /srv/quiz/prod/deployed-tag`; history in `/srv/quiz/prod/deploy-history` |
 | Password reset link from the server (an admin locked out) | `docker exec quiz-prod-api-1 ifs-tests reset-link --email <their email>` (valid 24 h) |
 | Invite link from the server | `docker exec quiz-prod-api-1 ifs-tests invite --role admin --note "<who it's for>"` (valid 7 days) |
+| Integrity report (read-only, pseudonymous) | `deploy/integrity-report.sh <env> report --until <announcement date>`, then `reveal <pseudonym>`; [5.7](#57-integrity-report) and the [guide](guides/integrity-report.md) |
 
 The two link commands need an active admin account to exist (they act in its name). If none exists any more, create one with `create-admin` ([section 1.5](#15-first-deploy-of-an-environment)). Send links privately: anyone holding one can use it.
 
 - The server reboots itself at 04:00 when security updates need it. Containers restart on their own; the nightly jobs run earlier (daily questions 00:01, maintenance 03:00, backup 03:30).
 - Logs rotate automatically (3 × 10 MB per container).
 - **Season 1b and the AI canary** (ADR 0010) are switched in the environment's `.env`: `IFS_RULES_1B_FROM=YYYY-MM-DD` (the Madrid day the Technical Directors signed; unset collects nothing) and `IFS_CANARY=true` (only after the recall pilot). Set them on staging first, then redeploy the deployed tag (`deploy/deploy.sh <env> <deployed tag>`) to restart with them. Prod gets neither until the About and privacy notice is live there.
-- **Database connections** are budgeted against Postgres's `max_connections=40` (3 reserved for the superuser): each app process opens at most `IFS_DB_POOL_SIZE` + `IFS_DB_MAX_OVERFLOW` connections, 5 + 5 by default, and the scheduler is set to 2 + 0 in `deploy/compose.yaml`. The api's 2 workers (20), the scheduler (2), one `ifs-tests` command run alongside with `docker exec` or `compose run` (10), a migration (1) and the backup (1) make 34 of 37. So run one such command at a time; if you raise a pool size, recount in the comment above `max_connections` in `deploy/compose.yaml`.
+- **Database connections** are budgeted against Postgres's `max_connections=40` (3 reserved for the superuser): each app process opens at most `IFS_DB_POOL_SIZE` + `IFS_DB_MAX_OVERFLOW` connections, 5 + 5 by default, and the scheduler is set to 2 + 0 in `deploy/compose.yaml`. The api's 2 workers (20), the scheduler (2), one `ifs-tests` command run alongside with `docker exec` or `compose run` (10), a migration (1) and the backup (1) make 34 of 37. So run one such command at a time (the integrity report opens 1 connection, not a pool); if you raise a pool size, recount in the comment above `max_connections` in `deploy/compose.yaml`.
 - The api and scheduler run with `TZ=Europe/Madrid`, the backup too; the database keeps UTC (`timezone=UTC`).
 - Neither the app nor Nginx keeps an access log for the quiz: `quiz.conf` turns it off and keeps only critical errors, so the privacy page can say no IP addresses are recorded. `docker logs isc-web` holds the website's own lines only.
 
@@ -432,6 +433,25 @@ again in a minute.") to more, because Nginx lets one address send a burst of 80 
 one; its live streams reconnect) instead of the whole api slowing down in swap. Exports are rare: if members ever see
 that 429 in normal use, raise `EXPORTS_AT_ONCE` in `services/privacy.py` and check the memory with the probe.
 
+### 5.7 Integrity report
+
+`ifs-tests integrity-report` is a read-only forensics report over ranked play, for the Technical Directors; what it checks and how to read it is the [integrity report guide](guides/integrity-report.md), and this section is the operating side. Run it only on the server, through the script:
+
+```bash
+deploy/integrity-report.sh staging report --until 2026-10-12      # staging first, always
+deploy/integrity-report.sh prod report --until 2026-10-12 --checks all
+deploy/integrity-report.sh prod reveal <pseudonym>
+shred -u /dev/shm/quiz-prod-integrity-<timestamp>.md             # the path the script printed
+```
+
+- The script checks the `.env` as `deploy.sh` does, takes `operation.lock` (so it never overlaps a deploy or a restore, and refuses while one runs), and runs the deployed image with `compose run --rm --no-deps`, connected as `backup_ro` with `BACKUP_PASSWORD` passed as `PGPASSWORD` for that run. The command builds its own engine from `IFS_INTEGRITY_DSN` (the script sets it) and never the app's: one connection, read-only transaction, server-side timeouts. It reads only `BACKUP_PASSWORD` from `.env`.
+- The decision thresholds are in `/srv/quiz/<env>/integrity.env` (`chmod 600`, one `IFS_INTEGRITY_*=value` per line; the script refuses without it). They are private on purpose and have no defaults in the repository. The guide lists the variables and how to calibrate them.
+- The pseudonymisation salt is **not** in any file: the reviewer who holds it types it at the script's prompt on the host (read from the terminal, not echoed), and the same salt is typed again for `reveal`. The script keeps it only in a shell variable for that run and hands it to the container on standard input (`compose run -T … --salt-stdin`); there is no prompt inside the container, and it is never on a command line, in the environment or in a file. It is per review, held in that reviewer's password manager, never stored and not rotated: a new review gets a new one.
+- The report is written to `/dev/shm` (memory, mode 0600), not to disk; `shred -u` it when the review is done. `integrity-history` in `/srv/quiz/<env>/` gets one line per run (date, user, mode, arguments; never the salt or a pseudonym).
+- **Never run `deploy/restore.sh` or `deploy/refresh-bank.sh` to get a copy of the data to look at**: a restore overwrites the environment it runs against. Run the report where the data already is, and not on a laptop.
+- Per-person checks run only after the notice to members is live and `--until` is the announcement date; the cohort checks (the default) can run any time. Avoid 00:01 and 03:00 to 04:00.
+- A statement timeout on prod means the fetch needs an index: report it, don't raise the timeout.
+
 ---
 
 ## 6. Incidents
@@ -466,12 +486,14 @@ Then put it in `/srv/quiz/prod/.env`:
 |---|---|---|
 | `app_rt` | `APP_PASSWORD` | api and scheduler |
 | `migrator` | `MIGRATOR_PASSWORD` | migrations and restores |
-| `backup_ro` | `BACKUP_PASSWORD` | backup service |
+| `backup_ro` | `BACKUP_PASSWORD` | backup service, and the integrity report (as `PGPASSWORD` for one run) |
 | `postgres` | `POSTGRES_PASSWORD` | only when the volume is first created; rotate it with `\password postgres` all the same |
 
 Finally redeploy the same tag, which recreates every container whose settings changed: `deploy/deploy.sh prod $(cat /srv/quiz/prod/deployed-tag)`. The `db` service receives all four passwords in its environment (for first-time set-up), so changing any of them recreates the database container too: a short outage of a few seconds while Postgres restarts on the same volume. The api reconnects by itself. If `APP_PASSWORD` in `.env` doesn't match what you set in `psql`, the deploy fails at `readyz` ([section 2.2](#22-when-a-deploy-fails)): fix whichever is wrong and deploy again. Do it outside a live quiz. Update the copy in the password manager. Same for staging.
 
 There is one more secret, inside the database: the `hint_salt` row of the `settings` table, created automatically. It draws hints, the daily question and critical hits. It needs no rotation; changing it would change every hint and the next daily draws.
+
+The integrity report has two more, neither in `.env`: its salt, chosen per review by the reviewer who holds it (typed at a prompt, never stored, nothing to rotate), and its thresholds file `/srv/quiz/<env>/integrity.env` ([security.md](security.md#secrets)).
 
 ---
 

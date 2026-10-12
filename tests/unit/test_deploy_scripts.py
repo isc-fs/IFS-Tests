@@ -4,12 +4,17 @@ records its calls and answers what the test tells it to."""
 from __future__ import annotations
 
 import contextlib
+import fcntl
 import os
+import pty
+import re
 import signal
+import stat
 import subprocess
 import sys
+import termios
 import time
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 import pytest
@@ -18,6 +23,7 @@ DEPLOY = Path(__file__).parents[2] / "deploy"
 
 STUB = """#!/usr/bin/env bash
 echo "$*" >> "$STUB_LOG"
+echo "PGPASSWORD=${PGPASSWORD-<unset>} IFS_INTEGRITY_SALT=${IFS_INTEGRITY_SALT-<unset>}" >> "$STUB_LOG.env"
 [[ -t 0 ]] || cat >> "$STUB_LOG.stdin"
 while IFS='|' read -r pattern code out delay; do
   [[ -z $pattern ]] && continue
@@ -42,7 +48,12 @@ def server(tmp_path: Path, env: str = "staging", mode: int = 0o600, quiz_env: st
 
 
 def run(
-    tmp_path: Path, script: str, *args: str, answers: Sequence[str] = (), stdin: str = ""
+    tmp_path: Path,
+    script: str,
+    *args: str,
+    answers: Sequence[str] = (),
+    stdin: str = "",
+    env: Mapping[str, str] | None = None,
 ) -> tuple[subprocess.CompletedProcess[str], list[str]]:
     """`answers`: "substring of the docker arguments|exit code|output[|seconds to wait first]" lines, first match
     wins. What docker reads on stdin is appended to docker.log.stdin."""
@@ -54,17 +65,18 @@ def run(
     log, rules = tmp_path / "docker.log", tmp_path / "answers"
     log.write_text("")
     rules.write_text("\n".join(answers) + "\n")
-    env = {
+    environment = {
         **os.environ,
         "PATH": f"{bin_dir}:{os.environ['PATH']}",
         "QUIZ_ROOT": str(tmp_path / "srv"),
         "QUIZ_PULL": "0",
         "STUB_LOG": str(log),
         "STUB_ANSWERS": str(rules),
+        **(env or {}),
     }
     done = subprocess.run(
         ["bash", str(DEPLOY / script), *args],
-        env=env,
+        env=environment,
         capture_output=True,
         text=True,
         input=stdin,
@@ -520,3 +532,299 @@ def test_a_deploy_lists_the_steps_its_release_needs(
         assert last == f"deploy: done: staging is on sha-1a2b3c4; {len(steps)} step(s) left, listed above"
     else:
         assert last == "deploy: done: staging is on sha-1a2b3c4"
+
+
+# --- deploy/integrity-report.sh ------------------------------------------------------------------------------------
+
+BACKUP_PASSWORD = "backup-pw-9c1e47"  # gitleaks:allow (test value)
+MIGRATOR_PASSWORD = "migrator-pw-5b82d0"  # gitleaks:allow (test value)
+SALT = "pipe-salt-7f3a1c9e0b2d4856f1a3c5e7092b4d6f"  # gitleaks:allow (test value)
+THRESHOLD_LINES = [
+    "# the private thresholds of this environment",
+    "IFS_INTEGRITY_MIN_N=10",
+    "",
+    "IFS_INTEGRITY_FOLLOW_Z=2.5",
+    "IFS_INTEGRITY_READING_CPS=15",
+]
+REPORT = ["integrity-report.sh", "staging", "report", "--until", "2026-10-12"]
+REPORT_BODY = "integrity-report|0|# the report\\nline two"
+HISTORY = "srv/staging/integrity-history"
+LOCK = "srv/staging/operation.lock"
+
+
+def integrity_server(
+    tmp_path: Path,
+    *,
+    env_mode: int = 0o600,
+    quiz_env: str = "staging",
+    thresholds: bool = True,
+    thresholds_mode: int = 0o600,
+) -> None:
+    """A fake server whose .env holds two passwords, with a deployed tag and the thresholds file the script passes
+    on."""
+    folder = tmp_path / "srv" / "staging"
+    folder.mkdir(parents=True)
+    envfile = folder / ".env"
+    envfile.write_text(
+        f"QUIZ_ENV={quiz_env}\nBACKUP_PASSWORD={BACKUP_PASSWORD}\nMIGRATOR_PASSWORD={MIGRATOR_PASSWORD}\n"
+    )
+    envfile.chmod(env_mode)
+    (folder / "deployed-tag").write_text("v1.0.0\n")
+    if thresholds:
+        file = folder / "integrity.env"
+        file.write_text("\n".join(THRESHOLD_LINES) + "\n")
+        file.chmod(thresholds_mode)
+
+
+def integrity(
+    tmp_path: Path, *args: str, answers: Sequence[str] = (REPORT_BODY,), stdin: str = SALT + "\n"
+) -> tuple[subprocess.CompletedProcess[str], list[str], Path]:
+    """The script with the salt piped in (no terminal). The report goes to a memory directory of this test."""
+    shm = tmp_path / "shm"
+    shm.mkdir(exist_ok=True)
+    done, docker = run(tmp_path, args[0], *args[1:], answers=answers, env={"QUIZ_SHM": str(shm)}, stdin=stdin)
+    return done, docker, shm
+
+
+def cli_args(call: str) -> str:
+    """What the container was asked to run: everything after the image's command."""
+    return call.split(" api ifs-tests ", 1)[1]
+
+
+def at_a_terminal(
+    tmp_path: Path, *args: str, typed: str, answers: Sequence[str] = (REPORT_BODY,)
+) -> tuple[int, str, str, list[str], Path]:
+    """The script as an operator runs it: on a terminal, with the salt typed when the script asks for it."""
+    import threading
+
+    shm = tmp_path / "shm"
+    shm.mkdir(exist_ok=True)
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(exist_ok=True)
+    (bin_dir / "docker").write_text(STUB)
+    (bin_dir / "docker").chmod(0o755)
+    log, rules = tmp_path / "docker.log", tmp_path / "answers"
+    log.write_text("")
+    rules.write_text("\n".join(answers) + "\n")
+    environment = {
+        **os.environ,
+        "PATH": f"{bin_dir}:{os.environ['PATH']}",
+        "QUIZ_ROOT": str(tmp_path / "srv"),
+        "QUIZ_PULL": "0",
+        "QUIZ_SHM": str(shm),
+        "STUB_LOG": str(log),
+        "STUB_ANSWERS": str(rules),
+    }
+    master, slave = pty.openpty()
+
+    def controlling_terminal() -> None:  # in the child, whose standard input is the terminal by now
+        fcntl.ioctl(0, termios.TIOCSCTTY, 0)
+
+    proc = subprocess.Popen(
+        ["bash", str(DEPLOY / "integrity-report.sh"), *args],
+        env=environment,
+        stdin=slave,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=True,
+        preexec_fn=controlling_terminal,
+    )
+    os.close(slave)
+    typist = threading.Timer(1.5, lambda: os.write(master, (typed + "\n").encode()))
+    typist.start()
+    try:
+        out, err = proc.communicate(timeout=30)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        out, err = proc.communicate()
+        pytest.fail(f"the script waited for something else on the terminal:\n{err}")
+    finally:
+        typist.cancel()
+        os.close(master)
+    return proc.returncode, out, err, [ln for ln in log.read_text().splitlines() if ln], shm
+
+
+def test_integrity_report_refuses_an_env_file_others_can_read(tmp_path: Path) -> None:
+    integrity_server(tmp_path, env_mode=0o644)
+    done, docker, _ = integrity(tmp_path, *REPORT)
+    assert done.returncode != 0 and "must be chmod 600" in done.stderr, done.stderr
+    assert docker == [] and not (tmp_path / LOCK).exists()
+
+
+def test_integrity_report_refuses_an_env_file_for_another_environment(tmp_path: Path) -> None:
+    integrity_server(tmp_path, quiz_env="prod")
+    done, docker, _ = integrity(tmp_path, *REPORT)
+    assert done.returncode != 0 and "QUIZ_ENV in" in done.stderr and "expected 'staging'" in done.stderr
+    assert docker == []
+
+
+@pytest.mark.parametrize("missing", [True, False])
+def test_integrity_report_needs_its_thresholds_file_private(tmp_path: Path, missing: bool) -> None:
+    integrity_server(tmp_path, thresholds=not missing, thresholds_mode=0o644)
+    done, docker, shm = integrity(tmp_path, *REPORT)
+    assert done.returncode != 0 and "integrity.env" in done.stderr, done.stderr
+    assert docker == [] and list(shm.iterdir()) == []
+    assert not (tmp_path / LOCK).exists(), "the lock is not left behind"
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        [],
+        ["staging"],
+        ["dev", "report", "--until", "2026-10-12"],
+        ["staging", "bogus", "--until", "2026-10-12"],
+        ["staging", "reveal"],  # no pseudonym named
+    ],
+)
+def test_integrity_report_refuses_what_it_does_not_understand(tmp_path: Path, args: list[str]) -> None:
+    integrity_server(tmp_path)
+    done, docker, shm = integrity(tmp_path, "integrity-report.sh", *args)
+    assert done.returncode != 0 and docker == [] and list(shm.iterdir()) == []
+    assert "usage" in done.stderr.lower() or "must be" in done.stderr
+
+
+def test_integrity_report_runs_the_deployed_image_as_backup_ro_and_writes_the_report_to_memory(
+    tmp_path: Path,
+) -> None:
+    integrity_server(tmp_path)
+    done, docker, shm = integrity(
+        tmp_path, *REPORT, "--checks", "all", "--split", "2026-09-20", "--salt-stdin"
+    )
+    assert done.returncode == 0, done.stderr
+    (call,) = docker
+    assert "run --rm --no-deps" in call
+    assert re.search(r"-e PGPASSWORD(=|\s)", call)
+    assert "-e IFS_INTEGRITY_DSN=postgresql+psycopg://backup_ro@db:5432/quiz" in call
+    for line in ("IFS_INTEGRITY_MIN_N=10", "IFS_INTEGRITY_FOLLOW_Z=2.5", "IFS_INTEGRITY_READING_CPS=15"):
+        assert f"-e {line}" in call
+    assert (
+        "the private thresholds" not in call and "-e  " not in call and "-e #" not in call
+    )  # no comment, no blank
+    assert cli_args(call).startswith("integrity-report --until 2026-10-12 --checks all --split 2026-09-20")
+    assert " -T " in call, "the salt is piped in: no terminal for the container"
+    assert MIGRATOR_PASSWORD not in call, "only the backup password is read from .env"
+
+    # the report went to a file in memory, readable by its operator only; the terminal says where
+    (written,) = list(shm.iterdir())
+    assert re.fullmatch(r"quiz-staging-integrity-\d{8}-\d{6}\.md", written.name), written.name
+    assert stat.S_IMODE(written.stat().st_mode) == 0o600
+    assert written.read_text().splitlines() == ["# the report", "line two"]
+    assert str(written) in done.stdout and "shred -u" in done.stdout
+    assert "line two" not in done.stdout + done.stderr, "the report is not printed to the terminal"
+    for text in (done.stdout, done.stderr, written.read_text()):
+        assert BACKUP_PASSWORD not in text and MIGRATOR_PASSWORD not in text
+
+    # one line of history: when, who, what; never the password or the salt
+    history = (tmp_path / HISTORY).read_text().splitlines()
+    assert len(history) == 1 and "report" in history[0] and "--until 2026-10-12" in history[0]
+    for secret in (BACKUP_PASSWORD, MIGRATOR_PASSWORD, SALT):
+        assert secret not in history[0]
+    assert not (tmp_path / LOCK).exists()
+
+    done, _, _ = integrity(tmp_path, *REPORT, "--salt-stdin")
+    assert done.returncode == 0
+    assert len((tmp_path / HISTORY).read_text().splitlines()) == 2
+
+
+def test_a_salt_piped_in_reaches_the_container_and_nothing_else(tmp_path: Path) -> None:
+    """Automation: the salt goes to the container on stdin and is on no command line, in no environment, in no file
+    the script writes."""
+    integrity_server(tmp_path)
+    done, docker, shm = integrity(tmp_path, *REPORT, "--salt-stdin")
+    assert done.returncode == 0, done.stderr
+    assert SALT not in docker[0]
+    assert SALT in (tmp_path / "docker.log.stdin").read_text()
+    assert "IFS_INTEGRITY_SALT=<unset>" in (tmp_path / "docker.log.env").read_text()
+    (written,) = list(shm.iterdir())
+    for text in (done.stdout, done.stderr, written.read_text(), (tmp_path / HISTORY).read_text()):
+        assert SALT not in text
+
+
+def test_a_salt_typed_at_the_prompt_is_never_seen_by_the_operator(tmp_path: Path) -> None:
+    integrity_server(tmp_path)
+    code, out, err, docker, shm = at_a_terminal(tmp_path, *REPORT[1:], typed=SALT)
+    assert code == 0, err
+    assert "salt" in (out + err).lower(), "the reviewer is asked for it"
+    (call,) = docker
+    assert SALT not in call and SALT not in (tmp_path / "docker.log.env").read_text()
+    assert SALT in (tmp_path / "docker.log.stdin").read_text(), "what was typed is what the container reads"
+    (written,) = list(shm.iterdir())
+    for text in (out, err, written.read_text(), (tmp_path / HISTORY).read_text()):
+        assert SALT not in text, "the salt is echoed, written or kept"
+    assert "shred -u" in out
+    assert not (tmp_path / LOCK).exists()
+
+
+def test_integrity_report_never_runs_what_the_env_file_contains(tmp_path: Path) -> None:
+    """Only BACKUP_PASSWORD is read from .env, by name: not `set -a; . .env`, which would run a command
+    substitution or export every other secret to the container."""
+    integrity_server(tmp_path)
+    marker = tmp_path / "ran"
+    envfile = tmp_path / "srv/staging/.env"
+    envfile.write_text(
+        f"QUIZ_ENV=staging\nBACKUP_PASSWORD={BACKUP_PASSWORD}\nIFS_INTEGRITY_SALT=leaked-salt\n"
+        f"EVIL=$(touch {marker})\nMORE=`touch {marker}`\nMIGRATOR_PASSWORD={MIGRATOR_PASSWORD}\n"
+    )
+    envfile.chmod(0o600)
+    done, docker, _ = integrity(tmp_path, *REPORT, "--salt-stdin")
+    assert done.returncode == 0, done.stderr
+    assert not marker.exists(), "the script ran something from .env"
+    assert "leaked-salt" not in docker[0] and MIGRATOR_PASSWORD not in docker[0]
+    assert "leaked-salt" not in (tmp_path / "docker.log.env").read_text()
+
+
+def test_integrity_report_reveal_prints_to_the_terminal_and_keeps_no_pseudonym(tmp_path: Path) -> None:
+    integrity_server(tmp_path)
+    done, docker, shm = integrity(
+        tmp_path,
+        "integrity-report.sh",
+        "staging",
+        "reveal",
+        "a1b2c3d4",
+        "e5f6a7b8",
+        "--salt-stdin",
+        answers=["integrity-reveal|0|a1b2c3d4 900002 Follower Fay"],
+    )
+    assert done.returncode == 0, done.stderr
+    assert cli_args(docker[0]).startswith("integrity-reveal a1b2c3d4 e5f6a7b8")
+    assert "a1b2c3d4 900002 Follower Fay" in done.stdout, "reveal prints to the terminal"
+    assert list(shm.iterdir()) == [], "and writes no file"
+    (history,) = (tmp_path / HISTORY).read_text().splitlines()
+    assert "reveal" in history and "a1b2c3d4" not in history and "e5f6a7b8" not in history
+    for secret in (BACKUP_PASSWORD, SALT):
+        assert secret not in history
+    assert not (tmp_path / LOCK).exists()
+
+
+def test_integrity_report_releases_the_lock_when_the_report_fails(tmp_path: Path) -> None:
+    integrity_server(tmp_path)
+    done, docker, _ = integrity(tmp_path, *REPORT, "--salt-stdin", answers=["integrity-report|3|"])
+    assert done.returncode != 0 and len(docker) == 1
+    assert not (tmp_path / LOCK).exists()
+
+
+@pytest.mark.parametrize("running", ["a deploy of sha-0000000", "a restore of x.dump", "an integrity report"])
+def test_integrity_report_never_overlaps_a_deploy_or_restore_and_leaves_their_lock(
+    tmp_path: Path, running: str
+) -> None:
+    integrity_server(tmp_path)
+    lock = tmp_path / LOCK
+    lock.mkdir()
+    (lock / "what").write_text(f"{running} (log: /srv/quiz/staging/x.log)\n")
+    done, docker, shm = integrity(tmp_path, *REPORT, "--salt-stdin")
+    assert (
+        done.returncode != 0 and f"{running} (log: /srv/quiz/staging/x.log) is already running" in done.stderr
+    )
+    assert docker == [] and list(shm.iterdir()) == []
+    assert (lock / "what").exists(), "the refused run did not remove the lock of the one that holds it"
+    assert not (tmp_path / HISTORY).exists()
+
+
+def test_integrity_report_needs_something_deployed(tmp_path: Path) -> None:
+    integrity_server(tmp_path)
+    (tmp_path / "srv/staging/deployed-tag").unlink()
+    done, docker, _ = integrity(tmp_path, *REPORT, "--salt-stdin")
+    assert done.returncode != 0 and docker == []
+    assert not (tmp_path / LOCK).exists()

@@ -91,6 +91,8 @@ If this table is empty or out of date: ask the owners of the `isc-fs` GitHub org
 |---|---|---|
 | Database passwords (`POSTGRES_PASSWORD`, `MIGRATOR_PASSWORD`, `APP_PASSWORD`, `BACKUP_PASSWORD`) and `BACKUP_HEARTBEAT_URL` | `/srv/quiz/<env>/.env` on the server (`chmod 600`); a copy of prod's in the team's password manager | Maintainers; the consultant (root) |
 | The app's draw secret (`hint_salt`) | The `settings` table in each database, so also in the backups | Anyone with database access |
+| The integrity report's salt | Nowhere on the server: one per review, typed at a prompt ([guide](guides/integrity-report.md)) | The reviewer running that review, in their password manager, until it closes |
+| The integrity report's thresholds | `/srv/quiz/<env>/integrity.env` on the server (`chmod 600`) and the Technical Directors' review notes; never in the repository | Maintainers and the Technical Directors |
 | Server access | The consultant's user accounts (SSH key + password + TOTP) | Each maintainer their own; never shared |
 | GitHub | Personal accounts with repository or organisation rights; Actions only use the automatic `GITHUB_TOKEN` | Org owners and repository admins |
 | App admin accounts | Personal accounts in the app | Each admin their own |
