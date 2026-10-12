@@ -5,13 +5,14 @@ import getpass
 import json
 import logging
 import sys
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from datetime import time as clock_time
 from pathlib import Path
 
 from .bank.client import FSQuiz
 from .bank.mirror import load_bank, mirror
 from .db.models import ROLES, VERTICALS
+from .domain.integrity import CHECKS as INTEGRITY_CHECKS
 from .settings import get_settings
 
 
@@ -65,6 +66,42 @@ def main(argv: list[str] | None = None) -> None:
     r = sub.add_parser("reset-link", help="print a one-time password reset link for a user")
     r.add_argument("--email", required=True)
 
+    g = sub.add_parser(
+        "integrity-report",
+        help="read-only forensics over ranked play, pseudonymous (docs/guides/integrity-report.md)",
+    )
+    g.add_argument(
+        "--since", type=date.fromisoformat, help="first Madrid day (default: the season's 1 September)"
+    )
+    g.add_argument(
+        "--until",
+        type=date.fromisoformat,
+        required=True,
+        help="the announcement date; plays from that day on are left out",
+    )
+    g.add_argument(
+        "--checks",
+        default="cohort",
+        help="'cohort' (default), 'all', or a comma-separated subset of " + ",".join(INTEGRITY_CHECKS),
+    )
+    g.add_argument(
+        "--fixed-rank", type=float, help="rank the LP replay is run at (default IFS_INTEGRITY_FIXED_RANK)"
+    )
+    g.add_argument(
+        "--split", type=date.fromisoformat, help="each flagged person's metrics before and after this day"
+    )
+    g.add_argument(
+        "--salt-stdin",
+        action="store_true",
+        help="read the salt from stdin (automation); otherwise IFS_INTEGRITY_SALT or a prompt",
+    )
+    v = sub.add_parser(
+        "integrity-reveal", help="the second person's step: user id and name for the pseudonyms named"
+    )
+    v.add_argument("pseudonyms", nargs="+")
+    v.add_argument("--include-alumni", action="store_true")
+    v.add_argument("--salt-stdin", action="store_true")
+
     sub.add_parser("maintenance", help="run the nightly maintenance job now (idempotent)")
     sub.add_parser("scheduler", help="run the nightly jobs forever (the scheduler service)")
 
@@ -90,6 +127,107 @@ def main(argv: list[str] | None = None) -> None:
         from .bank.topics import report as topics_report
 
         print(topics_report(load_bank(args.data), args.csv))
+    elif args.cmd in ("integrity-report", "integrity-reveal"):
+        _integrity(args)
+
+
+def _salt(args: argparse.Namespace, configured: str | None) -> bytes:
+    from .domain.integrity import MIN_SALT
+
+    if args.salt_stdin:
+        salt = sys.stdin.readline().rstrip("\n")
+    elif configured:
+        salt = configured
+    else:
+        salt = getpass.getpass("Salt (typed by the reviewer who holds it): ")
+    if not salt:
+        sys.exit("No salt: the reviewer types it at the prompt (docs/guides/integrity-report.md).")
+    if len(salt) < MIN_SALT:
+        sys.exit(f"The salt must be at least {MIN_SALT} characters (docs/guides/integrity-report.md).")
+    return salt.encode()
+
+
+def _checks(value: str, split: date | None) -> list[str]:
+    from .domain.integrity import CHECKS, COHORT_CHECKS
+
+    if value == "cohort":
+        names = list(COHORT_CHECKS)
+    elif value == "all":
+        names = list(CHECKS)
+    else:
+        names = [n.strip() for n in value.split(",") if n.strip()]
+        unknown = [n for n in names if n not in CHECKS]
+        if unknown or not names:
+            sys.exit(
+                f"Unknown checks: {', '.join(unknown) or value!r}; valid: cohort, all, {', '.join(CHECKS)}"
+            )
+    if "split" in names and split is None:
+        if value != "all":
+            sys.exit("The split check needs --split DATE.")
+        names.remove("split")
+    return names
+
+
+def _integrity(args: argparse.Namespace) -> None:
+    from pydantic import ValidationError
+    from sqlalchemy.orm import Session
+
+    from .db.session import read_only_engine
+    from .domain.daily import madrid_day
+    from .domain.leaderboard import first_day
+    from .services import integrity, integrity_reveal
+    from .settings import IntegrityAccess, IntegritySettings
+
+    report = args.cmd == "integrity-report"
+    try:
+        s: IntegrityAccess = IntegritySettings() if report else IntegrityAccess()
+    except ValidationError as e:
+        bad: dict[str, set[str]] = {"missing": set(), "invalid": set()}
+        for err in e.errors():
+            bad["missing" if err["type"] == "missing" else "invalid"].add(
+                f"IFS_INTEGRITY_{err['loc'][0]}".upper()
+            )
+        sys.exit(
+            "Set the integrity thresholds (/srv/quiz/<env>/integrity.env, docs/guides/integrity-report.md): "
+            + "; ".join(f"{kind} {', '.join(sorted(n))}" for kind, n in bad.items() if n)
+        )
+    if report:
+        today = madrid_day(datetime.now(UTC))
+        if args.until > today:
+            sys.exit("--until is the announcement date; it can't be in the future.")
+        floor = first_day("season", args.until - timedelta(days=1))
+        since = args.since or floor
+        if since < floor:
+            sys.exit(f"--since can't be before the season start {floor}: the September reset would apply.")
+        names = _checks(args.checks, args.split)
+        if "split" in names and not since < args.split < args.until:
+            sys.exit(
+                f"--split must fall inside the window ({since} to {args.until}): the families are read before it."
+            )
+    salt = _salt(args, s.salt.get_secret_value() if s.salt else None)
+    if not s.dsn:
+        sys.exit(
+            "Set IFS_INTEGRITY_DSN to a read-only connection as backup_ro (password in PGPASSWORD),"
+            " see docs/guides/integrity-report.md."
+        )
+    engine = read_only_engine(s.dsn)
+    try:
+        with Session(engine) as db:
+            if not report:
+                rows = integrity_reveal.reveal(db, salt, args.pseudonyms, include_alumni=args.include_alumni)
+                for p, uid, name in rows:
+                    print(f"{p} | {uid} | {name}")
+                unknown = sorted({p.strip().lower() for p in args.pseudonyms} - {p for p, _, _ in rows})
+                if unknown:
+                    sys.exit("Unknown pseudonyms: " + ", ".join(unknown))
+                return
+            assert isinstance(s, IntegritySettings)  # noqa: S101 - built above for a report
+            t = integrity.thresholds(s, fixed_rank=args.fixed_rank, split=args.split)
+            snap = integrity.fetch(db, integrity.Window(since, args.until), frozenset(names))
+            db.rollback()  # the snapshot is closed before anything is computed
+        print(integrity.report(snap, salt, frozenset(names), t), end="")
+    finally:
+        engine.dispose()
 
 
 def _app_command(args: argparse.Namespace) -> None:

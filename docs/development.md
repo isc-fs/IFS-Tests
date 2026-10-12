@@ -111,6 +111,7 @@ Settings are environment variables with the `IFS_` prefix, or a `.env` file in t
 | `IFS_DB_MAX_OVERFLOW` | `5` | Extra connections a process may open under load. On the server the scheduler runs with 2 + 0, and the sizes are budgeted against Postgres's `max_connections` ([runbook 5](runbook.md#5-everyday-operations)) |
 | `IFS_RULES_1B_FROM` | unset | The Madrid day the season-1b rules start (`YYYY-MM-DD`; empty counts as unset). Unset means not yet: nothing in ADR 0010 is collected (no signals, no decoy). On the server it reaches the containers through `deploy/compose.yaml` from the environment's `.env` |
 | `IFS_CANARY` | `false` | Draw the AI canary's decoy option for ranked choice questions. Needs `IFS_RULES_1B_FROM` reached; off until the recall pilot says otherwise |
+| `IFS_INTEGRITY_*` | none for the decision thresholds | Read only by `integrity-report` and `integrity-reveal`, never by the app: `DSN` (a read-only connection as `backup_ro`, password in `PGPASSWORD`), `SALT` (a secret; prompted for when unset), the neutral knobs (`Z`, `MIN_GROUP`, `FIXED_RANK`, …) and the decision thresholds, which have no defaults on purpose because the repository is public. Listed in the [integrity report guide](guides/integrity-report.md#before-you-run) |
 
 Locally, `/api/docs` shows the interactive OpenAPI page.
 
@@ -128,6 +129,7 @@ Locally, `/api/docs` shows the interactive OpenAPI page.
 | `src/ifs_tests/cli.py` | The `ifs-tests` command |
 | `src/ifs_tests/scheduler.py` | The loop that runs the nightly jobs in the `scheduler` container |
 | `src/ifs_tests/settings.py` | Configuration from `IFS_*` variables |
+| `src/ifs_tests/domain/integrity.py`, `src/ifs_tests/services/integrity.py`, `src/ifs_tests/services/integrity_reveal.py` | The integrity report: pure statistics, the read-only fetch and rendering, and the pseudonym reveal ([guide](guides/integrity-report.md)) |
 | `migrations/` | Alembic environment and `versions/` |
 | `tests/` | `unit/`, `api/`, `integration/`: see [testing.md](testing.md) |
 | `web/src/routes/` | One file per page, plus `index.tsx` (the route table) and `Layout.tsx` (signed-in frame and navigation) |
@@ -137,7 +139,7 @@ Locally, `/api/docs` shows the interactive OpenAPI page.
 | `web/src/styles/` | `tokens.css` (the ISC design tokens, copied verbatim from IFS-Web: never edit them here) and `global.css`, whose `:root` adds the app's own colours (states, rank metals) |
 | `web/src/test/` | `render.tsx`: the helper component tests use |
 | `web/e2e/` | Playwright journeys |
-| `deploy/` | Production compose file, `deploy.sh`, `restore.sh`, `refresh-bank.sh`, database roles and backups, Nginx snippet: see the [runbook](runbook.md) |
+| `deploy/` | Production compose file, `deploy.sh`, `restore.sh`, `refresh-bank.sh`, `integrity-report.sh`, database roles and backups, Nginx snippet: see the [runbook](runbook.md) |
 | `docs/` | This documentation; `docs/adr/` holds the decision records |
 | `.github/` | CI workflows, Dependabot, CODEOWNERS, `roadmap.yaml` (the source of `ROADMAP.md`) |
 | `Dockerfile`, `compose.yaml` | The image (SPA built in, runs as uid 10001) and the local stack |
@@ -212,7 +214,8 @@ cd ..
 
 # shell job
 docker run --rm -v "$PWD:/mnt" -w /mnt koalaman/shellcheck:v0.11.0 \
-  deploy/deploy.sh deploy/restore.sh deploy/refresh-bank.sh deploy/db/init-roles.sh deploy/db/backup.sh
+  deploy/deploy.sh deploy/restore.sh deploy/lib.sh deploy/nginx.sh deploy/refresh-bank.sh deploy/db/init-roles.sh \
+  deploy/db/backup.sh deploy/integrity-report.sh .github/scripts/release-gate.sh
 ```
 
 The e2e steps are in [testing.md](testing.md#end-to-end-tests-playwright). The `image` job's checks work on any locally built image: `docker build -t ifs-tests:ci .`, then the commands in `ci.yml`.

@@ -7,6 +7,7 @@ from typing import Any, cast
 
 from sqlalchemy import CursorResult, Engine, Result, create_engine
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import NullPool
 
 from ..settings import get_settings
 
@@ -52,6 +53,21 @@ def reset() -> None:
 def get_session() -> Iterator[Session]:
     with session_factory()() as session:
         yield session
+
+
+READ_ONLY_OPTIONS = (
+    "-c default_transaction_read_only=on -c statement_timeout=120000 -c lock_timeout=5000"
+    " -c idle_in_transaction_session_timeout=60000"
+)
+
+
+def read_only_engine(dsn: str) -> Engine:
+    """An engine for ad hoc read-only tooling (the integrity report), never the app's: no pool, every
+    transaction READ ONLY and REPEATABLE READ so a whole fetch reads one snapshot, and server-side timeouts so it
+    can never hold a lock a deploy's migration would queue behind."""
+    return create_engine(
+        dsn, poolclass=NullPool, connect_args={"options": READ_ONLY_OPTIONS}
+    ).execution_options(postgresql_readonly=True, isolation_level="REPEATABLE READ")
 
 
 def rowcount(result: Result[Any]) -> int:

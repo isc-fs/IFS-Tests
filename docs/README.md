@@ -14,6 +14,7 @@ memory: if you learn something that isn't written here, add it to the doc that o
 | A developer about to change the code | [Development](development.md), [architecture](architecture.md), [testing](testing.md), then the [ADRs](adr/) |
 | Deploying or operating the server | [Runbook](runbook.md), [maintenance calendar](maintenance.md), [security](security.md); for the first release, the [release plan](release-plan.md) |
 | Taking the project over | [Handover](handover.md): it points to everything else |
+| Technical Directors reviewing fair play in ranked play | [Integrity report guide](guides/integrity-report.md) |
 
 Words you don't know are in the [glossary](glossary.md).
 
@@ -22,6 +23,7 @@ Words you don't know are in the [glossary](glossary.md).
 | Topic | Doc |
 |---|---|
 | Using the app, by role | [guides/](guides/) |
+| Running and reading the integrity report (pseudonymous, read-only) | [guides/integrity-report.md](guides/integrity-report.md) |
 | Scoring: rank, LP, XP, levels, seasons, leaderboards, and how to retune them | [game-rules.md](game-rules.md) |
 | How the system is built: components, modules, jobs, locking, answer secrecy | [architecture.md](architecture.md) |
 | Who the app is for, what it's for, and the product constraints on any design work | [PRODUCT.md](../PRODUCT.md) |

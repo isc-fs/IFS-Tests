@@ -5,7 +5,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import field_validator, model_validator
+from pydantic import SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -71,3 +71,43 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
+
+
+class IntegrityAccess(BaseSettings):
+    """How the integrity tools (docs/guides/integrity-report.md) reach the data, built only by the CLI: a
+    read-only DSN (the backup_ro role, its password in PGPASSWORD) and the salt that pseudonymises people (typed
+    at the prompt on the server; the variable is for tests)."""
+
+    model_config = SettingsConfigDict(env_prefix="IFS_INTEGRITY_", env_file=".env", extra="ignore")
+
+    dsn: str | None = None
+    salt: SecretStr | None = None
+
+
+class IntegritySettings(IntegrityAccess):
+    """The integrity report's configuration. The decision thresholds have no defaults on purpose: the repository
+    is public and a value in it is a value a player can aim at. They live in /srv/quiz/<env>/integrity.env."""
+
+    # neutral knobs
+    z: float = 1.96
+    min_group: int = 3
+    permutation_rounds: int = 5000
+    bootstrap_rounds: int = 2000
+    seed: int = 0
+    fixed_rank: float = 350.0
+    shrink_m: float = 5.0
+    # decision thresholds: required
+    min_n: int
+    follow_within_min: int
+    follow_min: int
+    follow_z: float
+    follow_relay_z: float
+    reading_floor_s: float
+    reading_cps: float
+    below_floor_share: float
+    narrow_sd_log: float
+    flat_corr: float
+    hard_residual_z: float
+    away_z: float
+    upstream_min: int
+    upstream_z: float

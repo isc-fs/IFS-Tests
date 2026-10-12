@@ -57,8 +57,8 @@ Everything under `src/ifs_tests/` (empty `__init__.py` files left out).
 | Module | Owns |
 |---|---|
 | `__init__.py` | The package version (from the installed package metadata), shown by `/healthz` and the OpenAPI document |
-| `settings.py` | Configuration from `IFS_*` environment variables or `.env`: environment, database URL, public origin, paths, database pool size, the season-1b date and the AI canary flag (the routes pass them to services as a `Policy`); cookie name and CSRF origins derived from them; refuses to start staging or prod without `https://` |
-| `cli.py` | The `ifs-tests` command: `mirror`, `stats`, `show`, `topics`, `push`, `openapi`, `create-admin`, `invite`, `reset-link`, `maintenance`, `scheduler` |
+| `settings.py` | Configuration from `IFS_*` environment variables or `.env`: environment, database URL, public origin, paths, database pool size, the season-1b date and the AI canary flag (the routes pass them to services as a `Policy`); cookie name and CSRF origins derived from them; refuses to start staging or prod without `https://`. `IntegritySettings` (`IFS_INTEGRITY_*`) is separate: only the integrity report's commands build it, so the app loads none of it |
+| `cli.py` | The `ifs-tests` command: `mirror`, `stats`, `show`, `topics`, `push`, `openapi`, `create-admin`, `invite`, `reset-link`, `maintenance`, `scheduler`, `integrity-report`, `integrity-reveal` (the last two build their own read-only engine from `IFS_INTEGRITY_DSN`, never the app's session factory) |
 | `scheduler.py` | A minimal daily job runner for the `scheduler` container (Madrid times, a heartbeat file for the health check, touched only while the database answers) |
 | **api/** | |
 | `api/app.py` | Builds the FastAPI app: middleware, exception handlers, routers, `/healthz` (liveness) and `/readyz` (the database reachable and holding every column the code maps), 404 for unknown `/api` and `/auth` paths, `/media` and SPA static files |
@@ -92,13 +92,14 @@ Everything under `src/ifs_tests/` (empty `__init__.py` files left out).
 | `content/learning.json` | Formulas and "learn more" reading per topic, served by `services/learning.py` |
 | **db/** | |
 | `db/models.py` | Every table (see [data-model.md](data-model.md)), constraint naming, enums for roles, statuses, verticals and positions |
-| `db/session.py` | Engine (one per process, made under a lock so the first burst of requests after a start can't build several pools; `IFS_DB_POOL_SIZE` + `IFS_DB_MAX_OVERFLOW` connections, 5 + 5 by default, 10 s timeout, pre-ping) and session factory |
+| `db/session.py` | Engine (one per process, made under a lock so the first burst of requests after a start can't build several pools; `IFS_DB_POOL_SIZE` + `IFS_DB_MAX_OVERFLOW` connections, 5 + 5 by default, 10 s timeout, pre-ping) and session factory; and `read_only_engine`, for ad hoc tooling only: no pool, every transaction read-only and repeatable-read, server-side timeouts |
 | **domain/** (pure) | |
 | `domain/accounts.py` | Session expiry, lockout, link validity, last-admin rule, email and display-name cleaning, name skeletons; retention periods |
 | `domain/keys.py` | Parsing FS-Quiz answers into gradable keys (choice, number, numbers, range, text, self) |
 | `domain/upstream.py` | Reading FS-Quiz's notes that a question was removed from its quiz (quiz `information`, solutions) |
 | `domain/grading.py` | Grading an answer against a key, with numeric tolerance |
 | `domain/hints.py` | Generating a hint from the key without giving the answer away |
+| `domain/integrity.py` | Forensic statistics over ranked play for the integrity report: Wilson interval, the LP replay (`replay_lp`, through `rank.lp_award`), the flags a play carries from the history (repeat, same-day, pre-seen), peer and difficulty baselines, exact Poisson-binomial tails, a within-person test (a person's ability fitted on one set of answers, the other set tested against it), the permutation test, follow-the-leader on the daily (undirected copy pairs, relays at any delay, Holm per test), latency profile, the evidence families and the two-family rule, small-group pooling and the check that two cohort tables can't single anyone out by subtraction, pseudonyms. Never uses `rank.expected` as a baseline (it is conditioned on rank). `canary_evidence` is a stub |
 | `domain/daily.py` | Madrid day, daily pick, time budgets, lateness and grace, streaks and streak freezes |
 | `domain/mock.py` | Seasons (September to August) and the "bar to beat" |
 | `domain/rank.py` | Rank points, divisions, LP per answer, placement, season reset, training wheels per division |
@@ -120,6 +121,8 @@ Everything under `src/ifs_tests/` (empty `__init__.py` files left out).
 | `services/streaks.py` | Streak days (with the freezes due applied from midnight) and the nightly streak-freeze job that stores them |
 | `services/season.py` | The 1 September rank reset |
 | `services/hints.py` | Hints for practice, daily and mock questions; the `hint_salt` server secret |
+| `services/integrity.py` | The integrity report ([guide](guides/integrity-report.md)): fetches everything it needs in one read-only transaction with plain `SELECT`s (no DDL, no temp views), then computes and renders markdown tables with no connection open. Selects from `users` only id, vertical, position, rank and status; prints pseudonyms only. Run by the CLI as `backup_ro`, never by the app |
+| `services/integrity_reveal.py` | The report's second step: maps the pseudonyms named on the command line back to a user id and display name. The only module that reads `display_name` |
 | `services/learning.py` | Learning panels filtered by the player's division |
 | `services/leaderboard.py` | The boards and the vertical board. Each looks up, member by member, only the period's play (index `ix_attempts_lp_day`, and a mock run's answers through the run), so a view costs the same after many seasons. The area and 7-day boards' sums grow with the season (about 20 ms of database time late in it), so each worker keeps them for `BOARD_TTL` (30 s, one sum at a time, like the live room); every view still reads the viewer's own LP, names, opt-outs and who is active |
 | `services/review.py` | Reviewer queues, search, label and exclusion changes, answer corrections, reports |
@@ -226,6 +229,7 @@ FS-Quiz answers are public on fs-quiz.eu, so the goal is narrower: the server ne
 
 - **The canary's decoy is not an answer.** With `IFS_CANARY` on, a ranked `choice-one` question gets a decoy option (`attempts.decoy_option_id`, shown in `TimedQuestion` only). `services/signals.decoy_for` draws it with `secrets.choice` from the options table alone, with the same predicate and order `questions.show` uses (non-retired, by position then id), and never imports or queries the key, so it is uniform over all the options whatever the answer is. `tests/api/test_signals.py` guards this: `test_the_draw_never_reads_the_key` fails on any statement touching `answer_keys` while the draw runs, and `test_the_decoy_is_drawn_uniformly_from_the_displayed_options` checks the spread with the key first and last.
 - **Unpredictable draws.** The daily pick, hints and the XP "critical" roll are seeded with a server secret (`hint_salt` in the `settings` table), so nobody can recompute tomorrow's question or run a hint backwards from the public bank.
+- **The integrity report** (`services/integrity.py`) reads `answer_keys.key` and `override` to regrade stored answers against the old and the corrected key, `audit_log.at` for when a correction was made, and whether a `user.update` row's details have a `position` key (a boolean test, never the details themselves). It runs only from the CLI as `backup_ro`, prints counts and pseudonyms, and never a key or an answer.
 - **The clock is the server's.** Deadlines are stored when a question is shown; answers after the deadline plus 3 seconds of grace are recorded as late and wrong; abandoned questions are closed as late by the next visit or the nightly job.
 
 ## Question bank pipeline
