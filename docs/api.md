@@ -150,7 +150,7 @@ No session needed; the CSRF header still is.
 
 | Method and path | Purpose |
 |---|---|
-| `GET /api/leaderboard` | A board (`board`: `everyone`, `mech`, `elec`, `rules`; `period`: `season`, `week`) and the caller's place. On the area and 7-day boards other members' LP can be up to 30 s old ([game-rules](game-rules.md#6-leaderboards)) |
+| `GET /api/leaderboard` | A board (`board`: `everyone`, `mech`, `elec`, `rules`; `period`: `season`, `week`) and the caller's place. On the area and 7-day boards other members' LP can be up to 30 s old. From the Madrid midnight of the season-1b date (`IFS_RULES_1B_FROM`, the one switch) `shows_accuracy` is true, `accuracy_from` is the first day counted (the later of the period start, 1 September and that date) and each row and `me` carries `answered` (questions counted) and `accuracy`, `accuracy_low`, `accuracy_high` (null under `min_answered` questions), from a second 30 s cache that also serves the viewer's own figure; before it `shows_accuracy` is false and `accuracy_from` and all four fields are null, with the same keys. `min_answered` (5) is always present. Display only: the order is unchanged ([game-rules](game-rules.md#6-leaderboards)) |
 | `GET /api/leaderboard/verticals` | Average rank and participation per vertical (`period`) |
 
 ### `/api/learning` (`api/routes/learning.py`): `Member`

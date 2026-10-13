@@ -119,10 +119,12 @@ def new_client(app_client: TestClient) -> Callable[[], TestClient]:
 
 @pytest.fixture(autouse=True)
 def fresh_boards() -> None:
-    """Each worker keeps the boards' LP sums for a while; tests reuse the same clock on a fresh database."""
+    """Each worker keeps the boards' LP sums and accuracy tallies for a while; tests reuse the same clock on a
+    fresh database."""
     from ifs_tests.services import leaderboard
 
     leaderboard._sums.clear()
+    leaderboard._tallies.clear()
 
 
 @pytest.fixture(autouse=True)

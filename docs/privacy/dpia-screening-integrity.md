@@ -67,7 +67,10 @@ production.
   `beforeinput` in the free-text answer (paste or drop from outside the page). There is no `keydown` listener. It
   reads the length of the selected question text in memory to count it (the text is never sent or stored) and never
   reads the clipboard, what is pasted, or drag and drop data; it stores nothing on the device. Output: a list of account
-  codes with statistics, printed on the server, read by two people, deleted.
+  codes with statistics, printed on the server, read by two people, deleted. Separately, from the rule date the person boards show each member's counted questions and
+  share right, derived on the fly from attempts already held (nothing new is stored), for display only: never an
+  input to a check or a decision. A named player's counts can be read off the board; the leaderboard opt-out hides
+  them.
 - **Scope.** Active members who play ranked after the season-1b date; tens of people; attempts from the date onward
   for anything per person, all attempts for cohort calibration. Retention of the totals: 90 days after the end of
   the season; the answers themselves as before (ADR 0006).

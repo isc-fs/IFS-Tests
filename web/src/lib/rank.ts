@@ -21,6 +21,18 @@ export function lpIn(points: number): number {
   return Math.floor(points >= TOP * 100 ? points - TOP * 100 : points % 100)
 }
 
+/** A share as a whole percent: 100 only when it is exactly 1 and 0 only when exactly 0. */
+export function sharePct(share: number): number {
+  if (share >= 1) return 100
+  if (share <= 0) return 0
+  return Math.min(99, Math.max(1, Math.round(share * 100)))
+}
+
+/** An interval as whole percents, widened outwards; through the integer permille to dodge float error. */
+export function rangePct(low: number, high: number): [number, number] {
+  return [Math.floor(Math.round(low * 1000) / 10), Math.ceil(Math.round(high * 1000) / 10)]
+}
+
 const fmt = (n: number, tenths: boolean) =>
   tenths
     ? Math.abs(n).toLocaleString('en-GB', { maximumFractionDigits: 1 })

@@ -770,6 +770,14 @@ class AuditEntry(BaseModel):
     details: dict[str, Any]
 
 
+_ANSWERED = (
+    "Questions counted: first answers to past daily questions and in finished first mock runs since season 1b "
+    "(late and run-out ones as wrong). Null before season 1b"
+)
+_ACCURACY = "Share right, 0 to 1; null under min_answered counted questions or before season 1b"
+_ACCURACY_BOUND = "Wilson 95% interval of the share, widened outwards to 0.001; null as for accuracy"
+
+
 class LeaderRow(BaseModel):
     rank: int
     display_name: str
@@ -781,6 +789,10 @@ class LeaderRow(BaseModel):
     division: int = Field(description="Current division (0 = Mingo I … 15 = the top), for the emblem")
     title: str
     level: int = Field(description="Account level")
+    answered: int | None = Field(description=_ANSWERED)
+    accuracy: float | None = Field(description=_ACCURACY)
+    accuracy_low: float | None = Field(description=_ACCURACY_BOUND)
+    accuracy_high: float | None = Field(description=_ACCURACY_BOUND)
 
 
 class MyRank(BaseModel):
@@ -789,6 +801,10 @@ class MyRank(BaseModel):
     rank: int
     score: float
     hidden: bool = Field(description="Opted out: others don't see them on the board")
+    answered: int | None = Field(description=_ANSWERED)
+    accuracy: float | None = Field(description=_ACCURACY)
+    accuracy_low: float | None = Field(description=_ACCURACY_BOUND)
+    accuracy_high: float | None = Field(description=_ACCURACY_BOUND)
 
 
 class Leaderboard(BaseModel):
@@ -797,6 +813,11 @@ class Leaderboard(BaseModel):
     rows: list[LeaderRow]
     me: MyRank | None = Field(description="Null until the member scores in this period")
     players: int = Field(description="People on this board, including any beyond the rows shown")
+    shows_accuracy: bool = Field(description="Whether the accuracy fields are filled in (from season 1b)")
+    accuracy_from: date | None = Field(
+        description="First day the accuracy figures count from, for this board's period; null before season 1b"
+    )
+    min_answered: int = Field(description="Questions counted before a share is shown")
 
 
 class VerticalRow(BaseModel):

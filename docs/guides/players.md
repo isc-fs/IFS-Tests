@@ -362,6 +362,17 @@ counts again in the new season.
 - The top 50 are shown; if you're further down, your place shows underneath.
 - Only active members appear. People who hide themselves aren't named, and aren't counted in their vertical.
 - A vertical shows only with at least 3 counted members.
+- From season 1b (the rule date, with the other new mechanisms), each person board shows, under each name, how many of
+  that player's questions counted, the share they got right and the range it likely falls in (for example `40
+  questions, 63% right (likely 47 to 76%)`), since the rule date. It counts a player's first answer to each question
+  this season, on daily questions of days that have closed (about 10 minutes after midnight, Madrid; a daily someone
+  opened and let run out joins, as wrong, when it is closed: their next visit or the 03:00 night job) and in finished
+  first mock runs. Practice, live and replays don't count, and a question already seen doesn't count again; "I'm not
+  sure", a late answer and a question that ran out count as wrong. A share shows from 5 questions (under that, `4
+  questions counted`, and nothing at 0 except on your own row). It isn't adjusted for question difficulty, never changes the order and updates
+  about every 30 seconds, so it can trail your LP. It covers play since the rule date while LP covers the season. It
+  measures play, not fair play. For the first weeks after the rule date the figures are thin. Hidden players still see
+  their own line.
 - Every person board says so: home games, unsupervised, with the fair-play rules from season 1b; **fair play** links
   them.
 

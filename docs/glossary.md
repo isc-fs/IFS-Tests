@@ -5,6 +5,7 @@ Terms you'll meet in MingoQuiz and its docs, in alphabetical order. Each links t
 | Term | Meaning |
 |---|---|
 | **Account level** | The level from XP, which only goes up and measures how much you play. Separate from the rank. [Game rules 3](game-rules.md#3-the-account-level-xp) |
+| **Accuracy (boards)** | From season 1b, the share of a player's counted questions (first answers to dailies of closed days and in finished first mock runs, since the rule date; "I'm not sure", late and run-out ones as wrong) that were right, with a 95 % range, shown under each name on the person boards from 5 questions. Display only; the order doesn't change. [Game rules 6](game-rules.md#6-leaderboards) |
 | **ADR** | Architecture Decision Record: a short page in [adr/](adr/) recording a decision, its context and its consequences. Never rewritten; a newer ADR supersedes it |
 | **Admin** | App role that runs accounts: invites, roles, positions, alumni, data requests. Can also review and host live quizzes. [Admins' guide](guides/admins.md) |
 | **Advisory lock** | A PostgreSQL lock on a number rather than a row, used so only one request picks the day's questions, and so admin changes don't race each other. [Architecture](architecture.md) |
