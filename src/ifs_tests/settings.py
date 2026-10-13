@@ -5,7 +5,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import SecretStr, field_validator, model_validator
+from pydantic import Field, SecretStr, ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -111,3 +111,42 @@ class IntegritySettings(IntegrityAccess):
     away_z: float
     upstream_min: int
     upstream_z: float
+    # the canary and the signal context (ADR 0010 D): required, by the CLI, only for the checks that read them
+    canary_alpha: float | None = Field(default=None, gt=0, lt=1)
+    canary_beta: float | None = Field(default=None, gt=0, lt=1)
+    canary_follow: float | None = Field(default=None, gt=0, lt=1)
+    canary_control_alpha: float | None = Field(default=None, gt=0, lt=1)
+    canary_nudge: float | None = Field(default=None, ge=0, lt=1)
+    canary_m: int | None = Field(default=None, ge=1)
+    away_undeclared_s: float | None = Field(default=None, ge=0)
+    # the app's own switch, read under its own name: per-person checks start at its Madrid midnight
+    rules_1b_from: date | None = Field(default=None, validation_alias="IFS_RULES_1B_FROM")
+
+    @field_validator("canary_beta")
+    @classmethod
+    def errors_below_one(cls, v: float | None, info: ValidationInfo) -> float | None:
+        alpha = info.data.get("canary_alpha")  # absent when alpha itself was invalid
+        if v is not None and alpha is not None and alpha + v >= 1:
+            raise ValueError("IFS_INTEGRITY_CANARY_ALPHA + IFS_INTEGRITY_CANARY_BETA must be below 1")
+        return v
+
+    @field_validator("canary_control_alpha")
+    @classmethod
+    def controls_not_stricter(cls, v: float | None, info: ValidationInfo) -> float | None:
+        alpha = info.data.get("canary_alpha")
+        if v is not None and alpha is not None and v < alpha:
+            raise ValueError("IFS_INTEGRITY_CANARY_CONTROL_ALPHA can't be below IFS_INTEGRITY_CANARY_ALPHA")
+        return v
+
+    @field_validator("canary_nudge")
+    @classmethod
+    def nudge_below_follow(cls, v: float | None, info: ValidationInfo) -> float | None:
+        follow = info.data.get("canary_follow")
+        if v is not None and follow is not None and v >= follow:
+            raise ValueError("IFS_INTEGRITY_CANARY_NUDGE must be below IFS_INTEGRITY_CANARY_FOLLOW")
+        return v
+
+    @field_validator("rules_1b_from", mode="before")
+    @classmethod
+    def blank_is_unset(cls, v: object) -> object:
+        return None if v == "" else v

@@ -19,6 +19,7 @@ from ifs_tests.services import integrity, privacy
 
 from ..conftest import migrate
 from .conftest import INTEGRITY_SALT, integrity_settings, run, set_integrity_env
+from .planted import CANARY_ENV
 
 pytestmark = pytest.mark.integration
 
@@ -193,6 +194,9 @@ def test_the_cli_runs_as_backup_ro_with_the_password_from_the_environment(
     ).render_as_string(hide_password=False)
     assert PASSWORDS["backup_ro"] not in without_password
     set_integrity_env(monkeypatch, without_password)
+    for name, value in CANARY_ENV.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setenv("IFS_RULES_1B_FROM", "2026-10-01")
     args = ["integrity-report", "--until", "2026-10-12", "--checks", "all", "--salt-stdin"]
 
     monkeypatch.delenv("PGPASSWORD", raising=False)

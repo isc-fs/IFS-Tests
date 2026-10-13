@@ -8,11 +8,13 @@ import sys
 from datetime import UTC, date, datetime, timedelta
 from datetime import time as clock_time
 from pathlib import Path
+from typing import NoReturn
 
 from .bank.client import FSQuiz
 from .bank.mirror import load_bank, mirror
 from .db.models import ROLES, VERTICALS
 from .domain.integrity import CHECKS as INTEGRITY_CHECKS
+from .domain.integrity import PERSON_CHECKS, walk_from
 from .settings import get_settings
 
 
@@ -71,13 +73,16 @@ def main(argv: list[str] | None = None) -> None:
         help="read-only forensics over ranked play, pseudonymous (docs/guides/integrity-report.md)",
     )
     g.add_argument(
-        "--since", type=date.fromisoformat, help="first Madrid day (default: the season's 1 September)"
+        "--since",
+        type=date.fromisoformat,
+        help="first Madrid day (default: the season's 1 September; for per-person checks, not before"
+        " IFS_RULES_1B_FROM)",
     )
     g.add_argument(
         "--until",
         type=date.fromisoformat,
         required=True,
-        help="the announcement date; plays from that day on are left out",
+        help="first Madrid day left out (excluded; can't be in the future)",
     )
     g.add_argument(
         "--checks",
@@ -106,7 +111,9 @@ def main(argv: list[str] | None = None) -> None:
     sub.add_parser("scheduler", help="run the nightly jobs forever (the scheduler service)")
 
     args = p.parse_args(argv)
-    args.data = args.data or get_settings().bank_dir
+    # the integrity tools read their own settings and name a bad variable instead of a traceback
+    if args.cmd not in ("integrity-report", "integrity-reveal"):
+        args.data = args.data or get_settings().bank_dir
     if args.cmd in ("create-admin", "invite", "reset-link", "maintenance", "scheduler", "openapi", "push"):
         _app_command(args)
         return
@@ -184,22 +191,52 @@ def _integrity(args: argparse.Namespace) -> None:
     except ValidationError as e:
         bad: dict[str, set[str]] = {"missing": set(), "invalid": set()}
         for err in e.errors():
+            n = str(err["loc"][0]).upper()
             bad["missing" if err["type"] == "missing" else "invalid"].add(
-                f"IFS_INTEGRITY_{err['loc'][0]}".upper()
+                n if n.startswith("IFS_") else f"IFS_INTEGRITY_{n}"
             )
-        sys.exit(
-            "Set the integrity thresholds (/srv/quiz/<env>/integrity.env, docs/guides/integrity-report.md): "
-            + "; ".join(f"{kind} {', '.join(sorted(n))}" for kind, n in bad.items() if n)
-        )
+        _thresholds_exit(bad)
     if report:
+        assert isinstance(s, IntegritySettings)  # noqa: S101 - built above for a report
         today = madrid_day(datetime.now(UTC))
         if args.until > today:
-            sys.exit("--until is the announcement date; it can't be in the future.")
+            sys.exit("--until is the first day left out (excluded); it can't be in the future.")
         floor = first_day("season", args.until - timedelta(days=1))
+        names = _checks(args.checks, args.split)
         since = args.since or floor
         if since < floor:
             sys.exit(f"--since can't be before the season start {floor}: the September reset would apply.")
-        names = _checks(args.checks, args.split)
+        rules_from = s.rules_1b_from
+        if set(names) & set(PERSON_CHECKS):
+            if rules_from is None:
+                sys.exit(
+                    "Per-person checks need IFS_RULES_1B_FROM: answers given before the rule date are never a"
+                    " reason for a step about a person (ADR 0010)."
+                )
+            if args.since is not None and args.since < rules_from:
+                sys.exit(
+                    f"--since can't be before the rule date {rules_from} for per-person checks (ADR 0010);"
+                    " earlier answers are for cohort checks only."
+                )
+            since = args.since or walk_from(rules_from, args.until)
+            if since >= args.until:
+                sys.exit(f"No answers from the rule date in this window: --until must be after {since}.")
+        if set(names) & {"canary", "people", "split"}:
+            unset = {
+                f"IFS_INTEGRITY_{n.upper()}"
+                for n in (
+                    "canary_alpha",
+                    "canary_beta",
+                    "canary_follow",
+                    "canary_control_alpha",
+                    "canary_nudge",
+                    "canary_m",
+                    "away_undeclared_s",
+                )
+                if getattr(s, n) is None
+            }
+            if unset:
+                _thresholds_exit({"missing": unset})
         if "split" in names and not since < args.split < args.until:
             sys.exit(
                 f"--split must fall inside the window ({since} to {args.until}): the families are read before it."
@@ -223,11 +260,18 @@ def _integrity(args: argparse.Namespace) -> None:
                 return
             assert isinstance(s, IntegritySettings)  # noqa: S101 - built above for a report
             t = integrity.thresholds(s, fixed_rank=args.fixed_rank, split=args.split)
-            snap = integrity.fetch(db, integrity.Window(since, args.until), frozenset(names))
+            snap = integrity.fetch(db, integrity.Window(since, args.until), frozenset(names), rules_from)
             db.rollback()  # the snapshot is closed before anything is computed
         print(integrity.report(snap, salt, frozenset(names), t), end="")
     finally:
         engine.dispose()
+
+
+def _thresholds_exit(bad: dict[str, set[str]]) -> NoReturn:
+    sys.exit(
+        "Set the integrity thresholds (/srv/quiz/<env>/integrity.env, docs/guides/integrity-report.md): "
+        + "; ".join(f"{kind} {', '.join(sorted(n))}" for kind, n in bad.items() if n)
+    )
 
 
 def _app_command(args: argparse.Namespace) -> None:

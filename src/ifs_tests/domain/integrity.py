@@ -29,10 +29,11 @@ from . import keys
 from . import rank as rank_rules
 from .daily import madrid_day
 from .leaderboard import first_day, madrid_midnight
+from .signals import MIN_DECOY_OPTIONS
 
 FAMILIES = ("performance", "timing", "provenance", "supervised")
 COHORT_CHECKS = ("elo", "labels", "permutation", "keys", "fidelity")
-PERSON_CHECKS = ("follow", "upstream-key", "profile", "home-away", "people", "split")
+PERSON_CHECKS = ("follow", "upstream-key", "profile", "home-away", "canary", "people", "split")
 CHECKS = COHORT_CHECKS + PERSON_CHECKS
 MIN_SALT = 32
 # Rules questions are neither home nor away for anyone; the other verticals have no home area.
@@ -83,20 +84,78 @@ def z_of(p: float) -> float:
     return max(0.0, -NormalDist().inv_cdf(min(max(p, 1e-300), 0.5)))
 
 
+_TINY = 1e-300  # mass dropped at the edges of a distribution: what the floats underflow to anyway
+
+
+def _binomial(n: int, p: float) -> tuple[int, list[float]]:
+    """(lowest count kept, the pmf from there), grown out from the mode."""
+    if p <= 0 or p >= 1:
+        return (0 if p <= 0 else n), [1.0]
+    lp, lq, g = math.log(p), math.log1p(-p), math.lgamma(n + 1)
+
+    def pmf(k: int) -> float:
+        return math.exp(g - math.lgamma(k + 1) - math.lgamma(n - k + 1) + k * lp + (n - k) * lq)
+
+    lo = hi = min(n, int((n + 1) * p))
+    while lo > 0 and pmf(lo - 1) >= _TINY:
+        lo -= 1
+    while hi < n and pmf(hi + 1) >= _TINY:
+        hi += 1
+    return lo, [pmf(k) for k in range(lo, hi + 1)]
+
+
+def _convolve(a: tuple[int, list[float]], b: tuple[int, list[float]]) -> tuple[int, list[float]]:
+    (la, xa), (lb, xb) = a, b
+    out = [0.0] * (len(xa) + len(xb) - 1)
+    for i, x in enumerate(xa):
+        for j, y in enumerate(xb):
+            out[i + j] += x * y
+    lo, hi = 0, len(out) - 1
+    while lo < hi and out[lo] < _TINY:
+        lo += 1
+    while hi > lo and out[hi] < _TINY:
+        hi -= 1
+    return la + lb + lo, out[lo : hi + 1]
+
+
+def _poisson_binomial(ps: Sequence[float]) -> tuple[int, list[float]]:
+    """The distribution of a sum of independent Bernoulli(p_i) as (lowest count kept, pmf): one binomial per
+    distinct p, convolved, so thousands of trials over a few chances stay fast."""
+    dist: tuple[int, list[float]] = (0, [1.0])
+    for p, n in sorted(Counter(ps).items(), key=lambda pn: pn[1]):
+        dist = _convolve(dist, _binomial(n, p))
+    return dist
+
+
+def poisson_binomial_tails(ps: Sequence[float], k: int) -> tuple[float, float]:
+    """(P(X <= k), P(X >= k)) from one distribution: exact, where a normal tail is far too thin."""
+    lo, dist = _poisson_binomial(ps)
+    i = k - lo
+    low = 0.0 if k < 0 else 1.0 if k >= len(ps) else min(1.0, sum(dist[: max(0, i + 1)]))
+    high = 1.0 if k <= 0 else 0.0 if k > len(ps) else min(1.0, sum(dist[max(0, i) :]))
+    return low, high
+
+
 def poisson_binomial_sf(ps: Sequence[float], k: int) -> float:
-    """P(X >= k) for X a sum of independent Bernoulli(p_i): exact, where a normal tail is far too thin."""
+    """P(X >= k)."""
     if k <= 0:
         return 1.0
     if k > len(ps):
         return 0.0
-    dist = [1.0]
-    for p in ps:
-        nxt = [0.0] * (len(dist) + 1)
-        for j, d in enumerate(dist):
-            nxt[j] += d * (1 - p)
-            nxt[j + 1] += d * p
-        dist = nxt
-    return min(1.0, sum(dist[k:]))
+    return poisson_binomial_tails(ps, k)[1]
+
+
+def power(ps: Sequence[float], alt_ps: Sequence[float], alpha: float) -> float:
+    """The chance the exact one-sided test at alpha (reject from the smallest count whose upper tail under `ps`
+    is at most alpha) rejects when the chances are `alt_ps`."""
+    if not ps:
+        return 0.0
+    lo, dist = _poisson_binomial(ps)
+    c, upper = lo + len(dist), 0.0
+    while c > lo and upper + dist[c - 1 - lo] <= alpha:
+        c -= 1
+        upper += dist[c - lo]
+    return poisson_binomial_sf(alt_ps, c) if c <= len(ps) else 0.0
 
 
 def holm(pvalues: Sequence[float], alpha: float) -> list[bool]:
@@ -162,6 +221,15 @@ class Thresholds:
     upstream_min: int
     upstream_z: float
     split: date | None = None
+    # the canary and the signal context: required by the CLI only for the checks that read them
+    canary_alpha: float | None = None  # false flags per season, Bonferroni over canary_m
+    canary_beta: float | None = None  # only labels the end state `no sign`
+    canary_follow: float | None = None  # H1: share of wrong answers after a long copy that follow the note
+    # placebo, draw check and exclusion; separate so a strict α doesn't blind them
+    canary_control_alpha: float | None = None
+    canary_nudge: float | None = None  # composite H0: honest readers nudged to the decoy up to this share
+    canary_m: int | None = None  # people who can play ranked this season, fixed for the season
+    away_undeclared_s: float | None = None
 
 
 # --- the replay ------------------------------------------------------------------------------------------------
@@ -800,6 +868,8 @@ class Person:
     upstream_n: int
     upstream_typed: int
     follow_tested: bool = False  # in a copy pair or the follower of a relay that was tested
+    canary: Canary | None = None  # None: no copy-arm trials (or nothing collected)
+    signals: Context | None = None  # context only: never part of a family
 
     def upstream_z(self) -> float | None:
         return z_of(self.upstream_p) if self.upstream_n else None
@@ -820,6 +890,8 @@ def families(p: Person, t: Thresholds, following: bool) -> dict[str, bool | None
     uz = p.upstream_z()
     if p.upstream_n >= t.upstream_min:
         prov.append(uz is not None and uz >= t.upstream_z)
+    if p.canary is not None and p.canary.decision == "reject":
+        prov.append(True)  # any other canary outcome is no evidence either way
     return {
         "performance": any(perf) if perf else None,
         "timing": timing,
@@ -910,5 +982,310 @@ def discloses(tables: Sequence[Mapping[str, Collection[Hashable]]], min_group: i
     return False
 
 
-def canary_evidence(*_: object, **__: object) -> None:
-    raise NotImplementedError("AI canary evidence arrives with feat/35")
+# --- the AI canary (ADR 0010 D) ----------------------------------------------------------------------------------
+
+VOID = (
+    "not single choice",
+    "options changed",
+    "too few options",
+    "too few wrong options",
+    "decoy right",
+    "hint",
+    "not one wrong option",
+)
+
+
+def walk_from(rules_from: date, until: date) -> date:
+    """Where the canary's walk starts for a window ending at `until`: the rule date, or the season's 1 September
+    once the season started after it. A window that starts later is a new look at the data (exploratory)."""
+    return max(rules_from, first_day("season", until - timedelta(days=1)))
+
+
+@dataclass(frozen=True)
+class DecoyPlay:
+    """A ranked attempt that carried a decoy, with the question's options as they are now."""
+
+    decoy: int
+    chosen: tuple[int, ...]
+    answer_kind: str
+    passed: bool
+    hint: bool
+    long_copies: int | None
+    resumes: int | None
+    live: frozenset[int]
+    right: frozenset[int]  # empty if the effective key is not a choice key
+    changed: bool = False  # changed upstream after the attempt: the options may not be those offered
+
+
+def canary_trial(d: DecoyPlay) -> tuple[float, bool] | str:
+    """(chance of a hit under H0, hit) or the reason the attempt is no trial. The decoy is drawn uniformly over the
+    options offered, independently of the key and the player, so given a wrong answer outside C the chance it is
+    the decoy is exactly 1/(n - |C|), however the player's wrong answers spread. A key corrected later is still
+    independent of the draw; only the offered set matters."""
+    if d.answer_kind != "choice-one":
+        return "not single choice"
+    if d.changed or d.decoy not in d.live or any(c not in d.live for c in d.chosen):
+        return "options changed"
+    n = len(d.live)
+    if n < MIN_DECOY_OPTIONS:
+        return "too few options"
+    if not d.right or not d.right <= d.live:
+        return "options changed"
+    if n - len(d.right) < 2:
+        return "too few wrong options"
+    if d.decoy in d.right:
+        return "decoy right"
+    if d.hint:
+        return "hint"
+    if d.passed or len(d.chosen) != 1 or d.chosen[0] in d.right:
+        return "not one wrong option"
+    return 1 / (n - len(d.right)), d.chosen[0] == d.decoy
+
+
+def canary_arm(d: DecoyPlay) -> str | None:
+    """`copy` after a long copy (the note went with it); `placebo` with neither a copy nor a reload, which resets
+    the page's counters; `unreported` when the page sent no totals (an older page or a tampered one). None: a reload
+    and no copy, where a copy may have been lost: no control and no decision, only the listing."""
+    if d.long_copies is None:
+        return "unreported"
+    if d.long_copies >= 1:
+        return "copy"
+    return "placebo" if d.resumes == 0 else None
+
+
+def draw_hit(d: DecoyPlay) -> tuple[float, bool] | None:
+    """(|C|/n, decoy in C): whether the draw looks at the key, whatever the player did."""
+    if (
+        d.answer_kind != "choice-one"
+        or d.changed
+        or d.decoy not in d.live
+        or len(d.live) < MIN_DECOY_OPTIONS
+        or not d.right
+        or not d.right <= d.live
+    ):
+        return None
+    return len(d.right) / len(d.live), d.decoy in d.right
+
+
+def llr_walk(trials: Sequence[tuple[float, bool]], follow: float, nudge: float = 0.0) -> list[float]:
+    """The running log likelihood ratio after each trial of H1 (p1 = p0 + f(1 - p0)) against the composite null's
+    edge p0' = p0 + g0(1 - p0). The ratio is a supermartingale for any true rate up to p0', so Ville's bound holds
+    for honest readers nudged towards the decoy up to g0."""
+    out, llr = [], 0.0
+    for p0, hit in trials:
+        q0 = p0 + nudge * (1 - p0)
+        p1 = p0 + follow * (1 - p0)
+        llr += math.log(p1 / q0) if hit else math.log((1 - p1) / (1 - q0))
+        out.append(llr)
+    return out
+
+
+@dataclass(frozen=True)
+class Canary:
+    trials: int
+    hits: int
+    expected: float  # sum of p0' over the trials
+    p: float  # fixed-window P(X >= hits) at p0': context, uncorrected
+    decision: str  # reject | no sign | continue | ignored | exploratory | listed
+    decided_at: int | None  # the first trial whose LLR reached ln(M/α)
+    p_any: float = 1.0  # anytime-valid: min(1, 1/max LR), uncorrected
+    llr_final: float = 0.0
+    earlier_stretch: bool = False  # a reject whose walk has fallen back below the boundary since
+    note: str | None = None  # why it is ignored
+
+    def z(self) -> float | None:
+        return z_of(self.p) if self.trials else None
+
+
+def _walk(
+    trials: Sequence[tuple[float, bool]],
+    *,
+    alpha: float,
+    beta: float | None,
+    follow: float,
+    nudge: float,
+    m: int,
+    crossed: str,
+) -> Canary:
+    llr = llr_walk(trials, follow, nudge)
+    bound = math.log(m / alpha) - 1e-12
+    q0 = [p0 + nudge * (1 - p0) for p0, _ in trials]
+    hits = sum(hit for _, hit in trials)
+    decided = next((j + 1 for j, x in enumerate(llr) if x >= bound), None)
+    if decided is not None:
+        decision = crossed
+    elif beta is not None and llr[-1] <= math.log(beta / (1 - alpha)):
+        decision = "no sign"
+    else:
+        decision = "continue"
+    return Canary(
+        trials=len(trials),
+        hits=hits,
+        expected=sum(q0),
+        p=poisson_binomial_sf(q0, hits),
+        decision=decision,
+        decided_at=decided,
+        p_any=min(1.0, math.exp(-max(0.0, *llr))),
+        llr_final=llr[-1],
+        earlier_stretch=decided is not None and llr[-1] < bound,
+    )
+
+
+def canary_evidence[K: Hashable](
+    walks: Mapping[K, Sequence[tuple[float, bool]]],
+    *,
+    alpha: float,
+    beta: float,
+    follow: float,
+    nudge: float,
+    m: int,
+) -> dict[K, Canary]:
+    """Per key, the copy-arm trials (p0, hit) in grading order. A walk that ever reaches ln(m/alpha) is a reject:
+    Ville's bound and Bonferroni over a fixed m per season keep the chance of any false reject at alpha, read at
+    any time, and a reject stays one as the window grows over the same trials (a later upstream change or key
+    correction can remove or reprice earlier ones). `no sign` only labels a walk that ends at or below
+    ln(beta / (1 - alpha)); it clears no one. Keys without trials are absent."""
+    return {
+        k: _walk(w, alpha=alpha, beta=beta, follow=follow, nudge=nudge, m=m, crossed="reject")
+        for k, w in walks.items()
+        if w
+    }
+
+
+def listing[K: Hashable](
+    walks: Mapping[K, Sequence[tuple[float, bool]]], *, alpha: float, follow: float, nudge: float, m: int
+) -> dict[K, Canary]:
+    """The same walk over the decoy picks without a reported copy (placebo, unreported and reloaded attempts): the
+    keys whose walk crosses the canary's boundary. A pointer for a reviewer, never a family."""
+    out = {
+        k: _walk(w, alpha=alpha, beta=None, follow=follow, nudge=nudge, m=m, crossed="listed")
+        for k, w in walks.items()
+        if w
+    }
+    return {k: c for k, c in out.items() if c.decision == "listed"}
+
+
+@dataclass(frozen=True)
+class Tail:
+    trials: int
+    hits: int
+    expected: float
+    p_high: float
+    p_low: float
+    verdict: str  # "near chance" | "off"
+
+
+def _tail(trials: Sequence[tuple[float, bool]]) -> tuple[int, float, float, float]:
+    ps = [p for p, _ in trials]
+    hits = sum(hit for _, hit in trials)
+    low, high = poisson_binomial_tails(ps, hits)
+    return hits, sum(ps), high, low
+
+
+def _two_sided(trials: Sequence[tuple[float, bool]], alpha: float) -> Tail:
+    hits, expected, high, low = _tail(trials)
+    return Tail(
+        len(trials), hits, expected, high, low, "off" if min(high, low) < alpha / 2 else "near chance"
+    )
+
+
+def placebo_tail(trials: Sequence[tuple[float, bool]], alpha: float) -> Tail:
+    """Hits without a long copy at p0, two-sided at alpha/2 per tail: an excess means the decoy is picked without
+    the note, a deficit that it is visible (and avoided) without it. Either makes the copy arm unreliable."""
+    return _two_sided(trials, alpha)
+
+
+def draw_tail(hits: Sequence[tuple[float, bool]], alpha: float) -> Tail:
+    """The decoy is a right option as often as |C|/n says, two-sided at alpha/2 per tail."""
+    return _two_sided(hits, alpha)
+
+
+def loo_off[K: Hashable](
+    per_person: Mapping[K, Sequence[tuple[float, bool]]], alpha: float, tail: str
+) -> bool:
+    """Whether the pooled tail (`high` or `low`, at alpha/2) is off and stays off without the one person who
+    pushes it most that way, so a single player can't switch the control off."""
+
+    def p(trials: Sequence[tuple[float, bool]]) -> float:
+        _, _, high, low = _tail(trials)
+        return high if tail == "high" else low
+
+    if p([x for v in per_person.values() for x in v]) >= alpha / 2:
+        return False
+    excess = {k: sum(h for _, h in v) - sum(q for q, _ in v) for k, v in per_person.items()}
+    worst = max(excess, key=excess.__getitem__) if tail == "high" else min(excess, key=excess.__getitem__)
+    return p([x for k, v in per_person.items() if k != worst for x in v]) < alpha / 2
+
+
+def nudge_check(trials: Sequence[tuple[float, bool]], *, alpha: float, nudge: float) -> bool:
+    """Whether copy-arm trials (p0, hit) hit the decoy more often than the composite null's edge p0' allows, upper
+    tail at alpha: honest readers nudged beyond g0, or followers the walk doesn't catch. A warning only."""
+    q0 = [p0 + nudge * (1 - p0) for p0, _ in trials]
+    return bool(trials) and poisson_binomial_sf(q0, sum(h for _, h in trials)) < alpha
+
+
+@dataclass(frozen=True)
+class Recorded:
+    """The signal totals of one ranked attempt that carries them."""
+
+    away_undeclared_s: int | None
+    away_declared_s: int | None
+    pasted: bool | None
+    long_copies: int | None
+    resumes: int
+    decoy: bool = False
+
+
+@dataclass(frozen=True)
+class Context:
+    n: int
+    reported: int
+    away_any: int
+    away_over: int
+    away_median_s: float | None  # among the answers with any
+    reported_d: int
+    declared_any: int
+    declared_median_s: float | None
+    pasted: int
+    text_n: int
+    copied: int  # attempts with a long copy
+    copies_n: int
+    long_copies: int
+    resumed: int
+    resumes: int
+    unreported: int  # decoy attempts without totals
+    decoy_n: int
+
+
+def _median_above_zero(values: Iterable[int | None]) -> float | None:
+    above = [v for v in values if v]
+    return statistics.median(above) if above else None
+
+
+def context(rows: Sequence[Recorded], away_s: float) -> Context | None:
+    """Totals of a person's attempts that carry signals; None when none does (not collected)."""
+    if not rows:
+        return None
+    away = [r.away_undeclared_s for r in rows if r.away_undeclared_s is not None]
+    declared = [r.away_declared_s for r in rows if r.away_declared_s is not None]
+    copies = [r.long_copies for r in rows if r.long_copies is not None]
+    pasted = [r.pasted for r in rows if r.pasted is not None]
+    return Context(
+        n=len(rows),
+        reported=len(away),
+        away_any=sum(v > 0 for v in away),
+        away_over=sum(v > away_s for v in away),
+        away_median_s=_median_above_zero(away),
+        reported_d=len(declared),
+        declared_any=sum(v > 0 for v in declared),
+        declared_median_s=_median_above_zero(declared),
+        pasted=sum(pasted),
+        text_n=len(pasted),
+        copied=sum(v >= 1 for v in copies),
+        copies_n=len(copies),
+        long_copies=sum(copies),
+        resumed=sum(r.resumes >= 1 for r in rows),
+        resumes=sum(r.resumes for r in rows),
+        unreported=sum(r.decoy and r.long_copies is None for r in rows),
+        decoy_n=sum(r.decoy for r in rows),
+    )
