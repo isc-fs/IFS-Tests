@@ -509,7 +509,7 @@ At category level only; the specifics belong to the integrity-report guide that 
 
 - answer patterns and timing between players, from the answers and times already stored (agreement with someone who answered the same question minutes earlier; latency that doesn't depend on the question). Before the season-1b date these are used only in aggregate, to calibrate the checks, never about a person;
 - answers that follow a public key the reviewers had corrected;
-- from season 1b, the per-answer totals the privacy notice lists: seconds away from the question (look-ups opened from the question apart), whether a typed answer was pasted, long copies of the question text (a count), reopenings (counted by the server).
+- from season 1b, the per-answer totals the privacy notice lists: seconds away from the question (look-ups opened from the question or announced with **Looking something up** apart), whether a typed answer was pasted or dropped in from outside the page, long copies or drags of the question text (a count), reopenings (counted by the server).
 
 Run on the server by a read-only command, accounts shown as codes, read by two people together: a Technical Director and a member of ISC's board who doesn't play ranked, neither under review in that run. Thresholds choose what those two look at; they never define what is forbidden: the table above does. A check that ends in nothing keeps nothing, and the output is deleted after the run.
 

@@ -13,7 +13,7 @@ import { ErrorNotice, Notice } from '../components/Form'
 import { LearningAids } from '../components/LearningAids'
 import { Page } from '../components/Page'
 import { QuestionCard } from '../components/QuestionCard'
-import { queryClient, resend } from '../lib/api'
+import { queryClient, resend, sendRanked } from '../lib/api'
 import { AREAS, duration } from '../lib/areas'
 import { lp, tenths } from '../lib/rank'
 import { xp } from '../lib/xp'
@@ -97,8 +97,10 @@ function AreaCard({
 function Play({ play, onDone }: { play: TimedQuestion; onDone: () => void }) {
   const [expired, setExpired] = useState(false)
   const [result, setResult] = useState<DailyResult>()
+  const base = answerDailyMutation()
   const send = useMutation({
-    ...answerDailyMutation(),
+    ...base,
+    mutationFn: sendRanked(base.mutationFn!),
     ...resend,
     onSuccess: (r) => {
       setResult(r)
@@ -117,7 +119,10 @@ function Play({ play, onDone }: { play: TimedQuestion; onDone: () => void }) {
           error={send.error}
           expired={expired}
           clock={<Countdown deadline={play.deadline_at} serverNow={play.server_now} onExpire={expire} />}
-          onAnswer={(body) => send.mutate({ path: { attempt_id: play.attempt_id }, body })}
+          ranked={{ collect: play.collect_signals === true, decoy: play.decoy_option_id }}
+          onAnswer={(body, signals) =>
+            send.mutate({ path: { attempt_id: play.attempt_id }, body: signals ? { ...body, signals } : body })
+          }
           onHint={async () => (await dailyHint({ path: { attempt_id: play.attempt_id } })).data}
           next={<Summary result={result} onDone={onDone} />}
         />

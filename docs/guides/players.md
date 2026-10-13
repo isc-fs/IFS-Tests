@@ -397,6 +397,14 @@ not; replays are practice.
   tool, not a chatbot. Not sure about a tool? Ask a TD first.
 - **Don't pass it on:** no ranked question or answer to anyone until the Madrid day ends (daily) or they've finished
   their run (mock), and no shared sheets of them. One account each, played only by you.
+- **Looking something up:** from the season-1b date (see Fair play on the About page), ranked questions show a
+  **Looking something up** button above the question, next to its rulebook links, with the line "Press just before you
+  switch to your notes, a rulebook, a translator or a calculator." Press it just before you switch (within 5 seconds):
+  the page answers "Noted. Switch to your look-up now." and that trip counts as a look-up. Come back and leave again
+  within 20 seconds and the second trip stays a look-up too, once; press again for more. Opening the rulebook or a figure from the question in a
+  new tab counts by itself. Your browser's own page translation needs no press: it creates no signal at all. Closing
+  the lid or letting the screen lock counts as time away until you're back. Copying the question to translate it is
+  allowed, and counted. If you rely on an assistive tool outside the page, press the button or tell a TD.
 - **Practice:** anything goes. **Live quizzes:** the host's room rules; by default your table talks and that's it.
 
 Ranked play is checked statistically on the server, with accounts shown as codes and two people reading the result
@@ -404,12 +412,11 @@ together. If something looks off, the first step is a conversation with a TD. Af
 a warning or take you off the boards for the rest of the season; the most that can follow is being denied attendance
 at competitions, with an appeal to the board. That is never decided on statistics alone: it needs your own account or
 evidence beyond the statistical checks (for example a supervised session), plus the hearing. Nothing is automatic,
-nothing from before the season-1b date counts, and ranks, levels and the boards select nobody. From that date, as the
-updates that count them ship, your ranked answers also carry a few totals (seconds away from the question, whether a
-typed answer was pasted, how often you copied a long piece of the question or reopened it), which you can see in your
-own export. If the Spanish text of the About page ever differs from the English, the English text applies. The full
-rules and what is checked: [game rules](../game-rules.md#10-fair-play); what is kept and for how long: the
-**Privacy** page.
+nothing from before the season-1b date counts, and ranks, levels and the boards select nobody. From that date, your
+ranked answers also carry a few totals (seconds away from the question, whether a typed answer was pasted, how often
+you copied a long piece of the question or reopened it), which you can see in your own export. If the Spanish text of
+the About page ever differs from the English, the English text applies. The full rules and what is checked:
+[game rules](../game-rules.md#10-fair-play); what is kept and for how long: the **Privacy** page.
 
 ## FAQ
 

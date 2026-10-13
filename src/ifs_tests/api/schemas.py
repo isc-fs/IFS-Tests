@@ -593,6 +593,11 @@ class TimedQuestion(BaseModel):
         "from all the options, so it says nothing about the answer; null when the canary is off or the option is "
         "no longer offered",
     )
+    collect_signals: bool = Field(
+        description="Measure and send `signals` with the answer: true exactly when the answer will keep them "
+        "(season 1b reached and the attempt created under it: daily, or a counted mock run). False before the rule "
+        "date, with the gate unset, on replays, and on a daily started before the date",
+    )
 
 
 class DailyResult(BaseModel):

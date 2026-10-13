@@ -145,6 +145,19 @@ def test_the_canary_decoy_is_in_the_timed_question_and_the_export_only(app_clien
         assert "decoy_option_id" not in components[n]["properties"], n
 
 
+def test_collect_signals_is_a_required_field_of_the_timed_question_alone(app_client: TestClient) -> None:
+    components = app_client.get("/api/openapi.json").json()["components"]["schemas"]
+    timed = components["TimedQuestion"]
+    assert "collect_signals" in timed["properties"]
+    assert "collect_signals" in timed["required"]  # no default: a server that forgets it fails loudly
+    assert "default" not in timed["properties"]["collect_signals"]
+    assert timed["properties"]["collect_signals"]["type"] == "boolean"
+    assert timed["properties"]["collect_signals"].get("description")
+    declaring = {n for n, c in components.items() if "collect_signals" in c.get("properties", {})}
+    assert declaring == {"TimedQuestion"}
+    assert "collect_signals" not in ANSWER_FIELDS
+
+
 def test_signals_can_only_be_sent_with_a_daily_or_a_mock_answer(app_client: TestClient) -> None:
     spec = app_client.get("/api/openapi.json").json()
     components = spec["components"]["schemas"]

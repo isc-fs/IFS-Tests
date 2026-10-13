@@ -1,7 +1,10 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { expect, test } from 'vitest'
+import { afterEach, expect, test, vi } from 'vitest'
 import { MEMBER, renderApp } from '../test/render'
+import { away, SIGNAL_KEYS, useClock } from '../test/signals'
+
+afterEach(() => vi.useRealTimers())
 
 const area = (a: string, state: string, extra = {}) => ({
   area: a,
@@ -44,13 +47,15 @@ const QUESTION = {
 }
 const FEEDBACK = { correct: true, official: 'AS Emergency', correct_options: [50], solutions: [] }
 
-function timed(secondsLeft: number, serverAhead = 0) {
+function timed(secondsLeft: number, serverAhead = 0, collect = false) {
   const now = Date.now() + serverAhead
   return {
     attempt_id: 99,
     question: QUESTION,
     server_now: new Date(now).toISOString(),
     deadline_at: new Date(now + secondsLeft * 1000).toISOString(),
+    decoy_option_id: null,
+    collect_signals: collect,
   }
 }
 
@@ -158,4 +163,154 @@ test("yesterday's question answered after midnight stays reviewable until today'
   await userEvent.click(await screen.findByRole('button', { name: "Start today's Mechanical question" }))
   expect(await screen.findByText(QUESTION.text)).toBeInTheDocument()
   expect(sent('POST /api/daily/mech/start')).toHaveLength(1)
+})
+
+const LOOKUP = { name: 'Looking something up' }
+const ANSWER = 'POST /api/daily/attempts/99/answer'
+const RESULT = { day: '2026-10-01', question: QUESTION, feedback: FEEDBACK, late: false, xp: 60, lp: 15, streak: 3 }
+const REFUSED = {
+  detail: [{ type: 'extra_forbidden', loc: ['body', 'signals'], msg: 'Extra inputs are not permitted' }],
+}
+const start = async () => userEvent.click(await screen.findByRole('button', { name: 'Start the Mechanical question' }))
+const answer = async () => {
+  await userEvent.click(screen.getByRole('radio', { name: 'AS Emergency' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Check answer' }))
+}
+
+test('when the server says not to measure, there is no button and the answer carries no signals', async () => {
+  useClock()
+  const { sent } = renderApp('/daily', api(timed(120, 0, false)))
+  await start()
+  expect(await screen.findByText(QUESTION.text)).toBeInTheDocument()
+  expect(screen.queryByRole('button', LOOKUP)).toBeNull()
+  away(30_000)
+  await answer()
+  expect(await screen.findByText(/Correct: \+15 LP/)).toBeInTheDocument()
+  const body = sent(ANSWER)[0].body as object
+  expect(body).toEqual({ options: [50] })
+  expect('signals' in body).toBe(false)
+})
+
+test('when the server says to measure, the answer carries the four totals', async () => {
+  useClock()
+  const { sent } = renderApp('/daily', api(timed(120, 0, true)))
+  await start()
+  expect(await screen.findByRole('button', LOOKUP)).toBeInTheDocument()
+  away(10_000)
+  await answer()
+  expect(await screen.findByText(/Correct: \+15 LP/)).toBeInTheDocument()
+  const body = sent(ANSWER)[0].body as { options: number[]; signals: Record<string, unknown> }
+  expect(body.options).toEqual([50])
+  expect(Object.keys(body.signals).sort()).toEqual(SIGNAL_KEYS)
+  expect(body.signals).toEqual({ away_declared_s: 0, away_undeclared_s: 10, pasted: false, long_copies: 0 })
+  expect(screen.queryByRole('button', LOOKUP)).toBeNull() // answered: nothing left to declare
+})
+
+test('an exit announced with the button is reported as declared', async () => {
+  useClock()
+  const { sent } = renderApp('/daily', api(timed(120, 0, true)))
+  await start()
+  await userEvent.click(await screen.findByRole('button', LOOKUP))
+  away(10_000)
+  await answer()
+  await screen.findByText(/Correct: \+15 LP/)
+  expect((sent(ANSWER)[0].body as { signals: object }).signals).toMatchObject({
+    away_declared_s: 10,
+    away_undeclared_s: 0,
+  })
+})
+
+test('the answer sent when time runs out carries the totals too', async () => {
+  const { sent } = renderApp('/daily', api(timed(0, 0, true)))
+  await start()
+  await waitFor(() => expect(sent(ANSWER)).toHaveLength(1))
+  const body = sent(ANSWER)[0].body as { signals: Record<string, unknown> }
+  expect(Object.keys(body.signals).sort()).toEqual(SIGNAL_KEYS)
+})
+
+test('a server that does not know the signals gets the answer again without them, once', async () => {
+  useClock()
+  const { sent } = renderApp('/daily', {
+    ...api(timed(120, 0, true)),
+    [ANSWER]: (body) => ((body as { signals?: object }).signals ? { status: 422, body: REFUSED } : { body: RESULT }),
+  })
+  await start()
+  away(10_000)
+  await answer()
+  expect(await screen.findByText('Correct: +15 LP, +60 XP. Streak: 3 days.')).toBeInTheDocument()
+  const bodies = sent(ANSWER).map((c) => c.body as { signals?: object })
+  expect(bodies).toHaveLength(2)
+  expect(bodies[0].signals).toBeDefined()
+  expect(bodies[1]).toEqual({ options: [50] })
+})
+
+test('a refusal about anything else is shown, and not retried', async () => {
+  const { sent } = renderApp('/daily', {
+    ...api(timed(120, 0, true)),
+    [ANSWER]: {
+      status: 422,
+      body: { detail: [{ type: 'value_error', loc: ['body', 'value'], msg: 'That answer is not valid.' }] },
+    },
+  })
+  await start()
+  await answer()
+  expect(await screen.findByText('That answer is not valid.')).toBeInTheDocument()
+  await new Promise((r) => setTimeout(r, 700))
+  expect(sent(ANSWER)).toHaveLength(1)
+})
+
+test("a finished question's review has no button, whatever the server said about the day's question", async () => {
+  renderApp('/daily', api(timed(120, 0, true)))
+  await userEvent.click(await screen.findByRole('button', { name: 'See the Electrical question' }))
+  expect(await screen.findByRole('article')).toBeInTheDocument()
+  expect(screen.queryByRole('button', LOOKUP)).toBeNull()
+})
+
+test('a start without the field, as an older server sends it, means no measuring at all', async () => {
+  useClock()
+  const legacy: Record<string, unknown> = { ...timed(120, 0, true) }
+  delete legacy.collect_signals
+  const { sent } = renderApp('/daily', api(legacy))
+  await start()
+  expect(await screen.findByText(QUESTION.text)).toBeInTheDocument()
+  expect(screen.queryByRole('button', LOOKUP)).toBeNull()
+  away(30_000)
+  await answer()
+  expect(await screen.findByText(/Correct: \+15 LP/)).toBeInTheDocument()
+  const body = sent(ANSWER)[0].body as object
+  expect(body).toEqual({ options: [50] })
+  expect('signals' in body).toBe(false)
+})
+
+test('a send that fails on the way is sent again by itself, with the signals, and only once more', async () => {
+  let failed = 0
+  const { sent } = renderApp('/daily', {
+    ...api(timed(0, 0, true)),
+    [ANSWER]: () => (failed++ < 1 ? { status: 502 } : { body: RESULT }),
+  })
+  await start()
+  expect(await screen.findByText(/Correct: \+15 LP/, {}, { timeout: 4000 })).toBeInTheDocument()
+  const bodies = sent(ANSWER).map((c) => c.body as { signals?: Record<string, unknown> })
+  expect(bodies).toHaveLength(2)
+  for (const body of bodies) expect(Object.keys(body.signals ?? {}).sort()).toEqual(SIGNAL_KEYS)
+})
+
+test('a refusal of the signals is not remembered: the next question measures again', async () => {
+  useClock()
+  let refusing = true
+  const { sent } = renderApp('/daily', {
+    ...api(timed(120, 0, true)),
+    [ANSWER]: (body) =>
+      refusing && (body as { signals?: object }).signals ? { status: 422, body: REFUSED } : { body: RESULT },
+  })
+  await start()
+  await answer()
+  expect(await screen.findByText(/Correct: \+15 LP/)).toBeInTheDocument()
+  expect(sent(ANSWER).map((c) => 'signals' in (c.body as object))).toEqual([true, false])
+  refusing = false
+  await userEvent.click(screen.getByRole('button', { name: "Back to today's questions" }))
+  await start()
+  await answer()
+  await waitFor(() => expect(sent(ANSWER)).toHaveLength(3))
+  expect('signals' in (sent(ANSWER)[2].body as object)).toBe(true)
 })

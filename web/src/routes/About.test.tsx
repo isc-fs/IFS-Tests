@@ -149,7 +149,31 @@ test('the English part of the region carries no Spanish and the Spanish no Engli
 test.each(['/about', '/privacy'])('%s does not mention the AI canary yet', async (path) => {
   renderApp(path, signedOut)
   await screen.findByRole('heading', { level: 1 })
-  expect(document.body.textContent).not.toMatch(/canary|decoy|for AI assistants/i)
+  expect(document.body.textContent).not.toMatch(/canary|decoy|AI assistants/i)
+})
+
+test('the privacy notice tells players that the Looking something up button announces a look-up, in English', async () => {
+  renderApp('/privacy', signedOut)
+  const training = (await screen.findByText(/^Your training:/)).closest('li') as HTMLElement
+  const text = flat(training)
+  expect(text).toContain('Looking something up')
+  expect(text).toMatch(
+    /look-ups you open from the question itself, such as the rulebook panel, or announce with the Looking something up button/,
+  )
+  expect(within(training).getByText('Looking something up').tagName).toBe('STRONG')
+})
+
+test('and the Spanish summary says the same, naming the button as it is labelled on screen', async () => {
+  const fair = await fairPlay()
+  const es = fair.querySelector<HTMLElement>('[lang="es"]') as HTMLElement
+  const summary = flat(within(es).getByText(/^Qué se guarda:/))
+  expect(summary).toMatch(/o que anuncias con el botón Looking something up/)
+  expect(within(es).getByText('Looking something up').tagName).toBe('STRONG')
+  const english = [...fair.children]
+    .filter((c) => c !== es)
+    .map(flat)
+    .join(' ')
+  expect(english).not.toMatch(/anuncias|botón/)
 })
 
 test('the privacy notice names the fair-play purpose and keeps the human decision', async () => {
@@ -176,8 +200,8 @@ test('the privacy notice announces the season-1b totals and what is never record
   expect(text).toMatch(/ranked answers also record, as totals per answer only/)
   expect(text).toMatch(/seconds away from the question/)
   expect(text).toMatch(/look-ups you open from the question itself, such as the rulebook panel/)
-  expect(text).toMatch(/whether a typed answer was pasted/)
-  expect(text).toMatch(/how often you copied a long piece of the question/)
+  expect(text).toMatch(/whether a typed answer was pasted or dropped in from outside the page/)
+  expect(text).toMatch(/how often you copied or dragged a long piece of the question/)
   expect(text).toMatch(/a count, never what you copied/)
   expect(text).toMatch(/how often you reopened the question/)
   expect(text).toMatch(/Leaving the tab is not an offence/)
@@ -287,4 +311,24 @@ test('the privacy notice names the fair-play totals as the one exception to "no 
   expect(text).toMatch(
     /One exception, from season 1b: the fair-play totals on ranked answers \(see Your training\), counted by this site only and kept per answer/,
   )
+})
+
+test('the English notice says dropped and dragged, not only pasted and copied, and nothing about the keyboard shortcut', async () => {
+  renderApp('/privacy', signedOut)
+  const training = (await screen.findByText(/^Your training:/)).closest('li') as HTMLElement
+  const text = flat(training)
+  expect(text).toMatch(/pasted or dropped in from outside the page/)
+  expect(text).toMatch(/copied or dragged a long piece/)
+  expect(text).not.toMatch(/Ctrl|Cmd|find bar|search in the page/i)
+  expect(text).toMatch(/a count, never what you copied/)
+})
+
+test('the Spanish summary says the same about dropping and dragging', async () => {
+  const fair = await fairPlay()
+  const es = fair.querySelector<HTMLElement>('[lang="es"]') as HTMLElement
+  const summary = flat(within(es).getByText(/^Qué se guarda:/))
+  expect(summary).toMatch(/pegó/)
+  expect(summary).toMatch(/solt/) // dropped
+  expect(summary).toMatch(/arrastr/) // dragged
+  expect(summary).not.toMatch(/Ctrl|Cmd/)
 })

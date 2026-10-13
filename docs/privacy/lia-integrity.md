@@ -19,12 +19,24 @@ the controller at launch (release decision B1).
 when the question was shown and answered, whether a hint was used, the mode and the area, the LP and XP it moved;
 for every member, position, vertical and rank state. None of this is new.
 
-**New from season 1b** (ADR 0010, part D; from the rule date, 26 October 2026, as the code that records each total
-is deployed), on ranked answers only (daily questions and the first run of each mock
-quiz in a season): seconds away from the question, split between look-ups opened from the question itself and the
-rest; whether a typed answer was pasted; how often a long piece of the question text was copied (a count, never the
-text); how often the question was reopened; and, only while the AI canary flag is on and once the notice names it,
-which option was the decoy. All per answer, as totals. Nothing is recorded in practice or live play. Never
+**New from season 1b** (ADR 0010, part D; from the rule date, 26 October 2026: the release is deployed before it and
+switches on at Madrid midnight of that day), on ranked answers only (daily questions and the first run of each mock
+quiz in a season): seconds away from the question, split between look-ups opened from the question (the rules
+panel and its links) or announced with the **Looking something up** button, and the rest; whether a typed answer was
+pasted or dropped in from outside the page; how often a long piece of the question text was copied or dragged (a
+count, never the text); how often the question was reopened; and, only while the AI canary flag is on, which option
+was the decoy (`decoy_option_id`). While the flag is on, copying a long piece of the question also appends a short
+note for AI assistants to what the person copies, saying AI help is not allowed and naming the decoy's option; the
+notice names it before the flag flips (ADR 0010). The page measures only when the server tells it to
+(`collect_signals`), and observes only these events: the tab being hidden or shown (`visibilitychange`), the window
+gaining or losing focus (`blur`, `focus`), and, in the page, capture `focusin` and `pointerdown` (to tell whether the
+page itself has focus, which includes whether the focused element is a frame, by its tag name only), clicks on the
+question's look-up links (`click`, `auxclick`, `contextmenu`), the press of the **Looking something up** button,
+`copy`, `cut` and `dragstart` (the selection's length, never its text, and whether the page holds its own clipboard),
+and `beforeinput` in the free-text answer (paste or drop). No `keydown` listener exists. The length of the selected
+question text is read in memory to count it, and the text is never sent or stored; the clipboard and what is pasted,
+dropped or dragged are never read; nothing is stored on the device. All per answer, as totals. Nothing is recorded
+in practice or live play. Never
 keystrokes, screen, camera, clipboard contents, pages visited or extensions.
 
 **Who runs what, where.** A read-only command-line report on the team's own server, run by the maintainer, reading
@@ -107,10 +119,11 @@ October 2026, a week ahead).
   and a parent or guardian may exercise their rights with them. No children under 16; no special categories.
 - **Scale.** The whole team: tens of people, not hundreds.
 - **ePrivacy Art. 5(3) / LSSI Art. 22.2.** The totals are counted from the page's own events and sent to the
-  first-party server, with no access to anything stored on the device. ADR 0010 states the position (strictly
-  necessary for a service the member explicitly requested) and the residual risk (a broad reading of the EDPB's
-  Guidelines 2/2023); the board accepts that risk in the ADR's sign-off or chooses the opt-in fallback. This
-  assessment does not add to that analysis; it points at it.
+  first-party server, with no access to anything stored on the device; the one write, while the canary flag is on, is
+  that note, into the clipboard of the person's own copy, and nothing is ever read from the clipboard. ADR 0010 states
+  the position (strictly necessary for a service the member explicitly requested) and the residual risk (a broad
+  reading of the EDPB's Guidelines 2/2023); the board accepts that risk in the ADR's sign-off or chooses the opt-in
+  fallback. This assessment does not add to that analysis; it points at it.
 
 **Outcome of the balance:** the interest is real, the means are the least that work, the intrusion is low. The
 effect can be significant, so it is reached only through people: a conversation, a hearing, evidence beyond the

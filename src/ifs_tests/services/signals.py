@@ -23,6 +23,11 @@ def policy(settings: Settings, now: datetime) -> rules.Policy:
     return rules.Policy(collect=collect, canary=collect and settings.canary)
 
 
+def keeps(attempt: Attempt, policy: rules.Policy) -> bool:
+    """Whether an answer to this attempt keeps its signals: the page measures only then."""
+    return policy.collect and attempt.resumes is not None
+
+
 def decoy_for(
     db: DB,
     q: Question,

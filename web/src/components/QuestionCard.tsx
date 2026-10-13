@@ -1,7 +1,8 @@
-import { type ReactNode, useEffect, useId, useRef, useState } from 'react'
-import type { AnswerIn, Feedback, HintOut, PlayQuestion } from '../api/types.gen'
+import { type ReactNode, useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
+import type { AnswerIn, Feedback, HintOut, PlayQuestion, Signals } from '../api/types.gen'
 import { errorMessage, ME_KEY, queryClient, useMe, useOnline } from '../lib/api'
 import { AREAS, TOPICS } from '../lib/areas'
+import { aiNote, letter, NOTED_MS, useRankedSignals } from '../lib/focus'
 import { changes, lp, numeral, TOP, tierOf } from '../lib/rank'
 import { BONUS_NAMES, xp } from '../lib/xp'
 import { Emblem } from './Emblem'
@@ -191,6 +192,40 @@ function Result({ feedback, mode }: { feedback: Feedback; mode: Mode }) {
   )
 }
 
+/** "Looking something up": the player says a switch away is coming, so it counts as declared. */
+function LookUp({ expired, onDeclare, onLost }: { expired: boolean; onDeclare: () => void; onLost: () => void }) {
+  const [presses, setPresses] = useState(0)
+  const [noted, setNoted] = useState(false)
+  const timer = useRef<number>(undefined)
+  const box = useRef<HTMLDivElement>(null)
+  const hint = useId()
+  useEffect(() => () => window.clearTimeout(timer.current), [])
+  // Hidden rather than unmounted at expiry: the layout effect still sees whether the button had focus.
+  useLayoutEffect(() => {
+    if (expired && box.current?.contains(document.activeElement)) onLost()
+  }, [expired, onLost])
+  const press = () => {
+    onDeclare()
+    setPresses((n) => n + 1)
+    setNoted(true)
+    window.clearTimeout(timer.current)
+    timer.current = window.setTimeout(() => setNoted(false), NOTED_MS)
+  }
+  return (
+    <div className="lookup" ref={box} hidden={expired}>
+      <button type="button" className="link-button" aria-describedby={hint} onClick={press}>
+        Looking something up
+      </button>
+      <span className="lookup-note">
+        <span className={noted ? 'muted lookup-hushed' : 'muted'} id={hint}>
+          Press just before you switch to your notes, a rulebook, a translator or a calculator.
+        </span>
+        <output>{noted && <span key={presses}>Noted. Switch to your look-up now.</span>}</output>
+      </span>
+    </div>
+  )
+}
+
 /** One question with the right input for its kind, and the explanation once answered. */
 export function QuestionCard({
   question,
@@ -199,6 +234,7 @@ export function QuestionCard({
   failed,
   error,
   onAnswer,
+  ranked,
   next,
   clock,
   expired,
@@ -218,7 +254,9 @@ export function QuestionCard({
   failed?: boolean
   /** The last send's error: a refusal the server tied to the answer field (it can't read it) shows there. */
   error?: unknown
-  onAnswer: (answer: AnswerIn) => void
+  onAnswer: (answer: AnswerIn, signals?: Signals) => void
+  /** Daily and counted mock while the server collects: what the page measures, and the canary's option. */
+  ranked?: { collect: boolean; decoy?: number | null }
   next?: ReactNode
   /** Shown next to the question while it is open. */
   clock?: ReactNode
@@ -260,6 +298,7 @@ export function QuestionCard({
   const askHint = () => onHint?.().then(setHint, (e: unknown) => setHintError(errorMessage(e)))
   const after = useRef<HTMLDivElement>(null)
   const text = useRef<HTMLParagraphElement>(null)
+  const article = useRef<HTMLElement>(null)
   const legend = useId()
   const kind = question.answer_kind
   const choice = kind.startsWith('choice')
@@ -267,6 +306,29 @@ export function QuestionCard({
   // Time's up and the send failed even after its retries: the player sends again, and may fix what they typed.
   const stuck = !!expired && !answered && !!failed && !pending
   const locked = answered || (!!expired && !stuck)
+  const measuring = !!ranked?.collect && !answered
+  const shown = question.options
+  const decoy = ranked?.decoy != null && hint?.removed_options.includes(ranked.decoy) ? null : ranked?.decoy
+  const sig = useRankedSignals(measuring, article, aiNote(shown, decoy))
+  const focusText = useCallback(() => text.current?.focus(), [])
+  const send = (a: AnswerIn) => onAnswer(a, ranked?.collect ? sig.read() : undefined)
+  const sendNow = useRef(send)
+  useEffect(() => {
+    sendNow.current = send
+  })
+
+  // Only the fact of a paste or drop into the free-text answer; what went in is never read.
+  const timedText = measuring && kind === 'text'
+  useEffect(() => {
+    const input = timedText ? article.current?.querySelector<HTMLInputElement>('.field input') : null
+    if (!input) return
+    const onInput = (e: Event) => {
+      const type = (e as InputEvent).inputType
+      if (type === 'insertFromPaste' || type === 'insertFromDrop') sig.markPasted()
+    }
+    input.addEventListener('beforeinput', onInput)
+    return () => input.removeEventListener('beforeinput', onInput)
+  }, [timedText, sig])
 
   useEffect(() => {
     if (feedback) after.current?.querySelector<HTMLElement>('button')?.focus()
@@ -280,19 +342,19 @@ export function QuestionCard({
   useEffect(() => {
     if (!expired || answered || sent.current) return
     sent.current = true
-    onAnswer(choice ? { options: chosen } : kind === 'self' ? {} : { value })
-  }, [expired, answered, choice, chosen, kind, value, onAnswer])
+    sendNow.current(choice ? { options: chosen } : kind === 'self' ? {} : { value })
+  }, [expired, answered, choice, chosen, kind, value])
 
   const { errors: refused, touch } = useFieldErrors(error)
 
   const submit = () => {
-    if (kind === 'self') return onAnswer({})
+    if (kind === 'self') return send({})
     const empty = choice ? chosen.length === 0 : !value.trim()
     if (empty && (question.graded || !choice)) {
       setMissing(choice ? 'Pick an answer first.' : 'Type your answer first.')
       return
     }
-    onAnswer(choice ? { options: chosen } : { value })
+    send(choice ? { options: chosen } : { value })
   }
 
   const toggle = (id: number) => {
@@ -302,10 +364,11 @@ export function QuestionCard({
   }
 
   return (
-    <article className="question panel stack" aria-labelledby={`${legend}-text`}>
+    <article className="question panel stack" aria-labelledby={`${legend}-text`} ref={article}>
       {clock && !answered && <div className="clock-bar">{clock}</div>}
       <QuestionMeta question={question} />
       <QuestionDocs docs={question.documents} open={question.area === 'rules'} />
+      {measuring && <LookUp expired={!!expired} onDeclare={sig.declare} onLost={focusText} />}
       <p className="question-text" id={`${legend}-text`} ref={text} tabIndex={-1}>
         {question.text}
       </p>
@@ -318,7 +381,7 @@ export function QuestionCard({
         {choice && (
           <fieldset className="choices" aria-describedby={missing ? `${legend}-missing` : undefined}>
             <legend>{kind === 'choice-many' ? `${answerLabel}: select all that apply` : answerLabel}</legend>
-            {question.options.map((o) => {
+            {shown.map((o) => {
               const right = feedback?.correct_options.includes(o.id)
               const picked = chosen.includes(o.id)
               const removed = !answered && hint?.removed_options.includes(o.id)
@@ -335,7 +398,7 @@ export function QuestionCard({
                   />
                   <span>
                     <span className="choice-letter" aria-hidden="true">
-                      {String.fromCharCode(65 + question.options.indexOf(o))}
+                      {letter(shown.indexOf(o)) + (ranked?.decoy != null ? '\u00a0' : '')}
                     </span>
                     {o.text}
                   </span>
@@ -387,7 +450,7 @@ export function QuestionCard({
           <>
             <Notice tone="error">Time's up, and your answer didn't go through.</Notice>
             <div className="answer-actions">
-              <button type="button" onClick={() => onAnswer(entered)}>
+              <button type="button" onClick={() => send(entered)}>
                 Send my answer again
               </button>
             </div>
@@ -412,7 +475,7 @@ export function QuestionCard({
                 className="secondary"
                 disabled={pending}
                 aria-describedby={`${legend}-unsure`}
-                onClick={() => onAnswer({ unsure: true })}
+                onClick={() => send({ unsure: true })}
               >
                 I'm not sure
               </button>

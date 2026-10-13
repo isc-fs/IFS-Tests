@@ -46,12 +46,14 @@ def start_daily(area: Area, user: Member, db: Db, now: Now, settings: AppSetting
     q, attempt = daily.start(db, user, area, now, policy, rules_from=settings.rules_1b_from)
     assert attempt.deadline_at is not None  # noqa: S101 - set when a daily attempt is created
     shown = questions.show(db, [q])[0]
+    keep = signals.keeps(attempt, policy)
     return TimedQuestion(
         attempt_id=attempt.id,
         question=play_question(shown),
         deadline_at=attempt.deadline_at,
         server_now=now,
-        decoy_option_id=decoy_shown(attempt, shown, policy),
+        decoy_option_id=decoy_shown(attempt, shown, policy) if keep else None,
+        collect_signals=keep,
     )
 
 

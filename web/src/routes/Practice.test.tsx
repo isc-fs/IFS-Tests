@@ -1,7 +1,10 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { expect, test } from 'vitest'
+import { afterEach, expect, test, vi } from 'vitest'
 import { MEMBER, progress, renderApp } from '../test/render'
+import { away, chars, fire, select, useClock } from '../test/signals'
+
+afterEach(() => vi.useRealTimers())
 
 const base = {
   quizzes: ['FSG 2024 EV'],
@@ -202,4 +205,27 @@ test('question text is rendered as text', async () => {
   renderApp('/practice', api({ ...CHOICE, text: '<img src=x onerror="window.pwned=1">' }, {}))
   expect(await screen.findByText('<img src=x onerror="window.pwned=1">')).toBeInTheDocument()
   expect(document.querySelector('img')).toBeNull()
+})
+
+test('practice never measures: no look-up button, copies are left alone and the answer carries no signals', async () => {
+  useClock()
+  const { sent } = renderApp(
+    '/practice',
+    api({ ...CHOICE, text: chars(120) }, { correct: false, official: '0.713 m', correct_options: [70], solutions: [] }),
+  )
+  await screen.findByRole('radio', { name: '0.837 m' })
+  expect(screen.queryByRole('button', { name: 'Looking something up' })).toBeNull()
+  const text = document.querySelector<HTMLElement>('.question-text')!
+  select(text)
+  const { prevented, data } = fire(text)
+  expect(prevented).toBe(false)
+  expect(data.setData).not.toHaveBeenCalled()
+  expect([...document.querySelectorAll('.choice-letter')].map((e) => e.textContent)).toEqual(['A', 'B'])
+  away(30_000)
+  await userEvent.click(screen.getByRole('radio', { name: '0.837 m' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Check answer' }))
+  expect(await screen.findByText('Not quite.')).toBeInTheDocument()
+  const body = sent('POST /api/practice/questions/7/answer')[0].body as object
+  expect(body).toEqual({ options: [71] })
+  expect('signals' in body).toBe(false)
 })
