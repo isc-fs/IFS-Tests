@@ -62,10 +62,13 @@ export function ReportProblem({ questionId }: { questionId: number }) {
             touch('message')
           }}
           aria-invalid={!!errors.message}
-          aria-describedby={errors.message ? `${id}-hint ${id}-error` : `${id}-hint`}
+          aria-describedby={errors.message ? `${id}-hint ${id}-letter ${id}-error` : `${id}-hint ${id}-letter`}
         />
         <p className="hint" id={`${id}-hint`}>
           For example: the official answer is wrong, a figure is missing, or the rules have changed.
+        </p>
+        <p className="hint" id={`${id}-letter`}>
+          Name the option by its text, not its letter.
         </p>
         {errors.message && (
           <p className="field-error" id={`${id}-error`}>

@@ -233,3 +233,36 @@ def test_the_signals_the_export_returns_are_exactly_the_columns_ranked_play_stor
     from ifs_tests.domain.signals import COLUMNS
 
     assert set(ExportSignals.model_fields) == set(COLUMNS)
+
+
+ORDER_FIELDS = {"keep_order", "option_order", "option_order_reason"}
+
+
+def test_the_option_order_fields_are_a_reviewers_and_nobody_elses(app_client: TestClient) -> None:
+    components = app_client.get("/api/openapi.json").json()["components"]["schemas"]
+    carrying = {name for name, c in components.items() if ORDER_FIELDS & set(c.get("properties", {}))}
+    assert carrying == {"ReviewQuestion", "ReviewPatch"}
+    assert set(components["ReviewQuestion"]["properties"]) >= ORDER_FIELDS
+    patch_fields = set(components["ReviewPatch"]["properties"])
+    assert "keep_order" in patch_fields and not patch_fields & (ORDER_FIELDS - {"keep_order"})
+
+
+def test_nothing_a_player_gets_says_how_the_options_were_ordered(app_client: TestClient) -> None:
+    spec = app_client.get("/api/openapi.json").json()
+    components = spec["components"]["schemas"]
+    for path, ops in spec["paths"].items():
+        if path.startswith("/api/review/"):
+            continue
+        for method, op in ops.items():
+            for response in op.get("responses", {}).values():
+                schema = response.get("content", {}).get("application/json", {}).get("schema", {})
+                fields = _fields(schema, components, set())
+                leaked = {
+                    f for f in fields if re.search(r"keep_order|option_order|order_key|shuffle|salt", f)
+                }
+                assert not leaked, (method, path, leaked)
+            body = op.get("requestBody", {}).get("content", {}).get("application/json", {}).get("schema", {})
+            asked = {
+                f for f in _fields(body, components, set()) if re.search(r"order_key|option_order|shuffle", f)
+            }
+            assert not asked, (method, path)

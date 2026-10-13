@@ -795,6 +795,15 @@ class ReviewQuestion(BaseModel):
     images_missing: bool
     excluded: bool
     exclusion_note: str | None
+    keep_order: bool = Field(description="Never shuffled on the daily: shown in bank order")
+    option_order: Literal["shuffled", "auto", "pinned"] = Field(
+        description="How the daily shows the options: in a per-attempt order, kept in bank order by the "
+        "automatic rules (see option_order_reason), or pinned in bank order by a reviewer"
+    )
+    option_order_reason: str | None = Field(
+        description="Why the automatic rules would keep the bank order (relative, label, yes-no, ladder-range, "
+        "ladder-sorted, ladder-word, stem, solution, figure, blank or kind), if they would"
+    )
     key_changed_at: datetime | None
     upstream_change: Literal["answer", "wording", "content", "removed", "back"] | None = Field(
         description="Why it is in the changed-upstream queue: its answer or options changed (any correction was "
@@ -822,6 +831,7 @@ class ReviewPatch(In):
     labels_reviewed: bool | None = None
     excluded: bool | None = None
     exclusion_note: str | None = Field(default=None, max_length=200)
+    keep_order: bool | None = None
     acknowledge_change: bool | None = None
 
 

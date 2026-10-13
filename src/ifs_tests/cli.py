@@ -21,6 +21,13 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
 
+def _count(text: str) -> int:
+    n = int(text)
+    if n < 0:
+        raise argparse.ArgumentTypeError("must be 0 or more")
+    return n
+
+
 def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(prog="ifs-tests", description="FS quiz practice tooling")
     p.add_argument("--data", type=Path, help="mirror directory (default: IFS_BANK_DIR or data/fsquiz)")
@@ -110,6 +117,13 @@ def main(argv: list[str] | None = None) -> None:
     v.add_argument("--include-alumni", action="store_true")
     v.add_argument("--salt-stdin", action="store_true")
 
+    sr = sub.add_parser(
+        "shuffle-report",
+        help="read-only: how much of the bank the daily's option shuffle keeps in bank order (docs/runbook.md)",
+    )
+    sr.add_argument("--sample", type=_count, default=30, help="questions listed per sample (default 30)")
+    sr.add_argument("--seed", type=int, default=0, help="seed of the samples (default 0)")
+
     sub.add_parser("maintenance", help="run the nightly maintenance job now (idempotent)")
     st = sub.add_parser(
         "settle",
@@ -145,6 +159,7 @@ def main(argv: list[str] | None = None) -> None:
         "scheduler",
         "openapi",
         "push",
+        "shuffle-report",
     ):
         _app_command(args)
         return
@@ -383,6 +398,10 @@ def _app_command(args: argparse.Namespace) -> None:
                     db, load_bank(source), source / "img", settings.media_dir, now, args.allow_mass_removal
                 )
                 print(f"Bank loaded from {source}: {report}")
+            elif args.cmd == "shuffle-report":
+                from .services import shuffle_report
+
+                print(shuffle_report.report(db, args.sample, args.seed), end="")
             elif args.cmd == "maintenance":
                 print(maintenance.run(db, now))
             elif args.cmd == "settle":

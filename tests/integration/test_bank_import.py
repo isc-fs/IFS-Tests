@@ -176,6 +176,48 @@ def test_exclusions_survive_a_reimport(
     assert q.excluded and not q.playable
 
 
+def test_a_reviewers_pin_survives_a_reimport_with_a_reworded_option(
+    db: Session, clock: Clock, tmp_path: Path, sample: dict[str, Any]
+) -> None:
+    import_bank(db, copy.deepcopy(sample), SAMPLE_DIR / "img", tmp_path, clock.now)
+    pinned = by_fsquiz(db, 90011)
+    assert pinned.keep_order is False
+    pinned.keep_order = True
+    db.commit()
+
+    unchanged = import_bank(db, copy.deepcopy(sample), SAMPLE_DIR / "img", tmp_path, clock.now)
+    assert unchanged.updated == 0
+    db.expire_all()
+    assert by_fsquiz(db, 90011).keep_order is True
+
+    answers = raw(sample, 90011)["answers"]
+    answers[0]["text"] += " (reworded)"
+    answers.reverse()  # and the positions move too
+    raw(sample, 90011)["text"] += " (edited upstream)"
+    report = import_bank(db, copy.deepcopy(sample), SAMPLE_DIR / "img", tmp_path, clock.now)
+    assert report.updated == 1
+    db.expire_all()
+    assert by_fsquiz(db, 90011).keep_order is True
+    assert by_fsquiz(db, 90001).keep_order is False
+    assert db.scalar(select(func.count()).select_from(Question).where(Question.keep_order)) == 1
+
+
+def test_a_pin_survives_the_question_leaving_the_mirror_and_coming_back(
+    db: Session, clock: Clock, tmp_path: Path, sample: dict[str, Any]
+) -> None:
+    import_bank(db, copy.deepcopy(sample), SAMPLE_DIR / "img", tmp_path, clock.now)
+    by_fsquiz(db, 90011).keep_order = True
+    db.commit()
+    gone = copy.deepcopy(sample)
+    gone["questions"] = [q for q in gone["questions"] if q["question_id"] != 90011]
+    import_bank(db, gone, SAMPLE_DIR / "img", tmp_path, clock.now, allow_mass_removal=True)
+    db.expire_all()
+    assert by_fsquiz(db, 90011).keep_order is True
+    import_bank(db, copy.deepcopy(sample), SAMPLE_DIR / "img", tmp_path, clock.now)
+    db.expire_all()
+    assert by_fsquiz(db, 90011).keep_order is True
+
+
 def test_images_arriving_later_keep_a_reviewers_correction(
     db: Session, clock: Clock, tmp_path: Path, sample: dict[str, Any]
 ) -> None:

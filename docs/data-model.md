@@ -161,6 +161,7 @@ The rulebooks, handbooks and other documents a quiz was based on. Linked, never 
 | `playable` | Served to players: `NOT images_missing AND NOT excluded` |
 | `images_missing` | An image referenced by the question isn't in the media directory yet |
 | `excluded`, `exclusion_note` | Hidden, and why: by a reviewer, or by the import when FS-Quiz says it removed the question (the note then starts with "FS-Quiz") |
+| `keep_order` | Reviewer override: the question is never shuffled on the daily and keeps bank order. Boolean, default false (0027). A bank re-import leaves it alone. The automatic verdict is computed at display time and not stored; the rules are in `src/ifs_tests/domain/shuffle.py` and [game rules 5](game-rules.md#5-the-daily-question). "Bank order" is `(position, id)`, and `position` is rewritten on re-import: that can reorder the open attempts of a kept question, and flip the verdict of one whose ladder or label rules read the options in that sequence |
 | `labels_reviewed` | A reviewer confirmed area and topic; re-imports keep them |
 | `source_hash` | SHA-256 of the FS-Quiz content (type, text, time, answers, images, solutions); an unchanged hash skips the question on re-import |
 | `graded_hash` | SHA-256 of what is graded (type; options by FS-Quiz answer ID and which are correct, or the typed answers). A change drops a reviewer's correction and resets difficulty; any other change keeps them. Null for rows loaded before migration 0020, until the next `push` fills it |
@@ -336,15 +337,15 @@ Key–value store (`key` varchar(64) primary key, `value` JSONB). Today it has e
 
 | Key | Value | Used for |
 |---|---|---|
-| `hint_salt` | `{"salt": "<64 hex characters>"}`: 32 random bytes | A server secret: the HMAC seed for hints (`services/hints._seed`), the daily question draw (`domain/daily.pick`, `pick_for`) and the XP critical roll (`services/xp._crit`). Created on first use with `INSERT ... ON CONFLICT DO NOTHING` (`services/hints.salt`), so a fresh database gets its own |
+| `hint_salt` | `{"salt": "<64 hex characters>"}`: 32 random bytes | A server secret: the HMAC seed for hints (`services/hints._seed`), the daily question draw (`domain/daily.pick`, `pick_for`), the per-attempt option order of the daily (`domain/shuffle.order`, keyed by HMAC of the attempt id) and the XP critical roll (`services/xp._crit`). Created on first use with `INSERT ... ON CONFLICT DO NOTHING` (`services/hints.salt`), so a fresh database gets its own |
 
-Treat `hint_salt` as a secret: with it and the question bank, anyone could predict daily questions (and, from season 1b, any player's draw: `backup_ro` and the backups can read it) and run hints backwards. It is in every database backup. Deleting the row makes the app create a new one; hints then change, so a player who already took a hint could get a second, different one.
+Treat `hint_salt` as a secret: with it and the question bank, anyone could predict daily questions (and, from season 1b, any player's draw: `backup_ro` and the backups can read it) and run hints backwards. It is in every database backup. Deleting the row makes the app create a new one; hints then change, so a player who already took a hint could get a second, different one, and the options of open daily attempts, and the review of every finished daily, are shown in a different order from the one the player saw. Whoever holds the salt can also compute any attempt's option order.
 
 ### `audit_log`
 
 Insert-only record of privileged actions: `id` (bigint), `at`, `actor_id` (the acting user's ID, or null for the system; **no foreign key**, so accounts can be deleted while the log keeps the number), `action`, `target` (such as `user:12`, `question:345`, `invite:7`, `fsquiz`), `details` (JSONB: what changed). **Personal data** (IDs of the actor and target, and before/after values).
 
-Actions written: `user.register`, `user.bootstrap_admin`, `user.locked`, `user.update`, `user.email`, `user.revoke_sessions`, `user.export`, `user.delete`, `invite.create`, `invite.revoke`, `reset.create`, `password.change`, `password.reset`, `question.update`, `question.answer`, `question.answer_cleared`, `report.resolve`, `bank.import`. Invite notes are never recorded (migration 0013 removed old ones).
+Actions written: `user.register`, `user.bootstrap_admin`, `user.locked`, `user.update`, `user.email`, `user.revoke_sessions`, `user.export`, `user.delete`, `invite.create`, `invite.revoke`, `reset.create`, `password.change`, `password.reset`, `question.update` (its details can include `keep_order`), `question.answer`, `question.answer_cleared`, `report.resolve`, `bank.import`. Invite notes are never recorded (migration 0013 removed old ones).
 
 The migration 0002 revokes `UPDATE`, `DELETE` and `TRUNCATE` on `audit_log` from the production app role `app_rt` (`deploy/db/roles.sql`), so the running app can't rewrite history. The nightly purge (`services/privacy.purge`) calls the function **`purge_audit_log(before)`** instead (migration 0016): owned by `migrator`, `SECURITY DEFINER`, executable only by `app_rt`, it deletes entries older than `before` but never any younger than 730 days by the database's own clock, and returns how many it deleted. So the app can apply the two-year keep (`AUDIT_KEEP` in `domain/accounts.py`) but can't wipe the log through it.
 
@@ -358,7 +359,7 @@ Only on the server, outside Alembic and the models: `deploy/deploy.sh` creates i
 
 ## Personal data
 
-[ADR 0006](adr/0006-personal-data.md) sets the rules; `services/privacy.py` implements them. AGENTS.md requires anything new stored about a person to appear in `services/privacy.export` and to go when the account is deleted (a cascading foreign key or a step in `privacy._delete`).
+[ADR 0006](adr/0006-personal-data.md) sets the rules; `services/privacy.py` implements them. `questions.keep_order` is a question attribute, not personal data, and the option order is derived from `hint_salt` and the attempt id and stored nowhere, so ADR 0006 needs no export or deletion step for the shuffle. AGENTS.md requires anything new stored about a person to appear in `services/privacy.export` and to go when the account is deleted (a cascading foreign key or a step in `privacy._delete`).
 
 | Table | Export (`GET /api/me/export`) | On account deletion |
 |---|---|---|
@@ -415,6 +416,7 @@ Retention: alumni and disabled accounts are deleted 365 days after `left_at`; th
 | 0025 | `attempts.away_declared_s`, `away_undeclared_s`, `pasted`, `long_copies`, `resumes`, `decoy_option_id` (→ `answer_options`, `SET NULL`, partial index): ranked-play signals and the AI canary's decoy (ADR 0010). Expand only: all nullable, the previous release ignores them. Downgrading loses the stored signals |
 | 0026 | `ix_attempts_daily_day`, a partial index on `attempts` (`day`, `question_id`) `WHERE mode = 'daily'`, for the per-player draw and the withheld set; and `mock_sessions.skipped`, nullable. Expand only; the previous release ignores both. Rolling back is `deploy.sh prod <live tag>`: per-player attempts are ordinary daily attempts to it |
 | 0027 | `attempts.released_at`, `settled_at` and `reward`, nullable, and the partial index `ix_attempts_daily_pending`: results at Madrid day close (ADR 0010). Expand only: three metadata-only columns, no backfill, and an index that is empty until the rule date; the previous release ignores them. `downgrade()` refuses (raises, naming `ifs-tests settle`) while any pending result exists, because dropping the columns would lose answers that were recorded and never granted |
+| 0028 | `questions.keep_order boolean NOT NULL DEFAULT false`: a reviewer can keep one question's options in bank order on the daily (option shuffle, ADR 0010). Expand only; the previous release ignores it. Rolling back is `deploy.sh prod <live tag>` |
 
 ### Expand/contract
 

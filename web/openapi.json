@@ -6978,6 +6978,17 @@
       ],
       "title": "Exclusion Note"
      },
+     "keep_order": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Keep Order"
+     },
      "acknowledge_change": {
       "anyOf": [
        {
@@ -7075,6 +7086,33 @@
        }
       ],
       "title": "Exclusion Note"
+     },
+     "keep_order": {
+      "type": "boolean",
+      "title": "Keep Order",
+      "description": "Never shuffled on the daily: shown in bank order"
+     },
+     "option_order": {
+      "type": "string",
+      "enum": [
+       "shuffled",
+       "auto",
+       "pinned"
+      ],
+      "title": "Option Order",
+      "description": "How the daily shows the options: in a per-attempt order, kept in bank order by the automatic rules (see option_order_reason), or pinned in bank order by a reviewer"
+     },
+     "option_order_reason": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Option Order Reason",
+      "description": "Why the automatic rules would keep the bank order (relative, label, yes-no, ladder-range, ladder-sorted, ladder-word, stem, solution, figure, blank or kind), if they would"
      },
      "key_changed_at": {
       "anyOf": [
@@ -7188,6 +7226,9 @@
      "images_missing",
      "excluded",
      "exclusion_note",
+     "keep_order",
+     "option_order",
+     "option_order_reason",
      "key_changed_at",
      "upstream_change",
      "official",

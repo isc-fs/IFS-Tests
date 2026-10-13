@@ -188,16 +188,24 @@ function Detail() {
     if (saved?.focus) notice.current?.focus()
   }, [saved])
   // `focus` is for actions whose button disappears once they succeed.
-  const done = (text: string, focus = false) => ({
+  const done = (text: string | ((q: ReviewQuestion) => string), focus = false) => ({
     onMutate: () => setSaved(null),
     onSuccess: (q: ReviewQuestion) => {
       queryClient.setQueryData(reviewQuestionQueryKey({ path }), q)
       queryClient.invalidateQueries({ queryKey: reviewQuestionsInfiniteQueryKey() })
-      setSaved({ text, focus })
+      setSaved({ text: typeof text === 'string' ? text : text(q), focus })
     },
   })
   const labels = useMutation({ ...updateQuestionMutation(), ...done('Labels saved.') })
   const visibility = useMutation({ ...updateQuestionMutation(), ...done('Saved.') })
+  const order = useMutation({
+    ...updateQuestionMutation(),
+    ...done((r) => {
+      if (r.keep_order) return "Pinned: bank order from each player's next load. Open attempts reorder on reload."
+      if (r.option_order === 'auto') return `Pin removed. This question is still kept in order: ${orderReason(r)}.`
+      return "Pin removed: shuffled from each player's next load."
+    }),
+  })
   const acknowledge = useMutation({ ...updateQuestionMutation(), ...done('Marked as checked.', true) })
   const correct = useMutation({ ...correctAnswerMutation(), ...done('Answer corrected.') })
   const clear = useMutation({ ...removeCorrectionMutation(), ...done('Correction removed.') })
@@ -318,6 +326,7 @@ function Detail() {
       {q.reports.length > 0 && (
         <section className="panel stack" aria-labelledby="reports-title">
           <h2 id="reports-title">Reports from players</h2>
+          <p className="muted">Letters in a report are the player's own order.</p>
           <ErrorNotice error={resolve.error} />
           <ul className="list">
             {q.reports.map((r) => (
@@ -359,6 +368,15 @@ function Detail() {
           clearError={clear.error}
           onSave={(body) => correct.mutate({ path, body })}
           onClear={(then) => clear.mutate({ path }, { onSuccess: then })}
+        />
+      )}
+      {(q.answer_kind === 'choice-one' || q.answer_kind === 'choice-many') && (
+        <OptionOrder
+          key={`order-${q.id}`}
+          q={q}
+          pending={order.isPending}
+          error={order.error}
+          onSave={(body) => order.mutate({ path, body })}
         />
       )}
       <Visibility
@@ -512,6 +530,73 @@ function Answer({
             Use FS-Quiz's answer again
           </button>
         )}
+      </div>
+    </Form>
+  )
+}
+
+const ORDER_REASONS: Record<string, string> = {
+  relative: 'an option refers to the other options, like all of the above',
+  label: 'the options are letters or labels, like Fig. A or A and B',
+  figure: 'the question has a picture and its options are labels, or its text talks about labels',
+  'yes-no': 'the options are a yes/no pair',
+  'ladder-range': 'the options are ranges or bounds',
+  'ladder-sorted': 'the options are numbers in increasing order',
+  'ladder-word': 'the options are a scale of words',
+  stem: 'the question mentions an option by letter or position',
+  solution: 'the solution mentions an option by letter or position',
+  blank: 'an option is an image or empty',
+  kind: 'it is not a choice question, or has fewer than two options',
+}
+
+function orderReason(q: ReviewQuestion) {
+  return q.option_order_reason ? (ORDER_REASONS[q.option_order_reason] ?? q.option_order_reason) : null
+}
+
+function OptionOrder({ q, pending, error, onSave }: FormProps<{ keep_order: boolean }>) {
+  const reason = orderReason(q)
+  if (q.option_order === 'auto') {
+    return (
+      <section className="panel stack" aria-labelledby="order-title">
+        <h2 id="order-title">Option order on the daily</h2>
+        <p className="muted">
+          Kept in this order automatically: {reason}. A rule decides this; it can't be changed here.
+        </p>
+        <p className="muted">
+          If a shuffle would read fine, report the false positive as the reviewers guide says (section "Option order").
+        </p>
+      </section>
+    )
+  }
+  return (
+    <Form
+      onSubmit={() => !pending && onSave({ keep_order: !q.keep_order })}
+      error={error}
+      className="panel stack"
+      aria-labelledby="order-title"
+    >
+      <h2 id="order-title">Option order on the daily</h2>
+      <p className="muted">
+        From season 1b each player sees the options in their own order. A change applies on the next load, open attempts
+        included.
+      </p>
+      <ErrorNotice error={error} />
+      <div className="row">
+        <button
+          type="submit"
+          role="switch"
+          aria-checked={q.keep_order}
+          aria-describedby="order-status"
+          className="secondary"
+          aria-disabled={pending}
+        >
+          Keep bank order on the daily
+        </button>
+        <span id="order-status" className="muted">
+          {q.option_order === 'pinned'
+            ? `On: always shown in bank order.${reason ? ` It would be kept in order anyway: ${reason}.` : ''}`
+            : 'Off: each player gets their own order.'}
+        </span>
       </div>
     </Form>
   )

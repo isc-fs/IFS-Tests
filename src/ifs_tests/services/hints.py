@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import secrets
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.postgresql import insert
@@ -34,6 +34,22 @@ def _seed(db: DB, question_id: int) -> int:
     question id alone could be run backwards to the answer."""
     digest = hmac.new(salt(db), str(question_id).encode(), hashlib.sha256).digest()
     return int.from_bytes(digest[:8], "big")
+
+
+def shuffle_key(db: DB, attempt_id: int) -> bytes:
+    """The order key of one daily attempt. A gated attempt exists only after a draw that stored and committed the
+    secret, so the mint here is a rare fallback. Call it after your own work is committed: it commits only if it
+    had to mint. `salt()` isn't used for the read because it writes on every call."""
+    row = db.get(Setting, "hint_salt")
+    secret = bytes.fromhex(row.value["salt"]) if row else salt(db)
+    if row is None:
+        db.commit()
+    return hmac.new(secret, f"shuffle:{attempt_id}".encode(), hashlib.sha256).digest()
+
+
+def order_key(db: DB, attempt_id: int, day: date, rules_from: date | None) -> bytes | None:
+    """The key that orders this attempt's options, or None before season 1b (bank order)."""
+    return shuffle_key(db, attempt_id) if timing.per_player(day, rules_from) else None
 
 
 def _hint(db: DB, user: User, q: Question, now: datetime) -> rules.Hint:

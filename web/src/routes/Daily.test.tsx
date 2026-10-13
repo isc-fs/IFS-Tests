@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { RULES_FROM } from '../lib/fairPlay'
 import { MEMBER, renderApp } from '../test/render'
-import { away, SIGNAL_KEYS, useClock } from '../test/signals'
+import { away, chars, fire, note, select, SIGNAL_KEYS, useClock } from '../test/signals'
 
 afterEach(() => vi.useRealTimers())
 
@@ -753,4 +753,101 @@ test("a result already shown as yesterday's card is not listed twice", async () 
   })
   expect(await screen.findByText("Yesterday's question. Correct: +15 LP, +60 XP.")).toBeInTheDocument()
   expect(screen.queryByRole('heading', { name: 'Your latest results' })).toBeNull()
+})
+
+describe('options listed in an order of their own', () => {
+  const NBSP = /\u00a0/g
+  /** Ids out of bank order, as a gated day sends them: Charlie, Alpha, Bravo. */
+  const OPTIONS = [
+    { id: 52, text: 'Charlie' },
+    { id: 50, text: 'Alpha' },
+    { id: 51, text: 'Bravo' },
+  ]
+  const letters = () =>
+    [...document.querySelectorAll('.choice-letter')].map((el) => ({
+      letter: el.textContent?.replace(NBSP, ''),
+      name: el.nextSibling?.textContent,
+    }))
+  const longCopy = () => {
+    const text = document.querySelector<HTMLElement>('.question-text')!
+    select(text)
+    const { data } = fire(text)
+    return data.setData.mock.calls[0]?.[1] as string | undefined
+  }
+
+  test('the letters follow the list the server sent, not the ids', async () => {
+    useClock()
+    renderApp('/daily', api({ ...timed(120, 0, true), question: { ...QUESTION, options: OPTIONS } }))
+    await start()
+    await screen.findByRole('timer')
+    expect(letters()).toEqual([
+      { letter: 'A', name: 'Charlie' },
+      { letter: 'B', name: 'Alpha' },
+      { letter: 'C', name: 'Bravo' },
+    ])
+  })
+
+  test.each([
+    [50, 'Alpha', 'B'],
+    [52, 'Charlie', 'A'],
+    [51, 'Bravo', 'C'],
+  ])('the canary note names the letter shown beside the decoy %i (%s)', async (decoy, name, letter) => {
+    useClock()
+    const question = { ...QUESTION, text: chars(240), options: OPTIONS }
+    renderApp('/daily', api({ ...timed(120, 0, true), question, decoy_option_id: decoy }))
+    await start()
+    await screen.findByRole('timer')
+    const shown = letters().find((l) => l.name === name)?.letter
+    expect(shown).toBe(letter)
+    const copied = longCopy()
+    expect(copied).toBeDefined()
+    expect(copied!.endsWith(note(shown!))).toBe(true)
+  })
+
+  test('a different order for the same options moves the note with the decoy', async () => {
+    useClock()
+    const other = [OPTIONS[2], OPTIONS[0], OPTIONS[1]] // Bravo, Charlie, Alpha
+    const question = { ...QUESTION, text: chars(240), options: other }
+    renderApp('/daily', api({ ...timed(120, 0, true), question, decoy_option_id: 50 }))
+    await start()
+    await screen.findByRole('timer')
+    expect(letters().find((l) => l.name === 'Alpha')?.letter).toBe('C')
+    expect(longCopy()?.endsWith(note('C'))).toBe(true)
+  })
+
+  test('a finished question is reviewed in the order the server sent', async () => {
+    renderApp('/daily', {
+      ...api(timed(120)),
+      'GET /api/daily/elec/review': {
+        body: {
+          day: '2026-10-01',
+          question: { ...QUESTION, area: 'elec', options: OPTIONS },
+          feedback: { ...FEEDBACK, correct_options: [50] },
+          answer: { options: [50], value: null },
+          late: false,
+          xp: 55,
+          lp: 16.2,
+          streak: 2,
+        },
+      },
+    })
+    await userEvent.click(await screen.findByRole('button', { name: 'See the Electrical question' }))
+    const card = await screen.findByRole('article')
+    const rows = within(card).getAllByRole('radio')
+    expect(rows.map((r) => r.closest('label')?.textContent)).toEqual([
+      expect.stringContaining('Charlie'),
+      expect.stringContaining('Alpha'),
+      expect.stringContaining('Bravo'),
+    ])
+    expect(rows[1]).toBeChecked()
+  })
+
+  test('the answer sent is the option id, whatever its place in the list', async () => {
+    const { sent } = renderApp('/daily', api({ ...timed(120), question: { ...QUESTION, options: OPTIONS } }))
+    await start()
+    await userEvent.click(await screen.findByRole('radio', { name: 'Bravo' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Check answer' }))
+    await screen.findByText(/Correct: \+15 LP/)
+    expect(sent(ANSWER)[0].body).toEqual({ options: [51] })
+  })
 })

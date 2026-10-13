@@ -155,11 +155,15 @@ def _serve(q: Question) -> None:
 
 
 def update(db: DB, reviewer: User, question_id: int, changes: dict[str, Any], now: datetime) -> Question:
-    """Labels, exclusion and "I've checked the upstream change". Only the fields in `changes` are touched."""
+    """Labels, exclusion, option order and "I've checked the upstream change". Only the fields in `changes`
+    are touched."""
     # null means "leave as is", except for topic and note, where it clears them.
     changes = {k: v for k, v in changes.items() if v is not None or k in ("topic", "exclusion_note")}
     q = _question(db, question_id)
-    before = {k: getattr(q, k) for k in ("area", "topic", "labels_reviewed", "excluded", "exclusion_note")}
+    before = {
+        k: getattr(q, k)
+        for k in ("area", "topic", "labels_reviewed", "excluded", "exclusion_note", "keep_order")
+    }
     if "area" in changes or "topic" in changes:
         area = changes.get("area", q.area)
         allowed = TOPICS_BY_AREA.get(area, [])
@@ -177,6 +181,8 @@ def update(db: DB, reviewer: User, question_id: int, changes: dict[str, Any], no
         q.excluded = bool(changes["excluded"])
         note = (changes.get("exclusion_note") or "").strip()[:200]
         q.exclusion_note = (note or None) if q.excluded else None
+    if "keep_order" in changes:
+        q.keep_order = bool(changes["keep_order"])
     acknowledged = bool(changes.get("acknowledge_change")) and q.key_changed_at is not None
     if acknowledged:
         q.key_changed_at = q.upstream_change = None
