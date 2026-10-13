@@ -29,8 +29,8 @@ def _result(db: Db, r: daily.Result) -> DailyResult:
 
 
 @router.get("")
-def daily_status(user: Member, db: Db, now: Now) -> DailyStatus:
-    s = daily.status(db, user, now)
+def daily_status(user: Member, db: Db, now: Now, settings: AppSettings) -> DailyStatus:
+    s = daily.status(db, user, now, rules_from=settings.rules_1b_from)
     return DailyStatus(
         day=s.day,
         streak=s.streak,
@@ -43,7 +43,7 @@ def daily_status(user: Member, db: Db, now: Now) -> DailyStatus:
 @router.post("/{area}/start")
 def start_daily(area: Area, user: Member, db: Db, now: Now, settings: AppSettings) -> TimedQuestion:
     policy = signals.policy(settings, now)
-    q, attempt = daily.start(db, user, area, now, policy)
+    q, attempt = daily.start(db, user, area, now, policy, rules_from=settings.rules_1b_from)
     assert attempt.deadline_at is not None  # noqa: S101 - set when a daily attempt is created
     shown = questions.show(db, [q])[0]
     return TimedQuestion(

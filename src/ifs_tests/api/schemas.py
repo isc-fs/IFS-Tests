@@ -282,6 +282,10 @@ class ExportMockRun(Exported):
         "finished before this was kept"
     )
     unreached_graded: int | None = Field(description="How many of those were graded")
+    skipped: int | None = Field(
+        description="Questions the run skipped because they were someone's daily question when it got to them; "
+        "null while running or if it finished before this was kept"
+    )
 
 
 class ExportLiveJoin(Exported):
@@ -625,11 +629,18 @@ class MockItem(BaseModel):
     feedback: Feedback
     answer: KeyIn | None = Field(default=None, description="What you sent; none if the time ran out")
     late: bool
+    hidden: bool = Field(
+        description="The result is kept back for now: the question became someone's daily question after you "
+        "had it on screen. It is left out of the totals and shows when its player has answered"
+    )
 
 
 class MockSummary(BaseModel):
     correct: int = Field(description="Right answers sent in time: a late one is scored as wrong")
-    graded: int = Field(description="Graded questions in the run, those not reached included")
+    graded: int = Field(
+        description="Graded questions in the run, those not reached included and those with a hidden result left out"
+    )
+    hidden: int = Field(description="Questions whose result is kept back for now (left out of the totals)")
     unreached: int = Field(description="Questions not reached because the run was ended early: not scored")
     xp: int
     lp: float
@@ -646,6 +657,10 @@ class MockState(BaseModel):
     total: int
     current: TimedQuestion | None
     summary: MockSummary | None
+    skipped: int = Field(
+        description="Questions left out of the run because they are someone's daily question: so far while it "
+        "runs, in the end once it is over"
+    )
 
 
 class AreaProgress(BaseModel):
@@ -721,7 +736,7 @@ class ReviewQuestion(BaseModel):
     answered: int
     right: int
     answer_hidden: bool = Field(
-        description="The reviewer's own live question: answers withheld until answered"
+        description="The reviewer's own running question, or someone's daily today: answers withheld"
     )
     quiz_notes: list[str] = Field(
         description="FS-Quiz's notes on the quizzes it appeared in, e.g. that a question was later removed"

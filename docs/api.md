@@ -103,17 +103,17 @@ No session needed; the CSRF header still is.
 | Method and path | Purpose |
 |---|---|
 | `GET /api/practice/areas` | Playable questions per area and topic, and the caller's progress |
-| `GET /api/practice/next` | A random question the caller has practised least (`area`, `topic`, `skip`); never one running elsewhere |
-| `GET /api/practice/questions/{question_id}` | One playable question (no answer); 409 if it is running elsewhere for the caller |
-| `POST /api/practice/questions/{question_id}/answer` | Grade an answer (or "I'm not sure") and return the official answer, solutions, XP. Refuses a `signals` block (422): only daily and mock answers take one |
-| `POST /api/practice/questions/{question_id}/hint` | A hint for the next answer to this question (409 if it is running elsewhere, 403 from DT I) |
+| `GET /api/practice/next` | A random question the caller has practised least (`area`, `topic`, `skip`); never one running elsewhere for the caller or withheld as someone's daily today |
+| `GET /api/practice/questions/{question_id}` | One playable question (no answer); 409 if it is running elsewhere for the caller, or withheld ("This question is someone's daily question today: practise it later.") because it is someone's daily question today from season 1b. |
+| `POST /api/practice/questions/{question_id}/answer` | Grade an answer (or "I'm not sure") and return the official answer, solutions, XP (409 if it is running elsewhere or withheld). Refuses a `signals` block (422): only daily and mock answers take one |
+| `POST /api/practice/questions/{question_id}/hint` | A hint for the next answer to this question (409 if it is running elsewhere or withheld, 403 from DT I) |
 
 ### `/api/daily` (`api/routes/daily.py`): `Member`
 
 | Method and path | Purpose |
 |---|---|
-| `GET /api/daily` | Today's state per area, streak, XP and LP today; closes the caller's abandoned daily questions. Each area has its `day`: the day before for a question started before midnight, still running or answered since midnight, until the new day's question in that area is started |
-| `POST /api/daily/{area}/start` | Start the clock (`area` is `mech`, `elec` or `rules`); reveals the question and the deadline with the server's clock. Returns the running attempt if already started; a start of a running question at least 10 s after it was shown counts as a reopening (`attempts.resumes`, [signals](#signals-in-ranked-play)). With the AI canary on, the response carries `decoy_option_id` |
+| `GET /api/daily` | Today's state per area, streak, XP and LP today; closes the caller's abandoned daily questions. On a per-player day (season 1b: on or after `IFS_RULES_1B_FROM` and no shared draw) it lists every area with a playable graded question and writes nothing; for an area not yet started, `budget_s` is that of the question the caller would draw now (a preview, not stored), as the real one comes with the start. Each area has its `day`: the day before for a question started before midnight, still running or answered since midnight, until the new day's question in that area is started |
+| `POST /api/daily/{area}/start` | Start the clock (`area` is `mech`, `elec` or `rules`); reveals the question and the deadline with the server's clock. On a per-player day this is where the caller's question is drawn and stored (`pick_for`); parallel starts by one player return the same attempt and deadline, and a start racing the player's own deletion is a 401. Returns the running attempt if already started; a start of a running question at least 10 s after it was shown counts as a reopening (`attempts.resumes`, [signals](#signals-in-ranked-play)). With the AI canary on, the response carries `decoy_option_id` |
 | `POST /api/daily/attempts/{attempt_id}/answer` | Submit once; a retry returns the stored result. An optional `signals` block (time away, paste, long copies) is stored with the answer from season 1b on, clamped to the attempt's own time, and ignored before; a body without it works as ever. A typed answer the grader can't read (units, `%`, `2,778` unless the question asks for three decimals or a decimal comma, one value for a list) is refused with 400 and a `value` field error saying what to type, before anything is recorded; the same holds for every answer route |
 | `GET /api/daily/{area}/review` | Today's answered question with its result and `day`; before today's question in that area is started, the one from the day before answered (or run out) since midnight. 409 otherwise |
 | `POST /api/daily/attempts/{attempt_id}/hint` | A hint on the running daily question |
@@ -124,20 +124,20 @@ No session needed; the CSRF header still is.
 |---|---|
 | `GET /api/mock/quizzes` | Past quizzes with question counts, the bar to beat, the caller's best score and open run |
 | `POST /api/mock/quizzes/{quiz_id}/start` | Start a run, or return the one already open |
-| `GET /api/mock/sessions/{session_id}` | The run: the current question with its deadline, or the summary once finished. A GET at least 10 s after the question was shown counts as a reopening; `current.decoy_option_id` with the AI canary on |
+| `GET /api/mock/sessions/{session_id}` | The run: the current question with its deadline, or the summary once finished; `skipped` counts the questions left out because they are someone's daily today (so far while it runs, final once over). A GET at least 10 s after the question was shown counts as a reopening; `current.decoy_option_id` with the AI canary on |
 | `POST /api/mock/sessions/{session_id}/answer` | Answer the question on screen and move on. Optional `signals`, kept only on counted runs and from season 1b on |
-| `POST /api/mock/sessions/{session_id}/end` | End the run early: the question on screen counts as out of time, the ones not reached aren't scored; returns the summary |
-| `POST /api/mock/sessions/{session_id}/attempts/{attempt_id}/hint` | A hint on the running question |
+| `POST /api/mock/sessions/{session_id}/end` | End the run early: the question on screen counts as out of time, the ones not reached aren't scored; returns the summary. A summary item whose question is someone's daily today is hidden: no official answer or solutions (`official` null, `correct_options` and `solutions` empty), no right or wrong (`correct` null) and no XP or LP (0), and it is left out of the totals (`correct`, `graded`, `xp`, `lp`), with `hidden: true` on the item and the count in the summary's `hidden`; the same on the `GET` and on the `answer` that finishes the run |
+| `POST /api/mock/sessions/{session_id}/attempts/{attempt_id}/hint` | A hint on the running question; 409 for a question that is someone's daily today |
 
 ### `/api/review` (`api/routes/review.py`): `Reviewer`
 
 | Method and path | Purpose |
 |---|---|
 | `GET /api/review/questions` | Search and queues (`queue`: `all`, `reports`, `changed`, `unclassified`, `ungraded`, `excluded`; `area`, `topic`, `q`, `offset`) |
-| `GET /api/review/questions/{question_id}` | One question with official answer, correction, reports and stats; the answer is withheld (`answer_hidden`) if it is running for the reviewer |
+| `GET /api/review/questions/{question_id}` | One question with official answer, correction, reports and stats; the answer is withheld (`answer_hidden`) if it is running for the reviewer or withheld as someone's daily today |
 | `PATCH /api/review/questions/{question_id}` | Area, topic, exclusion and note, "checked the upstream change" |
-| `PUT /api/review/questions/{question_id}/answer` | Replace FS-Quiz's answer with a correction |
-| `DELETE /api/review/questions/{question_id}/answer` | Remove the correction |
+| `PUT /api/review/questions/{question_id}/answer` | Replace FS-Quiz's answer with a correction; 409 while the question is running for the reviewer or is someone's daily today |
+| `DELETE /api/review/questions/{question_id}/answer` | Remove the correction; the same 409 |
 | `POST /api/review/reports/{report_id}/resolve` | Mark a player's report handled |
 
 ### `/api/questions` (`api/routes/review.py`, router `reports`): `Member`
@@ -167,7 +167,7 @@ No session needed; the CSRF header still is.
 |---|---|---|
 | `GET /api/live/subdepartments` | any member | The sub-department codes, names, verticals and default topics |
 | `POST /api/live/sessions` | Technical Director (by position) or admin | Create a session with a `LiveConfig`; returns its code |
-| `GET /api/live/sessions/{code}` | its host or a player | The session as the caller may see it (question, tables, proposals, reveals) |
+| `GET /api/live/sessions/{code}` | its host or a player | The session as the caller may see it (question, tables, proposals, reveals); the reveal of a question running for the caller or someone's daily today is blanked, tables' right or wrong and points included, and left out of the totals |
 | `POST /api/live/sessions/{code}/join` | any member with the code | Join (refused after removal or once finished) and return the state |
 | `PUT /api/live/sessions/{code}/config` | host, lobby only | Change the settings |
 | `PUT /api/live/sessions/{code}/tables` | host, lobby only | Replace all tables (members, captain, topics, catch-all) |
@@ -179,7 +179,7 @@ No session needed; the CSRF header still is.
 | `POST /api/live/sessions/{code}/end` | host | Finish now |
 | `PUT /api/live/sessions/{code}/proposal` | seated player | Suggest an answer to the captain of the table answering |
 | `POST /api/live/sessions/{code}/answer` | captain of the answering table | Send the table's one answer |
-| `GET /api/live/sessions/{code}/results.csv` | host | Results as CSV, one row per table answer (or per question nobody answered), with the columns `question`, `text`, `for table`, `answered by`, `captain`, `answer`, `official answer`, `right`, `points`; UTF-8 with a byte order mark, `;` between cells (Excel in Spanish); cells that a spreadsheet would run as formulas are escaped, plain numbers aren't |
+| `GET /api/live/sessions/{code}/results.csv` | host | Results as CSV, one row per table answer (or per question nobody answered), with the columns `question`, `text`, `for table`, `answered by`, `captain`, `answer`, `official answer`, `right`, `points` (all three empty for a question that is someone's daily today); UTF-8 with a byte order mark, `;` between cells (Excel in Spanish); cells that a spreadsheet would run as formulas are escaped, plain numbers aren't |
 | `GET /api/live/sessions/{code}/events` | its host or a player | Server-Sent Events stream of version numbers (below) |
 
 ### Outside the routers

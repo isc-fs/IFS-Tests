@@ -37,6 +37,7 @@ from ..domain import rank as rank_rules
 from ..domain import signals as signal_rules
 from . import live
 from .accounts import AccountError, _active_admin_ids, _record_failure, audit, check_still_admin
+from .questions import withheld
 
 NOT_CONFIRMED = "Your password is wrong."
 EXPORTS_AT_ONCE = 2  # per api process
@@ -72,6 +73,9 @@ def export(db: DB, user: User, now: datetime, signals: bool = True) -> dict[str,
         )
     )
     running = set(db.scalars(select(LiveSession.id).where(LiveSession.state != "finished")))
+    drawn = withheld(
+        db, now
+    )  # someone's daily, still running: a practice or mock answer on it stays unmarked
 
     # Only the columns the file shows, in batches, and each question's text once: a member's whole history
     # as ORM rows took tens of MiB per download (PERF-04).
@@ -114,7 +118,11 @@ def export(db: DB, user: User, now: datetime, signals: bool = True) -> dict[str,
     )
     attempts = []
     for a in rows:
-        hidden = a.session_id in open_runs or a.live_session_id in running
+        hidden = (
+            a.session_id in open_runs
+            or a.live_session_id in running
+            or (a.mode != "daily" and a.question_id in drawn)
+        )
         attempts.append(
             {
                 "question_id": a.question_id,
@@ -144,6 +152,7 @@ def export(db: DB, user: User, now: datetime, signals: bool = True) -> dict[str,
             "finished_at": m.finished_at,
             "unreached": m.unreached,
             "unreached_graded": m.unreached_graded,
+            "skipped": m.skipped,
         }
         for m in db.scalars(
             select(MockSession).where(MockSession.user_id == user.id).order_by(MockSession.id)

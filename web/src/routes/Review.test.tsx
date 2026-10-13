@@ -303,9 +303,10 @@ test("a reviewer's own live question keeps its answer hidden", async () => {
     },
   })
   expect(await screen.findByText(/still running for you/)).toHaveTextContent(
-    "This question is still running for you: today's daily question, a mock quiz you're running, or a live quiz " +
-      "you're playing in. Its answer stays hidden until you've answered it (in a live quiz, until the results " +
-      'are shown).',
+    "This question is still running for you (your daily question, a mock quiz you're running, or a live quiz " +
+      "you're playing in), or it is someone's daily question today. Its answer stays hidden until you've answered " +
+      "it (in a live quiz, until the results are shown) or, for someone's daily, until its player has answered it " +
+      '(or tomorrow).',
   )
   const shown = screen.getByRole('article', { name: 'Question' })
   expect(within(shown).queryByText(/FS-Quiz's answer/)).toBeNull()

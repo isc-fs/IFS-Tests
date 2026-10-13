@@ -30,7 +30,7 @@ anything, the cheaper explanations have to be named, because they are sitting in
 
 The 2026-10-12 investigation (29 agents, six briefs, four tracks, sixteen critiques) was cohort-level: it looked at
 distributions, not at people, and that is the right order. The decision here is **policy before code**: publish a
-rule people can be held to, with a date; make the boards honest; make the relay structurally worthless; then, and
+rule people can be held to, with a date; make the boards honest; take away the free broadcast relay; then, and
 only then, read weak per-answer signals, announced in advance, with a person deciding.
 
 ## Decision
@@ -131,10 +131,32 @@ Never automatic: every step is a decision by people, after a conversation and, f
 
 ### B — a daily question per player, results at day close
 
-- **Per-player draw** (feat/27): the daily question is drawn per player with an HMAC of the server secret, the day,
-  the area and the player, from the area's pool, so two players in the same area get different questions and a
-  relayed answer is worth nothing. The shared draw stays for days before its effective date.
-- **Results granted at reveal** (feat/31): from its effective date a daily answer is recorded and graded at once but its
+- **Per-player draw** (feat/27): from the rule date, a player's question in an area is drawn when they press Start,
+  with the player in the HMAC of the server secret, the day, the area and the question, so two players in the same
+  area usually get different questions and a relayed answer is about a question most readers do not hold. The draw
+  **ranks every graded, playable question of the area and excludes none**, so a tiny pool still gives a question. In
+  this order, the first difference wins: not on screen elsewhere right now (an unfinished live session, or shown and
+  unanswered in an open mock run) ranks last; nobody drew it today; the player has not answered it today in any mode
+  (a daily on it would pay nothing, the answer being paid once a day; it ranks below the spread so that answering a
+  whole area cannot steer two players onto one question); nobody has submitted it today (its key is not out); the
+  player has not been graded on it this season, as of midnight; the longest since it was anyone's daily; the fewest
+  players who drew it today; the one the player was last graded on longest ago; the HMAC. "As of midnight" means
+  that what the player has been graded on is frozen at the start of the day, and that opening a mock run or a live
+  quiz, or looking at the page, changes nothing, so nobody can steer the draw into what they studied by opening
+  everything else. What the player answers today does move it, and only away from the questions it answered, which
+  is the cost of answering a whole area to avoid one question. Nothing is stored before the Start. The shared draw stays for the days before the date, for the 00:01 job's
+  rollback path, and for **a day that already has a shared draw**: such a day stays shared to its end, so a late
+  deploy or an `.env` change never switches the daily mid-day and the switch is always a Madrid midnight.
+- **Preview.** Before Start, the daily page lists every area that has a playable graded question and shows the time
+  budget of the question the player would draw now, computed and not stored. It can drift only when another player's
+  start moves the draw; the real budget and clock are the drawn question's.
+- **The spread is serialised per day and area.** "Nobody drew it today" counts the players who have already started,
+  so starts in one area take turns: each takes a Postgres advisory lock on (day, area), after its own player row and
+  until its attempt is stored, and reads what the starts before it stored. Without it, two accounts firing their
+  Start together would read the same state and, when only one question was left undrawn for both, be dealt the same
+  question on purpose. One player's parallel starts give one attempt and one deadline. The lock covers the draw and
+  the insert, a few milliseconds per start; the status preview takes none and is only a preview.
+- **Results granted at reveal** (feat/31): from the rule date a daily answer is recorded and graded at once but its
   correctness, XP and LP are granted at Madrid day close, in a `settle` step. The presentation-only variant (hide the
   result but grant at answer time) was rejected because `xp.grant` writes rank state (`rank_points`, `combo`,
   `miss_streak`, `rested_xp`) at answer time, and `/me`, the rank card and practice feedback would leak it. A
@@ -142,18 +164,45 @@ Never automatic: every step is a decision by people, after a conversation and, f
 - **Option shuffle on the daily** (feat/32): option order keyed per attempt, with automatic exclusions for options
   that refer to position or order ("all of the above", "both A and B", numeric ladders) and a reviewer toggle to keep
   bank order. Devtools can un-shuffle a page; the shuffle breaks "it was B" in chat, not a determined attacker.
-- **Today's drawn set is withheld** from practice (list, question, answer, hint), the mock summary, the reviewer view
-  and live picks, so no second surface answers a question still running for someone.
-- **Side effects accepted:** difficulty recalibration gets fewer answers per question per day; streaks and "answered
-  today" follow the answer, not the reveal; the daily's XP bonuses are computed as of the answer time.
-- Once the per-player daily is in effect, relay is **prevented by design** and the follow-the-leader check is a
-  **cohort measurement** of the days before (how big was the relay problem). Between the rule date and that effective
-  date, relay is against the rule but still possible, so on those days the check may also be read per person, under
-  the same two-person review.
+- **A drawn question is withheld while it is still running for whoever drew it**, from every other surface: practice
+  (the next question, opening it, answering, hint), the mock run (skipped if not yet shown) and summary (hidden if
+  shown) and its hint, the reviewer view and its answer edits, live picks, reveals and the host's CSV, and other
+  people's attempts in the data export. The set is derived from data, not from the setting: a daily attempt not yet
+  answered whose day has no shared draw, so it is empty on every shared day. With results at day close in the same
+  release, a player's own daily stays running until the reveal, so the window is the whole Madrid day and "today's
+  drawn set" is exact; on its own, feat/27 releases a question when its owner answers (a documented seam). A reviewer
+  hiding a drawn question changes nothing for the player who drew it: they keep it, and nobody else draws it.
+- **Side effects accepted:**
+  - *Difficulty luck.* The base XP of the question drawn is 10 to 60 before the daily's doubling, so two players'
+    dailies on one day are not worth the same XP; LP follows the question's rating and evens out over many days.
+  - *Slower recalibration.* A question's difficulty moves after 20 first answers, and the daily's answers are now
+    spread over many questions instead of piled on one.
+  - *Less comparable area boards.* An area board compares players who answered different questions; accuracy and
+    the number of answers sit beside LP for that reason (feat/30).
+  - *The cost of withholding.* About three questions per active player per day leave practice, mock, review and live
+    while they run: roughly 180 of the bank's roughly 1,070 at 60 players. A 30-question mock loses about 3 of its
+    questions at 40 players, up to about 7 in the worst case. The 409 on a practice request tells anyone asking which
+    ids are someone's daily today (ids, never keys).
+  - Streaks and "answered today" follow the answer, not the reveal; the daily's XP bonuses are computed as of the
+    answer time.
+- **What this removes and what stays.** It removes the **free broadcast relay**: "+16 LP, it was B" in the team chat
+  is about a question most readers do not hold. It does not stop a helper who answers your own question for you, a
+  lookup of the public key, or a pool exhausted on purpose (more starters than questions repeats questions); a
+  question already on a player's screen, or answered in their mock run, when it is drawn still shows correctness in
+  the `/me` XP and LP (it needs the pool to run out, since a question on screen elsewhere ranks last); and a live room
+  that revealed a question before it was drawn has already shown its key. Those stay for the rule and the signals.
+- With one switch, there are no days between the rule date and the per-player daily: before the date the shared
+  daily's follow-the-leader check is read at **cohort level only** (how big was the relay problem), and the date
+  ends that signal, so it is run before the date (runbook, "Season 1b switch"). After it, per-person checks lean on
+  the other families.
+- **Open for the TDs:** whether a daily on a question the player already answered today, which only happens when they
+  have answered every question of the area, should pay the repeat rate rather than nothing; whether the draw
+  should aim for a target difficulty per day and area; whether yesterday's questions should be shown after midnight
+  as a shared moment.
 
 ### D — minimal signals on ranked answers
 
-Server side in feat/33, client side in feat/34, one release apart.
+Server side in feat/33, client side in feat/34, both in release v2.0.0 (Season 1b, below).
 
 - **Fields on the attempt, all nullable:** `away_declared_s`, `away_undeclared_s` (seconds away from the question;
   "declared" means a look-up opened from the question itself, such as the rulebook panel or a translation link, and
@@ -168,8 +217,9 @@ Server side in feat/33, client side in feat/34, one release apart.
 - **Retention:** blanked by the maintenance job **90 days after the end of the season the answer was played in**
   (season 2026 ends 31 August 2027, so its signals are blanked on 29 November 2027); the answer itself stays. A check
   that ends in nothing keeps nothing.
-- **Two-step rollout:** the server accepts the fields one release before the client sends them; the client retries
-  without them on a 422, so a rollback of either side is clean.
+- **Server and client together:** the server accepts the fields and the client sends them from the same release and
+  the same date; the client retries without them on a 422, so a stale cached page against a rolled-back server stays
+  clean.
 
 ### ePrivacy Art. 5(3) and LSSI Art. 22.2
 
@@ -203,31 +253,41 @@ without a schema change. Extension probing stays rejected under the same article
 
 ### Season 1b
 
-- **Definition.** The same season 2026, with a dated mid-season rules update. It separates two things:
-  - **The rule date: Monday 26 October 2026, Madrid** (`IFS_RULES_1B_FROM=2026-10-26`, mirrored by `RULES_FROM` in
+- **Definition.** The same season 2026, with a dated mid-season rules update: **one date, one release, one switch.**
+  - **The date: Monday 26 October 2026, Madrid** (`IFS_RULES_1B_FROM=2026-10-26`, mirrored by `RULES_FROM` in
     `web/src/lib/fairPlay.ts` so the About page, the boards and the server agree). From Madrid midnight that day the
-    fair-play rules apply, and the server records the fair-play signals wherever the deployed code supports it. The
-    clocks go back on Sunday 25 October, the day before; a Monday start is unaffected.
-  - **The mechanisms**: the per-player daily (feat/27), results at day close (feat/31), the option shuffle (feat/32),
-    the client signals (feat/34) and the canary. Each switches on as it ships, never before the rule date, at a
-    Madrid midnight set by each mechanism's own effective-date setting, chosen at deploy, so no rule change lands
-    mid-day. feat/27 and the branches after it add that setting. The code ships dark before its date; rollback is
-    clean (unset the setting, or deploy the previous tag).
+    fair-play rules apply **and every mechanism of the release takes effect with them**: the per-player daily
+    (feat/27), results at day close (feat/31), the option shuffle (feat/32), the fair-play signals the server records
+    (feat/33) and the client sends (feat/34). The clocks go back on Sunday 25 October, the day before, so that
+    Madrid day is 25 hours long and the switch falls at 23:00 UTC; a Monday start is unaffected.
+  - **One release, v2.0.0**, deployed to production before the date with the variable set ("dark"). Before the date
+    the app behaves exactly as it does today; nothing is collected, nothing is drawn per player. There are no
+    per-mechanism dates to set or to forget: `IFS_RULES_1B_FROM` is the only switch, read where each mechanism needs
+    it. The branches that need no switch (28, 29, 30) are simply live at deploy. Rollback is clean: deploy the previous
+    tag, which removes all of v2.0.0 at once.
+  - **Mid-day.** The daily keeps a day that already has a shared draw shared to its end, so no rule change lands
+    mid-day: a deploy after the date, or a variable changed in the middle of a day, starts the per-player daily at
+    the next Madrid midnight, never inside a day. The variable is changed only at a Madrid midnight.
+  - **Reversal of an earlier rejection.** The first version of this ADR (2026-10-12, feat/28) rejected "one date for
+    the rule and every mechanism" because it tied the rule to the slowest branch, and gave each mechanism its own
+    effective-date setting. That is reversed before sign-off, and the opposite is now the rejected option (below):
+    with every mechanism landing in one release, per-mechanism dates are more knobs to mis-set than leaks removed.
+    The canary flip stays separate (`IFS_CANARY`), and so does fix/40.
 - **Timeline:**
 
-  | Branch | Takes effect | Notice needed before? |
-  |---|---|---|
-  | feat/28 fair-play policy (rules, notice, caption, this ADR) | live on production before the rule date; the text names the date | it is the notice |
-  | feat/29 integrity report (CLI) | per-person checks only on answers from the rule date | yes, live before the first per-person run |
-  | feat/30 accuracy on the boards | at deploy | no |
-  | feat/27 per-player daily | at a Madrid midnight, through its own effective-date setting | no (it removes a leak; nothing new is kept) |
-  | feat/31 results at day close | at a Madrid midnight, through its own effective-date setting | no |
-  | feat/32 option shuffle | at a Madrid midnight, through its own effective-date setting | no |
-  | feat/33 signals, server | columns exist from deploy; written only for answers from the rule date | yes, before the client sends |
-  | feat/34 signals, client | at a Madrid midnight, through its own effective-date setting | yes: the feat/28 notice already names the totals |
-  | feat/35 signals and canary in the report | n/a | yes |
-  | canary flip (`IFS_CANARY`) | at a Madrid midnight, with the About line | yes, with the About line |
-  | fix/40 drop the shared daily | after the per-player daily is in effect, in its own release | no |
+  | Branch | Release | Takes effect | Notice needed before? |
+  |---|---|---|---|
+  | feat/28 fair-play policy (rules, notice, caption, this ADR) | v2.0.0, on production before the rule date | at deploy; the text names the date | it is the notice |
+  | feat/29 integrity report (CLI) | v2.0.0 | per-person checks only on answers from the rule date | yes, live before the first per-person run |
+  | feat/30 accuracy on the boards | v2.0.0 | at deploy | no |
+  | feat/27 per-player daily | v2.0.0 | at the Madrid midnight of the rule date, through `IFS_RULES_1B_FROM` | no (it removes a leak; nothing new is kept) |
+  | feat/31 results at day close | v2.0.0 | the same switch | no |
+  | feat/32 option shuffle | v2.0.0 | the same switch | no |
+  | feat/33 signals, server | v2.0.0 | columns exist from deploy; written only for answers from the rule date | yes, before the client sends |
+  | feat/34 signals, client | v2.0.0 | the same switch | yes: the feat/28 notice already names the totals |
+  | feat/35 signals and canary in the report | v2.0.0 | n/a | yes |
+  | canary flip (`IFS_CANARY`) | a later change, after the pilot | at a Madrid midnight, with the About line | yes, with the About line |
+  | fix/40 drop the shared daily | a later release | after the per-player daily is in effect | no |
 
 - **Gates.** The About and privacy notice (feat/28) is live on production **before 26 October 2026, with a target of
   at least 7 days before, by 19 October**, and the team announcement, in Spanish and English, goes out with it. The
@@ -299,9 +359,9 @@ without a schema change. Extension probing stays rejected under the same article
 - **Applying the rule to pre-date answers:** unfair by definition; see "The rule".
 - **A rule effective at deploy rather than at a dated, announced season 1b:** a player must be able to read the rule
   and its date before it binds them.
-- **One date for the rule and every mechanism:** ties the rule to the slowest branch. The rule needs only the notice;
-  each mechanism removes a leak or records a total the notice already names, so it can follow at its own Madrid
-  midnight.
+- **Per-mechanism effective dates** (rejected 2026-10-12 after wave 1, reversing the first draft's choice of the
+  opposite): more knobs to mis-set than leaks removed. Every mechanism ships in v2.0.0 and a mistaken date would put
+  the rule and the mechanism out of step for a day; one switch cannot.
 - **Denial of attendance on statistics alone:** the checks are weak, forgeable and noisy by design; a significant
   effect needs the member's own account or evidence beyond them, and a hearing.
 
@@ -309,9 +369,10 @@ without a schema change. Extension probing stays rejected under the same article
 
 - The boards become readable (accuracy and n beside LP, a caption that says what they are) but less comparable
   across the 1b date; the "since 1b" period question is left to the TDs.
-- Relay of the daily becomes structurally worthless once the per-player daily is in effect; until then it is only
-  against the rule. The question bank's recalibration gets fewer
-  answers per question per day.
+- The free broadcast relay of the daily goes with the per-player daily; a helper relay, a lookup of the public key
+  and a pool exhausted on purpose remain, for the rule and the signals. The costs are accepted above: difficulty
+  luck, slower recalibration, less comparable area boards, and a withheld set of about three questions per active
+  player per day. Before the date it is only against the rule.
 - The same-device signals are weak, forgeable and announced as such; they are context for a conversation, not
   evidence of anything on their own, and the notice says so. A result of "no cheating, bad metric" must be an
   acceptable outcome of all this.
@@ -324,9 +385,9 @@ without a schema change. Extension probing stays rejected under the same article
   the privacy assessments treat the effect as significant.
 - Future rule changes supersede this ADR; they never rewrite it.
 - Flagged for the lead, outside this ADR's scope (the first gates the first decision that takes someone off the
-  boards, above): an admin-settable "hide from the leaderboard"; each mechanism's own effective-date setting (with
-  feat/27 and later); the hosts' guide gains "say the room rules" (feat/28 follow-up); AGENTS.md's `running_for`
-  sentence changes with feat/31.
+  boards, above): an admin-settable "hide from the leaderboard"; the hosts' guide gains "say the room rules"
+  (feat/28 follow-up); AGENTS.md's `running_for` sentence changed with feat/27 (`withheld`) and changes again with
+  feat/31.
 
 ## Technical Directors' sign-off
 

@@ -551,6 +551,11 @@ RANKED_PLAY = and_(
 )
 Index("ix_attempts_lp_day", Attempt.user_id, LP_DAY, postgresql_where=RANKED_PLAY)
 
+# Daily attempts by Madrid day: what each player's draw and the withheld set count. `uq_attempts_daily` leads with
+# user_id, so it can't serve a scan of one day; the literal keeps prepared (generic) plans matching the predicate.
+DAILY = Attempt.mode == literal_column("'daily'")
+Index("ix_attempts_daily_day", Attempt.day, Attempt.question_id, postgresql_where=DAILY)
+
 
 class DailyQuestion(Base):
     """The question of the day for each area, fixed once chosen."""
@@ -582,6 +587,8 @@ class MockSession(Base):
     # FS-Quiz deletes later doesn't change its summary. Null for runs finished by a release before 0022.
     unreached: Mapped[int | None] = mapped_column(SmallInteger)
     unreached_graded: Mapped[int | None] = mapped_column(SmallInteger)
+    # Set when the run finishes: questions it skipped because they were someone's daily question just then.
+    skipped: Mapped[int | None] = mapped_column(SmallInteger)
 
 
 Index(

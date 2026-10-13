@@ -124,7 +124,7 @@ Every change applies straight away.
 
 | Change | Practice | Daily questions | Mock quizzes | Live quizzes |
 |---|---|---|---|---|
-| **Hide** | Never served. | If it is today's question, everyone who hasn't opened it yet gets a replacement; people who already started keep theirs. | Runs already open keep it if they have already shown it; otherwise it is skipped. It no longer counts in the quiz's question total. | Sessions not started skip it; sessions already started keep their questions. |
+| **Hide** | Never served. | If it is today's shared question (before season 1b), everyone who hasn't opened it yet gets a replacement; people who already started keep theirs. From season 1b each player's question is their own: the player who drew it keeps it and still sees it in the daily page, and nobody else draws it. | Runs already open keep it if they have already shown it; otherwise it is skipped. It no longer counts in the quiz's question total. | Sessions not started skip it; sessions already started keep their questions. |
 | **Correct the answer** | The next answer is graded against it. | The same, including a question someone has open. | The same, question by question. | The same, for answers not yet sent. |
 | **Relabel** | Moves to the new area and topic. | Today's questions stay; from the next day it can be drawn for its new area. | Answers from now on count under the new area. | Routed by its new topic in sessions not yet started. |
 
@@ -169,18 +169,23 @@ see a notice on the Admin page when questions changed.
 You never see the answer to a question you still have to answer yourself. For you, a question is "running" when it
 is:
 
-- one of today's daily questions you haven't answered yet (any of the three areas, opened or not), or yesterday's
-  one you opened before midnight and are still answering;
+- one of today's daily questions you haven't answered yet (before season 1b any of the three areas, opened or not;
+  from it, the ones you have started), or yesterday's one you opened before midnight and are still answering;
 - a question of a mock run you have open, not yet answered in that run;
 - the open question of a live quiz you are playing in, or any question of a live rehearsal you are in, until it
-  ends.
+  ends;
+- from season 1b, **a question that another player drew as their daily and is still answering**. That is not yours to
+  answer, but it is running for them, so the review page treats it the same way for everyone.
 
 On a running question the review page hides FS-Quiz's answer, the correction and the **Correct answer** form, and
-says "This question is still running for you: today's daily question, a mock quiz you're running, or a live quiz
-you're playing in. Its answer stays hidden until you've answered it (in a live quiz, until the results are
-shown)." You can still fix its labels, hide it, and handle its reports. Once you have answered it (or the run or live quiz is over), everything shows again.
+says "This question is still running for you (your daily question, a mock quiz you're running, or a live quiz
+you're playing in), or it is someone's daily question today. Its answer stays hidden until you've answered it (in a
+live quiz, until the results are shown) or, for someone's daily, until its player has answered it (or tomorrow)." The
+page doesn't say which of the two it is. You can still fix its labels, hide it, and handle its reports; **you can't
+correct or clear its official answer while it is hidden** (the save is refused, 409), because a correction is a way to
+read the key. Once you have answered it (or the run or live quiz is over, or the player has answered their daily), everything shows again.
 
-Why: the daily questions are the same for the whole team and move the rank, and so do mock runs. A reviewer who
+Why: the daily questions move the rank (the same for the whole team before season 1b, one per player from it), and so do mock runs. A reviewer who
 could read the answer first would climb unfairly, and the rest of the team would rightly stop trusting the ranking.
 The same rule stops practice from serving, opening or hinting at a running question, and stops a mock summary from
 showing it.
@@ -200,8 +205,9 @@ answers aren't re-graded.
 **A question keeps coming back to Changed upstream.** FS-Quiz changed it again at the last reload. Check it and press
 **I've checked it** each time.
 
-**I hid today's daily question.** People who hadn't opened it get another question; those who had keep theirs and
-their result.
+**I hid today's daily question.** Before season 1b, people who hadn't opened it get another question; those who had keep theirs and their result. From season 1b the player who drew it keeps it, and nobody else will draw it.
+
+**A question I need to correct is "someone's daily today".** Its key stays hidden and uncorrectable until that player answers it, or until tomorrow if they never do. Correct it then; nothing is lost, because answers already graded are not re-graded anyway.
 
 **My relabel didn't change the leaderboard.** By design: LP stays with the area the answer was played under.
 

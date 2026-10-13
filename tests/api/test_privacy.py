@@ -204,6 +204,7 @@ COLUMNS = {
     ("mock_sessions", "finished_at"): "mock_runs.finished_at",
     ("mock_sessions", "unreached"): "mock_runs.unreached",
     ("mock_sessions", "unreached_graded"): "mock_runs.unreached_graded",
+    ("mock_sessions", "skipped"): "mock_runs.skipped",
     ("password_resets", "created_at"): "password_resets.created_at",
     ("password_resets", "expires_at"): "password_resets.expires_at",
     ("password_resets", "used_at"): "password_resets.used_at",

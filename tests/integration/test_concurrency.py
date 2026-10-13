@@ -152,6 +152,97 @@ def test_a_double_start_gives_one_attempt_and_one_deadline(
     assert db.scalar(select(func.count()).select_from(Attempt)) == 1
 
 
+PER_PLAYER = date(2020, 1, 1)  # the rule date long past: every day is a per-player day
+
+
+def test_a_double_start_on_a_per_player_day_gives_one_attempt(
+    db: Session, app_engine: Engine, daily_player: User
+) -> None:
+    results = race(
+        app_engine,
+        *[lambda s: daily.start(s, s.get_one(User, daily_player.id), "mech", NOW, rules_from=PER_PLAYER)[1]]
+        * 4,
+    )
+    assert len({(a.id, a.deadline_at, a.question_id) for a in results}) == 1, results
+    assert db.scalar(select(func.count()).select_from(Attempt)) == 1
+    assert db.scalar(select(func.count()).select_from(DailyQuestion)) == 0  # nothing shared was drawn
+
+
+def test_players_starting_at_once_on_a_per_player_day_each_get_a_question(
+    db: Session, app_engine: Engine, daily_player: User
+) -> None:
+    others = [User(email=f"p{i}@x.com", password_hash="x", display_name=f"P{i}") for i in range(5)]
+    db.add_all(others)
+    db.commit()
+    players = [daily_player, *others]
+    results = race(
+        app_engine,
+        *[lambda s, u=u: daily.start(s, u, "mech", NOW, rules_from=PER_PLAYER)[1] for u in players],
+    )
+    assert not failed(results), results
+    assert sorted(a.user_id for a in results) == sorted(u.id for u in players)
+    assert db.scalar(select(func.count()).select_from(DailyQuestion)) == 0
+    assert (
+        db.scalar(select(func.count(func.distinct(Attempt.question_id)))) == 3
+    )  # the area's three, each once
+    assert db.scalar(select(func.count()).select_from(Attempt)) == 6
+
+
+def test_two_accounts_starting_at_the_same_instant_are_not_dealt_the_same_question(
+    db: Session, app_engine: Engine, daily_player: User
+) -> None:
+    """The spread counts what others drew, so two starts that read the same state would both pick the same
+    question; colluders could fire them together on purpose. The area's draw lock makes each see the other."""
+    other = User(email="p2@x.com", password_hash="x", display_name="Player Two")
+    db.add(other)
+    db.commit()
+    for day in range(6):
+        when = NOW + timedelta(days=day)
+        first, second = race(
+            app_engine,
+            *[
+                lambda s, u=u, when=when: daily.start(s, u, "mech", when, rules_from=PER_PLAYER)[0].id
+                for u in (daily_player, other)
+            ],
+        )
+        assert not failed([first, second]), (first, second)
+        assert first != second, (day, first, second)
+
+
+def test_a_start_racing_the_owners_deletion_ends_in_200_or_401(
+    db: Session, app_engine: Engine, daily_player: User
+) -> None:
+    """The start takes the player's row before it writes, as answering does and deleting an account expects: the
+    deletion never meets a half-written attempt (a foreign key error, a 500) and the two never wait on each
+    other in a circle."""
+    admin = accounts.create_first_admin(db, "a@x.com", "Alpha", "pit lane boss 2026", NOW)
+    victims = [User(email=f"v{i}@x.com", password_hash="x", display_name=f"V{i}") for i in range(8)]
+    db.add_all(victims)
+    db.commit()
+    ids = {v.email: v.id for v in victims}
+    for v in victims:
+        db.expunge(v)  # as the route has it: loaded before the request, whatever happens to the row meanwhile
+    outcomes = set()
+    for victim in victims:
+        started, deleted = race(
+            app_engine,
+            lambda s, v=victim: daily.start(s, v, "mech", NOW, rules_from=PER_PLAYER),  # type: ignore[misc]
+            lambda s, v=victim: privacy.delete_user(s, s.get_one(User, admin.id), ids[v.email], NOW),  # type: ignore[misc]
+        )
+        assert deleted is None, deleted  # a deadlock or a foreign key error would show here or below
+        if isinstance(started, Exception):
+            assert isinstance(started, UserError) and started.status == 401, started
+        outcomes.add("401" if isinstance(started, Exception) else "200")
+        db.expire_all()
+        assert db.get(User, ids[victim.email]) is None
+        assert (
+            db.scalar(select(func.count()).select_from(Attempt).where(Attempt.user_id == ids[victim.email]))
+            == 0
+        )
+    assert outcomes <= {"200", "401"}
+    assert db.scalar(select(func.count()).select_from(DailyQuestion)) == 0
+
+
 ON = Policy(collect=True, canary=True)
 
 

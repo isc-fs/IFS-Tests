@@ -10,6 +10,7 @@ import re
 import threading
 import time
 from collections import Counter, defaultdict
+from collections.abc import Collection
 from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timedelta
 from typing import Any, Literal
@@ -38,7 +39,7 @@ from ..domain import live as rules
 from ..domain import mock as mock_rules
 from . import xp
 from .errors import UserError
-from .questions import Checked, Shown, check, explain, running, show
+from .questions import Checked, Shown, check, explain, running, show, withheld
 
 
 def can_host(user: User) -> bool:
@@ -439,8 +440,9 @@ def _pool(config: dict[str, Any], *columns: Any) -> Select[Any]:
     return base
 
 
-def _pick(db: DB, config: dict[str, Any]) -> list[Question]:
-    stmt = _pool(config, Question)
+def _pick(db: DB, config: dict[str, Any], now: datetime) -> list[Question]:
+    """The session's questions, never one that is someone's daily question right now."""
+    stmt = _pool(config, Question).where(Question.id.not_in(withheld(db, now)))
     if config["questions"] != "quiz":
         stmt = stmt.order_by(func.random()).limit(config["count"])
     return list(db.scalars(stmt))
@@ -514,7 +516,7 @@ def _start(db: DB, s: LiveSession, now: datetime) -> None:
     owners, catch_all = _routing(db, s)
     if not owners:
         raise UserError("Seat people at a table with a captain first.", 409)
-    questions = _pick(db, s.config)
+    questions = _pick(db, s.config, now)
     if not questions:
         raise UserError("No questions match these settings.", 409)
     if s.config["routing"] == "owners":
@@ -696,6 +698,16 @@ class TableView:
 
 
 @dataclass(frozen=True)
+class Tally:
+    """What one closed question added to the totals, so a viewer who must not learn whether it was right can be
+    shown the totals without it."""
+
+    question_id: int
+    owner: int | None  # the table it was asked of, in a specialists quiz
+    results: dict[int, tuple[bool, int]]  # table -> (right, points)
+
+
+@dataclass(frozen=True)
 class Sent:
     """A table's answer as the screens show it."""
 
@@ -737,6 +749,8 @@ class Room:
     reveals: list[Reveal] = field(default_factory=list)
     room_right: int | None = None
     room_asked: int = 0
+    owners: bool = False  # a specialists quiz: the room's tally is the owning tables' answers
+    tallies: list[Tally] = field(default_factory=list)
 
 
 @dataclass
@@ -814,16 +828,23 @@ def view(db: DB, user: User, code: str, now: datetime) -> View:
                 if my_table == target or uid == user.id
             ]
     if room.reveals:
-        busy = running(db, user.id, now)
+        busy = running(db, user.id, now) | withheld(db, now)
         out.reveals = [_blank(r) if r.shown.question.id in busy else r for r in room.reveals]
+        if hidden := busy & {t.question_id for t in room.tallies}:  # the totals must not say it either
+            out.tables, out.room_right = _totals(room.tables, room.tallies, room.owners, hidden)
     db.commit()  # read-only by now: give the connection back before the route serialises
     return out
 
 
 def _blank(r: Reveal) -> Reveal:
-    """A question still running for the viewer elsewhere: no answer, and no table's answer either."""
+    """A question still running for the viewer elsewhere, or someone's daily: no answer, no table's answer, and
+    nothing that says whether a table was right."""
+    answers = {t: replace(a, answer={}, correct=None, passed=False, points=0) for t, a in r.answers.items()}
     return replace(
-        r, checked=replace(r.checked, official=None, correct_options=[], solutions=[]), hidden=True
+        r,
+        checked=replace(r.checked, official=None, correct_options=[], solutions=[], correct=None),
+        answers=answers,
+        hidden=True,
     )
 
 
@@ -917,6 +938,27 @@ def _build(db: DB, s: LiveSession) -> Room:
     return room
 
 
+def _totals(
+    tables: list[TableView], tallies: list[Tally], owners: bool, skip: Collection[int] = ()
+) -> tuple[list[TableView], int]:
+    """Right answers and points per table, and right answers for the room: the owning table's answer in a
+    specialists quiz, otherwise the best table's tally. Questions in `skip` count for nothing."""
+    right = {t.id: 0 for t in tables}
+    points = dict(right)
+    room = 0
+    for t in tallies:
+        if t.question_id in skip:
+            continue
+        for tid, (ok, pts) in t.results.items():
+            if tid in right:
+                right[tid] += ok
+                points[tid] += pts
+        owner = t.results.get(t.owner) if t.owner else None
+        room += bool(owner and owner[0])
+    counted = [replace(t, right=right[t.id], points=points[t.id]) for t in tables]
+    return counted, room if owners else max((t.right for t in counted), default=0)
+
+
 def _score(
     db: DB,
     s: LiveSession,
@@ -925,20 +967,18 @@ def _score(
     closed: list[int],
     room: Room,
 ) -> None:
-    """Right answers per table and for the room: the owning table's answer, or the best table's tally."""
-    by_id = {t.id: t for t in room.tables}
-    right = 0
-    for p in closed:
-        lq = questions[p]
-        for tid, a in answers[p].items():
-            if tid in by_id:
-                by_id[tid].right += bool(a.correct)
-                by_id[tid].points += a.points
-        owner = answers[p].get(lq.table_id) if lq.table_id else None
-        right += bool(owner and owner.correct)
-    specialists = s.config["routing"] == "owners"
+    """Right answers per table and for the room (`_totals`), and the reveal of the question on show."""
+    room.owners = s.config["routing"] == "owners"
+    room.tallies = [
+        Tally(
+            questions[p].question_id,
+            questions[p].table_id,
+            {tid: (bool(a.correct), a.points) for tid, a in answers[p].items()},
+        )
+        for p in closed
+    ]
+    room.tables, room.room_right = _totals(room.tables, room.tallies, room.owners)
     room.room_asked = len(closed)
-    room.room_right = right if specialists else max((t.right for t in room.tables), default=0)
     positions = closed if s.state == "finished" else [s.position]
     ids = [questions[p].question_id for p in positions]
     found = {q.id: q for q in db.scalars(select(Question).where(Question.id.in_(ids)))}
@@ -960,7 +1000,7 @@ def _cell(value: object) -> str:
     return text
 
 
-def results_csv(db: DB, user: User, code: str) -> str:
+def results_csv(db: DB, user: User, code: str, now: datetime) -> str:
     """One row per table answer (or per question nobody answered), as the Excel sheet had them. For Excel as the
     team has it (Spanish): ";" between cells, its list separator, and a byte order mark so it reads UTF-8. A
     "sep=" line would split the cells in any locale but makes Excel ignore the mark, garbling the accents."""
@@ -986,7 +1026,10 @@ def results_csv(db: DB, user: User, code: str) -> str:
         .tuples()
         .all()
     )
-    official = {q.id: explain(db, q, None).official or "" for q in {row[1] for row in rows}}
+    skipped = withheld(db, now)  # someone's daily question: the key stays out of the host's file too
+    official = {
+        q.id: "" if q.id in skipped else explain(db, q, None).official or "" for q in {row[1] for row in rows}
+    }
     out = io.StringIO()
     out.write("\ufeff")
     w = csv.writer(out, delimiter=";")
@@ -1011,6 +1054,7 @@ def results_csv(db: DB, user: User, code: str) -> str:
                 texts.get(o, "?") for o in a.answer.get("options") or []
             )
             row[2:] = [tables.get(a.table_id, ""), captain or "", "not sure" if a.passed else sent]
-        right = "" if a is None or a.correct is None else "yes" if a.correct else "no"
-        w.writerow([pos + 1, *map(_cell, [*row, official[q.id]]), right, a.points if a else ""])
+        right = "" if a is None or a.correct is None or q.id in skipped else "yes" if a.correct else "no"
+        points = "" if a is None or q.id in skipped else a.points
+        w.writerow([pos + 1, *map(_cell, [*row, official[q.id]]), right, points])
     return out.getvalue()

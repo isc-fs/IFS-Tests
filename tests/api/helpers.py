@@ -100,3 +100,10 @@ def start_daily(c: TestClient, db: Session, now: datetime, qid: int) -> dict[str
     r = c.post(f"/api/daily/{area}/start")
     assert r.status_code == 200, r.text
     return dict(r.json())
+
+
+def start_area(c: TestClient, area: str) -> dict[str, Any]:
+    """Start the caller's daily question in `area`: on a per-player day (season 1b) it is drawn for them here."""
+    r = c.post(f"/api/daily/{area}/start")
+    assert r.status_code == 200, r.text
+    return dict(r.json())

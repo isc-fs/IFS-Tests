@@ -35,6 +35,7 @@ def _state(db: Db, s: mock.State, now: Now, policy: rules.Policy) -> MockState:
         summary = MockSummary(
             correct=s.summary.correct,
             graded=s.summary.graded,
+            hidden=s.summary.hidden,
             unreached=s.summary.unreached,
             xp=s.summary.xp,
             lp=s.summary.lp,
@@ -46,6 +47,7 @@ def _state(db: Db, s: mock.State, now: Now, policy: rules.Policy) -> MockState:
                     feedback=feedback(i.checked),
                     answer=sent(i.answer),
                     late=i.late,
+                    hidden=i.hidden,
                 )
                 for sh, i in zip(shown, s.summary.items, strict=True)
             ],
@@ -58,6 +60,7 @@ def _state(db: Db, s: mock.State, now: Now, policy: rules.Policy) -> MockState:
         total=s.total,
         current=current,
         summary=summary,
+        skipped=s.skipped,
     )
 
 

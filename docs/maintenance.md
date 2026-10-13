@@ -20,7 +20,7 @@ Nothing to do: the `scheduler` container runs these in Madrid time (`src/ifs_tes
 
 | Time | Job | What it does | Log key | Code |
 |---|---|---|---|---|
-| 00:01 | Daily questions | Picks the day's question for mech, elec and rules (unless the first visitor already did) | `daily` | `ensure_daily` in `src/ifs_tests/services/daily.py` |
+| 00:01 | Daily questions | Picks the day's shared question for mech, elec and rules (unless the first visitor already did). On a per-player day (season 1b: on or after `IFS_RULES_1B_FROM` with no shared draw) it picks nothing and logs `per-player day` | `daily` | `scheduled` and `ensure_daily` in `src/ifs_tests/services/daily.py` |
 | 03:00 | Maintenance, in this order: | | `maintenance` | `src/ifs_tests/services/maintenance.py` |
 | | Sessions | Deletes sessions past their 30-day limit or idle for 12 hours | `sessions` | `purge_expired` in `src/ifs_tests/auth/sessions.py` |
 | | Invite and reset links | Deletes links used or expired more than 30 days ago | `invites`, `resets` | `maintenance.py` |

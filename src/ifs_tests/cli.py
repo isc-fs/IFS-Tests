@@ -257,11 +257,10 @@ def _app_command(args: argparse.Namespace) -> None:
                 return maintenance.run(db, at)
 
         def daily_questions(at: datetime) -> dict[str, int]:
-            from .domain.daily import madrid_day
-            from .services.daily import ensure_daily
+            from .services.daily import scheduled
 
             with make_db() as db:
-                return ensure_daily(db, madrid_day(at), at)
+                return scheduled(db, at, rules_from=settings.rules_1b_from)
 
         def ping() -> None:
             with make_db() as db:

@@ -13,13 +13,13 @@ from sqlalchemy.orm import Session as DB
 
 from ..db.models import AnswerOption, Attempt, MockSession, Question
 from ..domain import signals as rules
-from ..domain.daily import madrid_day
+from ..domain.daily import madrid_day, per_player
 from ..settings import Settings
 from . import xp
 
 
 def policy(settings: Settings, now: datetime) -> rules.Policy:
-    collect = settings.rules_1b_from is not None and madrid_day(now) >= settings.rules_1b_from
+    collect = per_player(madrid_day(now), settings.rules_1b_from)
     return rules.Policy(collect=collect, canary=collect and settings.canary)
 
 

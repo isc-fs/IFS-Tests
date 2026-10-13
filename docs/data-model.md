@@ -207,7 +207,7 @@ One answer to one question, in any mode. **Personal data.** The largest table.
 | `answer` | JSON `{"options": [option ids] or null, "value": text or null, "unsure": bool}`; `{}` while a timed question is running |
 | `correct` | True, false, or null when the question isn't graded (the official answer was only shown) |
 | `created_at` | When the question was shown (timed modes) or answered (practice) |
-| `day` | Daily only: the Madrid day of the daily question |
+| `day` | Daily only: the Madrid day of the daily question. On a per-player day (season 1b) the attempt is the only record of which question the player was dealt: nothing is stored until they press Start |
 | `area` | The area the answer was played under, so relabelling a question later doesn't move anyone's LP between boards |
 | `deadline_at` | Timed modes: when the clock runs out (grace of 3 s on top) |
 | `submitted_at` | When answered, or when closed as late; null while running |
@@ -234,6 +234,8 @@ One answer to one question, in any mode. **Personal data.** The largest table.
 
 Indexes: `ix_attempts_user_question` (`user_id`, `question_id`), which also serves most per-user queries; **`ix_attempts_lp_day`** on (`user_id`, the Madrid day an answer's LP belongs to: `coalesce(day, date(timezone('Europe/Madrid', created_at)))`) `WHERE lp != 0 AND mode IN ('daily', 'practice')` (migration 0019), through which the leaderboards read each member's play in a period instead of all history (`models.LP_DAY` and `models.RANKED_PLAY` are the expression and predicate, written with literals for the same reason as below; a mock run's LP goes by the run's `started_at` instead, through `ix_mock_sessions_user_id` and `ix_attempts_session_id`); and the **partial unique index `uq_attempts_daily`** on (`user_id`, `day`, `area`) `WHERE mode = 'daily'`: one daily attempt per player, day and area. `services/daily.start` relies on it with `INSERT ... ON CONFLICT DO NOTHING`; the predicate must be written as the literal `text("mode = 'daily'")`, because a bound parameter stops Postgres matching the partial index once psycopg prepares the statement.
 
+The partial index **`ix_attempts_daily_day`** on (`day`, `question_id`) `WHERE mode = 'daily'` (migration 0026; `models.DAILY` is the predicate, a literal for the same reason as above) serves the two queries that scan one day's daily attempts instead of a player's: the per-player draw, which counts what everyone drew today, and `questions.withheld`, which lists today's and yesterday's open ones. `uq_attempts_daily` leads with `user_id` and cannot answer them, and without the index each start and each practice request would read all of `attempts`. `tests/integration/test_migrations.py` checks that the index is there, that its predicate is the literal and that the `withheld` statement uses it, with the generic plan (`plan_cache_mode = force_generic_plan`) a prepared statement ends up with.
+
 The partial index **`ix_attempts_decoy_option_id`** on `decoy_option_id` `WHERE decoy_option_id IS NOT NULL` (migration 0025) is empty while the canary is off. It only serves the `SET NULL` when someone deletes an `answer_options` row by hand (the app only retires options), so that delete doesn't scan `attempts`.
 
 ### `practice_hints`
@@ -242,7 +244,7 @@ A hint taken on a practice question, spent by the next answer to it. Primary key
 
 ### `daily_questions`
 
-The question of the day per area, fixed once chosen: primary key (`day`, `area`), `question_id` (→ `questions`, `ON DELETE CASCADE`, indexed). A chosen question a reviewer hides is replaced (upsert) for anyone who hasn't started it. `drawn_at` is when it was drawn or redrawn (null for rows drawn before 0023): a mock question closed before then showed its answer, so it doesn't count as hidden for that daily (`services/daily._running_since`).
+The shared question of the day per area, fixed once chosen: **a row marks a shared day**. From season 1b (`IFS_RULES_1B_FROM`) a day with no row is per player and none is written for it (the 00:01 job and `GET /api/daily` write nothing); a day that already has a row stays shared to its end. The table and its primary key are untouched by season 1b: they are kept for rollback and for the follow-the-leader check's cohort, until `fix/40-drop-shared-daily`. Primary key (`day`, `area`), `question_id` (→ `questions`, `ON DELETE CASCADE`, indexed). A chosen question a reviewer hides is replaced (upsert) for anyone who hasn't started it. `drawn_at` is when it was drawn or redrawn (null for rows drawn before 0023): a mock question closed before then showed its answer, so it doesn't count as hidden for that daily (`services/daily._running_since`). On a per-player day there is no row and "running since" is the first moment any player started that question that day, never before midnight.
 
 ### `mock_sessions`
 
@@ -256,6 +258,7 @@ One run through a past quiz. **Personal data.**
 | `counted` | The first run of this quiz this season: moves LP. Replays earn XP only |
 | `position` | Questions answered so far |
 | `started_at`, `finished_at` | Null `finished_at` = still open. A run ended early (by its player, or by the nightly job after 2 days untouched) is finished too; its summary lists the questions it reached |
+| `skipped` | Set when the run finishes: how many of the quiz's questions it left out because they were another player's daily question just then (0026). They are in neither `unreached` nor the run's attempts. Null for runs finished before 0026 or by the release before; read as 0 |
 | `unreached`, `unreached_graded` | Set when the run finishes: how many of the quiz's playable questions it didn't reach, and how many of those were graded. With the run's own attempts (in the order shown, graded as recorded) they make its summary, so a question FS-Quiz later deletes or drops from the quiz, or a reviewer hides, doesn't change "*n* of *m* right". Null for runs finished by a release before 0022, whose summaries count the quiz as it stands |
 
 Partial unique index **`uq_mock_sessions_open`** on (`user_id`, `quiz_id`) `WHERE finished_at IS NULL`: one open run per player and quiz; `services/mock.start` inserts with `ON CONFLICT DO NOTHING` and returns the open run.
@@ -328,9 +331,9 @@ Key–value store (`key` varchar(64) primary key, `value` JSONB). Today it has e
 
 | Key | Value | Used for |
 |---|---|---|
-| `hint_salt` | `{"salt": "<64 hex characters>"}`: 32 random bytes | A server secret: the HMAC seed for hints (`services/hints._seed`), the daily question draw (`domain/daily.pick`) and the XP critical roll (`services/xp._crit`). Created on first use with `INSERT ... ON CONFLICT DO NOTHING` (`services/hints.salt`), so a fresh database gets its own |
+| `hint_salt` | `{"salt": "<64 hex characters>"}`: 32 random bytes | A server secret: the HMAC seed for hints (`services/hints._seed`), the daily question draw (`domain/daily.pick`, `pick_for`) and the XP critical roll (`services/xp._crit`). Created on first use with `INSERT ... ON CONFLICT DO NOTHING` (`services/hints.salt`), so a fresh database gets its own |
 
-Treat `hint_salt` as a secret: with it and the question bank, anyone could predict daily questions and run hints backwards. It is in every database backup. Deleting the row makes the app create a new one; hints then change, so a player who already took a hint could get a second, different one.
+Treat `hint_salt` as a secret: with it and the question bank, anyone could predict daily questions (and, from season 1b, any player's draw: `backup_ro` and the backups can read it) and run hints backwards. It is in every database backup. Deleting the row makes the app create a new one; hints then change, so a player who already took a hint could get a second, different one.
 
 ### `audit_log`
 
@@ -361,7 +364,7 @@ Only on the server, outside Alembic and the models: `deploy/deploy.sh` creates i
 | `streak_freezes` | `streak_freezes_used` (the days) | Cascade |
 | `attempts` | `answers`, with the deadline of timed answers (right/wrong, XP and LP hidden while a mock run or live quiz is unfinished) and, for ranked answers from season 1b, the page's signals and the canary decoy (`signals`, null otherwise); not the unused `points` | Cascade |
 | `practice_hints` | `pending_hints` | Cascade |
-| `mock_sessions` | `mock_runs`, with the questions a run didn't reach (`unreached`, `unreached_graded`) | Cascade (and their attempts) |
+| `mock_sessions` | `mock_runs`, with the questions a run didn't reach (`unreached`, `unreached_graded`) and the ones it skipped as someone's daily (`skipped`) | Cascade (and their attempts) |
 | `reports` | `reports` | `user_id` set null; the message stays |
 | `live_players` | `live.joined` (table, captain, removed) | Cascade |
 | `live_sessions` (hosted) | `live.hosted` | Unfinished ones are finished; `host_id` set null; XP shared |
@@ -405,6 +408,7 @@ Retention: alumni and disabled accounts are deleted 365 days after `left_at`; th
 | 0023 | `daily_questions.drawn_at`, so a mock question closed after midnight but before the day's draw (whose answer the summary showed) doesn't count as hidden for that daily. Expand only: null rows count from midnight, as before |
 | 0024 | Drops `users.xp`, the lifetime XP of the release before ADR 0007: the contract step of 0014. Safe because no deployed release maps it: prod never ran one, and `v1.0.0` is the first image without it |
 | 0025 | `attempts.away_declared_s`, `away_undeclared_s`, `pasted`, `long_copies`, `resumes`, `decoy_option_id` (→ `answer_options`, `SET NULL`, partial index): ranked-play signals and the AI canary's decoy (ADR 0010). Expand only: all nullable, the previous release ignores them. Downgrading loses the stored signals |
+| 0026 | `ix_attempts_daily_day`, a partial index on `attempts` (`day`, `question_id`) `WHERE mode = 'daily'`, for the per-player draw and the withheld set; and `mock_sessions.skipped`, nullable. Expand only; the previous release ignores both. Rolling back is `deploy.sh prod <live tag>`: per-player attempts are ordinary daily attempts to it |
 
 ### Expand/contract
 

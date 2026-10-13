@@ -93,13 +93,18 @@ Enter your **Current password** and a **New password**, then **Change password**
 
 ## Daily questions
 
-**Daily** (top menu) gives one question per area each day: **Mechanical**, **Electrical** and **Rules**. Everyone
-gets the same three. New questions appear at midnight, Madrid time.
+**Daily** (top menu) gives one question per area each day: **Mechanical**, **Electrical** and **Rules**. New
+questions appear at midnight, Madrid time. **Until season 1b everyone gets the same three. From season 1b (Monday
+26 October 2026) your question is drawn for you when you press Start**, so the person next to you usually has a
+different one, and "what did you get?" has no answer to pass on.
 
 1. Each area shows its time budget: the time the question had in the real quiz (at least 1 minute, at most 10).
    Questions without a known time get 2 minutes (single choice), 2 min 30 s (multiple choice) or 4 minutes
-   (typed answers).
-2. Press **Start**. The clock starts when you open the question, and you get one try.
+   (typed answers). From season 1b, for an area you haven't started, this is the budget of the question you would
+   draw now: about, not exactly, because your question only exists when you press Start and another player starting
+   first can change it. The real budget and the clock are your question's.
+2. Press **Start**. The clock starts when you open the question (from season 1b, that is also when it is drawn), and
+   you get one try.
 3. Answer and press **Check answer**. When the clock reaches zero, whatever you have entered is sent.
 4. You see right or wrong, the official answer, any worked solution, and what the answer did to your LP and XP.
    **Back to today's questions** returns to the list; **See the question** reopens an answered one.
@@ -130,7 +135,17 @@ your streak. Each day of streak after the first adds 5 % XP to right answers, up
 midnight and your streak survives. Your level card shows how many you hold.
 
 A daily question that is also running in one of your mock runs or live quizzes can't be started until you answer
-it there.
+it there. From season 1b the draw avoids a question on screen in any run or live quiz first, so this only happens
+when an area has hardly any questions left for you. A question your mock run has not shown yet is no obstacle: if it
+becomes your daily, the run skips it. The draw also prefers questions you have not answered today, in practice or a
+mock run, because a daily on one pays nothing (a question pays once a day); it still gives you one if you have
+answered every question of the area.
+
+**Why two players' dailies pay different XP, and why the area boards compare less.** From season 1b the question you
+draw sets the base XP (10 to 60, doubled on a daily), so a day's luck differs between players; LP follows the
+question's rating, so it evens out over many days. The area boards compare people who answered different
+questions, which is why accuracy and the number of answers sit beside LP. Questions also take longer to be rated as
+easy or hard, because the daily's answers are spread over many of them.
 
 ## Practice
 
@@ -143,7 +158,10 @@ rank.
 3. Answer and press **Check answer**, then **Next question**. **Skip this question** moves on without answering.
 
 Practice prefers questions you've practised least. It never serves a question you still have to answer in your
-daily questions, a mock run or a live quiz, and refuses to open one by its link until you have.
+daily questions, a mock run or a live quiz, and refuses to open one by its link until you have. From season 1b it
+also keeps back a question another player has drawn as their daily until they answer it (the message says to
+practise it later), and a mock run skips such a question if it hasn't shown it yet (the quiz then has one
+question fewer) and hides its answer in the summary if it has.
 
 ### Answer formats
 
@@ -228,7 +246,7 @@ for typed answers). You see your results only at the end.
    A sent answer can't be changed.
 5. At the end you see "*n* of *m* right" (a right answer sent after the clock counts as wrong), the LP and XP the
    run earned, the bar to beat, and **Your answers**: each question with its verdict (right, wrong, not sure, out
-   of time, not graded) and its official answer.
+   of time, not graded, result kept back) and its official answer.
 
 **Leaving and resuming.** Leave whenever you like: the quiz shows **Continue** on the list. Only the question on
 screen has a running clock. If its time runs out while you're away, it is closed as out of time (wrong, no XP); the
@@ -239,6 +257,13 @@ screen counts as out of time, like one left to run out; the questions you haven'
 not right in "*n* of *m* right". The run counts as your run of that quiz for the season, so running it again is a
 replay. A run you leave untouched for 2 days is ended for you by the nightly job the same way. While a run is open,
 its questions are held back from your daily questions and practice, so end a run you won't finish.
+
+**Questions another player is answering as their daily (from season 1b).** While a question is someone's daily
+question, your run skips it if it hasn't shown it yet. The run tells you how many it is skipping and the summary how
+many it skipped; they are not scored, and a second run of the quiz is a replay (XP only). If a question you already
+had on screen becomes someone's daily, its result is kept back: the summary marks it "result kept back", leaves it
+out of "*n* of *m* right" (both numbers) and of the XP and LP, and shows it once that player has answered (or the
+next day).
 
 **First runs and replays.** Your first run of a quiz each season moves your rank. Starting it again later is a
 replay: XP only. A question you have already answered today earns no XP again.
@@ -413,7 +438,12 @@ it there first: a question pays once a day, so the daily then pays nothing (0 XP
 run's summary until you answer the daily, and the daily then pays in full.
 
 **Practice says a question is running elsewhere.** Same rule: a question you still have to answer in your daily
-questions, a mock run or a live quiz can't be opened, practised or hinted at until you do.
+questions, a mock run or a live quiz can't be opened, practised or hinted at until you do. From season 1b the same
+goes for a question another player is answering as their daily today: "This question is someone's daily question
+today: practise it later."
+
+**My teammate has a different daily question.** By design, from season 1b: each player's question is drawn for them.
+Two players only share one when an area has fewer questions than players drawing.
 
 **The Hint button is gone.** Hints end at DT I. If you drop back to Jefe V they return.
 

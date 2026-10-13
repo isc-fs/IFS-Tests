@@ -1,17 +1,19 @@
-"""Daily question: one per area per Madrid day, one try, against the clock. The server owns every
-deadline; the browser only displays it."""
+"""Daily question: one per area per Madrid day, one try, against the clock; shared until season 1b and drawn
+per player from it (ADR 0010). The server owns every deadline; the browser only displays it."""
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import Select, func, select, text, update
+from sqlalchemy import Select, and_, exists, func, or_, select, text, union, union_all, update
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DB
 
-from ..db.models import Attempt, DailyQuestion, Question, User
+from ..db.models import DAILY, Attempt, DailyQuestion, LiveQuestion, LiveSession, Question, User
 from ..domain import daily as rules
 from ..domain import signals as signal_rules
 from ..domain.leaderboard import madrid_midnight
@@ -20,15 +22,35 @@ from .errors import UserError
 from .questions import Checked, check, explain, running
 
 LOCK = 0x1F5DA11  # pg advisory lock key for choosing the day's questions
+DRAW_LOCK = 0x1F5DA12  # first key of the two-key lock a per-player draw takes, per day and area
+log = logging.getLogger(__name__)
 
 
-def _running_since(db: DB, day: date, area: str | None) -> datetime:
-    """When the day's question in `area` started running for players: when it was drawn (a reviewer's
-    redraw included), never before that day's midnight. Rows drawn before `drawn_at` existed: midnight."""
-    drawn = db.scalar(
+def _running_since(db: DB, day: date, area: str | None, question_id: int) -> datetime:
+    """When the day's question in `area` started running for players, never before that day's midnight: when it
+    was drawn (a reviewer's redraw included; rows drawn before `drawn_at` existed: midnight). On a per-player
+    day there is no row, and it is when the first player started this question that day."""
+    row = db.execute(
         select(DailyQuestion.drawn_at).where(DailyQuestion.day == day, DailyQuestion.area == area)
+    ).first()
+    midnight = madrid_midnight(day)
+    if row is not None:
+        return max(midnight, row[0]) if row[0] else midnight
+    first = db.scalar(
+        select(func.min(Attempt.created_at)).where(
+            DAILY, Attempt.question_id == question_id, Attempt.day == day
+        )
     )
-    return max(madrid_midnight(day), drawn) if drawn else madrid_midnight(day)
+    return max(midnight, first) if first else midnight
+
+
+def is_per_player(db: DB, day: date, rules_from: date | None) -> bool:
+    """Whether `day` is drawn per player: on or after the switch, and with no shared draw already made. A day
+    that has a shared draw stays shared to its end, so a late deploy or a changed setting never switches
+    mid-day: the switch always happens at a Madrid midnight."""
+    return rules.per_player(day, rules_from) and not db.scalar(
+        select(exists().where(DailyQuestion.day == day))
+    )
 
 
 def ensure_daily(db: DB, day: date, now: datetime) -> dict[str, int]:
@@ -67,6 +89,104 @@ def ensure_daily(db: DB, day: date, now: datetime) -> dict[str, int]:
             chosen[area] = qid
     db.commit()
     return chosen
+
+
+def _draw_lock(db: DB, day: date, area: str) -> None:
+    """Players drawing in one area take turns until their attempt is stored, so each sees what the others drew
+    (the spread). Without it, two accounts starting in the same instant would draw from the same state and could
+    be given one question on purpose. Taken after the player's own row, which is the order deleting an account
+    takes: nobody waits on a row while holding this."""
+    db.execute(select(func.pg_advisory_xact_lock(DRAW_LOCK, day.toordinal() * 4 + rules.AREAS.index(area))))
+
+
+def draw(db: DB, user: User, day: date, now: datetime, areas: list[str]) -> dict[str, int]:
+    """The player's questions for `areas` on a per-player day (rules.pick_for). Nothing is stored. What the
+    player has seen is as of midnight, so nothing opened today (a mock run, a page) changes the draw; only what
+    they have already answered today moves it, and only away from those questions, which would pay nothing.
+    `start` takes the area's draw lock around this and the insert; the status preview takes none, so it is a
+    preview: another player's start can change it."""
+    midnight = madrid_midnight(day)
+    drawn = (
+        select(
+            Attempt.question_id,
+            func.count().label("n"),
+            func.count().filter(Attempt.submitted_at.is_not(None)).label("done"),
+        )
+        .where(
+            DAILY,
+            or_(
+                Attempt.day == day,
+                and_(
+                    Attempt.day == day - timedelta(days=1),
+                    Attempt.submitted_at.is_(None),
+                    Attempt.deadline_at >= now - rules.GRACE,
+                ),
+            ),
+        )
+        .group_by(Attempt.question_id)
+        .subquery()
+    )
+    ever = union_all(
+        select(DailyQuestion.question_id, DailyQuestion.day),
+        select(Attempt.question_id, Attempt.day).where(DAILY, Attempt.day.is_not(None)),
+    ).subquery()
+    last_drawn = (
+        select(ever.c.question_id, func.max(ever.c.day).label("day")).group_by(ever.c.question_id).subquery()
+    )
+    seen = xp.seen_this_season(user.id, now, before=midnight).subquery()
+    played = (  # xp.answered_today's rule
+        select(Attempt.question_id)
+        .where(
+            Attempt.user_id == user.id,
+            Attempt.created_at >= midnight,
+            Attempt.submitted_at.is_not(None) | (Attempt.mode == "practice"),
+        )
+        .distinct()
+        .subquery()
+    )
+    on_screen = union(
+        select(LiveQuestion.question_id)
+        .join(LiveSession, LiveSession.id == LiveQuestion.session_id)
+        .where(LiveSession.state != "finished"),
+        select(Attempt.question_id).where(
+            Attempt.mode == "mock", Attempt.submitted_at.is_(None), Attempt.deadline_at >= now - rules.GRACE
+        ),
+    ).subquery()
+    rows = db.execute(
+        select(
+            Question.area,
+            Question.id,
+            exists().where(on_screen.c.question_id == Question.id),
+            exists().where(played.c.question_id == Question.id),
+            func.coalesce(drawn.c.n, 0),
+            func.coalesce(drawn.c.done, 0),
+            last_drawn.c.day,
+            seen.c.at,
+        )
+        .outerjoin(drawn, drawn.c.question_id == Question.id)
+        .outerjoin(last_drawn, last_drawn.c.question_id == Question.id)
+        .outerjoin(seen, seen.c.question_id == Question.id)
+        .where(Question.area.in_(areas), Question.playable, Question.graded)
+    ).all()
+    by_area: dict[str, list[rules.PlayerCandidate]] = {}
+    for area, qid, reserved, played_today, n, done, last, seen_at in rows:
+        by_area.setdefault(area, []).append(
+            rules.PlayerCandidate(
+                qid, reserved, played_today, n, done, last, rules.madrid_day(seen_at) if seen_at else None
+            )
+        )
+    secret = hints.salt(db)
+    chosen = {area: rules.pick_for(c, day, area, user.id, secret) for area, c in by_area.items()}
+    return {area: qid for area, qid in chosen.items() if qid is not None}
+
+
+def scheduled(db: DB, at: datetime, *, rules_from: date | None) -> dict[str, int]:
+    """The 00:01 job: the day's shared draw, which a per-player day doesn't have."""
+    day = rules.madrid_day(at)
+    if is_per_player(db, day, rules_from):
+        log.info("per-player day: no shared draw")
+        return {}
+    return ensure_daily(db, day, at)
 
 
 def _chosen(db: DB, day: date) -> dict[str, int]:
@@ -146,10 +266,11 @@ class Status:
     areas: list[AreaState]
 
 
-def status(db: DB, user: User, now: datetime) -> Status:
+def status(db: DB, user: User, now: datetime, *, rules_from: date | None = None) -> Status:
     close_expired(db, now, user.id)
     day = rules.madrid_day(now)
-    chosen = ensure_daily(db, day, now)
+    gated = is_per_player(db, day, rules_from)
+    chosen = {} if gated else ensure_daily(db, day, now)
     today: dict[str | None, Attempt] = {
         a.area: a
         for a in db.scalars(
@@ -158,16 +279,21 @@ def status(db: DB, user: User, now: datetime) -> Status:
     }
     carried = _carried(db, user, day, now)
     mine = _carried_done(db, user, day) | carried | today
+    if gated:  # a preview: nothing is stored, the question and its clock come with the start
+        chosen = draw(db, user, day, now, [x for x in rules.AREAS if x not in mine])
+        db.commit()  # the draw secret, if it was just stored, must outlive this read so the start agrees
+    offered = set(chosen) | {a for a in mine if a}
     areas = []
-    for area in sorted(set(chosen) | {a for a in mine if a}):
+    for area in sorted(offered):
         a = mine.get(area)
         q = db.get_one(Question, a.question_id if a else chosen[area])
+        budget_s = rules.budget(q.time_s, q.answer_kind)
         state = "new" if a is None else "done" if a.submitted_at else "started"
         areas.append(
             AreaState(
                 area=area,
                 day=a.day if a and a.day else day,
-                budget_s=rules.budget(q.time_s, q.answer_kind),
+                budget_s=budget_s,
                 state=state,
                 deadline_at=a.deadline_at if a else None,
                 correct=a.correct if a else None,
@@ -202,45 +328,66 @@ def _resumed(db: DB, a: Attempt, now: datetime, policy: signal_rules.Policy) -> 
 
 
 def start(
-    db: DB, user: User, area: str, now: datetime, policy: signal_rules.Policy = signal_rules.OFF
+    db: DB,
+    user: User,
+    area: str,
+    now: datetime,
+    policy: signal_rules.Policy = signal_rules.OFF,
+    *,
+    rules_from: date | None = None,
 ) -> tuple[Question, Attempt]:
-    """Start the clock, or return the running attempt. The question is only revealed from here."""
+    """Start the clock, or return the running attempt. The question is only revealed from here; on a per-player
+    day it is drawn here, one player at a time per area. Parallel requests of one player queue on their row, and
+    every response returns the stored attempt."""
     day = rules.madrid_day(now)
+    gated = is_per_player(db, day, rules_from)
+    if gated:
+        xp.lock(db, user.id)  # one start at a time per player, and a deletion in flight ends in 401
     existing = _carried(db, user, day, now).get(area) or _attempt(db, user, day, area)
     if existing is not None:
         if existing.submitted_at:
             raise UserError("You've already answered today's question for this area.", 409)
         _resumed(db, existing, now, policy)
         return db.get_one(Question, existing.question_id), existing
-    qid = ensure_daily(db, day, now).get(area)
+    if gated:
+        _draw_lock(db, day, area)  # held until the attempt below is committed
+        qid = draw(db, user, day, now, [area]).get(area)
+    else:
+        qid = ensure_daily(db, day, now).get(area)
     if qid is None:
         raise UserError("There's no daily question for this area today.", 404)
     q = db.get_one(Question, qid)
-    if q.id in running(db, user.id, now, daily=False):
+    if q.id in running(db, user.id, now, daily=False, on_screen=gated):
         raise UserError(
             "This question is running in your mock or live quiz: answer it there first (then it pays nothing more "
             "here today), or end the mock run (it counts as out of time there, and this one still pays in full).",
             409,
         )
-    db.execute(
-        insert(Attempt)
-        .values(
-            user_id=user.id,
-            question_id=q.id,
-            mode="daily",
-            answer={},
-            created_at=now,
-            day=day,
-            area=area,
-            deadline_at=now + timedelta(seconds=rules.budget(q.time_s, q.answer_kind)),
-            resumes=0 if policy.collect else None,
-            decoy_option_id=signals.decoy_for(db, q, policy),
+    try:
+        db.execute(
+            insert(Attempt)
+            .values(
+                user_id=user.id,
+                question_id=q.id,
+                mode="daily",
+                answer={},
+                created_at=now,
+                day=day,
+                area=area,
+                deadline_at=now + timedelta(seconds=rules.budget(q.time_s, q.answer_kind)),
+                resumes=0 if policy.collect else None,
+                decoy_option_id=signals.decoy_for(db, q, policy),
+            )
+            # A literal predicate: once psycopg prepares the statement, a bound parameter here stops
+            # Postgres matching the partial unique index and the insert fails.
+            .on_conflict_do_nothing(
+                index_elements=["user_id", "day", "area"], index_where=text("mode = 'daily'")
+            )
         )
-        # A literal predicate: once psycopg prepares the statement, a bound parameter here stops
-        # Postgres matching the partial unique index and the insert fails.
-        .on_conflict_do_nothing(index_elements=["user_id", "day", "area"], index_where=text("mode = 'daily'"))
-    )
-    db.commit()
+        db.commit()
+    except IntegrityError:  # the account was deleted while this request drew
+        db.rollback()
+        raise UserError("This account no longer exists.", 401) from None
     started = db.scalars(_mine(user, day, area)).one()  # ours, or a parallel request's
     return db.get_one(Question, started.question_id), started
 
@@ -297,7 +444,7 @@ def answer(
             .returning(Attempt.id)
         ).first()
         if recorded:  # only the request that recorded the answer earns the XP
-            hidden = _running_since(db, a.day, a.area)  # see xp._hidden_mock
+            hidden = _running_since(db, a.day, a.area, q.id)  # see xp._hidden_mock
             repeat = xp.last_seen(db, user.id, q.id, now, other_than=a.id, hidden_since=hidden) is not None
             granted = xp.grant(
                 db,
@@ -351,7 +498,7 @@ def close_expired(db: DB, now: datetime, user_id: int | None = None) -> int:
             .returning(Attempt.id)
         ).first()
         if recorded:
-            hidden = _running_since(db, day or rules.madrid_day(started), area)
+            hidden = _running_since(db, day or rules.madrid_day(started), area, q.id)
             repeat = (
                 xp.last_seen(db, owner, q.id, now, other_than=attempt_id, hidden_since=hidden) is not None
             )

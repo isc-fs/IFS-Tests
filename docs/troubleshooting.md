@@ -169,20 +169,21 @@ These look like bugs to users and reviewers. They aren't; point people here or t
 
 ### A reviewer can't see a question's answer
 
-- **Symptom:** in Review, a question shows "This question is still running for you: today's daily question, a mock quiz you're running, or a live quiz you're playing in. Its answer stays hidden until you've answered it (in a live quiz, until the results are shown)."
-- **Cause:** answer secrecy applies to reviewers too: nobody is shown the answer to a question still running for them (`running_for` in `src/ifs_tests/services/questions.py`, used by `services/review.detail`). See [architecture.md](architecture.md#answer-secrecy).
-- **Fix:** answer it where it's running (today's daily question, the open mock run, or the live quiz), or ask another reviewer. Daily questions stop running when answered or at the end of the Madrid day; a live question when it closes (in a rehearsal, when the quiz ends).
+- **Symptom:** in Review, a question shows "This question is still running for you (your daily question, a mock quiz you're running, or a live quiz you're playing in), or it is someone's daily question today. Its answer stays hidden until you've answered it (in a live quiz, until the results are shown) or, for someone's daily, until its player has answered it (or tomorrow).", and correcting or clearing its official answer is refused (409).
+- **Cause:** answer secrecy applies to reviewers too: nobody is shown the answer to a question still running for them, and from season 1b nobody is shown the answer to a question another player drew as their daily and is still answering (`running_for` in `src/ifs_tests/services/questions.py`, used by `services/review.detail`, `set_answer` and `clear_answer`). See [architecture.md](architecture.md#answer-secrecy).
+- **Fix:** answer it where it's running (your daily question, the open mock run, or the live quiz), or ask another reviewer; for someone else's daily, wait until they answer it or until tomorrow (another reviewer sees it hidden too). Daily questions stop running when answered or at the end of the Madrid day; a live question when it closes (in a rehearsal, when the quiz ends).
 
 ### Practice refuses a question, or never offers it
 
 - **Symptom:** opening a question in practice (`GET /api/practice/questions/{id}`), answering it or asking a hint returns "This question is running in your daily question, mock or live quiz: answer it there first." (409), and the question doesn't come up as the next practice question.
 - **Cause:** the same rule: practice would give the answer away (`not_running` in `services/questions.py`, used by `services/practice.py` and `services/hints.py`).
 - **Fix:** answer it in the mode where it's running first.
+- **Also:** from season 1b, "This question is someone's daily question today: practise it later." (409) means another player drew it as their daily and hasn't answered it yet (`withheld` in `services/questions.py`). It comes back when they answer it, or tomorrow. The same set makes a mock run skip a question it hasn't shown yet, and a live session start with fewer questions than asked for.
 
 ### The daily question won't start
 
 - **Symptom:** starting a daily question returns "This question is running in your mock or live quiz: answer it there first." (409).
-- **Cause:** today's question for that area is also a question you still have to answer in an open mock run or a live quiz you're playing (`services/daily.start`). Starting the daily would show it to you early.
+- **Cause:** today's question for that area is also a question you still have to answer in an open mock run or a live quiz you're playing (`services/daily.start`). Starting the daily would show it to you early. From season 1b the draw ranks a question on screen in any run or live quiz last, so this needs an area with hardly any questions left for you, and a question your mock run hasn't shown yet doesn't count (the run skips it instead).
 - **Fix:** answer it in the mock run or live quiz, then start the daily question.
 
 ### Sign-up says "That display name is taken." for a new name
