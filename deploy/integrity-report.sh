@@ -3,6 +3,7 @@
 # (docs/guides/integrity-report.md).
 #
 #   deploy/integrity-report.sh staging report --until 2026-10-12 [--checks all] [--split 2026-10-20]
+#     (--until is the first day left out; the per-person checks need IFS_RULES_1B_FROM in the environment)
 #   deploy/integrity-report.sh prod reveal 1a2b3c4d [5e6f7a8b ...] [--include-alumni]
 #
 # Connects as backup_ro (read only) with its own DSN, never the app's. The thresholds come from
@@ -15,7 +16,7 @@ set -euo pipefail
 die() { echo "integrity-report: $*" >&2; exit 1; }
 log() { echo "integrity-report: $*"; }
 
-usage="usage: $0 <staging|prod> report --until <announcement date> [options] | $0 <staging|prod> reveal <pseudonym>..."
+usage="usage: $0 <staging|prod> report --until <first day left out> [options] | $0 <staging|prod> reveal <pseudonym>..."
 [[ $# -ge 3 ]] || die "$usage"
 env=$1 mode=$2
 shift 2

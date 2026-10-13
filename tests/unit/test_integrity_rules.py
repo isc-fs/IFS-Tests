@@ -5,6 +5,7 @@ history-derived flags, written from the spec alone. Hand-computed LP numbers are
 from __future__ import annotations
 
 import ast
+import dataclasses
 import hashlib
 import hmac
 import itertools
@@ -56,6 +57,13 @@ def thresholds(**over: Any) -> rules.Thresholds:
         "away_z": 2.0,
         "upstream_min": 5,
         "upstream_z": 2.5,
+        "canary_alpha": 0.05,
+        "canary_beta": 0.2,
+        "canary_follow": 0.5,
+        "canary_control_alpha": 0.05,
+        "canary_nudge": 0.1,
+        "canary_m": 50,
+        "away_undeclared_s": 60.0,
     }
     return rules.Thresholds(**{**base, **over})
 
@@ -483,6 +491,26 @@ def test_running_since_is_the_draw_or_midnight_whichever_is_later() -> None:
     assert rules.running_since(DAY, "elec", {(DAY, "elec"): md(10, 4, 23)}) == md(
         10, 5, 0
     )  # never before midnight
+
+
+def test_running_since_on_a_per_player_day_is_the_first_start_of_the_question() -> None:
+    first = {(DAY, 7): md(10, 5, 11)}
+    pp = rules.PerPlayer(DAY, first)
+    assert rules.running_since(DAY, "elec", {}, 7, pp) == md(10, 5, 11)
+    assert rules.running_since(DAY, "elec", {}, 8, pp) == md(10, 5, 0)  # nobody started that one
+    assert rules.running_since(DAY, "elec", DRAWN, 7, pp) == md(10, 5, 9)  # a shared draw wins
+    before = rules.PerPlayer(date(2026, 10, 6), first)
+    assert rules.running_since(DAY, "elec", {}, 7, before) == md(10, 5, 0)  # before the switch
+
+
+def test_a_per_player_replay_counts_a_mock_question_closed_before_the_first_start() -> None:
+    play = daily_play(id=1)
+    closed = earlier_mock(md(10, 5, 8), md(10, 5, 8), md(10, 5, 9, 30), answered=False)
+    pp = rules.PerPlayer(DAY, {(DAY, 7): md(10, 5, 9, 45)})
+    assert rules.pre_seen(play, [play, closed], {}) is False  # from midnight it would be hidden
+    assert rules.pre_seen(play, [play, closed], {}, pp) is True
+    assert rules.is_repeat(play, [play, closed], {}, pp) is True
+    assert rules.to_play(play, [play, closed], {}, INFO, pp).repeat is True
 
 
 _P = daily_play()
@@ -1350,11 +1378,522 @@ def test_expected_false_flags() -> None:
     assert rules.expected_false_flags(0, 1.96) == 0.0
 
 
-def test_canary_evidence_is_a_stub() -> None:
-    with pytest.raises(NotImplementedError, match="feat/35"):
-        rules.canary_evidence()
-    with pytest.raises(NotImplementedError):
-        rules.canary_evidence(1, [2], key="value")
+# --- the AI canary and the signal context (ADR 0010 D) -----------------------------------------------------------
+# Expected values below are worked out by hand (binomial and Poisson-binomial sums, ln 2 steps), never by calling
+# the code under test.
+
+
+def decoy_play(**over: Any) -> rules.DecoyPlay:
+    """A ranked attempt with a decoy: four live options, option 1 is the key, the decoy is option 2 and the
+    player chose option 3 after a long copy."""
+    base: dict[str, Any] = {
+        "decoy": 2,
+        "chosen": (3,),
+        "answer_kind": "choice-one",
+        "passed": False,
+        "hint": False,
+        "long_copies": 1,
+        "resumes": 0,
+        "live": frozenset({1, 2, 3, 4}),
+        "right": frozenset({1}),
+    }
+    return rules.DecoyPlay(**{**base, **over})
+
+
+def trial(live: set[int], right: set[int], decoy: int, chosen: int) -> tuple[float, bool] | str:
+    return rules.canary_trial(
+        decoy_play(live=frozenset(live), right=frozenset(right), decoy=decoy, chosen=(chosen,))
+    )
+
+
+@pytest.mark.parametrize(
+    ("live", "right", "p0"),
+    [
+        ({1, 2, 3}, {1}, 1 / 2),
+        ({1, 2, 3, 4}, {1}, 1 / 3),
+        ({1, 2, 3, 4, 5}, {1}, 1 / 4),
+        ({1, 2, 3, 4, 5}, {1, 5}, 1 / 3),  # two right options: the decoy is one of the three wrong ones
+    ],
+)
+def test_canary_trial_chance_by_option_count(live: set[int], right: set[int], p0: float) -> None:
+    wrong = sorted(live - right)
+    decoy, other = wrong[0], wrong[1]
+    miss = trial(live, right, decoy, other)
+    hit = trial(live, right, decoy, decoy)
+    assert isinstance(miss, tuple) and isinstance(hit, tuple)
+    assert miss[0] == pytest.approx(p0) and miss[1] is False
+    assert hit[0] == pytest.approx(p0) and hit[1] is True
+
+
+@pytest.mark.parametrize(
+    ("over", "reason"),
+    [
+        ({"answer_kind": "choice-many"}, "not single choice"),
+        ({"answer_kind": "text", "right": frozenset(), "live": frozenset()}, "not single choice"),
+        ({"answer_kind": "number", "right": frozenset(), "live": frozenset()}, "not single choice"),
+        ({"decoy": 9}, "options changed"),  # the decoy has been retired
+        ({"chosen": (9,)}, "options changed"),  # so has the option the player chose
+        ({"live": frozenset({1, 2, 3}), "chosen": (5,)}, "options changed"),
+        ({"changed": True}, "options changed"),  # the question changed after the attempt
+        ({"changed": True, "live": frozenset({1, 2})}, "options changed"),  # the change is named first
+        ({"live": frozenset({1, 2}), "decoy": 2, "chosen": (2,)}, "too few options"),
+        (
+            {"live": frozenset({1, 2, 3}), "right": frozenset({1, 2}), "decoy": 3, "chosen": (3,)},
+            "too few wrong options",
+        ),
+        ({"decoy": 1, "chosen": (3,)}, "decoy right"),
+        ({"hint": True}, "hint"),
+        ({"passed": True, "chosen": ()}, "not one wrong option"),
+        ({"chosen": (1,)}, "not one wrong option"),  # a right answer
+        ({"chosen": (3, 4)}, "not one wrong option"),
+    ],
+)
+def test_canary_trial_voids(over: dict[str, Any], reason: str) -> None:
+    assert rules.canary_trial(decoy_play(**over)) == reason
+
+
+def test_a_trial_needs_no_long_copy_to_exist() -> None:
+    """The arm decides what a trial is for, not whether it is one: no totals, a placebo and a copy all count."""
+    for copies in (None, 0, 1, 7):
+        got = rules.canary_trial(decoy_play(long_copies=copies))
+        assert isinstance(got, tuple) and got[0] == pytest.approx(1 / 3) and got[1] is False
+
+
+@pytest.mark.parametrize(
+    ("copies", "resumes", "arm"),
+    [
+        (2, 3, "copy"),  # a reload does not undo a copy
+        (1, 0, "copy"),
+        (0, 0, "placebo"),
+        (0, 1, None),  # a reload resets the page counters: a copy may have been forgotten
+        (0, 5, None),
+        (None, 0, "unreported"),
+        (None, 2, "unreported"),
+        (None, None, "unreported"),
+    ],
+)
+def test_canary_arm(copies: int | None, resumes: int | None, arm: str | None) -> None:
+    assert rules.canary_arm(decoy_play(long_copies=copies, resumes=resumes)) == arm
+
+
+@pytest.mark.parametrize(
+    ("over", "expected"),
+    [
+        ({}, (1 / 4, False)),
+        ({"decoy": 1}, (1 / 4, True)),  # the decoy is the key: the draw check's hit
+        ({"live": frozenset({1, 2, 3}), "decoy": 1}, (1 / 3, True)),
+        ({"live": frozenset({1, 2, 3, 4, 5}), "right": frozenset({1, 5}), "decoy": 5}, (2 / 5, True)),
+        ({"hint": True}, (1 / 4, False)),  # the draw is blind to hints and to what was chosen
+        ({"chosen": (1,), "decoy": 2}, (1 / 4, False)),
+        ({"answer_kind": "choice-many"}, None),
+        ({"answer_kind": "text", "live": frozenset(), "right": frozenset()}, None),
+        ({"live": frozenset({1, 2})}, None),  # fewer than three options
+        ({"changed": True}, None),  # the key's options are not those the draw saw
+    ],
+)
+def test_draw_hit(over: dict[str, Any], expected: tuple[float, bool] | None) -> None:
+    got = rules.draw_hit(decoy_play(**over))
+    if expected is None:
+        assert got is None
+    else:
+        assert got is not None and got[0] == pytest.approx(expected[0]) and got[1] is expected[1]
+
+
+def binomial_sf(n: int, k: int, p: float) -> float:
+    return sum(math.comb(n, j) * p**j * (1 - p) ** (n - j) for j in range(k, n + 1))
+
+
+def test_canary_tail_is_exact() -> None:
+    assert rules.poisson_binomial_sf([1 / 2, 1 / 3, 1 / 4], 2) == pytest.approx(7 / 24)
+    assert rules.poisson_binomial_sf([1 / 3] * 10, 5) == pytest.approx(0.2131280801, rel=1e-6)
+    assert rules.poisson_binomial_sf([0.433333] * 6, 6) == pytest.approx(0.0066211, rel=1e-4)
+    assert rules.poisson_binomial_sf([0.3, 0.9], 0) == pytest.approx(1.0)
+    assert rules.poisson_binomial_sf([0.3, 0.9], 3) == pytest.approx(0.0)
+    mixed = [1 / 2, 1 / 3, 1 / 4] * 4
+    dist = [1.0]
+    for p in mixed:
+        dist = [
+            (dist[k] if k < len(dist) else 0.0) * (1 - p) + (dist[k - 1] * p if k else 0.0)
+            for k in range(len(dist) + 1)
+        ]
+    for k in range(len(mixed) + 1):
+        assert rules.poisson_binomial_sf(mixed, k) == pytest.approx(sum(dist[k:]), abs=1e-12)
+
+
+def test_the_two_tails_share_one_count() -> None:
+    """Both tails include the observed count: p_low + p_high - P(X = k) = 1."""
+    trials = [(1 / 3, i < 6) for i in range(20)]
+    tail = rules.placebo_tail(trials, 0.05)
+    pmf = math.comb(20, 6) * (1 / 3) ** 6 * (2 / 3) ** 14
+    assert (tail.trials, tail.hits) == (20, 6)
+    assert tail.expected == pytest.approx(20 / 3)
+    assert tail.p_high == pytest.approx(binomial_sf(20, 6, 1 / 3))
+    assert tail.p_low + tail.p_high - pmf == pytest.approx(1.0)
+    drawn = rules.draw_tail([(0.25, i < 5) for i in range(20)], 0.05)
+    pmf = math.comb(20, 5) * 0.25**5 * 0.75**15
+    assert drawn.p_low + drawn.p_high - pmf == pytest.approx(1.0)
+
+
+def two_sided(n: int, p: float) -> tuple[int, int]:
+    """The smallest count whose upper tail is below .05 (but above .025), and the largest whose lower tail is."""
+    high = next(h for h in range(n + 1) if binomial_sf(n, h, p) <= 0.05)
+    assert 0.025 < binomial_sf(n, high, p) <= 0.05
+    low = next(h for h in range(n, -1, -1) if 1 - binomial_sf(n, h + 1, p) <= 0.05)
+    assert 0.025 < 1 - binomial_sf(n, low + 1, p) <= 0.05
+    return high, low
+
+
+def test_the_pooled_controls_are_two_sided_at_alpha_over_two() -> None:
+    """At alpha .05 a tail is off from .025: a count whose one-sided p is .04 is near chance, not off."""
+    n = 300
+    high, low = two_sided(n, 1 / 3)
+
+    def placebo(hits: int) -> rules.Tail:
+        return rules.placebo_tail([(1 / 3, i < hits) for i in range(n)], 0.05)
+
+    assert placebo(100).verdict != "off"
+    assert placebo(high).verdict != "off", "one-sided .05 would call this off; two-sided .025 does not"
+    assert placebo(low).verdict != "off"
+    assert placebo(130).verdict == "off", "a leak"
+    assert placebo(75).verdict == "off", "a deficit: the decoy is observable without the note"
+
+    def draw(hits: int) -> rules.Tail:
+        return rules.draw_tail([(0.25, i < hits) for i in range(n)], 0.05)
+
+    assert draw(75).verdict != "off"
+    assert draw(105).verdict == "off", "the decoy lands on the key too often"
+    assert draw(45).verdict == "off", "or too rarely"
+
+
+def test_power_is_the_exact_upper_tail_power_at_the_critical_count() -> None:
+    # 10 fair trials at alpha .05: P(X >= 9) = 11/1024 <= .05 < P(X >= 8) = 56/1024, so the cut is 9
+    assert rules.power([0.5] * 10, [0.8] * 10, 0.05) == pytest.approx(0.3758096384)
+    assert rules.power([0.5] * 10, [0.5] * 10, 0.05) == pytest.approx(11 / 1024)
+    # three fair trials cannot reach .05 (P(X >= 3) = 1/8): no count rejects, no power
+    assert rules.power([0.5] * 3, [0.9] * 3, 0.05) == 0.0
+    more = rules.power([1 / 3] * 60, [2 / 3] * 60, 0.025)
+    assert 0.99 < more <= 1.0
+    assert rules.power([1 / 3] * 6, [2 / 3] * 6, 0.025) < 0.5
+
+
+def test_a_large_control_is_fast() -> None:
+    """Ten thousand trials with three different chances: well under the 120 s of the report's statement timeout."""
+    import time
+
+    trials = [(p, (i * 7919) % 11 < 4) for i, p in enumerate([1 / 2, 1 / 3, 1 / 4] * 3334)]
+    started = time.perf_counter()
+    tail = rules.placebo_tail(trials, 0.05)
+    elapsed = time.perf_counter() - started
+    assert tail.trials == len(trials)
+    assert elapsed < 3.0, f"{elapsed:.1f} s for one control"
+
+
+@pytest.mark.parametrize(
+    ("rules_from", "until", "start"),
+    [
+        (date(2026, 10, 26), date(2027, 5, 1), date(2026, 10, 26)),  # the rule date is inside the season
+        (date(2026, 10, 26), date(2028, 1, 10), date(2027, 9, 1)),  # a season later: the season is the walk
+        (date(2026, 10, 26), date(2027, 9, 1), date(2026, 10, 26)),  # until is excluded: still 2026-27
+        (date(2026, 10, 26), date(2027, 9, 2), date(2027, 9, 1)),  # one day into 2027-28
+        (date(2026, 10, 26), date(2026, 10, 27), date(2026, 10, 26)),
+        (date(2026, 9, 1), date(2026, 9, 2), date(2026, 9, 1)),
+    ],
+)
+def test_walk_from(rules_from: date, until: date, start: date) -> None:
+    assert rules.walk_from(rules_from, until) == start
+
+
+def walk(spec: str, p0: float = 1 / 3) -> list[tuple[float, bool]]:
+    """'HHM' -> hit, hit, miss at chance p0."""
+    return [(p0, c == "H") for c in spec]
+
+
+ALPHA, BETA, FOLLOW = 0.05, 0.2, 0.5
+
+
+def evidence(
+    walks: dict[Any, list[tuple[float, bool]]], *, nudge: float = 0.0, m: int = 1
+) -> dict[Any, rules.Canary]:
+    return rules.canary_evidence(walks, alpha=ALPHA, beta=BETA, follow=FOLLOW, nudge=nudge, m=m)
+
+
+def test_llr_steps() -> None:
+    """A hit adds ln(p1 / p0'), a miss ln((1 - p1) / (1 - p0')), with p0' = p0 + g0 (1 - p0), p1 = p0 + f (1 - p0)."""
+    plain = evidence({1: walk("H")})[1]
+    assert plain.llr_final == pytest.approx(math.log(2))  # (2/3) / (1/3)
+    assert evidence({1: walk("M")})[1].llr_final == pytest.approx(-math.log(2))  # (1/3) / (2/3)
+    nudged = evidence({1: walk("H")}, nudge=0.15)[1]
+    assert nudged.llr_final == pytest.approx(0.430783, abs=1e-6)  # ln((2/3) / 0.43333)
+    assert evidence({1: walk("M")}, nudge=0.15)[1].llr_final == pytest.approx(-0.530628, abs=1e-6)
+    assert evidence({1: walk("HM")})[1].llr_final == pytest.approx(0.0, abs=1e-12)
+
+
+@pytest.mark.parametrize(
+    ("nudge", "m", "spec", "p0", "decision", "decided_at"),
+    [
+        (0.0, 1, "H" * 5, 1 / 3, "reject", 5),  # 5 ln 2 = 3.466 >= ln(1 / .05) = 2.996
+        (0.0, 1, "H" * 4, 1 / 3, "continue", None),  # 2.773
+        (0.0, 2, "H" * 5, 1 / 3, "continue", None),  # ln(2 / .05) = 3.689 > 3.466
+        (0.0, 2, "H" * 6, 1 / 3, "reject", 6),
+        (0.0, 1, "M" * 6, 1 / 3, "no sign", None),  # -4.159 <= ln(.2 / .95) = -1.558
+        (0.0, 1, "MM", 1 / 3, "continue", None),  # -1.386 is not below -1.558 yet
+        (0.0, 1, "MMM", 1 / 3, "no sign", None),  # -2.079
+        (0.15, 1, "H" * 7, 1 / 3, "reject", 7),  # 7 * .430783 = 3.015
+        (0.15, 1, "H" * 6, 1 / 3, "continue", None),  # 2.585
+        (0.15, 10, "H" * 13, 1 / 3, "reject", 13),  # 13 * .430783 = 5.600 >= ln(10 / .05) = 5.298
+        (0.15, 10, "H" * 12, 1 / 3, "continue", None),  # 5.169
+        (0.0, 1, "H" * 4, 1 / 2, "continue", None),  # at p0 = 1/2 a hit is worth ln 1.5 only
+        (0.0, 1, "H" * 8, 1 / 2, "reject", 8),  # 3.243
+        (0.0, 1, "H" * 7, 1 / 2, "continue", None),  # 2.838
+    ],
+)
+def test_canary_sprt_boundaries(
+    nudge: float, m: int, spec: str, p0: float, decision: str, decided_at: int | None
+) -> None:
+    c = evidence({"x": walk(spec, p0)}, nudge=nudge, m=m)["x"]
+    assert c.decision.startswith("no sign") if decision == "no sign" else c.decision == decision
+    assert c.decided_at == decided_at
+    assert (c.trials, c.hits) == (len(spec), spec.count("H"))
+
+
+def test_a_reject_reports_both_p_values_and_where_it_crossed() -> None:
+    c = evidence({"x": walk("H" * 5)})["x"]
+    assert c.decision == "reject" and c.decided_at == 5
+    assert c.p_any == pytest.approx(math.exp(-5 * math.log(2)))  # 1 / 32
+    assert c.p == pytest.approx((1 / 3) ** 5)  # P(5 of 5 at 1/3)
+    assert c.expected == pytest.approx(5 / 3)
+    assert c.earlier_stretch is False, "it ends where its maximum is"
+
+    later = evidence({"x": walk("H" * 6 + "M" * 20)})["x"]
+    assert later.decision == "reject", "a reject is final"
+    assert later.decided_at == 5
+    assert later.earlier_stretch is True, "the walk fell back below the boundary afterwards"
+    assert later.llr_final < math.log(1 / ALPHA)
+    assert later.p == pytest.approx(binomial_sf(26, 6, 1 / 3), rel=1e-9)
+    assert later.p == pytest.approx(0.90996, abs=1e-5), "the fixed window no longer shows it"
+    assert later.p_any == pytest.approx(1 / 64), "the anytime p is of the best stretch"
+    assert (later.trials, later.hits) == (26, 6)
+
+
+def test_the_anytime_p_is_one_over_the_best_likelihood_ratio_and_at_most_one() -> None:
+    assert evidence({"x": walk("H" * 4)})["x"].p_any == pytest.approx(1 / 16)
+    assert evidence({"x": walk("M" * 6)})["x"].p_any == 1.0
+    assert evidence({"x": walk("MMH")})["x"].p_any == pytest.approx(1.0)  # it never got above its start
+
+
+def test_the_nudge_enters_p0_in_the_expected_count_and_the_fixed_window_p() -> None:
+    c = evidence({"x": walk("H" * 7)}, nudge=0.15)["x"]
+    p0n = 1 / 3 + 0.15 * 2 / 3
+    assert c.expected == pytest.approx(7 * p0n)
+    assert c.p == pytest.approx(p0n**7)
+    assert c.decision == "reject" and c.decided_at == 7
+
+
+def test_evidence_with_nothing_to_walk_is_absent_and_other_people_do_not_move_a_decision() -> None:
+    alone = evidence({"a": walk("H" * 5)})
+    assert evidence({"a": walk("H" * 5), "b": []}).keys() == {"a"}
+    crowd = evidence({"a": walk("H" * 5), **{k: walk("HMMHM" * 3) for k in "bcdefg"}})
+    assert crowd["a"] == alone["a"], (
+        "the boundary is a fixed ln(M / alpha), not a function of who else played"
+    )
+    assert evidence({}) == {}
+
+
+def test_listing_is_the_same_walk_on_the_placebo_and_unreported_arms_and_returns_crossers_only() -> None:
+    crossed = rules.listing(
+        {"fast": walk("H" * 5), "slow": walk("HMHMHM"), "empty": []},
+        alpha=ALPHA,
+        follow=FOLLOW,
+        nudge=0.0,
+        m=1,
+    )
+    assert set(crossed) == {"fast"}
+    nudged = rules.listing({"fast": walk("H" * 5)}, alpha=ALPHA, follow=FOLLOW, nudge=0.15, m=1)
+    assert set(nudged) == set(), "the same composite null as the copy arm: five hits no longer cross"
+    assert set(rules.listing({"x": walk("H" * 7)}, alpha=ALPHA, follow=FOLLOW, nudge=0.15, m=1)) == {"x"}
+
+
+def test_the_composite_null_keeps_the_false_reject_rate_within_alpha() -> None:
+    """Walks whose true rate is exactly p0' (a nudged but honest reader): Ville's bound puts the share that ever
+    crosses ln(M / alpha) at alpha / M or below. Seeded."""
+    rng = random.Random(20261026)
+    nudge = 0.15
+    rate = 1 / 3 + nudge * 2 / 3
+    walks = {i: [(1 / 3, rng.random() < rate) for _ in range(40)] for i in range(2000)}
+    got = rules.canary_evidence(walks, alpha=ALPHA, beta=BETA, follow=FOLLOW, nudge=nudge, m=1)
+    share = sum(c.decision == "reject" for c in got.values()) / len(walks)
+    sigma = math.sqrt(ALPHA * (1 - ALPHA) / len(walks))
+    assert share <= ALPHA + 3 * sigma
+
+    # and it is the null that costs power, not blindness: a follower at p1 = 2/3 gains .11 nats a trial against
+    # a nudged null, so a hundred trials cross almost always
+    following = {i: [(1 / 3, rng.random() < 2 / 3) for _ in range(100)] for i in range(500)}
+    caught = rules.canary_evidence(following, alpha=ALPHA, beta=BETA, follow=FOLLOW, nudge=nudge, m=1)
+    assert sum(c.decision == "reject" for c in caught.values()) / len(following) > 0.9
+
+
+def test_a_larger_m_is_a_stricter_boundary_for_the_same_data() -> None:
+    walks = {"x": walk("H" * 7)}
+    rejected = [
+        rules.canary_evidence(walks, alpha=ALPHA, beta=BETA, follow=FOLLOW, nudge=0.0, m=m)["x"].decision
+        for m in (1, 2, 5, 10, 100)
+    ]
+    assert rejected == [
+        "reject",
+        "reject",
+        "reject",
+        "continue",
+        "continue",
+    ]  # 7 ln 2 = 4.852; ln(5 / .05) = 4.605
+    # the same data against another alpha
+    assert (
+        rules.canary_evidence(walks, alpha=0.0125, beta=BETA, follow=FOLLOW, nudge=0.0, m=1)["x"].decision
+        == "reject"
+    ), "ln(80) = 4.382 <= 4.852"
+    assert (
+        rules.canary_evidence(walks, alpha=0.005, beta=BETA, follow=FOLLOW, nudge=0.0, m=1)["x"].decision
+        == "continue"
+    ), "ln(200) = 5.298 > 4.852"
+
+
+def canary_of(decision: str, hits: int = 9) -> rules.Canary:
+    base = evidence({"x": walk("H" * hits)})["x"]
+    return replace(base, decision=decision)
+
+
+def maxed_context() -> rules.Context:
+    rows = [
+        rules.Recorded(
+            away_undeclared_s=900,
+            away_declared_s=300,
+            pasted=True,
+            long_copies=3,
+            resumes=4,
+        )
+        for _ in range(40)
+    ]
+    ctx = rules.context(rows, 60.0)
+    assert ctx is not None
+    return ctx
+
+
+def test_signals_never_set_a_family() -> None:
+    t = thresholds()
+    quiet = person(upstream_n=0)
+    with_context = replace(quiet, signals=maxed_context())
+    assert rules.families(with_context, t, False) == rules.families(quiet, t, False)
+    assert not any(v is True for v in rules.families(with_context, t, False).values())
+    assert rules.conversation(rules.families(with_context, t, False)) is False
+    # and next to a real family they add nothing to it
+    loud = person(upstream_n=0, hard_z=4.0)
+    assert rules.families(replace(loud, signals=maxed_context()), t, False) == rules.families(loud, t, False)
+    assert rules.conversation(rules.families(replace(loud, signals=maxed_context()), t, False)) is False
+
+    c = canary_of("reject")
+    assert rules.families(replace(quiet, canary=c), t, False)["provenance"] is True
+    assert rules.families(replace(quiet, canary=c, signals=maxed_context()), t, False)["provenance"] is True
+
+
+@pytest.mark.parametrize(
+    "decision",
+    [
+        "no sign",
+        "no sign at f",
+        "continue",
+        "ignored",
+        "ignored (placebo off)",
+        "ignored (own placebo off)",
+        "ignored (controls too small)",
+        "ignored (draw check off)",
+        "ignored (more players than IFS_INTEGRITY_CANARY_M)",
+        "exploratory",
+    ],
+)
+def test_only_a_reject_feeds_provenance_and_nothing_else_ever_makes_it_false(decision: str) -> None:
+    t = thresholds()
+    flags = rules.families(replace(person(upstream_n=0), canary=canary_of(decision)), t, False)
+    assert flags["provenance"] is None, "not a negative either: no sign is not a clearance"
+    assert rules.conversation(flags) is False
+    # next to a clean upstream-key test it leaves that test's False alone
+    clean = rules.families(replace(person(), canary=canary_of(decision)), t, False)
+    assert clean["provenance"] is False
+    flagged = replace(person(upstream_n=0, hard_z=4.0), canary=canary_of("reject"))
+    both = rules.families(flagged, t, False)
+    assert rules.conversation(both) is True and rules.independent(both) is True
+    timing = replace(
+        person(upstream_n=0, latency=lat(below_floor=12)), canary=canary_of(decision)
+    )  # a timing family alone, with the canary silent
+    assert rules.conversation(rules.families(timing, t, False)) is False
+
+
+def test_the_listing_is_not_a_family_input() -> None:
+    """The listing is a pointer for the reviewer: Person carries no listing field, so families() cannot read one."""
+    assert "listing" not in rules.Person.__dataclass_fields__
+    assert "listed" not in rules.Person.__dataclass_fields__
+
+
+def rec(**kw: Any) -> rules.Recorded:
+    base: dict[str, Any] = {
+        "away_undeclared_s": None,
+        "away_declared_s": None,
+        "pasted": None,
+        "long_copies": None,
+        "resumes": 0,
+    }
+    return rules.Recorded(**{**base, **kw})
+
+
+def test_context_aggregates() -> None:
+    rows = [
+        rec(),  # an attempt whose page sent no totals
+        rec(away_undeclared_s=0, away_declared_s=0, pasted=False, long_copies=0),
+        rec(away_undeclared_s=30, away_declared_s=10, pasted=False, long_copies=1, resumes=1),
+        rec(away_undeclared_s=90, away_declared_s=0, pasted=True, long_copies=2, resumes=2),
+        rec(away_undeclared_s=200, away_declared_s=40, long_copies=0),
+        rec(away_undeclared_s=60),  # exactly at the threshold: not over it
+    ]
+    ctx = rules.context(rows, 60.0)
+    assert ctx is not None
+    assert ctx.n == 6
+    assert (ctx.reported, ctx.away_any, ctx.away_over) == (5, 4, 2)
+    assert ctx.away_median_s == 75.0, "the median of the answers with any away time: 30, 60, 90, 200"
+    assert (ctx.reported_d, ctx.declared_any) == (4, 2)
+    assert ctx.declared_median_s == 25.0
+    assert (ctx.pasted, ctx.text_n) == (1, 3), "only answers that can be pasted into count"
+    assert (ctx.copied, ctx.copies_n, ctx.long_copies) == (2, 4, 3)
+    assert (ctx.resumed, ctx.resumes) == (2, 3)
+
+
+def test_context_threshold_is_the_configured_one_and_strict() -> None:
+    rows = [rec(away_undeclared_s=s) for s in (0, 59, 60, 61, 500)]
+    assert rules.context(rows, 60.0).away_over == 2  # type: ignore[union-attr]
+    assert rules.context(rows, 0.0).away_over == 4  # type: ignore[union-attr]
+    assert rules.context(rows, 1000.0).away_over == 0  # type: ignore[union-attr]
+    assert rules.context(rows, 60.0).away_any == 4  # type: ignore[union-attr]
+
+
+def test_context_without_values_has_no_medians_and_nothing_collected_is_none() -> None:
+    assert rules.context([], 60.0) is None
+    ctx = rules.context([rec(away_undeclared_s=0, away_declared_s=0), rec(away_undeclared_s=0)], 60.0)
+    assert ctx is not None and ctx.away_median_s is None and ctx.declared_median_s is None
+    assert ctx.away_any == 0 and ctx.away_over == 0
+    bare = rules.context([rec()], 60.0)
+    assert bare is not None and (bare.reported, bare.reported_d, bare.copies_n, bare.text_n) == (0, 0, 0, 0)
+
+
+def test_context_counts_decoy_attempts_without_totals() -> None:
+    names = {f.name for f in dataclasses.fields(rules.Recorded)}
+    if "decoy" not in names:
+        pytest.skip("Recorded has no decoy flag under that name")
+    rows = [
+        rec(decoy=True),
+        rec(decoy=True, long_copies=0),
+        rec(decoy=True, long_copies=2),
+        rec(decoy=False),
+    ]
+    ctx = rules.context(rows, 60.0)
+    assert ctx is not None
+    assert (ctx.unreported, ctx.decoy_n) == (1, 3)
 
 
 # --- what the modules may touch ------------------------------------------------------------------------------
@@ -1467,9 +2006,21 @@ DECISION = {
 }
 
 
+CANARY = {
+    "CANARY_ALPHA": "0.05",
+    "CANARY_BETA": "0.2",
+    "CANARY_FOLLOW": "0.5",
+    "CANARY_CONTROL_ALPHA": "0.1",
+    "CANARY_NUDGE": "0.1",
+    "CANARY_M": "50",
+    "AWAY_UNDECLARED_S": "120",
+}
+
+
 def clean_environment(monkeypatch: pytest.MonkeyPatch, **env: str) -> None:
     for name in [n for n in os.environ if n.startswith("IFS_INTEGRITY_")]:
         monkeypatch.delenv(name)
+    monkeypatch.delenv("IFS_RULES_1B_FROM", raising=False)
     for name, value in env.items():
         monkeypatch.setenv(f"IFS_INTEGRITY_{name}", value)
 
@@ -1537,3 +2088,133 @@ def test_thresholds_map_the_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     over = service.thresholds(s, fixed_rank=500.0, split=date(2026, 9, 20))
     assert (over.fixed_rank, over.split) == (500.0, date(2026, 9, 20))
     assert over.follow_within == timedelta(minutes=30)
+
+
+def test_thresholds_carry_the_canary_and_context_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+    clean_environment(monkeypatch, **DECISION, **CANARY)
+    t = service.thresholds(build_settings())
+    assert (t.canary_alpha, t.canary_beta, t.canary_follow) == (0.05, 0.2, 0.5)
+    assert (t.canary_control_alpha, t.canary_nudge, t.away_undeclared_s) == (0.1, 0.1, 120.0)
+    assert t.canary_m == 50 and isinstance(t.canary_m, int)
+    over = service.thresholds(build_settings(), fixed_rank=500.0, split=date(2026, 9, 20))
+    assert (over.canary_alpha, over.canary_m, over.canary_nudge) == (0.05, 50, 0.1)
+
+
+def test_canary_settings_are_optional_in_the_model_and_have_no_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The CLI asks for them only for the checks that read them; a cohort run needs none, and none has a value
+    in the repository."""
+    clean_environment(monkeypatch, **DECISION)
+    s = build_settings()
+    assert (s.canary_alpha, s.canary_beta, s.canary_follow, s.away_undeclared_s) == (None,) * 4
+    assert (s.canary_control_alpha, s.canary_nudge, s.canary_m, s.rules_1b_from) == (None,) * 4
+    t = service.thresholds(s)
+    assert [
+        getattr(t, f)
+        for f in (
+            "canary_alpha",
+            "canary_beta",
+            "canary_follow",
+            "canary_control_alpha",
+            "canary_nudge",
+            "canary_m",
+            "away_undeclared_s",
+        )
+    ] == [None] * 7
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("CANARY_ALPHA", "0"),
+        ("CANARY_ALPHA", "1"),
+        ("CANARY_ALPHA", "-0.05"),
+        ("CANARY_BETA", "0"),
+        ("CANARY_BETA", "1"),
+        ("CANARY_BETA", "-0.2"),
+        ("CANARY_FOLLOW", "0"),
+        ("CANARY_FOLLOW", "1"),
+        ("CANARY_FOLLOW", "-0.5"),
+        ("CANARY_CONTROL_ALPHA", "0"),
+        ("CANARY_CONTROL_ALPHA", "1"),
+        ("CANARY_CONTROL_ALPHA", "-0.1"),
+        ("CANARY_NUDGE", "-0.1"),
+        ("CANARY_NUDGE", "1"),
+        ("CANARY_M", "0"),
+        ("CANARY_M", "-3"),
+        ("CANARY_M", "2.5"),
+        ("CANARY_M", "many"),
+        ("AWAY_UNDECLARED_S", "-1"),
+        ("AWAY_UNDECLARED_S", "a minute"),
+    ],
+)
+def test_canary_settings_ranges(monkeypatch: pytest.MonkeyPatch, name: str, value: str) -> None:
+    clean_environment(monkeypatch, **{**DECISION, **CANARY, name: value})
+    with pytest.raises(ValidationError) as e:
+        build_settings()
+    assert name.lower() in str(e.value).lower(), "the error names the variable"
+
+
+@pytest.mark.parametrize(
+    ("over", "named"),
+    [
+        ({"CANARY_ALPHA": "0.6", "CANARY_BETA": "0.4"}, "CANARY_BETA"),  # alpha + beta = 1
+        ({"CANARY_ALPHA": "0.7", "CANARY_BETA": "0.5"}, "CANARY_BETA"),
+        (
+            {"CANARY_ALPHA": "0.05", "CANARY_CONTROL_ALPHA": "0.01"},
+            "CANARY_CONTROL_ALPHA",
+        ),  # a stricter control
+        ({"CANARY_FOLLOW": "0.5", "CANARY_NUDGE": "0.5"}, "CANARY_NUDGE"),  # g0 = f: nothing left to detect
+        ({"CANARY_FOLLOW": "0.3", "CANARY_NUDGE": "0.4"}, "CANARY_NUDGE"),
+    ],
+)
+def test_canary_settings_relations(monkeypatch: pytest.MonkeyPatch, over: dict[str, str], named: str) -> None:
+    clean_environment(monkeypatch, **{**DECISION, **CANARY, **over})
+    with pytest.raises(ValidationError) as e:
+        build_settings()
+    assert f"IFS_INTEGRITY_{named}" in str(e.value)
+
+
+@pytest.mark.parametrize(
+    "over",
+    [
+        {"CANARY_ALPHA": "0.05", "CANARY_BETA": "0.94"},  # just under 1
+        {"CANARY_ALPHA": "0.05", "CANARY_CONTROL_ALPHA": "0.05"},  # equal is allowed: control >= alpha
+        {"CANARY_NUDGE": "0"},  # no nudge assumed
+        {"CANARY_FOLLOW": "0.5", "CANARY_NUDGE": "0.49"},
+        {"CANARY_M": "1"},
+        {"AWAY_UNDECLARED_S": "0"},
+    ],
+)
+def test_canary_settings_edges_that_are_valid(monkeypatch: pytest.MonkeyPatch, over: dict[str, str]) -> None:
+    clean_environment(monkeypatch, **{**DECISION, **CANARY, **over})
+    build_settings()
+
+
+def test_a_relation_is_only_checked_between_settings_that_are_both_set(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clean_environment(monkeypatch, **DECISION, CANARY_CONTROL_ALPHA="0.001")
+    assert build_settings().canary_control_alpha == 0.001
+    clean_environment(monkeypatch, **DECISION, CANARY_NUDGE="0.9")
+    assert build_settings().canary_nudge == 0.9
+
+
+def test_the_rule_date_is_the_apps_own_variable(monkeypatch: pytest.MonkeyPatch) -> None:
+    """One switch for every mechanism: the report reads IFS_RULES_1B_FROM, not an IFS_INTEGRITY_ date."""
+    clean_environment(monkeypatch, **DECISION)
+    monkeypatch.setenv("IFS_RULES_1B_FROM", "2026-10-26")
+    assert build_settings().rules_1b_from == date(2026, 10, 26)
+    monkeypatch.setenv("IFS_RULES_1B_FROM", "")
+    assert build_settings().rules_1b_from is None, "compose passes an empty string when it is unset"
+    monkeypatch.setenv("IFS_RULES_1B_FROM", "26/10/2026")
+    with pytest.raises(ValidationError) as e:
+        build_settings()
+    assert "rules_1b_from" in str(e.value).lower() or "IFS_RULES_1B_FROM" in str(e.value)
+    monkeypatch.delenv("IFS_RULES_1B_FROM")
+    monkeypatch.setenv("IFS_INTEGRITY_RULES_1B_FROM", "2026-10-26")
+    assert build_settings().rules_1b_from is None, "no second date setting"
+    assert not [
+        f for f in IntegritySettings.model_fields if "date" in f or "from" in f.replace("rules_1b_from", "")
+    ]

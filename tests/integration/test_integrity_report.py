@@ -9,13 +9,14 @@ import hmac
 import itertools
 import math
 import re
+from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Any, cast
 
 import psycopg
 import pytest
-from sqlalchemy import Engine, event, func, select, text, update
+from sqlalchemy import Engine, delete, event, func, select, text, update
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import NullPool
@@ -33,12 +34,19 @@ from ifs_tests.db.models import (
 )
 from ifs_tests.db.session import read_only_engine
 from ifs_tests.domain import integrity as rules
-from ifs_tests.services import daily, hints, mock, practice
+from ifs_tests.services import daily, hints, mock, practice, signals
 from ifs_tests.services import integrity as service
+from ifs_tests.settings import IntegritySettings
 
 from . import planted
-from .conftest import INTEGRITY_SALT, freeze_today, integrity_settings, run, set_integrity_env
-from .planted import World
+from .conftest import (
+    INTEGRITY_SALT,
+    INTEGRITY_THRESHOLDS,
+    freeze_today,
+    run,
+    set_integrity_env,
+)
+from .planted import CANARY_ENV, World
 
 pytestmark = pytest.mark.integration
 
@@ -56,7 +64,45 @@ def report(*args: str, salt: str = SALT) -> str:
 
 @pytest.fixture
 def world(db: Session) -> World:
-    return planted.build(db)
+    built = planted.build(db)
+    people_with_a_placebo, _, _ = planted.placebo_pool()
+    assert people_with_a_placebo >= planted.PARAMS_MIN_GROUP, "the pooled placebo needs min_group people"
+    assert planted.placebo_power() >= 1 - float(CANARY_ENV["IFS_INTEGRITY_CANARY_BETA"]), (
+        "and enough trials to see a follower at the configured strength"
+    )
+    return built
+
+
+def set_canary_env(
+    monkeypatch: pytest.MonkeyPatch, rules_from: str | None = planted.RULES_FROM.isoformat()
+) -> None:
+    """The canary and context settings the planted world is calibrated to, and the app's rule date (the one
+    switch). `rules_from` None leaves it unset."""
+    for name, value in CANARY_ENV.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.delenv("IFS_RULES_1B_FROM", raising=False)
+    if rules_from is not None:
+        monkeypatch.setenv("IFS_RULES_1B_FROM", rules_from)
+
+
+@pytest.fixture
+def integrity_env(monkeypatch: pytest.MonkeyPatch, app_engine: Engine) -> Iterator[str]:
+    """The report pointed at the test database as its superuser (the read-only transaction is what is tested here,
+    the role in test_db_roles.py), with every setting it needs for any check. Yields the DSN."""
+    dsn = app_engine.url.render_as_string(hide_password=False)
+    set_integrity_env(monkeypatch, dsn)
+    set_canary_env(monkeypatch)
+    yield dsn
+
+
+def integrity_settings(**over: str) -> IntegritySettings:
+    """The report's settings as the environment gives them, and nothing from the machine's .env file."""
+    cls: Any = IntegritySettings
+    named = {k.removeprefix("IFS_INTEGRITY_").lower(): v for k, v in CANARY_ENV.items()} | over
+    return cast(
+        IntegritySettings,
+        cls(_env_file=None, **{k.lower(): v for k, v in INTEGRITY_THRESHOLDS.items()}, **named),
+    )
 
 
 # --- reading the markdown the report prints ------------------------------------------------------------------
@@ -213,8 +259,6 @@ def test_report_flags_the_planted_profiles(world: World, integrity_env: str) -> 
     out = run(
         [
             "integrity-report",
-            "--since",
-            "2026-09-01",
             "--until",
             "2026-10-12",
             "--checks",
@@ -222,9 +266,10 @@ def test_report_flags_the_planted_profiles(world: World, integrity_env: str) -> 
             "--salt-stdin",
         ],
         SALT + "\n",
-    )
+    )  # the per-person window starts at the rule date: the default
     p = {name: pseudo(uid) for name, uid in world.ids.items()}
-    wrong_days = len(planted.L_WRONG)
+    window = range(planted.RULES_INDEX, planted.DAYS)
+    wrong_days = len(planted.L_WRONG & set(window))
 
     # 1. follow-the-leader on the shared daily. Copy pairs name both players: the leader is in them too. The
     # alumna copied as well and is flagged with them, but never printed.
@@ -238,7 +283,7 @@ def test_report_flags_the_planted_profiles(world: World, integrity_env: str) -> 
         both = int(number(copy.get(row, "both wrong")))
         assert int(number(copy.get(row, "same wrong answer"))) == both
         if "not active" not in row:
-            assert (int(number(copy.get(row, "together"))), both) == (planted.DAYS, wrong_days), row
+            assert (int(number(copy.get(row, "together"))), both) == (len(window), wrong_days), row
             assert number(copy.get(row, "z")) >= 2.5
     simultaneous = next(r for r in copy.rows if {r[0], r[1]} == {p["leader"], p["simultaneous"]})
     assert copy.get(simultaneous, "a submitted first") != copy.get(simultaneous, "a started first"), (
@@ -254,8 +299,9 @@ def test_report_flags_the_planted_profiles(world: World, integrity_env: str) -> 
         assert number(relays.get(row, "z")) >= 2.5
     late = [r for r in relays.rows if relays.get(r, "follower") == p["relayer_late"]]
     assert all(number(relays.get(r, "median dt")) > 3600 for r in late), "a relay has no window"
+    outside = out.replace(section(out, "ai canary"), "")  # the canary's list may name a player with no family
     for name in set(planted.ACTIVE) - planted.FLAGGED:
-        assert p[name] not in out, f"{name} is named without being flagged"
+        assert p[name] not in outside, f"{name} is named without being flagged"
     assert p["alumna"] not in out
 
     # 2. who is worth a conversation: two families, and only the follower and the simultaneous one have two
@@ -272,8 +318,11 @@ def test_report_flags_the_planted_profiles(world: World, integrity_env: str) -> 
         assert positive(cell(record, "conversation")) is (name in planted.CONVERSATION), name
     # pre-seen is a column of its own, not a silent filter; a timeout is counted and kept out of the pace
     uma = found[p["upstream"]]
-    assert cell(uma, "n_preseen") == str(len(planted.PRACTICE["upstream"]))
-    assert 33 <= int(cell(uma, "n_first")) <= 40 - len(planted.PRACTICE["upstream"])
+    seen = len(
+        [i for i in planted.PRACTICE["upstream"] if i in window]
+    )  # the practice before the window counts too
+    assert cell(uma, "n_preseen") == str(seen)
+    assert len(window) - seen - 1 <= int(cell(uma, "n_first")) <= len(window) - seen
     assert 0 < number(cell(uma, "pre-seen lp share")) <= 1
     assert cell(uma, "timeouts").startswith("1/")
     assert number(cell(uma, "sd log")) < 0.5, "the 12-hour wait of a closed daily is not a latency"
@@ -285,8 +334,9 @@ def test_report_flags_the_planted_profiles(world: World, integrity_env: str) -> 
         planted.CONVERSATION
     )
     table = people_table(out)
-    assert any(h.lower() == "canary (ai)" for h in table.header)
-    assert set(table.column("canary")) == {"not available in this release"}
+    assert table.has("canary hits/trials") and not any(h.lower() == "canary (ai)" for h in table.header)
+    for header in CONTEXT_HEADERS:
+        assert table.has(header), header
 
     # 3. upstream keys: the one who answered the corrected questions with the old key, and not the control
     upstream = upstream_table(out)
@@ -470,6 +520,14 @@ def test_cohort_checks_print_no_person_and_never_cross_or_total_small_groups(
 
 
 ADDITIVE = ("people", "plays", "pooled", "pre-seen", "replay mismatch")
+CONTEXT_HEADERS = (
+    "undeclared away any/over/n",
+    "declared away any/n",
+    "pasted/text n",
+    "long copies attempts/n",
+    "resumes attempts/n",
+    "decoy attempts without totals/n",
+)
 
 
 def elo_tables(out: str) -> tuple[Table, Table]:
@@ -687,7 +745,9 @@ def test_split_prints_only_the_flagged(world: World, integrity_env: str) -> None
     assert pseudonyms(world, "follower", "simultaneous") <= found
     (families,) = [t for t in tables(section(out, "split")) if t.has("families before")]
     fay = next(r for r in families.rows if r[0] == pseudo(world.ids["follower"]))
-    assert families.get(fay, "families before") == "timing" and families.get(fay, "n before") == "18"
+    assert families.get(fay, "families before") == "timing" and families.get(fay, "n before") == str(
+        18 - planted.RULES_INDEX
+    )
     (moved,) = [t for t in tables(section(out, "split")) if t.has("people (n)")]
     assert {r[0] for r in moved.rows} == {"median log time", "below-floor share"}
 
@@ -1189,4 +1249,806 @@ def test_replay_fidelity_through_the_real_services(db: Session, integrity_env: s
 def _options(db: Session, q: Question) -> list[int]:
     return list(
         db.scalars(select(AnswerOption.id).where(AnswerOption.question_id == q.id).order_by("position"))
+    )
+
+
+# --- the AI canary and the signal context (ADR 0010 D) ---------------------------------------------------------------
+# The planted world carries a decoy and totals on every attempt from planted.RULES_FROM on. What the report must
+# say about each signal member is worked out by planted.reference(), a walk of the plan that shares no code with the
+# report; the tests compare the two.
+
+PSEUDONYM = re.compile(r"[0-9a-f]{8}")
+
+
+def label(c: rules.Canary) -> str:
+    """A decision as the report words it: `ignored (placebo off)`, `reject`, `no sign`, ..."""
+    if c.decision.startswith("ignored") and "(" not in c.decision and c.note:
+        return f"ignored ({c.note})"
+    return c.decision
+
+
+def canary_summary(db: Session, **settings: str) -> Any:
+    snap = service.fetch(
+        db, service.Window(planted.RULES_FROM, planted.UNTIL), frozenset({"canary"}), planted.RULES_FROM
+    )
+    db.rollback()
+    summary = service.canary_summary(snap, service.thresholds(integrity_settings(**settings)))
+    assert summary is not None
+    return summary
+
+
+def canary_text(out: str) -> str:
+    return section(out, "ai canary")
+
+
+def flagged_table(out: str) -> Table:
+    return one([t for t in tables(canary_text(out)) if t.has("decided at")], "canary decisions")
+
+
+def listing_table(out: str) -> Table:
+    return one([t for t in tables(canary_text(out)) if t.has("unreported share")], "listing")
+
+
+def controls_table(out: str) -> Table:
+    return one([t for t in tables(canary_text(out)) if t.has("verdict")], "controls")
+
+
+def tally(out: str, name: str) -> int:
+    t = one([t for t in tables(canary_text(out)) if t.header[:2] == ["decoy attempts", "n"]], "tallies")
+    (row,) = [r for r in t.rows if r[0] == name]
+    return int(number(row[1]))
+
+
+def hits_trials(record: dict[str, str]) -> tuple[int, int]:
+    m = re.match(r"(\d+)/(\d+)", cell(record, "canary hits/trials"))
+    assert m, record
+    return int(m.group(1)), int(m.group(2))
+
+
+def canary_report(*extra: str) -> str:
+    return report("--checks", "canary,people", *extra)
+
+
+def test_the_canary_decisions_match_an_independent_walk_of_the_planted_plan(
+    world: World, db: Session
+) -> None:
+    summary = canary_summary(db)
+    ref = planted.reference()
+    ids = {world.ids[n]: n for n in planted.PLAYERS}
+    decided = {ids[k]: c for k, c in summary.people.items()}
+    assert set(decided) == {n for n in planted.PLAYERS if ref[n].decision is not None}, (
+        "someone with copy-arm trials is decided, and only them: the forger sent none, the tab-switcher and Pete "
+        "reloaded, the eighteen never copied"
+    )
+    for name, c in decided.items():
+        trials, hits = ref[name].arms["copy"]
+        assert (c.trials, c.hits) == (trials, hits), name
+    # the follower and the late starter are rejected, at the trial the walk first crossed
+    for name in ("canary_follower", "late_starter"):
+        assert decided[name].decision == "reject", name
+        assert decided[name].decided_at == ref[name].decided_at, name
+    assert decided["canary_follower"].hits == decided["canary_follower"].trials, "she never misses"
+    assert decided["late_starter"].trials > decided["late_starter"].hits > 0, (
+        "she started late and missed first"
+    )
+    assert decided["late_starter"].decided_at > decided["canary_follower"].decided_at
+    # the translator copied a lot and reads their translation: never a reject
+    assert label(decided["translator"]).startswith("no sign") and decided["translator"].decision != "reject"
+    # the poisoner is excluded by her own placebo and the pool still sees
+    assert label(decided["poisoner"]) == "ignored (own placebo off)"
+    assert summary.placebo_status == "ok" and summary.draw_status == "ok" and summary.reliable
+    assert summary.excluded >= 2  # the poisoner and the forger, who is no copy-arm person but pushes the pool
+    assert sorted(summary.flagged) == sorted([world.ids["canary_follower"], world.ids["late_starter"]])
+    assert set(summary.listed) == {world.ids["poisoner"], world.ids["forger"]}
+    assert not summary.exploratory and not summary.over_m
+
+
+def test_the_trial_counts_follow_the_rules_of_a_trial(world: World, integrity_env: str, db: Session) -> None:
+    """Cass: a long copy before every follow day, one with a hint (void), two where the decoy is the key (void),
+    two on questions changed after her attempt (void, one of them acknowledged), one on a question changed before
+    (counts), and one attempt that started a minute before the rule date's midnight (left out)."""
+    summary = canary_summary(db)
+    cass = summary.people[world.ids["canary_follower"]]
+    plan = planted.signal_plan()
+    follow = [m for (n, i), m in plan.moves.items() if n == "canary_follower" and i >= planted.RULES_INDEX]
+    copy_days = [m for m in follow if (m.copies or 0) >= 1]
+    assert len(copy_days) > cass.trials, "some of her copies are not trials"
+    assert cass.trials == 15
+    before = plan.changed["before"]
+    facts = [f for f in planted.facts(plan) if f.player == "canary_follower" and f.trial and f.arm == "copy"]
+    assert before in {f.day for f in facts}, "a change before the attempt leaves it a trial"
+    assert plan.changed["after"] not in {f.day for f in facts}
+    assert plan.changed["acked"] not in {f.day for f in facts}
+    boundary = db.scalars(
+        select(Attempt).where(
+            Attempt.user_id == world.ids["canary_follower"],
+            Attempt.day == planted.day_of(planted.BOUNDARY_DAY),
+        )
+    ).one()
+    assert boundary.long_copies == 1 and boundary.decoy_option_id is not None and boundary.resumes == 0
+    assert boundary.created_at < planted.madrid(planted.RULES_FROM, 0)
+    assert cast(datetime, boundary.submitted_at) >= planted.madrid(planted.RULES_FROM, 0)
+    assert boundary.answer["options"] == [boundary.decoy_option_id], "it would be a hit, if it counted"
+
+
+def test_the_attempts_that_must_not_count_leave_the_context_too(
+    world: World, integrity_env: str, db: Session
+) -> None:
+    """Cass's attempt that started a minute before the rule date's midnight carries signals (a page that sent them
+    early) and is dropped: it is no trial and no part of her context. Lena's purged attempt carries nothing. The
+    uncounted mock run has no signal at all, so it is none of the translator's context either."""
+    mock_attempt = db.scalars(select(Attempt).where(Attempt.mode == "mock")).one()
+    assert mock_attempt.resumes is None and mock_attempt.decoy_option_id is None
+    boundary = db.scalars(
+        select(Attempt).where(
+            Attempt.user_id == world.ids["canary_follower"],
+            Attempt.day == planted.day_of(planted.BOUNDARY_DAY),
+        )
+    ).one()
+    snap = service.fetch(
+        db,
+        service.Window(planted.RULES_FROM, planted.UNTIL),
+        frozenset({"follow", "upstream-key", "profile", "home-away", "canary", "people"}),
+        planted.RULES_FROM,
+    )
+    db.rollback()
+    assert snap.signals is not None
+    assert boundary.id not in snap.signals.rows and mock_attempt.id not in snap.signals.rows
+    found = {p.key: p for p in service.persons(snap, service.thresholds(integrity_settings()))}
+    window = planted.DAYS - planted.RULES_INDEX
+    for name, n in (("canary_follower", window), ("translator", window), ("late_starter", window - 1)):
+        context = found[world.ids[name]].signals
+        assert context is not None and context.n == n, name
+    purged = [m for (who, _), m in planted.signal_plan().moves.items() if who == "late_starter" and m.purged]
+    assert len(purged) == 1
+
+
+def test_the_acknowledged_change_still_voids_the_attempts_of_that_question(
+    world: World, integrity_env: str, db: Session
+) -> None:
+    after, acked, before = (db.get(Question, world.changed[k]) for k in ("after", "acked", "before"))
+    assert after is not None and acked is not None and before is not None
+    assert after.key_changed_at is not None and before.key_changed_at is not None
+    assert acked.key_changed_at is None, "a reviewer's acknowledgement cleared the flag"
+    snap = service.fetch(
+        db, service.Window(planted.RULES_FROM, planted.UNTIL), frozenset({"canary"}), planted.RULES_FROM
+    )
+    db.rollback()
+    assert snap.signals is not None
+    changed = snap.signals.changed_after
+    assert changed[acked.id] is not None, "the audit row of the acknowledgement stands in for the flag"
+    assert changed[after.id] is not None
+    when = changed[acked.id]
+    assert when is not None and when > planted.madrid(
+        planted.day_of(planted.signal_plan().changed["acked"]), 23
+    )
+    assert before.key_changed_at is not None
+    assert before.key_changed_at < planted.madrid(planted.day_of(planted.signal_plan().changed["before"]), 0)
+
+    out = canary_report()
+    expected = len(
+        [
+            f
+            for f in planted.facts()
+            if f.day in (planted.signal_plan().changed["after"], planted.signal_plan().changed["acked"])
+        ]
+    )
+    assert tally(out, "void: options changed") == expected >= 2 * (len(planted.ACTIVE) - 1)
+    assert tally(out, "void: hint") == 1
+
+
+def test_the_flagged_table_names_the_follower_and_the_late_starter_with_both_p_values(
+    world: World, integrity_env: str
+) -> None:
+    out = canary_report()
+    ref = planted.reference()
+    table = flagged_table(out)
+    found = {r[0]: r for r in table.rows}
+    assert set(found) == pseudonyms(world, "canary_follower", "late_starter")
+    for name in ("canary_follower", "late_starter"):
+        row = found[pseudo(world.ids[name])]
+        trials, hits = ref[name].arms["copy"]
+        assert (int(number(table.get(row, "trials"))), int(number(table.get(row, "hits")))) == (trials, hits)
+        assert int(number(table.get(row, "decided at"))) == ref[name].decided_at
+        assert number(table.get(row, "expected")) > 0
+        assert re.fullmatch(r"\d\.\d{4} \(-?\d+\.\d{2}\)", table.get(row, "fixed-window p")), row
+        assert 0 < number(table.get(row, "anytime p")) <= 1
+        assert PSEUDONYM.fullmatch(row[0])
+    assert all(PSEUDONYM.fullmatch(r[0]) for r in listing_table(out).rows)
+    assert "earlier stretch" not in out, "nobody's walk fell back below the boundary"
+
+
+def test_the_people_table_has_the_canary_cell_and_the_context_columns(
+    world: World, integrity_env: str
+) -> None:
+    out = canary_report()
+    found = people(out)
+    ref = planted.reference()
+    for name in ("canary_follower", "late_starter"):
+        record = found[pseudo(world.ids[name])]
+        trials, hits = ref[name].arms["copy"]
+        assert hits_trials(record) == (hits, trials), name
+        assert "reject" in cell(record, "canary hits/trials")
+        assert positive(cell(record, "provenance")) and not positive(cell(record, "performance"))
+    # a person with no copy-arm trial has none to show
+    assert cell(found[pseudo(world.ids["leader"])], "canary hits/trials").lower().startswith("no trials")
+    assert not positive(cell(found[pseudo(world.ids["performer"])], "provenance"))
+
+
+def test_a_canary_reject_alone_is_one_family_not_a_conversation(world: World, integrity_env: str) -> None:
+    out = canary_report()
+    for name in ("canary_follower", "late_starter"):
+        record = people(out)[pseudo(world.ids[name])]
+        fired = {f.strip() for f in re.split(r"[,;+/]", cell(record, "families").lower()) if f.strip()}
+        assert fired == {"provenance"}, name
+        assert positive(cell(record, "independent")) and not positive(cell(record, "conversation"))
+
+
+def test_a_canary_reject_with_a_second_family_is_a_conversation(
+    world: World, integrity_env: str, db: Session
+) -> None:
+    """Give Cass the timing family as well (she answers within seconds of opening): provenance and timing are two
+    families, and provenance is independent of the other."""
+    db.execute(
+        update(Attempt)
+        .where(Attempt.user_id == world.ids["canary_follower"], Attempt.mode == "daily")
+        .values(submitted_at=Attempt.created_at + timedelta(seconds=3))
+    )
+    db.commit()
+    record = people(canary_report())[pseudo(world.ids["canary_follower"])]
+    fired = {f.strip() for f in re.split(r"[,;+/]", cell(record, "families").lower()) if f.strip()}
+    assert fired == {"timing", "provenance"}
+    assert positive(cell(record, "conversation")) and positive(cell(record, "independent"))
+    assert "reject" in cell(record, "canary hits/trials")
+
+
+def test_maxed_context_is_never_a_family_and_never_a_second_one(world: World, integrity_env: str) -> None:
+    """Pete is right on every hard question (a performance flag) and is away for minutes on every answer and
+    reopens every question: the context columns are full and still it is one family, so no conversation. Tom,
+    the heavy tab-switcher with nothing else, appears in no table at all."""
+    out = canary_report()
+    pete = people(out)[pseudo(world.ids["performer"])]
+    assert cell(pete, "families").lower() == "performance"
+    assert not positive(cell(pete, "conversation")) and not positive(cell(pete, "independent"))
+    assert re.match(r"(\d+)/\1/\1\b", cell(pete, "undeclared away")), "every answer is over the threshold"
+    assert re.match(r"(\d+)/\1\b", cell(pete, "resumes attempts/n")), "every attempt was reopened"
+    assert pseudo(world.ids["tab_switcher"]) not in out, "a lot of away time is not a flag"
+    assert pseudo(world.ids["translator"]) not in out, "nor is a lot of copying that does not follow the note"
+    assert set(people(out)) == pseudonyms(world, *planted.FLAGGED)
+
+
+def test_the_cohort_table_shows_the_median_share_and_withholds_what_is_too_small(
+    world: World, integrity_env: str
+) -> None:
+    out = canary_report()
+    t = one([t for t in tables(out) if t.header[:2] == ["share", "people (n)"]], "signals across the cohort")
+    rows = {r[0]: r for r in t.rows}
+    over = rows["undeclared away over the threshold"]
+    assert number(t.get(over, "p50")) > 0, "a quarter of the eighteen's days are over it"
+    assert int(number(t.get(over, "people"))) >= 3
+    pasted = rows["pasted (text answers)"]
+    assert t.get(pasted, "p50") == "n/a" and t.get(pasted, "p90") == "n/a", "no text answer in this world"
+    for r in t.rows:
+        for column in ("p50", "p90"):
+            v = t.get(r, column)
+            assert v == "n/a" or (v.endswith("%") and int(v[:-1]) % 5 == 0), (r[0], v)
+    assert "Caution" in out
+
+
+def test_a_poisoner_and_a_forger_are_listed_never_flagged(
+    world: World, integrity_env: str, db: Session
+) -> None:
+    out = canary_report()
+    table = listing_table(out)
+    found = {r[0]: r for r in table.rows}
+    assert set(found) == pseudonyms(world, "poisoner", "forger")
+    pia, omar = found[pseudo(world.ids["poisoner"])], found[pseudo(world.ids["forger"])]
+    ref = planted.reference()
+    for row, name in ((pia, "poisoner"), (omar, "forger")):
+        trials = sum(t for a, (t, _) in ref[name].arms.items() if a != "copy")
+        hits = sum(h for a, (_, h) in ref[name].arms.items() if a != "copy")
+        assert (int(number(table.get(row, "trials"))), int(number(table.get(row, "hits")))) == (trials, hits)
+        assert re.fullmatch(r"\d\.\d{4} \(-?\d+\.\d{2}\)", table.get(row, "fixed-window p")), row
+    assert number(table.get(pia, "unreported share")) == 0
+    assert number(table.get(pia, "reloaded share")) > 0, "her one decoy pick after a reload is walked too"
+    assert number(table.get(omar, "unreported share")) > 0, "most of the forger's attempts sent no totals"
+    people_found = people(out)
+    assert (
+        pseudo(world.ids["poisoner"]) not in people_found and pseudo(world.ids["forger"]) not in people_found
+    )
+    assert "never a family" in canary_text(out)
+    assert not {pseudo(world.ids["poisoner"]), pseudo(world.ids["forger"])} & {
+        r[0] for r in flagged_table(out).rows
+    }
+
+
+def test_the_forger_has_no_decision_and_the_poisoner_is_ignored(
+    world: World, integrity_env: str, db: Session
+) -> None:
+    summary = canary_summary(db)
+    assert world.ids["forger"] not in summary.people, "no attempt of his reported a long copy"
+    assert label(summary.people[world.ids["poisoner"]]) == "ignored (own placebo off)"
+    assert summary.unreported_share[world.ids["forger"]] > 0.4
+    assert summary.unreported_share[world.ids["poisoner"]] == 0
+
+
+def test_the_controls_are_printed_and_the_pool_keeps_the_poisoner(
+    world: World, integrity_env: str, db: Session
+) -> None:
+    out = canary_report()
+    t = controls_table(out)
+    rows = {r[0]: r for r in t.rows}
+    draw = next(r for k, r in rows.items() if k.startswith("draw check"))
+    placebo = next(r for k, r in rows.items() if k.startswith("placebo"))
+    assert t.get(draw, "verdict") == "near chance" and t.get(placebo, "verdict") == "near chance"
+    people_in_pool, trials, hits = planted.placebo_pool()
+    assert int(number(t.get(placebo, "trials"))) == trials, "everyone's placebo trials, the poisoner's too"
+    assert int(number(t.get(placebo, "hits"))) == hits
+    assert f"{people_in_pool} people" in placebo[0]
+    assert canary_summary(db).excluded == 2, "the poisoner and the forger, by their own placebo"
+    assert people_in_pool >= 3, "at least min_group people have a placebo"
+    assert planted.placebo_power() >= 0.8, "the pool could see a follower at the configured strength"
+
+
+def test_nothing_that_decides_the_canary_is_printed(
+    world: World, integrity_env: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The settings are distinct here so that a value cannot be a count; their names may be printed, never their
+    values or what follows from them (the boundary, p0 with the nudge, the away threshold)."""
+    values = {
+        "IFS_INTEGRITY_CANARY_ALPHA": "0.0437",
+        "IFS_INTEGRITY_CANARY_BETA": "0.1873",
+        "IFS_INTEGRITY_CANARY_FOLLOW": "0.4121",
+        "IFS_INTEGRITY_CANARY_CONTROL_ALPHA": "0.0911",
+        "IFS_INTEGRITY_CANARY_NUDGE": "0.0733",
+        "IFS_INTEGRITY_CANARY_M": "23",
+        "IFS_INTEGRITY_AWAY_UNDECLARED_S": "17",
+    }
+    for name, value in values.items():
+        monkeypatch.setenv(name, value)
+    out = run([*BASE, "--checks", "all", "--split", "2026-09-30"], SALT + "\n")
+    for name in ("0.0437", "0.1873", "0.4121", "0.0911", "0.0733"):
+        assert name not in out, name
+    boundary = math.log(23 / 0.0437)
+    follow_p1 = 1 / 3 + 0.4121 * 2 / 3
+    for derived in (
+        f"{boundary:.2f}",
+        f"{boundary:.3f}",
+        f"{follow_p1:.3f}",
+        f"{1 / 3 + 0.0733 * 2 / 3:.3f}",
+    ):
+        assert derived not in out, derived
+    assert not re.search(r"\b(?:alpha|beta|nudge|follow|control)\s*=\s*\d", out, re.IGNORECASE)
+    # names, never values: the variables may be named, in the sentence about M and in the ignored label
+    assert not re.search(r"IFS_INTEGRITY_[A-Z_]+\s*=", out)
+    lowered = out.lower()
+    assert not re.search(r"decoy [a-z]\b|option [a-z]\b|decoy (id|option)\s*\d|option id", lowered)
+    assert not [secret for secret in world.secrets() if secret in out]
+    for name in planted.PROFILES:
+        assert world.names[name] not in out and world.emails[name] not in out
+
+
+def test_every_pseudonym_in_the_canary_section_is_a_pseudonym(world: World, integrity_env: str) -> None:
+    out = canary_report()
+    known = {pseudo(uid) for uid in world.ids.values()}
+    found = set(re.findall(r"(?<![0-9a-f])[0-9a-f]{8}(?![0-9a-f])", canary_text(out)))
+    assert found and found <= known
+
+
+# --- when nothing is collected, and the window the per-person checks may read ------------------------------------------
+
+
+def signal_columns() -> dict[str, None]:
+    return {
+        "away_declared_s": None,
+        "away_undeclared_s": None,
+        "pasted": None,
+        "long_copies": None,
+        "resumes": None,
+        "decoy_option_id": None,
+    }
+
+
+def test_an_attempt_without_signals_prints_not_collected_in_every_signal_cell(
+    world: World, integrity_env: str, db: Session
+) -> None:
+    """An old row, a purged one or one that carries nothing: the leader's totals are null, the others' are not."""
+    db.execute(update(Attempt).where(Attempt.user_id == world.ids["leader"]).values(**signal_columns()))
+    db.commit()
+    out = canary_report()
+    leader = people(out)[pseudo(world.ids["leader"])]
+    for header in CONTEXT_HEADERS:
+        assert cell(leader, header) == "not collected", header
+    assert cell(leader, "canary hits/trials") == "not collected"
+    other = people(out)[pseudo(world.ids["follower"])]
+    assert "not collected" not in " ".join(other.values())
+    assert cell(leader, "families").lower() == "provenance", "the other families stand"
+
+
+def test_a_purged_season_prints_not_collected_and_has_no_decoys(
+    world: World, integrity_env: str, db: Session
+) -> None:
+    """ADR 0006: a season's signals are nulled 90 days after it ends. The report reads what is there."""
+    assert signals.purge(db, datetime(2027, 12, 15, tzinfo=UTC)) > 900, "every daily of the season"
+    out = canary_report()
+    assert "none in the window" in out
+    found = people(out)
+    assert set(found) >= pseudonyms(world, "leader", "follower"), "the other families stand"
+    assert pseudo(world.ids["canary_follower"]) not in found, "nothing collected, nothing decided"
+    for record in found.values():
+        assert cell(record, "canary hits/trials") == "not collected"
+        for header in CONTEXT_HEADERS:
+            assert cell(record, header) == "not collected", header
+    assert not [r for t in tables(canary_text(out)) if t.has("decided at") for r in t.rows]
+    assert "reject" not in out
+    # and only the old season goes: a season that ended less than 90 days ago keeps its totals
+    assert signals.purge(db, datetime(2027, 11, 1, tzinfo=UTC)) == 0
+
+
+def test_a_run_with_no_decoy_at_all_says_so_and_still_fills_the_context_columns(
+    world: World, integrity_env: str, db: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """IFS_CANARY is the pilot's switch for drawing a decoy; the report does not read it. With none drawn the
+    section says `none in the window`, the context is there, and nothing is decided."""
+    monkeypatch.setenv("IFS_CANARY", "false")
+    with_flag = canary_report()
+    monkeypatch.setenv("IFS_CANARY", "true")
+    assert canary_report() == with_flag, "the report does not read IFS_CANARY"
+    db.execute(update(Attempt).values(decoy_option_id=None))
+    db.commit()
+    out = canary_report()
+    assert "none in the window" in out
+    assert "decided at" not in canary_text(out) or not flagged_table(out).rows
+    assert "reject" not in canary_text(out).replace("a reject is final", "")
+    found = people(out)
+    leader = found[pseudo(world.ids["leader"])]
+    assert cell(leader, "canary hits/trials").lower().startswith("no trials")
+    assert "not collected" not in cell(leader, "undeclared away")
+    assert re.match(r"\d+/\d+/\d+", cell(leader, "undeclared away")), "the context is filled"
+    assert pseudo(world.ids["canary_follower"]) not in found, "no decoy, no canary family"
+
+
+def test_a_cohort_run_reads_no_signals_and_prints_no_signal_line(world: World, integrity_env: str) -> None:
+    out = report()
+    assert "signals:" not in out and "canary" not in headings(out)
+    assert "ai canary" not in " ".join(headings(out))
+
+
+def test_the_signals_line_of_a_per_person_run_names_the_rule_date(world: World, integrity_env: str) -> None:
+    out = report("--checks", "canary")
+    line = next(ln for ln in out.splitlines() if "signals:" in ln)
+    assert planted.RULES_FROM.isoformat() in line and "IFS_RULES_1B_FROM" in line
+
+
+def test_a_window_that_starts_after_the_walk_start_is_exploratory_and_says_nothing(
+    world: World, integrity_env: str
+) -> None:
+    later = (planted.RULES_FROM + timedelta(days=6)).isoformat()
+    out = canary_report("--since", later)
+    text = canary_text(out)
+    assert "exploratory" in text
+    assert f"starts after the walk start {planted.RULES_FROM}" in text
+    assert not [t for t in tables(text) if t.has("decided at") and t.rows], "no one is flagged"
+    assert not [t for t in tables(text) if t.has("unreported share") and t.rows], "no one is listed"
+    assert "reject" not in " ".join(c for t in tables(out) for r in t.rows for c in r)
+    found = people(out)
+    assert (
+        pseudo(world.ids["canary_follower"]) not in found and pseudo(world.ids["late_starter"]) not in found
+    )
+    assert pseudo(world.ids["leader"]) in found, "the other families are read as before"
+    assert pseudo(world.ids["poisoner"]) not in out and pseudo(world.ids["forger"]) not in out
+
+
+def test_a_season_long_run_in_a_later_season_is_not_exploratory(
+    world: World, integrity_env: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The walk starts at max(rule date, the season's 1 September): from 2027-28 on that is the season, so the
+    default window of a run in that season is the walk."""
+    freeze_today(monkeypatch, datetime(2027, 10, 15, 12, tzinfo=UTC))
+    out = run(
+        ["integrity-report", "--until", "2027-10-12", "--checks", "canary", "--salt-stdin"], SALT + "\n"
+    )
+    assert "window: [2027-09-01, 2027-10-12)" in out
+    assert "exploratory" not in out
+    explicit = run(
+        [
+            "integrity-report",
+            "--until",
+            "2027-10-12",
+            "--since",
+            "2027-09-01",
+            "--checks",
+            "canary",
+            "--salt-stdin",
+        ],
+        SALT + "\n",
+    )
+    assert "exploratory" not in explicit and explicit == out
+    later = run(
+        [
+            "integrity-report",
+            "--until",
+            "2027-10-12",
+            "--since",
+            "2027-09-02",
+            "--checks",
+            "canary",
+            "--salt-stdin",
+        ],
+        SALT + "\n",
+    )
+    assert "exploratory" in later or "no trial" in later.lower() or "none in the window" in later
+
+
+def test_more_players_than_m_ignores_every_decision(
+    world: World, integrity_env: str, monkeypatch: pytest.MonkeyPatch, db: Session
+) -> None:
+    monkeypatch.setenv("IFS_INTEGRITY_CANARY_M", "3")  # four people have copy-arm trials
+    summary = canary_summary(db, canary_m="3")
+    assert summary.over_m and not summary.reliable and summary.flagged == []
+    assert {label(c) for c in summary.people.values()} == {
+        "ignored (more players than IFS_INTEGRITY_CANARY_M)"
+    }
+    out = canary_report()
+    assert not [r for t in tables(canary_text(out)) if t.has("decided at") for r in t.rows]
+    assert pseudo(world.ids["canary_follower"]) not in people(out)
+    assert "IFS_INTEGRITY_CANARY_M" in canary_text(out)
+    assert not re.search(r"IFS_INTEGRITY_CANARY_M\s*[=:]?\s*3\b", out), "the value is not printed"
+    monkeypatch.setenv("IFS_INTEGRITY_CANARY_M", "4")  # M people are within M
+    assert not canary_summary(db, canary_m="4").over_m
+    assert pseudo(world.ids["canary_follower"]) in people(canary_report())
+
+
+def test_a_world_too_small_to_see_a_follower_decides_nothing(
+    world: World, integrity_env: str, db: Session
+) -> None:
+    """Keep the follower, the late starter, the translator and one player who is almost never wrong: three people
+    have a placebo, with a dozen trials between them, too few to have power against a follower, so every decision
+    is ignored, the canary flags no one in this run and the section says so."""
+    names = planted.SMALL_WORLD
+    db.execute(delete(Attempt).where(Attempt.user_id.not_in([world.ids[n] for n in names])))
+    db.commit()
+    summary = canary_summary(db)
+    assert summary.placebo_people >= 3, "enough people, not enough trials"
+    assert summary.placebo_status == "too small" and not summary.reliable
+    assert {label(c) for c in summary.people.values()} == {"ignored (controls too small)"}
+    out = canary_report()
+    assert not [r for t in tables(canary_text(out)) if t.has("decided at") for r in t.rows]
+    assert pseudo(world.ids["canary_follower"]) not in people(out)
+    assert "too small" in canary_text(out)
+
+
+# --- the command's gates for the canary and the context ----------------------------------------------------------------
+
+CANARY_VARIABLES = sorted(CANARY_ENV)
+
+
+def refusal(monkeypatch: pytest.MonkeyPatch, *args: str) -> str:
+    with pytest.raises(SystemExit) as e:
+        run(["integrity-report", "--until", "2026-10-12", *args, "--salt-stdin"], SALT + "\n")
+    return str(e.value.code)
+
+
+@pytest.mark.parametrize(
+    ("checks", "extra"), [("canary", []), ("people", []), ("split", ["--split", "2026-09-20"])]
+)
+def test_the_checks_that_read_the_canary_name_every_unset_setting_in_one_message(
+    monkeypatch: pytest.MonkeyPatch, never_connect: None, checks: str, extra: list[str]
+) -> None:
+    set_integrity_env(monkeypatch, UNREACHABLE)
+    monkeypatch.setenv("IFS_RULES_1B_FROM", planted.RULES_FROM.isoformat())
+    message = refusal(monkeypatch, "--checks", checks, *extra)
+    for name in CANARY_VARIABLES:
+        assert name in message, name
+    for name in ("IFS_INTEGRITY_MIN_N", "IFS_INTEGRITY_FOLLOW_Z", "IFS_INTEGRITY_DSN"):
+        assert name not in message, name
+    assert message.count("missing") == 1, "one message, not one per variable"
+
+
+def test_only_the_unset_canary_settings_are_named(
+    monkeypatch: pytest.MonkeyPatch, never_connect: None
+) -> None:
+    set_integrity_env(monkeypatch, UNREACHABLE)
+    set_canary_env(monkeypatch)
+    monkeypatch.delenv("IFS_INTEGRITY_CANARY_NUDGE")
+    monkeypatch.delenv("IFS_INTEGRITY_AWAY_UNDECLARED_S")
+    message = refusal(monkeypatch, "--checks", "people")
+    assert "IFS_INTEGRITY_CANARY_NUDGE" in message and "IFS_INTEGRITY_AWAY_UNDECLARED_S" in message
+    for name in set(CANARY_VARIABLES) - {"IFS_INTEGRITY_CANARY_NUDGE", "IFS_INTEGRITY_AWAY_UNDECLARED_S"}:
+        assert name not in message, name
+
+
+@pytest.mark.parametrize(
+    "checks", ["cohort", "fidelity", "elo,labels", "follow", "upstream-key,profile,home-away"]
+)
+def test_the_other_checks_need_none_of_the_canary_settings(
+    monkeypatch: pytest.MonkeyPatch, never_connect: None, checks: str
+) -> None:
+    """They get past every gate: the first thing they do is open the connection, which this test forbids."""
+    set_integrity_env(monkeypatch, UNREACHABLE)
+    monkeypatch.setenv("IFS_RULES_1B_FROM", planted.RULES_FROM.isoformat())
+    with pytest.raises(AssertionError, match="opened a connection"):
+        run(["integrity-report", "--until", "2026-10-12", "--checks", checks, "--salt-stdin"], SALT + "\n")
+
+
+@pytest.mark.parametrize(
+    ("over", "invalid"),
+    [
+        ({"IFS_INTEGRITY_CANARY_ALPHA": "0"}, "IFS_INTEGRITY_CANARY_ALPHA"),
+        ({"IFS_INTEGRITY_CANARY_ALPHA": "1"}, "IFS_INTEGRITY_CANARY_ALPHA"),
+        ({"IFS_INTEGRITY_CANARY_BETA": "-0.1"}, "IFS_INTEGRITY_CANARY_BETA"),
+        ({"IFS_INTEGRITY_CANARY_ALPHA": "0.5", "IFS_INTEGRITY_CANARY_BETA": "0.5"}, "IFS_INTEGRITY_CANARY_"),
+        ({"IFS_INTEGRITY_CANARY_FOLLOW": "1"}, "IFS_INTEGRITY_CANARY_FOLLOW"),
+        ({"IFS_INTEGRITY_CANARY_CONTROL_ALPHA": "0.01"}, "IFS_INTEGRITY_CANARY_CONTROL_ALPHA"),  # below alpha
+        ({"IFS_INTEGRITY_CANARY_NUDGE": "0.5"}, "IFS_INTEGRITY_CANARY_NUDGE"),  # not below follow
+        ({"IFS_INTEGRITY_CANARY_NUDGE": "-0.1"}, "IFS_INTEGRITY_CANARY_NUDGE"),
+        ({"IFS_INTEGRITY_CANARY_M": "0"}, "IFS_INTEGRITY_CANARY_M"),
+        ({"IFS_INTEGRITY_CANARY_M": "2.5"}, "IFS_INTEGRITY_CANARY_M"),
+        ({"IFS_INTEGRITY_AWAY_UNDECLARED_S": "-1"}, "IFS_INTEGRITY_AWAY_UNDECLARED_S"),
+        ({"IFS_RULES_1B_FROM": "26/10/2026"}, "IFS_RULES_1B_FROM"),
+    ],
+)
+def test_an_out_of_range_setting_is_invalid_and_named(
+    monkeypatch: pytest.MonkeyPatch, never_connect: None, over: dict[str, str], invalid: str
+) -> None:
+    set_integrity_env(monkeypatch, UNREACHABLE)
+    set_canary_env(monkeypatch)
+    for name, value in over.items():
+        monkeypatch.setenv(name, value)
+    message = refusal(monkeypatch, "--checks", "canary")
+    assert f"invalid {invalid}" in message or f", {invalid}" in message, message
+    assert "IFS_INTEGRITY_IFS_" not in message, "the app's own variable is named without the prefix"
+    assert "missing" not in message
+
+
+def test_the_rule_date_is_the_one_switch_for_the_per_person_checks(
+    monkeypatch: pytest.MonkeyPatch, never_connect: None
+) -> None:
+    set_integrity_env(monkeypatch, UNREACHABLE)
+    set_canary_env(monkeypatch, rules_from=None)
+    for checks in ("canary", "people", "follow", "upstream-key", "profile", "home-away", "split", "all"):
+        extra = ["--split", "2026-09-20"] if checks in ("split", "all") else []
+        assert "IFS_RULES_1B_FROM" in refusal(monkeypatch, "--checks", checks, *extra), checks
+    monkeypatch.setenv("IFS_RULES_1B_FROM", "")
+    assert "IFS_RULES_1B_FROM" in refusal(monkeypatch, "--checks", "canary"), "blank is unset"
+    # the cohort checks run without it
+    with pytest.raises(AssertionError, match="opened a connection"):
+        run(["integrity-report", "--until", "2026-10-12", "--salt-stdin"], SALT + "\n")
+
+
+def test_a_per_person_window_cannot_start_before_the_rule_date(
+    monkeypatch: pytest.MonkeyPatch, never_connect: None
+) -> None:
+    set_integrity_env(monkeypatch, UNREACHABLE)
+    set_canary_env(monkeypatch)
+    before = (planted.RULES_FROM - timedelta(days=1)).isoformat()
+    assert "rule date" in refusal(monkeypatch, "--checks", "canary", "--since", before)
+    assert "rule date" in refusal(monkeypatch, "--checks", "follow", "--since", "2026-09-01")
+    with pytest.raises(
+        AssertionError, match="opened a connection"
+    ):  # a cohort check may read the days before
+        run(["integrity-report", "--until", "2026-10-12", "--since", before, "--salt-stdin"], SALT + "\n")
+    with pytest.raises(AssertionError, match="opened a connection"):  # and on the date itself is fine
+        run(
+            [
+                "integrity-report",
+                "--until",
+                "2026-10-12",
+                "--since",
+                planted.RULES_FROM.isoformat(),
+                "--checks",
+                "canary",
+                "--salt-stdin",
+            ],
+            SALT + "\n",
+        )
+    monkeypatch.setenv("IFS_RULES_1B_FROM", "2026-10-12")  # a window with no day from the rule date in it
+    assert "rule date" in refusal(monkeypatch, "--checks", "canary") or "No answers" in refusal(
+        monkeypatch, "--checks", "canary"
+    )
+
+
+# --- the rule date's Madrid midnight, across the clock changes ---------------------------------------------------------
+
+
+def lone_players(db: Session, stamps: list[datetime]) -> list[int]:
+    """One player per stamp, each with one counted daily created at that instant and answered a minute later,
+    carrying signals and a decoy. Returns the attempt ids."""
+    ids = []
+    for k, created in enumerate(stamps):
+        user = User(
+            email=f"dst{k}@plant.test",
+            password_hash="x",
+            display_name=f"Dee Esty {k}",
+            vertical="Electronics",
+            position="member",
+            status="active",
+        )
+        q = Question(
+            type="single-choice",
+            text=f"Clock question {k}",
+            area="elec",
+            topic="ev",
+            difficulty=2,
+            answer_kind="choice-one",
+            graded=True,
+            playable=True,
+            source_hash="clock",
+        )
+        db.add_all([user, q])
+        db.flush()
+        opts = []
+        for p in range(4):
+            o = AnswerOption(question_id=q.id, position=p, text=f"c{k}-o{p}")
+            db.add(o)
+            db.flush()
+            opts.append(o.id)
+        db.add(
+            AnswerKey(
+                question_id=q.id, key={"kind": "choice", "mode": "one", "options": [opts[0]]}, display="x"
+            )
+        )
+        day = created.astimezone(planted.MADRID).date()
+        if not db.get(DailyQuestion, (day, "elec")):
+            db.add(
+                DailyQuestion(day=day, area="elec", question_id=q.id, drawn_at=created - timedelta(hours=3))
+            )
+        a = Attempt(
+            user_id=user.id,
+            question_id=q.id,
+            mode="daily",
+            answer={"options": [opts[1]], "value": None, "unsure": False},
+            correct=False,
+            created_at=created,
+            day=day,
+            area="elec",
+            deadline_at=created + timedelta(minutes=10),
+            submitted_at=created + timedelta(minutes=1),
+            late=False,
+            passed=False,
+            decoy_option_id=opts[1],
+            resumes=0,
+            long_copies=1,
+            away_undeclared_s=0,
+            away_declared_s=0,
+        )
+        db.add(a)
+        db.flush()
+        ids.append(a.id)
+    db.commit()
+    return ids
+
+
+@pytest.mark.parametrize(
+    ("rules_from", "midnight_utc"),
+    [
+        (
+            date(2026, 10, 25),
+            datetime(2026, 10, 24, 22, 0, tzinfo=UTC),
+        ),  # clocks go back at 03:00: midnight is CEST
+        (
+            date(2027, 3, 28),
+            datetime(2027, 3, 27, 23, 0, tzinfo=UTC),
+        ),  # clocks go forward at 02:00: midnight is CET
+        (date(2026, 10, 26), datetime(2026, 10, 25, 23, 0, tzinfo=UTC)),  # the planned rule date: CET already
+    ],
+)
+def test_signals_start_at_the_madrid_midnight_of_the_rule_date_across_clock_changes(
+    db: Session, rules_from: date, midnight_utc: datetime
+) -> None:
+    stamps = [
+        midnight_utc
+        - timedelta(minutes=1),  # the evening before: an attempt that ends after midnight is dropped
+        midnight_utc,  # the very instant
+        midnight_utc + timedelta(minutes=30),
+        midnight_utc + timedelta(hours=1),  # wrong by an hour if the zone were fixed at the other offset
+    ]
+    ids = lone_players(db, stamps)
+    snap = service.fetch(
+        db, service.Window(rules_from, rules_from + timedelta(days=2)), frozenset({"canary"}), rules_from
+    )
+    db.rollback()
+    assert snap.signals is not None
+    assert set(snap.signals.rows) == set(ids[1:]), (
+        "from the instant of Madrid midnight on, not a minute before"
     )

@@ -12,10 +12,11 @@ from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import and_, case, func, or_, select
+from sqlalchemy import ColumnElement, and_, case, func, or_, select
 from sqlalchemy.orm import Session as DB
 
 from ..db.models import (
+    DAILY,
     AnswerKey,
     AnswerOption,
     Attempt,
@@ -32,6 +33,7 @@ from ..domain.daily import madrid_day
 from ..domain.leaderboard import first_day, madrid_midnight
 from ..domain.mock import season
 from ..settings import IntegritySettings
+from . import integrity_canary
 
 ELEC_GROUP = ("Electronics", "Tractive System", "Driverless")
 TOP_K = 10
@@ -69,6 +71,13 @@ def thresholds(
         upstream_min=s.upstream_min,
         upstream_z=s.upstream_z,
         split=split,
+        canary_alpha=s.canary_alpha,
+        canary_beta=s.canary_beta,
+        canary_follow=s.canary_follow,
+        canary_control_alpha=s.canary_control_alpha,
+        canary_nudge=s.canary_nudge,
+        canary_m=s.canary_m,
+        away_undeclared_s=s.away_undeclared_s,
     )
 
 
@@ -100,11 +109,14 @@ class Snapshot:
     question_labels: dict[int, tuple[bool, str | None]]  # labels_reviewed, topic
     history: dict[int, list[rules.Row]]  # per user, every attempt (any mode, any season), in grading order
     drawn_at: dict[tuple[date, str], datetime]
+    per_player: rules.PerPlayer | None  # from the switch: when each question's first daily started that day
     keys: dict[int, Correction]
     answers: dict[int, dict[str, Any]]  # attempt id -> answer, daily and mock answers in the window
     repositioned: frozenset[int] = (
         frozenset()
     )  # users whose position an admin changed this season (audit log)
+    rules_from: date | None = None  # IFS_RULES_1B_FROM: signals exist from its Madrid midnight
+    signals: integrity_canary.Signals | None = None
     cache: dict[str, Any] = field(default_factory=dict, repr=False)
 
     @property
@@ -116,10 +128,18 @@ class Snapshot:
         return season(self.window.until - timedelta(days=1))
 
 
-def fetch(db: DB, window: Window, checks: frozenset[str]) -> Snapshot:
+def _window_clause(window: Window) -> ColumnElement[bool]:
+    """Daily and mock attempts from `since` (a daily's day, a mock run's start); needs MockSession joined."""
+    return or_(
+        and_(Attempt.mode == "daily", Attempt.day >= window.since),
+        and_(Attempt.mode == "mock", MockSession.started_at >= madrid_midnight(window.since)),
+    )
+
+
+def fetch(db: DB, window: Window, checks: frozenset[str], rules_from: date | None = None) -> Snapshot:
     """Runs inside the caller's read-only transaction; every statement is a SELECT. The cohort: everyone with a
     ranked play this season before `until`. Their whole history comes along (for repeats and pre-seen questions);
-    stored answers and corrected keys only when a check needs them."""
+    stored answers, corrected keys and signal totals only when a check needs them."""
     season_start = madrid_midnight(first_day("season", window.until - timedelta(days=1)))
     end = madrid_midnight(window.until)
     players = (
@@ -279,8 +299,22 @@ def fetch(db: DB, window: Window, checks: frozenset[str]) -> Snapshot:
         )
     }
 
+    per_player = None
+    if rules_from is not None:
+        per_player = rules.PerPlayer(
+            rules_from,
+            {
+                (day, qid): at
+                for day, qid, at in db.execute(
+                    select(Attempt.day, Attempt.question_id, func.min(Attempt.created_at))
+                    .where(DAILY, Attempt.day >= rules_from)
+                    .group_by(Attempt.day, Attempt.question_id)
+                )
+            },
+        )
+
     answers: dict[int, dict[str, Any]] = {}
-    if checks & {"follow", "upstream-key", "people", "split"}:
+    if checks & {"follow", "upstream-key", "canary", "people", "split"}:
         answers = {
             aid: answer
             for aid, answer in db.execute(
@@ -290,13 +324,16 @@ def fetch(db: DB, window: Window, checks: frozenset[str]) -> Snapshot:
                     Attempt.user_id.in_(in_cohort),
                     Attempt.answer != {},
                     Attempt.submitted_at < end,
-                    or_(
-                        and_(Attempt.mode == "daily", Attempt.day >= window.since),
-                        and_(Attempt.mode == "mock", MockSession.started_at >= madrid_midnight(window.since)),
-                    ),
+                    _window_clause(window),
                 )
             )
         }
+
+    signals = None
+    if rules_from is not None and checks & {"canary", "people", "split"}:
+        signals = integrity_canary.fetch_signals(
+            db, in_cohort, _window_clause(window), rules_from, end, effective
+        )
 
     repositioned: frozenset[int] = frozenset()
     if checks & {"elo", "fidelity"}:
@@ -342,9 +379,12 @@ def fetch(db: DB, window: Window, checks: frozenset[str]) -> Snapshot:
         question_labels=labels,
         history=dict(history),
         drawn_at=drawn_at,
+        per_player=per_player,
         keys=corrections,
         answers=answers,
         repositioned=repositioned,
+        rules_from=rules_from,
+        signals=signals,
     )
 
 
@@ -401,7 +441,12 @@ def ranked_plays(s: Snapshot) -> dict[int, list[tuple[rules.Row, rules.Play]]]:
                 key=rules.grading_order,
             )
             out[uid] = [
-                (r, rules.to_play(r, byq[r.question_id], s.drawn_at, s.questions[r.question_id]))
+                (
+                    r,
+                    rules.to_play(
+                        r, byq[r.question_id], s.drawn_at, s.questions[r.question_id], s.per_player
+                    ),
+                )
                 for r in plays
             ]
         return out
@@ -415,7 +460,7 @@ def miss0(s: Snapshot, uid: int) -> int:
     def make() -> int:
         byq = _by_question(s, uid)
         return rules.miss_after(
-            rules.to_play(r, byq[r.question_id], s.drawn_at, s.questions[r.question_id])
+            rules.to_play(r, byq[r.question_id], s.drawn_at, s.questions[r.question_id], s.per_player)
             for r in s.history.get(uid, [])
             if r.mode in ("daily", "mock")
             and r.submitted_at is not None
@@ -443,7 +488,7 @@ def _items(s: Snapshot, t: rules.Thresholds) -> dict[int, list[Item]]:
             fixed = rules.replay_lp([p for _, p in plays], 0.0, fixed=t.fixed_rank, miss0=miss0(s, uid))
             byq = _by_question(s, uid)
             items = [
-                Item(r, p, lp, rules.pre_seen(r, byq[r.question_id], s.drawn_at))
+                Item(r, p, lp, rules.pre_seen(r, byq[r.question_id], s.drawn_at, s.per_player))
                 for (r, p), lp in zip(plays, fixed, strict=True)
                 if p.ranked and _in_window(s, r)
             ]
@@ -783,7 +828,7 @@ def follow(s: Snapshot, t: rules.Thresholds) -> rules.Follow:
                 canonical = rules.canonical_answer(s.answers[r.id], q.answer_kind if q else "")
                 if canonical is None or r.submitted_at is None:
                     continue
-                seen = rules.pre_seen(r, byq[r.question_id], s.drawn_at)
+                seen = rules.pre_seen(r, byq[r.question_id], s.drawn_at, s.per_player)
                 answers.append(
                     rules.DailyAnswer(
                         uid, r.question_id, r.created_at, r.submitted_at, canonical, _right(r), r.passed, seen
@@ -966,6 +1011,98 @@ def home_away(s: Snapshot, t: rules.Thresholds) -> dict[int, tuple[float | None,
     return _cached(s, f"home_away:{hash(t)}", make)  # type: ignore[no-any-return]
 
 
+# --- canary and signal context ----------------------------------------------------------------------------------
+
+
+def _decoy_plays(s: Snapshot) -> dict[int, list[rules.DecoyPlay]]:
+    """Each cohort member's counted ranked plays in the window that carried a decoy, in grading order."""
+
+    def make() -> dict[int, list[rules.DecoyPlay]]:
+        out: dict[int, list[rules.DecoyPlay]] = {}
+        if s.signals is None:
+            return out
+        for uid, plays in ranked_plays(s).items():
+            mine = []
+            for r, p in plays:
+                sig = s.signals.rows.get(r.id)
+                if sig is None or sig.decoy is None or not p.ranked or not _in_window(s, r):
+                    continue
+                options = s.answers.get(r.id, {}).get("options") or ()
+                ca = s.signals.changed_after.get(r.question_id)
+                mine.append(
+                    rules.DecoyPlay(
+                        decoy=sig.decoy,
+                        chosen=tuple(int(o) for o in options),
+                        answer_kind=s.questions[r.question_id].answer_kind,
+                        passed=r.passed,
+                        hint=r.hint_used,
+                        long_copies=sig.long_copies,
+                        resumes=sig.resumes,
+                        live=s.signals.live.get(r.question_id, frozenset()),
+                        right=s.signals.right.get(r.question_id, frozenset()),
+                        changed=ca is not None and ca > sig.created_at,
+                    )
+                )
+            if mine:
+                out[uid] = mine
+        return out
+
+    return _cached(s, "decoys", make)  # type: ignore[no-any-return]
+
+
+def walk_from(s: Snapshot) -> date | None:
+    return None if s.rules_from is None else rules.walk_from(s.rules_from, s.window.until)
+
+
+def canary_summary(s: Snapshot, t: rules.Thresholds) -> integrity_canary.CanarySummary | None:
+    """None when nothing is collected (no rule date) or a canary setting is unset."""
+
+    def make() -> integrity_canary.CanarySummary | None:
+        start = walk_from(s)
+        if s.signals is None or start is None:
+            return None
+        settings = (
+            t.canary_alpha,
+            t.canary_beta,
+            t.canary_follow,
+            t.canary_control_alpha,
+            t.canary_nudge,
+            t.canary_m,
+        )
+        if any(v is None for v in settings):
+            return None
+        active = {u for u, info in s.users.items() if info.active}
+        return integrity_canary.summarise(_decoy_plays(s), active, start, s.window.since, t)
+
+    return _cached(s, f"canary:{hash(t)}", make)  # type: ignore[no-any-return]
+
+
+def signal_context(s: Snapshot, t: rules.Thresholds, items: Sequence[Item]) -> rules.Context | None:
+    if s.signals is None or t.away_undeclared_s is None:
+        return None
+    recorded = [
+        rules.Recorded(
+            sig.away_undeclared_s,
+            sig.away_declared_s,
+            sig.pasted,
+            sig.long_copies,
+            sig.resumes,
+            sig.decoy is not None,
+        )
+        for i in items
+        if (sig := s.signals.rows.get(i.row.id)) is not None
+    ]
+    return rules.context(recorded, t.away_undeclared_s)
+
+
+def collected(s: Snapshot, t: rules.Thresholds) -> int:
+    """Counted ranked plays in the window that carry signals."""
+    if s.signals is None:
+        return 0
+    rows = s.signals.rows
+    return sum(i.row.id in rows for items in _items(s, t).values() for i in items)
+
+
 # --- people ----------------------------------------------------------------------------------------------------
 
 
@@ -977,6 +1114,7 @@ def persons(s: Snapshot, t: rules.Thresholds) -> list[rules.Person]:
         upstream = upstream_key(s, t)
         prof = profile(s, t)
         away = home_away(s, t)
+        summary = canary_summary(s, t)
         out = []
         for uid, items in sorted(_items(s, t).items()):
             if not s.users[uid].active:
@@ -1010,6 +1148,8 @@ def persons(s: Snapshot, t: rules.Thresholds) -> list[rules.Person]:
                     upstream_n=up.n,
                     upstream_typed=up.typed,
                     follow_tested=uid in fl.tested,
+                    canary=summary.people.get(uid) if summary else None,
+                    signals=signal_context(s, t, items),
                 )
             )
         return out
@@ -1227,7 +1367,7 @@ def _elo_section(s: Snapshot, t: rules.Thresholds) -> list[str]:
     return out
 
 
-def _people_header(s: Snapshot, t: rules.Thresholds) -> str:
+def _people_header(s: Snapshot, t: rules.Thresholds) -> list[str]:
     everyone = persons(s, t)
     fams = [rules.families(p, t, p.following) for p in everyone]
 
@@ -1254,8 +1394,17 @@ def _people_header(s: Snapshot, t: rules.Thresholds) -> str:
         f" (upstream; follow: copy pairs tested {len(fl.copies)}, relay pairs tested {len(fl.relays)}, Holm)",
         "supervised": NA,
     }
+    if canary_summary(s, t) is not None:
+        chance["provenance"] += (
+            f"; canary: at most α per season (Bonferroni over IFS_INTEGRITY_CANARY_M), for the walk from"
+            f" {walk_from(s)}"
+        )
     rows = [[name, *counts(name), chance[name]] for name in rules.FAMILIES]
-    return _table(["family", "eligible (n)", "flagged", "expected by chance"], rows)
+    out = [_table(["family", "eligible (n)", "flagged", "expected by chance"], rows)]
+    if s.signals is not None:
+        contexts = [p.signals for p in everyone if p.signals is not None]
+        out += integrity_canary.cohort_lines(contexts, t.min_group, _table)
+    return out
 
 
 def _people_section(s: Snapshot, salt: bytes, t: rules.Thresholds) -> list[str]:
@@ -1286,7 +1435,8 @@ def _people_section(s: Snapshot, salt: bytes, t: rules.Thresholds) -> list[str]:
                 _num(lat.corr_length),
                 "yes" if p.following else "no",
                 f"{_num(uz)} ({p.upstream_n})",
-                "not available in this release",
+                integrity_canary.canary_cell(p.canary, p.signals is not None),
+                *integrity_canary.context_cells(p.signals),
             ]
         )
     headers = [
@@ -1308,14 +1458,16 @@ def _people_section(s: Snapshot, salt: bytes, t: rules.Thresholds) -> list[str]:
         "ρ length",
         "follow",
         "upstream z (n)",
-        "canary (AI)",
+        "canary hits/trials",
+        *integrity_canary.CONTEXT_HEADERS,
     ]
     return [
         "Only people with at least one positive family. Worth a conversation only when two families agree;"
         " `independent` says whether provenance or supervised evidence is among them (performance and timing share"
         " a cause). No flag does not mean clean.",
-        _people_header(s, t),
+        *_people_header(s, t),
         _table(headers, rows),
+        *([integrity_canary.CAUTION] if s.signals is not None else []),
     ]
 
 
@@ -1335,12 +1487,26 @@ def report(s: Snapshot, salt: bytes, checks: frozenset[str], t: rules.Thresholds
         + "; ".join(f"{v}: {', '.join(sorted(a))}" for v, a in rules.HOME.items())
         + " (rules: neither)",
     ]
+    if checks & {"canary", "people", "split"}:
+        out += _signals_header(s, t)
     for name in rules.CHECKS:
         if name not in checks:
             continue
         out += ["", *SECTIONS[name](s, salt, t)]
     out += ["", "Delete this output after the review (docs/guides/integrity-report.md)."]
     return "\n".join(out) + "\n"
+
+
+def _signals_header(s: Snapshot, t: rules.Thresholds) -> list[str]:
+    if s.signals is None or s.rules_from is None:
+        return ["- signals: not collected (IFS_RULES_1B_FROM unset)"]
+    summary = canary_summary(s, t)
+    decoys = summary.decoys if summary else 0
+    return [
+        f"- signals: collected from {s.rules_from} (IFS_RULES_1B_FROM): {collected(s, t)} ranked attempts in the"
+        " window carry them",
+        f"- canary decoys: {decoys} attempts" if decoys else "- canary decoys: none in the window",
+    ]
 
 
 def _s_elo(s: Snapshot, salt: bytes, t: rules.Thresholds) -> list[str]:
@@ -1577,6 +1743,19 @@ def _s_home_away(s: Snapshot, salt: bytes, t: rules.Thresholds) -> list[str]:
     ]
 
 
+def _s_canary(s: Snapshot, salt: bytes, t: rules.Thresholds) -> list[str]:
+    items = _items(s, t)
+    return integrity_canary.section(
+        canary_summary(s, t),
+        name=lambda uid: rules.pseudonym(salt, uid),
+        context_of=lambda uid: signal_context(s, t, items.get(uid, [])),
+        rules_from=s.rules_from,
+        walk_from=walk_from(s),
+        min_group=t.min_group,
+        table=_table,
+    )
+
+
 def _s_people(s: Snapshot, salt: bytes, t: rules.Thresholds) -> list[str]:
     return ["## people: evidence families per person", *_people_section(s, salt, t)]
 
@@ -1624,6 +1803,7 @@ SECTIONS: dict[str, Callable[[Snapshot, bytes, rules.Thresholds], list[str]]] = 
     "upstream-key": _s_upstream,
     "profile": _s_profile,
     "home-away": _s_home_away,
+    "canary": _s_canary,
     "people": _s_people,
     "split": _s_split,
 }

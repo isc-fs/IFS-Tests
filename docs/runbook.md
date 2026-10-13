@@ -288,7 +288,7 @@ Staging now holds real member data. Put it back by restoring the safety dump the
 | Deployed version | `cat /srv/quiz/prod/deployed-tag`; history in `/srv/quiz/prod/deploy-history` |
 | Password reset link from the server (an admin locked out) | `docker exec quiz-prod-api-1 ifs-tests reset-link --email <their email>` (valid 24 h) |
 | Invite link from the server | `docker exec quiz-prod-api-1 ifs-tests invite --role admin --note "<who it's for>"` (valid 7 days) |
-| Integrity report (read-only, pseudonymous) | `deploy/integrity-report.sh <env> report --until <announcement date>`, then `reveal <pseudonym>`; [5.7](#57-integrity-report) and the [guide](guides/integrity-report.md) |
+| Integrity report (read-only, pseudonymous) | `deploy/integrity-report.sh <env> report --until <last day, excluded>` (per-person checks read only from the rule date), then `reveal <pseudonym>`; [5.7](#57-integrity-report) and the [guide](guides/integrity-report.md) |
 
 The two link commands need an active admin account to exist (they act in its name). If none exists any more, create one with `create-admin` ([section 1.5](#15-first-deploy-of-an-environment)). Send links privately: anyone holding one can use it.
 
@@ -440,17 +440,18 @@ that 429 in normal use, raise `EXPORTS_AT_ONCE` in `services/privacy.py` and che
 
 ```bash
 deploy/integrity-report.sh staging report --until 2026-10-12      # staging first, always
-deploy/integrity-report.sh prod report --until 2026-10-12 --checks all
+deploy/integrity-report.sh prod report --until 2026-11-23 --checks all    # per-person: from the rule date on
 deploy/integrity-report.sh prod reveal <pseudonym>
 shred -u /dev/shm/quiz-prod-integrity-<timestamp>.md             # the path the script printed
 ```
 
 - The script checks the `.env` as `deploy.sh` does, takes `operation.lock` (so it never overlaps a deploy or a restore, and refuses while one runs), and runs the deployed image with `compose run --rm --no-deps`, connected as `backup_ro` with `BACKUP_PASSWORD` passed as `PGPASSWORD` for that run. The command builds its own engine from `IFS_INTEGRITY_DSN` (the script sets it) and never the app's: one connection, read-only transaction, server-side timeouts. It reads only `BACKUP_PASSWORD` from `.env`.
-- The decision thresholds are in `/srv/quiz/<env>/integrity.env` (`chmod 600`, one `IFS_INTEGRITY_*=value` per line; the script refuses without it). They are private on purpose and have no defaults in the repository. The guide lists the variables and how to calibrate them.
+- The decision thresholds are in `/srv/quiz/<env>/integrity.env` (`chmod 600`, one `IFS_INTEGRITY_*=value` per line; the script refuses without it). They are private on purpose and have no defaults in the repository. The guide lists the variables and how to calibrate them. Before the first per-person run on v2.0.0, add the seven canary and context variables (`IFS_INTEGRITY_CANARY_ALPHA`, `_BETA`, `_FOLLOW`, `_CONTROL_ALPHA`, `_NUDGE`, `_M` and `IFS_INTEGRITY_AWAY_UNDECLARED_S`); `grep -c IFS_INTEGRITY_ /srv/quiz/<env>/integrity.env` should then say 21 (14 decision thresholds and these seven). They are required only when `canary`, `people` or `split` is selected, whether or not `IFS_CANARY` is on; `f` and `g0` come from the recall pilot, and `M` is fixed for the season.
+- The report reads `IFS_RULES_1B_FROM` from the environment's `.env`, through `deploy/compose.yaml`, the same value the app uses; it is not in `integrity.env`. Per-person checks are refused without it and for any `--since` before it. It is the one switch for the whole v2.0.0 release: unsetting it turns collection, the decoy and the per-person window off together, and the previous tag can be redeployed to roll back (the report is read-only).
 - The pseudonymisation salt is **not** in any file: the reviewer who holds it types it at the script's prompt on the host (read from the terminal, not echoed), and the same salt is typed again for `reveal`. The script keeps it only in a shell variable for that run and hands it to the container on standard input (`compose run -T … --salt-stdin`); there is no prompt inside the container, and it is never on a command line, in the environment or in a file. It is per review, held in that reviewer's password manager, never stored and not rotated: a new review gets a new one.
 - The report is written to `/dev/shm` (memory, mode 0600), not to disk; `shred -u` it when the review is done. `integrity-history` in `/srv/quiz/<env>/` gets one line per run (date, user, mode, arguments; never the salt or a pseudonym).
 - **Never run `deploy/restore.sh` or `deploy/refresh-bank.sh` to get a copy of the data to look at**: a restore overwrites the environment it runs against. Run the report where the data already is, and not on a laptop.
-- Per-person checks run only after the notice to members is live and `--until` is the announcement date; the cohort checks (the default) can run any time. Avoid 00:01 and 03:00 to 04:00.
+- Per-person checks run only on answers from the rule date (`IFS_RULES_1B_FROM`), after the notice to members is live; `--until` is the excluded last day and can't be in the future. The cohort checks (the default) can run any time. Avoid 00:01 and 03:00 to 04:00.
 - A statement timeout on prod means the fetch needs an index: report it, don't raise the timeout.
 
 ### 5.8 Season 1b switch (v2.0.0)

@@ -728,6 +728,41 @@ def test_integrity_report_runs_the_deployed_image_as_backup_ro_and_writes_the_re
     assert len((tmp_path / HISTORY).read_text().splitlines()) == 2
 
 
+CANARY_LINES = [
+    "IFS_INTEGRITY_CANARY_ALPHA=0.05",
+    "IFS_INTEGRITY_CANARY_BETA=0.2",
+    "IFS_INTEGRITY_CANARY_FOLLOW=0.5",
+    "IFS_INTEGRITY_CANARY_CONTROL_ALPHA=0.1",
+    "IFS_INTEGRITY_CANARY_NUDGE=0.1",
+    "IFS_INTEGRITY_CANARY_M=50",
+    "IFS_INTEGRITY_AWAY_UNDECLARED_S=120",
+]
+
+
+def test_the_canary_and_context_thresholds_reach_the_container_like_any_other(tmp_path: Path) -> None:
+    integrity_server(tmp_path)
+    limits = tmp_path / "srv/staging/integrity.env"
+    limits.write_text("\n".join([*THRESHOLD_LINES, *CANARY_LINES]) + "\n")
+    limits.chmod(0o600)
+    done, docker, _ = integrity(tmp_path, *REPORT, "--checks", "people", "--salt-stdin")
+    assert done.returncode == 0, done.stderr
+    (call,) = docker
+    for line in CANARY_LINES:
+        assert f"-e {line}" in call, line
+
+
+def test_the_rule_date_is_not_a_threshold_and_cannot_be_smuggled_in_with_them(tmp_path: Path) -> None:
+    """IFS_RULES_1B_FROM is the app's one switch for every mechanism: it comes from the environment's .env through
+    compose, so the thresholds file may not carry a second copy of it (or the salt, or a DSN)."""
+    integrity_server(tmp_path)
+    limits = tmp_path / "srv/staging/integrity.env"
+    limits.write_text("\n".join([*THRESHOLD_LINES, "IFS_RULES_1B_FROM=2026-10-26"]) + "\n")
+    limits.chmod(0o600)
+    done, docker, _ = integrity(tmp_path, *REPORT, "--salt-stdin")
+    assert done.returncode != 0 and "IFS_RULES_1B_FROM" in done.stderr, done.stderr
+    assert not docker, "nothing ran"
+
+
 def test_a_salt_piped_in_reaches_the_container_and_nothing_else(tmp_path: Path) -> None:
     """Automation: the salt goes to the container on stdin and is on no command line, in no environment, in no file
     the script writes."""
