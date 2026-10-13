@@ -16,6 +16,7 @@ from sqlalchemy import ColumnElement, and_, case, func, or_, select
 from sqlalchemy.orm import Session as DB
 
 from ..db.models import (
+    DAILY,
     AnswerKey,
     AnswerOption,
     Attempt,
@@ -108,6 +109,7 @@ class Snapshot:
     question_labels: dict[int, tuple[bool, str | None]]  # labels_reviewed, topic
     history: dict[int, list[rules.Row]]  # per user, every attempt (any mode, any season), in grading order
     drawn_at: dict[tuple[date, str], datetime]
+    per_player: rules.PerPlayer | None  # from the switch: when each question's first daily started that day
     keys: dict[int, Correction]
     answers: dict[int, dict[str, Any]]  # attempt id -> answer, daily and mock answers in the window
     repositioned: frozenset[int] = (
@@ -297,6 +299,20 @@ def fetch(db: DB, window: Window, checks: frozenset[str], rules_from: date | Non
         )
     }
 
+    per_player = None
+    if rules_from is not None:
+        per_player = rules.PerPlayer(
+            rules_from,
+            {
+                (day, qid): at
+                for day, qid, at in db.execute(
+                    select(Attempt.day, Attempt.question_id, func.min(Attempt.created_at))
+                    .where(DAILY, Attempt.day >= rules_from)
+                    .group_by(Attempt.day, Attempt.question_id)
+                )
+            },
+        )
+
     answers: dict[int, dict[str, Any]] = {}
     if checks & {"follow", "upstream-key", "canary", "people", "split"}:
         answers = {
@@ -363,6 +379,7 @@ def fetch(db: DB, window: Window, checks: frozenset[str], rules_from: date | Non
         question_labels=labels,
         history=dict(history),
         drawn_at=drawn_at,
+        per_player=per_player,
         keys=corrections,
         answers=answers,
         repositioned=repositioned,
@@ -424,7 +441,7 @@ def ranked_plays(s: Snapshot) -> dict[int, list[tuple[rules.Row, rules.Play]]]:
                 key=rules.grading_order,
             )
             out[uid] = [
-                (r, rules.to_play(r, byq[r.question_id], s.drawn_at, s.questions[r.question_id]))
+                (r, rules.to_play(r, byq[r.question_id], s.drawn_at, s.questions[r.question_id], s.per_player))
                 for r in plays
             ]
         return out
@@ -438,7 +455,7 @@ def miss0(s: Snapshot, uid: int) -> int:
     def make() -> int:
         byq = _by_question(s, uid)
         return rules.miss_after(
-            rules.to_play(r, byq[r.question_id], s.drawn_at, s.questions[r.question_id])
+            rules.to_play(r, byq[r.question_id], s.drawn_at, s.questions[r.question_id], s.per_player)
             for r in s.history.get(uid, [])
             if r.mode in ("daily", "mock")
             and r.submitted_at is not None
@@ -466,7 +483,7 @@ def _items(s: Snapshot, t: rules.Thresholds) -> dict[int, list[Item]]:
             fixed = rules.replay_lp([p for _, p in plays], 0.0, fixed=t.fixed_rank, miss0=miss0(s, uid))
             byq = _by_question(s, uid)
             items = [
-                Item(r, p, lp, rules.pre_seen(r, byq[r.question_id], s.drawn_at))
+                Item(r, p, lp, rules.pre_seen(r, byq[r.question_id], s.drawn_at, s.per_player))
                 for (r, p), lp in zip(plays, fixed, strict=True)
                 if p.ranked and _in_window(s, r)
             ]
@@ -806,7 +823,7 @@ def follow(s: Snapshot, t: rules.Thresholds) -> rules.Follow:
                 canonical = rules.canonical_answer(s.answers[r.id], q.answer_kind if q else "")
                 if canonical is None or r.submitted_at is None:
                     continue
-                seen = rules.pre_seen(r, byq[r.question_id], s.drawn_at)
+                seen = rules.pre_seen(r, byq[r.question_id], s.drawn_at, s.per_player)
                 answers.append(
                     rules.DailyAnswer(
                         uid, r.question_id, r.created_at, r.submitted_at, canonical, _right(r), r.passed, seen

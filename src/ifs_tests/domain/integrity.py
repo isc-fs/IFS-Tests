@@ -366,26 +366,54 @@ def season_anchor(r: Row) -> datetime:
     return r.run_started_at or r.created_at
 
 
-def running_since(day: date, area: str | None, drawn_at: Mapping[tuple[date, str], datetime]) -> datetime:
-    """daily._running_since: when the day's question in `area` started running, never before midnight."""
+@dataclass(frozen=True)
+class PerPlayer:
+    """Season 1b days: from `rules_from` a day with no shared draw has no daily_questions row, and
+    `first_started` holds when the first player started each question that day."""
+
+    rules_from: date
+    first_started: Mapping[tuple[date, int], datetime]
+
+
+def running_since(
+    day: date,
+    area: str | None,
+    drawn_at: Mapping[tuple[date, str], datetime],
+    question_id: int | None = None,
+    per_player: PerPlayer | None = None,
+) -> datetime:
+    """daily._running_since: when the day's question in `area` started running, never before midnight. With no
+    shared draw on a day from the switch, when the first player started this question that day."""
+    midnight = madrid_midnight(day)
     drawn = drawn_at.get((day, area or ""))
-    return max(madrid_midnight(day), drawn) if drawn else madrid_midnight(day)
+    if drawn is None and per_player is not None and question_id is not None and day >= per_player.rules_from:
+        drawn = per_player.first_started.get((day, question_id))
+    return max(midnight, drawn) if drawn else midnight
 
 
-def _hidden_since(play: Row, drawn_at: Mapping[tuple[date, str], datetime]) -> datetime | None:
+def _hidden_since(
+    play: Row, drawn_at: Mapping[tuple[date, str], datetime], per_player: PerPlayer | None = None
+) -> datetime | None:
     if play.mode != "daily":
         return None
-    return running_since(play.day or madrid_day(play.created_at), play.area, drawn_at)
+    return running_since(
+        play.day or madrid_day(play.created_at), play.area, drawn_at, play.question_id, per_player
+    )
 
 
-def is_repeat(play: Row, history: Sequence[Row], drawn_at: Mapping[tuple[date, str], datetime]) -> bool:
+def is_repeat(
+    play: Row,
+    history: Sequence[Row],
+    drawn_at: Mapping[tuple[date, str], datetime],
+    per_player: PerPlayer | None = None,
+) -> bool:
     """xp.last_seen as the real path called it: the season from the play's own clock (a daily's submit, the
     nightly job's for a timeout; a mock run's start), another graded row of the question before this one was
     graded, its season anchor in that season; for a daily, mock questions hidden since it started running
     don't count."""
     clock = play.run_started_at if play.mode == "mock" and play.run_started_at else graded_at(play)
     season_start = madrid_midnight(first_day("season", madrid_day(clock)))
-    hidden = _hidden_since(play, drawn_at)
+    hidden = _hidden_since(play, drawn_at, per_player)
     return any(
         r.id != play.id
         and r.question_id == play.question_id
@@ -397,7 +425,12 @@ def is_repeat(play: Row, history: Sequence[Row], drawn_at: Mapping[tuple[date, s
     )
 
 
-def is_again_today(play: Row, history: Sequence[Row], drawn_at: Mapping[tuple[date, str], datetime]) -> bool:
+def is_again_today(
+    play: Row,
+    history: Sequence[Row],
+    drawn_at: Mapping[tuple[date, str], datetime],
+    per_player: PerPlayer | None = None,
+) -> bool:
     """xp.answered_today as called: never for a daily timeout (the nightly job passes nothing); otherwise
     another row of the question submitted (or practised) before this one, shown since the Madrid midnight of
     this play's submit; for a daily answer, hidden mock questions don't count."""
@@ -405,7 +438,7 @@ def is_again_today(play: Row, history: Sequence[Row], drawn_at: Mapping[tuple[da
         return False
     now = graded_at(play)
     start = madrid_midnight(madrid_day(now))
-    hidden = _hidden_since(play, drawn_at)
+    hidden = _hidden_since(play, drawn_at, per_player)
     return any(
         r.id != play.id
         and r.question_id == play.question_id
@@ -418,11 +451,14 @@ def is_again_today(play: Row, history: Sequence[Row], drawn_at: Mapping[tuple[da
 
 
 def pre_seen(
-    play: Row, history: Sequence[Row], drawn_at: Mapping[tuple[date, str], datetime] | None = None
+    play: Row,
+    history: Sequence[Row],
+    drawn_at: Mapping[tuple[date, str], datetime] | None = None,
+    per_player: PerPlayer | None = None,
 ) -> bool:
     """Any earlier graded row of the question, in any mode and season: the player had seen its answer.
     Mock questions closed unanswered while the daily was running (hidden from the player) don't count."""
-    hidden = _hidden_since(play, drawn_at or {})
+    hidden = _hidden_since(play, drawn_at or {}, per_player)
     return any(
         r.id != play.id
         and r.question_id == play.question_id
@@ -446,7 +482,11 @@ def pre_seen_lp_share(plays: Iterable[tuple[float, bool]]) -> tuple[float, int]:
 
 
 def to_play(
-    play: Row, history: Sequence[Row], drawn_at: Mapping[tuple[date, str], datetime], question: QuestionInfo
+    play: Row,
+    history: Sequence[Row],
+    drawn_at: Mapping[tuple[date, str], datetime],
+    question: QuestionInfo,
+    per_player: PerPlayer | None = None,
 ) -> Play:
     return Play(
         correct=play.correct,
@@ -458,10 +498,10 @@ def to_play(
         options=question.options,
         right_options=question.right_options,
         hint=play.hint_used and play.answered,
-        repeat=is_repeat(play, history, drawn_at),
+        repeat=is_repeat(play, history, drawn_at, per_player),
         late=play.late,
         passed=play.passed,
-        again_today=is_again_today(play, history, drawn_at),
+        again_today=is_again_today(play, history, drawn_at, per_player),
         lp=play.lp,
     )
 

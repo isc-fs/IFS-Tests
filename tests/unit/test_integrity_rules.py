@@ -493,6 +493,26 @@ def test_running_since_is_the_draw_or_midnight_whichever_is_later() -> None:
     )  # never before midnight
 
 
+def test_running_since_on_a_per_player_day_is_the_first_start_of_the_question() -> None:
+    first = {(DAY, 7): md(10, 5, 11)}
+    pp = rules.PerPlayer(DAY, first)
+    assert rules.running_since(DAY, "elec", {}, 7, pp) == md(10, 5, 11)
+    assert rules.running_since(DAY, "elec", {}, 8, pp) == md(10, 5, 0)  # nobody started that one
+    assert rules.running_since(DAY, "elec", DRAWN, 7, pp) == md(10, 5, 9)  # a shared draw wins
+    before = rules.PerPlayer(date(2026, 10, 6), first)
+    assert rules.running_since(DAY, "elec", {}, 7, before) == md(10, 5, 0)  # before the switch
+
+
+def test_a_per_player_replay_counts_a_mock_question_closed_before_the_first_start() -> None:
+    play = daily_play(id=1)
+    closed = earlier_mock(md(10, 5, 8), md(10, 5, 8), md(10, 5, 9, 30), answered=False)
+    pp = rules.PerPlayer(DAY, {(DAY, 7): md(10, 5, 9, 45)})
+    assert rules.pre_seen(play, [play, closed], {}) is False  # from midnight it would be hidden
+    assert rules.pre_seen(play, [play, closed], {}, pp) is True
+    assert rules.is_repeat(play, [play, closed], {}, pp) is True
+    assert rules.to_play(play, [play, closed], {}, INFO, pp).repeat is True
+
+
 _P = daily_play()
 _M = mock_play()
 _T = row(
