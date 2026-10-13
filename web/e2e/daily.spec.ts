@@ -220,20 +220,27 @@ test('on a 375 px screen the look-up button, its hint and its message take three
   const card = page.getByRole('article')
   const button = card.getByRole('button', { name: LOOKUP })
   await expect(button).toBeVisible()
-  await button.click()
-  await expect(card.getByText(NOTED)).toBeVisible() // the button, its hint and its message: three lines at most
 
-  const lines = await card.locator('.lookup').evaluate((box) => {
-    const rows = new Set<number>()
-    for (const el of box.children) {
-      const range = document.createRange()
-      range.selectNodeContents(el)
-      for (const rect of range.getClientRects()) if (rect.width > 0) rows.add(Math.round(rect.top))
-    }
-    return rows.size
-  })
-  expect(lines).toBeGreaterThan(0)
-  expect(lines).toBeLessThanOrEqual(3)
+  // Visible text only (the hint stays in the layout, hidden, under the message), and tops a few pixels apart are one line.
+  const lines = () =>
+    card.locator('.lookup').evaluate((box) => {
+      const tops: number[] = []
+      const walker = document.createTreeWalker(box, NodeFilter.SHOW_TEXT)
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        if (!node.textContent?.trim() || getComputedStyle(node.parentElement!).visibility === 'hidden') continue
+        const range = document.createRange()
+        range.selectNodeContents(node)
+        for (const rect of range.getClientRects()) if (rect.width > 0) tops.push(rect.top)
+      }
+      tops.sort((a, b) => a - b)
+      return tops.filter((top, i) => i === 0 || top - tops[i - 1] > 8).length
+    })
+  const before = await lines() // the button and its hint
+  expect(before).toBeGreaterThan(0)
+  expect(before).toBeLessThanOrEqual(3)
+  await button.click()
+  await expect(card.getByText(NOTED)).toBeVisible()
+  expect(await lines()).toBeLessThanOrEqual(3) // the button and its message, in the hint's place
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
   await info.attach('look-up at 375 px', { body: await card.screenshot(), contentType: 'image/png' })
 })
