@@ -206,8 +206,8 @@ def answer(
 
 
 @router.get("/sessions/{code}/results.csv", response_class=Response)
-def results(code: Code, user: Member, db: Db) -> Response:
-    body = live.results_csv(db, user, code)
+def results(code: Code, user: Member, db: Db, now: Now) -> Response:
+    body = live.results_csv(db, user, code, now)
     return Response(
         body,
         media_type="text/csv",

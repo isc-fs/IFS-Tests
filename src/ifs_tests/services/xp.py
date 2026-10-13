@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import Row, case, func, select, update
+from sqlalchemy import Row, Select, case, func, select, update
 from sqlalchemy.orm import Session as DB
 
 from ..db.models import AnswerKey, AnswerOption, Attempt, MockSession, Question, User
@@ -76,6 +76,25 @@ def _hidden_mock(since: datetime) -> Any:
     return (Attempt.mode == "mock") & (Attempt.answer == {}) & (Attempt.submitted_at >= since)
 
 
+def _season_start(now: datetime) -> datetime:
+    return board_rules.madrid_midnight(board_rules.first_day("season", daily_rules.madrid_day(now)))
+
+
+def seen_this_season(user_id: int, now: datetime, before: datetime) -> Select[tuple[int, datetime]]:
+    """The questions the player had graded this season (`last_seen`'s rule) before `before`, with when last."""
+    return (
+        select(Attempt.question_id, func.max(Attempt.created_at).label("at"))
+        .outerjoin(MockSession, MockSession.id == Attempt.session_id)
+        .where(
+            Attempt.user_id == user_id,
+            Attempt.correct.is_not(None),
+            func.coalesce(MockSession.started_at, Attempt.created_at) >= _season_start(now),
+            Attempt.created_at < before,
+        )
+        .group_by(Attempt.question_id)
+    )
+
+
 def last_seen(
     db: DB,
     user_id: int,
@@ -88,7 +107,7 @@ def last_seen(
     its answer. A new season starts everyone afresh; a mock answer belongs to the season its run started in,
     as on the leaderboard. `hidden_since`: for a daily answer, when its question started running for the
     player (see `_hidden_mock`)."""
-    season_start = board_rules.madrid_midnight(board_rules.first_day("season", daily_rules.madrid_day(now)))
+    season_start = _season_start(now)
     stmt = (
         select(func.max(Attempt.created_at))
         .outerjoin(MockSession, MockSession.id == Attempt.session_id)

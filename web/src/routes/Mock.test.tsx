@@ -56,12 +56,14 @@ const running = (position: number, current: unknown) => ({
   total: 2,
   current,
   summary: null,
+  skipped: 0,
 })
 const FINISHED = {
   ...running(2, null),
   summary: {
     correct: 1,
     graded: 2,
+    hidden: 0,
     xp: 76,
     lp: 21.4,
     counted: true,
@@ -72,6 +74,7 @@ const FINISHED = {
         feedback: { correct: true, official: '30', correct_options: [], solutions: [] },
         answer: { options: null, value: '30' },
         late: false,
+        hidden: false,
       },
       {
         question: q(2, 'Damping?'),
@@ -193,6 +196,44 @@ test('a replay earns XP only', async () => {
   })
   expect(
     await screen.findByText('A replay: 0 LP and +8 XP. Only your first run of a quiz each season moves your rank.'),
+  ).toBeInTheDocument()
+})
+
+test('a result kept back is said so, and the run tells what it skipped', async () => {
+  const kept = {
+    ...FINISHED,
+    skipped: 2,
+    summary: {
+      ...FINISHED.summary,
+      hidden: 1,
+      items: [
+        {
+          ...FINISHED.summary.items[0],
+          hidden: true,
+          feedback: { correct: null, official: null, correct_options: [], solutions: [] },
+        },
+        ...FINISHED.summary.items.slice(1, 2),
+      ],
+    },
+  }
+  renderApp('/mock/44', { 'GET /api/me': { body: MEMBER }, 'GET /api/mock/sessions/44': { body: kept } })
+  expect(
+    await screen.findByText(/1 question became another player's daily question while you had it on screen/),
+  ).toHaveTextContent('Its result is kept back, and left out of the totals above, until that player has answered')
+  expect(
+    screen.getByText(/2 questions were another player's daily question when the run got to them/),
+  ).toBeInTheDocument()
+  expect(screen.getByText('Question 1: result kept back')).toBeInTheDocument()
+  expect(screen.queryByText('Question 1: not graded')).toBeNull()
+})
+
+test('a run in progress says when it is skipping questions', async () => {
+  renderApp('/mock/44', {
+    'GET /api/me': { body: MEMBER },
+    'GET /api/mock/sessions/44': { body: { ...running(0, timed(7, q(1, 'Spring rate?'))), skipped: 1 } },
+  })
+  expect(
+    await screen.findByText(/1 question of this quiz is another player's daily question right now/),
   ).toBeInTheDocument()
 })
 

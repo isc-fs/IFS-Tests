@@ -895,6 +895,12 @@ export type ExportMockRun = {
      * How many of those were graded
      */
     unreached_graded: number | null;
+    /**
+     * Skipped
+     *
+     * Questions the run skipped because they were someone's daily question when it got to them; null while running or if it finished before this was kept
+     */
+    skipped: number | null;
 };
 
 /**
@@ -1648,6 +1654,12 @@ export type MockItem = {
      * Late
      */
     late: boolean;
+    /**
+     * Hidden
+     *
+     * The result is kept back for now: the question became someone's daily question after you had it on screen. It is left out of the totals and shows when its player has answered
+     */
+    hidden: boolean;
 };
 
 /**
@@ -1732,6 +1744,12 @@ export type MockState = {
     total: number;
     current: TimedQuestion | null;
     summary: MockSummary | null;
+    /**
+     * Skipped
+     *
+     * Questions left out of the run because they are someone's daily question: so far while it runs, in the end once it is over
+     */
+    skipped: number;
 };
 
 /**
@@ -1747,9 +1765,15 @@ export type MockSummary = {
     /**
      * Graded
      *
-     * Graded questions in the run, those not reached included
+     * Graded questions in the run, those not reached included and those with a hidden result left out
      */
     graded: number;
+    /**
+     * Hidden
+     *
+     * Questions whose result is kept back for now (left out of the totals)
+     */
+    hidden: number;
     /**
      * Unreached
      *
@@ -2317,7 +2341,7 @@ export type ReviewQuestion = {
     /**
      * Answer Hidden
      *
-     * The reviewer's own live question: answers withheld until answered
+     * The reviewer's own running question, or someone's daily today: answers withheld
      */
     answer_hidden: boolean;
     /**

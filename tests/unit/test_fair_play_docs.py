@@ -278,11 +278,13 @@ def test_roadmap_phase_seven_note_matches_where_the_deferred_branches_are() -> N
         assert branch in by_phase[6], branch
 
 
-def test_adr_separates_the_rule_date_from_the_mechanisms() -> None:
+def test_adr_switches_every_mechanism_with_the_rule_date_in_one_release() -> None:
     season = squash(section(read(ADR), "### Season 1b", "### Legal basis"))
     assert "Monday 26 October 2026, Madrid" in season
     assert "IFS_RULES_1B_FROM=2026-10-26" in season
-    assert "each mechanism's own effective-date setting, chosen at deploy" in season
+    assert "v2.0.0" in season
+    assert "one switch" in season
+    assert "each mechanism's own effective-date setting" not in season
     assert "no rule change lands mid-day" in season
     assert re.search(r"clocks go back on Sunday 25 October", season)
 
@@ -363,3 +365,19 @@ def test_fair_play_notes_are_limited_in_every_doc_that_states_the_rule() -> None
         text = squash(read(path))
         assert re.search(r"notes that hold a question's answer|hold a question's answer", text), path.name
         assert re.search(r"this question (\*\*)?or any version of it|any version of it", text), path.name
+
+
+@pytest.mark.parametrize(
+    "doc",
+    ["game-rules.md", "api.md", "architecture.md", "runbook.md", "guides/players.md"],
+)
+def test_docs_quote_the_withheld_message_as_the_code_raises_it(doc: str) -> None:
+    from ifs_tests.services.questions import WITHHELD
+
+    assert WITHHELD in squash(read(DOCS / doc)), doc
+
+
+@pytest.mark.parametrize("doc", ["game-rules.md", "adr/0010-fair-play-and-integrity.md"])
+def test_no_doc_says_a_relayed_answer_is_worth_nothing(doc: str) -> None:
+    text = squash(read(DOCS / doc))
+    assert "worth nothing" not in text and "worthless" not in text

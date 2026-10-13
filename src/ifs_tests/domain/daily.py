@@ -43,6 +43,57 @@ def pick(candidates: list[Candidate], day: date, area: str, secret: bytes = b"")
     return min(pool, key=lambda c: _draw(secret, day, area, c.id)).id
 
 
+def per_player(day: date, rules_from: date | None) -> bool:
+    """Season 1b: from this Madrid day the daily is drawn per player (ADR 0010). The one copy of the switch."""
+    return rules_from is not None and day >= rules_from
+
+
+@dataclass(frozen=True)
+class PlayerCandidate:
+    id: int
+    reserved: (
+        bool  # on screen elsewhere: an unfinished live session, or shown and unanswered in an open mock run
+    )
+    played_today: bool  # this player already answered it today, in any mode: a daily on it would pay nothing
+    drawn_today: int  # daily attempts by anyone on it today (carried-open ones from yesterday included)
+    answered_today: int  # of those, submitted: the key is out
+    last_drawn: date | None  # last Madrid day it was anyone's daily
+    last_seen: (
+        date | None
+    )  # last day this player had it graded this season, as of midnight (xp.last_seen's rule)
+
+
+def _draw_for(secret: bytes, day: date, area: str, user_id: int, qid: int) -> bytes:
+    return hmac.new(secret, f"{day}:{area}:{user_id}:{qid}".encode(), hashlib.sha256).digest()
+
+
+def pick_for(
+    candidates: list[PlayerCandidate], day: date, area: str, user_id: int, secret: bytes = b""
+) -> int | None:
+    """Ranks, never excludes: a tiny pool still gives a question. Nothing another surface is showing right now,
+    then a question nobody drew today (two players rarely share one), then one this player hasn't answered today
+    (a daily on it would pay nothing; it ranks below the spread so that answering a whole area can't steer two
+    players onto one question), then one whose key nobody has yet, then unseen by this player this season, then
+    the least recently anyone's daily, the least drawn today, the one this player saw longest ago, and an HMAC
+    with the player in it."""
+    if not candidates:
+        return None
+    return min(
+        candidates,
+        key=lambda c: (
+            c.reserved,
+            c.drawn_today > 0,
+            c.played_today,
+            c.answered_today > 0,
+            c.last_seen is not None,
+            c.last_drawn or date.min,
+            c.drawn_today,
+            c.last_seen or date.min,
+            _draw_for(secret, day, area, user_id, c.id),
+        ),
+    ).id
+
+
 def budget(time_s: int | None, answer_kind: str) -> int:
     """Seconds allowed: the real quiz's budget when known, otherwise a default by kind of answer."""
     seconds = time_s or DEFAULT_BUDGET.get(answer_kind, TYPED_BUDGET)

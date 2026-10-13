@@ -18,7 +18,7 @@ from ..domain import mock as rules
 from ..domain import signals as signal_rules
 from . import signals, xp
 from .errors import UserError
-from .questions import Checked, check, explain, running
+from .questions import Checked, check, explain, running, withheld
 
 
 def labels(db: DB, quizzes: list[Quiz]) -> dict[int, str]:
@@ -158,12 +158,14 @@ class Item:
     checked: Checked
     late: bool
     answer: dict[str, Any]
+    hidden: bool = False  # someone's daily question: its result waits (and is out of the totals)
 
 
 @dataclass
 class Summary:
     correct: int
-    graded: int  # the questions not reached count, as in the real quiz
+    graded: int  # the questions not reached count, as in the real quiz; hidden ones don't
+    hidden: int
     unreached: int
     xp: int
     lp: float
@@ -179,6 +181,9 @@ class State:
     total: int
     current: tuple[Question, Attempt] | None
     summary: Summary | None
+    skipped: (
+        int  # left out of the run as someone's daily question: so far while it runs, in the end once over
+    )
 
 
 def _attempts(db: DB, s: MockSession) -> dict[int, Attempt]:
@@ -188,23 +193,32 @@ def _attempts(db: DB, s: MockSession) -> dict[int, Attempt]:
     return {a.question_id: a for a in rows}
 
 
-def _run(db: DB, s: MockSession, attempts: dict[int, Attempt]) -> list[Question]:
+def _run(db: DB, s: MockSession, attempts: dict[int, Attempt], now: datetime) -> list[Question]:
     """The run's questions: the ones it has shown, in the order it showed them, then (only while running) the
-    still-playable ones it hasn't, in quiz order. Going by what it showed keeps a run and its summary intact when
-    a question is hidden, its images arrive mid-run, or FS-Quiz deletes it or drops it from the quiz."""
+    still-playable ones it hasn't, in quiz order, skipping any that is someone's daily question right now.
+    Going by what it showed keeps a run and its summary intact when a question is hidden, its images arrive
+    mid-run, or FS-Quiz deletes it or drops it from the quiz."""
     shown = sorted(attempts.values(), key=lambda a: a.id)
     found = db.scalars(select(Question).where(Question.id.in_([a.question_id for a in shown])))
     by_id = {q.id: q for q in found}
     run = [by_id[a.question_id] for a in shown]
     if s.finished_at is None:
-        run += [q for q in _questions(db, s.quiz_id) if q.id not in attempts]
+        skipped = withheld(db, now)
+        run += [q for q in _questions(db, s.quiz_id) if q.id not in attempts and q.id not in skipped]
     return run
 
 
+def _skipped(db: DB, s: MockSession, attempts: dict[int, Attempt], hidden: set[int]) -> int:
+    return sum(1 for q in _questions(db, s.quiz_id) if q.id not in attempts and q.id in hidden)
+
+
 def _finish(db: DB, s: MockSession, attempts: dict[int, Attempt], now: datetime) -> None:
-    """Close the run, keeping what it didn't reach as the quiz stands now."""
-    left = [q for q in _questions(db, s.quiz_id) if q.id not in attempts]
+    """Close the run, keeping what it didn't reach as the quiz stands now (a question skipped as someone's
+    daily isn't one it failed to reach)."""
+    skipped = withheld(db, now)
+    left = [q for q in _questions(db, s.quiz_id) if q.id not in attempts and q.id not in skipped]
     s.unreached, s.unreached_graded = len(left), sum(1 for q in left if q.graded)
+    s.skipped = _skipped(db, s, attempts, skipped)
     s.finished_at = now
 
 
@@ -218,7 +232,7 @@ def _advance(
     """The question to show now: start its clock, or close it if its time ran out while away."""
     attempts = _attempts(db, s)
     current = None
-    for q in _run(db, s, attempts):
+    for q in _run(db, s, attempts, now):
         a = attempts.get(q.id)
         if a is None:
             a = Attempt(
@@ -346,31 +360,38 @@ def end_stale(db: DB, now: datetime) -> int:
 
 def _summary(db: DB, s: MockSession, now: datetime) -> Summary:
     attempts = _attempts(db, s)
-    questions = _run(db, s, attempts)
+    questions = _run(db, s, attempts, now)
     busy = running(db, s.user_id, now)  # e.g. today's daily question, not answered yet: its answer waits
+    hidden = withheld(db, now) - busy  # someone else's daily: not even whether it was right
     items = []
     for q in questions:
         a = attempts.get(q.id)
         answer = a.answer if a else {}
         checked = explain(db, q, a.correct if a else (False if q.graded else None), bool(a and a.passed))
-        if q.id in busy:
+        if q.id in busy or q.id in hidden:
             checked.official, checked.correct_options, checked.solutions = None, [], []
-        # level 0: a summary item carries its own XP and LP, not where the player stands now
-        checked.score = xp.Grant(xp=a.xp if a else 0, lp=a.lp if a else 0.0, level=0)
-        items.append(Item(q, checked, bool(a and a.late), answer))
+        if q.id in hidden:  # nothing here may say whether the answer was right
+            checked.correct = None
+            checked.score = xp.Grant(xp=0, lp=0.0, level=0)
+        else:  # level 0: a summary item carries its own XP and LP, not where the player stands now
+            checked.score = xp.Grant(xp=a.xp if a else 0, lp=a.lp if a else 0.0, level=0)
+        items.append(Item(q, checked, bool(a and a.late), answer, hidden=q.id in hidden))
     correct = sum(1 for i in items if i.checked.correct and not i.late)  # right but late scores as wrong
     unreached, unreached_graded = s.unreached, s.unreached_graded
     if unreached is None or unreached_graded is None:  # finished before 0022: as the quiz stands now
         left = [q for q in _questions(db, s.quiz_id) if q.id not in attempts]
         unreached, unreached_graded = len(left), sum(1 for q in left if q.graded)
     quiz = db.get_one(Quiz, s.quiz_id)
+    shown = [a for a in attempts.values() if a.question_id not in hidden]
     return Summary(
         correct=correct,
         # graded when answered, as recorded: a later correction or deletion doesn't change the run
-        graded=sum(1 for a in attempts.values() if a.correct is not None) + unreached_graded,
+        graded=sum(1 for a in attempts.values() if a.correct is not None and a.question_id not in hidden)
+        + unreached_graded,
+        hidden=sum(1 for i in items if i.hidden),
         unreached=unreached,
-        xp=sum(a.xp for a in attempts.values()),
-        lp=round(sum(a.lp for a in attempts.values()), 2),
+        xp=sum(a.xp for a in shown),
+        lp=round(sum(a.lp for a in shown), 2),
         counted=s.counted,
         bar_to_beat=rules.bar_to_beat(quiz.last_qualifier),
         items=items,
@@ -388,12 +409,14 @@ def state(
     s = _session(db, user, session_id)
     current = None if s.finished_at else _advance(db, s, now, policy, resumed)
     db.commit()
+    attempts = _attempts(db, s)
     return State(
         session=s,
         label=label(db, db.get_one(Quiz, s.quiz_id)),
-        total=len(_run(db, s, _attempts(db, s))),
+        total=len(_run(db, s, attempts, now)),
         current=current,
         summary=_summary(db, s, now) if s.finished_at else None,
+        skipped=(s.skipped or 0) if s.finished_at else _skipped(db, s, attempts, withheld(db, now)),
     )
 
 

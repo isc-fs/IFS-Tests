@@ -109,7 +109,7 @@ Settings are environment variables with the `IFS_` prefix, or a `.env` file in t
 | `IFS_BANK_DIR` | `data/fsquiz` | The mirror that `mirror` writes and `push` reads |
 | `IFS_DB_POOL_SIZE` | `5` | Database connections each process keeps open (per uvicorn worker) |
 | `IFS_DB_MAX_OVERFLOW` | `5` | Extra connections a process may open under load. On the server the scheduler runs with 2 + 0, and the sizes are budgeted against Postgres's `max_connections` ([runbook 5](runbook.md#5-everyday-operations)) |
-| `IFS_RULES_1B_FROM` | unset | The Madrid day the season-1b rules start (`YYYY-MM-DD`; empty counts as unset). Unset means not yet: nothing in ADR 0010 is collected (no signals, no decoy). On the server it reaches the containers through `deploy/compose.yaml` from the environment's `.env` |
+| `IFS_RULES_1B_FROM` | unset | **The one switch of season 1b** ([ADR 0010](adr/0010-fair-play-and-integrity.md)): the Madrid day (`YYYY-MM-DD`; empty counts as unset) from which the fair-play rules and every mechanism of release v2.0.0 start together: the signals, the decoy, the per-player daily and the rest. Unset means not yet: before the date the app behaves as it always did, and nothing in ADR 0010 is collected or changed. It takes effect at a Madrid midnight by construction (the daily keeps a day that already has a shared draw shared to its end), so deploy it dark before the date and never change it mid-day on a running server ([runbook](runbook.md#58-season-1b-switch-v200)). On the server it reaches the containers through `deploy/compose.yaml` from the environment's `.env` |
 | `IFS_CANARY` | `false` | Draw the AI canary's decoy option for ranked choice questions. Needs `IFS_RULES_1B_FROM` reached; off until the recall pilot says otherwise |
 | `IFS_INTEGRITY_*` | none for the decision thresholds | Read only by `integrity-report` and `integrity-reveal`, never by the app: `DSN` (a read-only connection as `backup_ro`, password in `PGPASSWORD`), `SALT` (a secret; prompted for when unset), the neutral knobs (`Z`, `MIN_GROUP`, `FIXED_RANK`, …) and the decision thresholds, which have no defaults on purpose because the repository is public. Listed in the [integrity report guide](guides/integrity-report.md#before-you-run) |
 
@@ -314,10 +314,11 @@ Checks: `uv run pytest tests/unit tests/api` and `cd web && npm test`.
 
 The rule and the list of places that apply it are in [architecture.md](architecture.md#answer-secrecy). In short: a response may carry an answer only if it is the player's own submission, a finished mock run, a revealed live question or the reviewer tools, **and** the question is not still running for the person asking.
 
-1. Before returning an official answer, correct options, a solution or someone's right/wrong, ask `services/questions.running_for(db, user.id, question_id, now)` (or `running(db, user.id, now)` for a batch) and blank it if true. `not_running` raises the standard 409 for actions that must be refused outright (practice, hints).
+1. Before returning an official answer, correct options, a solution or someone's right/wrong, ask `services/questions.running_for(db, user.id, question_id, now)` (or `running(db, user.id, now) | withheld(db, now)` for a batch) and blank it if true. `running` is what the caller still has to answer; `withheld` is what someone else is answering as their daily today (season 1b), empty on shared days. `not_running` raises the standard 409 for actions that must be refused outright (practice, hints).
 2. If the new response schema carries an answer field (`official`, `correct_options`, `correction`, `is_correct`, `key`, `feedback`, `summary`), add the `(method, path)` to `MAY_REVEAL` in `tests/api/test_security.py`, with a comment saying why it's safe. Otherwise the scan fails, which is the point.
-3. Add an API test where the question is today's unanswered daily question, or in the caller's open mock run, and check the answer is absent.
+3. Add an API test where the question is today's unanswered daily question, or in the caller's open mock run, and check the answer is absent. For a surface other people use, add the case of a question another player drew as their per-player daily (`app_settings=GATED`, `helpers.start_area`): `tests/api/test_daily_per_player.py` has a test per surface to copy.
 4. A new mode with a clock must add its unanswered questions to `running` in `src/ifs_tests/services/questions.py`.
+5. A new surface where one player can see another's question or its key (a pick, a list, a reveal, an export) must also leave out or blank `withheld`, and be added to the table in [architecture.md](architecture.md#answer-secrecy).
 
 ## Conventions
 
@@ -326,7 +327,7 @@ The rule and the list of places that apply it are in [architecture.md](architect
 - **Time.** Routes receive `now` from the `Now` dependency and pass it down, so tests control the clock (`get_now` is overridden in `tests/conftest.py`).
 - **Locking.** The full table is in [architecture.md](architecture.md#concurrency-and-locking). The ones you are most likely to need:
   - scoring anything for a player first takes their row lock with `services/xp.lock` (`FOR NO KEY UPDATE`, held until commit);
-  - daily and mock answers lock the player, then the attempt or run; a live quiz locks its session row, then players in id order; deleting an account locks hosted live sessions, then the admin advisory lock, then the account;
+  - daily and mock answers lock the player, then the attempt or run; a per-player daily start locks the player first too; a live quiz locks its session row, then players in id order; deleting an account locks hosted live sessions, then the admin advisory lock, then the account;
   - every change to who is an active admin first takes the advisory lock in `services/accounts._active_admin_ids` (`ADMIN_LOCK`);
   - nightly jobs handle one player per transaction (`privacy.purge` is the one exception, committed at the end of `maintenance.run`).
 

@@ -101,7 +101,7 @@ class Detail:
     reports: list[tuple[Report, str | None]]
     answered: int
     right: int
-    # The reviewer is playing this question right now (today's daily or an open mock run): answers withheld.
+    # The reviewer is playing this question right now, or it is someone's daily today: answers withheld.
     answer_hidden: bool
     # FS-Quiz's notes on the quizzes it appeared in ("Question 3 was later removed"), each with its quiz.
     quiz_notes: list[str]
@@ -189,12 +189,19 @@ def update(db: DB, reviewer: User, question_id: int, changes: dict[str, Any], no
     return q
 
 
+def _not_running(db: DB, reviewer: User, q: Question, now: datetime) -> None:
+    """Correcting a key while it is hidden from the reviewer would show it, by the grading that follows."""
+    if running_for(db, reviewer.id, q.id, now):
+        raise UserError("This question is running or is someone's daily today: correct it later.", 409)
+
+
 def set_answer(
     db: DB, reviewer: User, question_id: int, options: list[int] | None, value: str | None, now: datetime
 ) -> Question:
     """Replace FS-Quiz's answer with a reviewer's. Choice questions take option IDs; others a typed value
     in the same formats players use (number, list, range or short code)."""
     q = _question(db, question_id)
+    _not_running(db, reviewer, q, now)
     key = db.get(AnswerKey, q.id)
     if key is None:
         raise UserError("That question has no answer record.", 409)
@@ -238,6 +245,7 @@ def set_answer(
 
 def clear_answer(db: DB, reviewer: User, question_id: int, now: datetime) -> Question:
     q = _question(db, question_id)
+    _not_running(db, reviewer, q, now)
     key = db.get(AnswerKey, q.id)
     if key is None or key.override is None:
         raise UserError("There is no correction to remove.", 409)

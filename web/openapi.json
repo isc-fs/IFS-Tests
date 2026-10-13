@@ -4292,6 +4292,18 @@
       ],
       "title": "Unreached Graded",
       "description": "How many of those were graded"
+     },
+     "skipped": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Skipped",
+      "description": "Questions the run skipped because they were someone's daily question when it got to them; null while running or if it finished before this was kept"
      }
     },
     "additionalProperties": false,
@@ -4303,7 +4315,8 @@
      "started_at",
      "finished_at",
      "unreached",
-     "unreached_graded"
+     "unreached_graded",
+     "skipped"
     ],
     "title": "ExportMockRun"
    },
@@ -5638,13 +5651,19 @@
      "late": {
       "type": "boolean",
       "title": "Late"
+     },
+     "hidden": {
+      "type": "boolean",
+      "title": "Hidden",
+      "description": "The result is kept back for now: the question became someone's daily question after you had it on screen. It is left out of the totals and shows when its player has answered"
      }
     },
     "type": "object",
     "required": [
      "question",
      "feedback",
-     "late"
+     "late",
+     "hidden"
     ],
     "title": "MockItem"
    },
@@ -5791,6 +5810,11 @@
         "type": "null"
        }
       ]
+     },
+     "skipped": {
+      "type": "integer",
+      "title": "Skipped",
+      "description": "Questions left out of the run because they are someone's daily question: so far while it runs, in the end once it is over"
      }
     },
     "type": "object",
@@ -5801,7 +5825,8 @@
      "position",
      "total",
      "current",
-     "summary"
+     "summary",
+     "skipped"
     ],
     "title": "MockState"
    },
@@ -5815,7 +5840,12 @@
      "graded": {
       "type": "integer",
       "title": "Graded",
-      "description": "Graded questions in the run, those not reached included"
+      "description": "Graded questions in the run, those not reached included and those with a hidden result left out"
+     },
+     "hidden": {
+      "type": "integer",
+      "title": "Hidden",
+      "description": "Questions whose result is kept back for now (left out of the totals)"
      },
      "unreached": {
       "type": "integer",
@@ -5857,6 +5887,7 @@
     "required": [
      "correct",
      "graded",
+     "hidden",
      "unreached",
      "xp",
      "lp",
@@ -6775,7 +6806,7 @@
      "answer_hidden": {
       "type": "boolean",
       "title": "Answer Hidden",
-      "description": "The reviewer's own live question: answers withheld until answered"
+      "description": "The reviewer's own running question, or someone's daily today: answers withheld"
      },
      "quiz_notes": {
       "items": {

@@ -21,7 +21,7 @@ Terms you'll meet in MingoQuiz and its docs, in alphabetical order. Each links t
 | **Critical** | XP bonus: a 5 % chance of +100 % on a right answer, fixed per player, question and day |
 | **CSRF** | Cross-site request forgery: another site making your browser send a request to MingoQuiz. Blocked by the SameSite cookie, an Origin check and an `X-CSRF` header. [Security](security.md) |
 | **Cushion** | After 3 wrong answers in a row, LP losses are cut by up to half (less on a single choice) until the next right answer. [Game rules 2.3](game-rules.md#23-cushion-and-comeback) |
-| **Daily question** | One question per area per Madrid day, the same for everyone, one try against the clock; the main way to move your rank. [Game rules 5](game-rules.md#5-the-daily-question) |
+| **Daily question** | One question per area per Madrid day, one try against the clock; the main way to move your rank. The same for everyone until season 1b, drawn for you from then on, when you press Start. [Game rules 5](game-rules.md#5-the-daily-question) |
 | **Department Head** | A position: someone who leads a sub-department. Placed at Jefe I |
 | **Difficulty** | A question's rating from 1 to 5, set from its answer type and time budget and recalibrated nightly from how people did. [Game rules 4](game-rules.md#4-question-difficulty) |
 | **Division** | A step of 100 rank points: Mingo I … DT V, then the top. [Game rules 2.1](game-rules.md#21-divisions-and-titles) |
@@ -63,7 +63,7 @@ Terms you'll meet in MingoQuiz and its docs, in alphabetical order. Each links t
 | **Role** | What someone may do in the app: member, reviewer or admin. Not the same as the position |
 | **Rules** | The Formula Student Rules, the rulebook most European events share, defining the car and the competition. Questions show the editions their quiz was based on, and flag later ones. Also the `rules` area |
 | **Season** | 1 September to 31 August, Madrid time, named by the year it starts in. Ranks reset softly on 1 September. [Game rules 2.5](game-rules.md#25-seasons-and-the-reset) |
-| **Season 1b** | The dated mid-season rules update of season 2026, proposed in ADR 0010: from Monday 26 October 2026, Madrid, the fair-play rules apply; the per-player daily, results at day close, the option shuffle and the fair-play totals switch on as each ships, each at a Madrid midnight. Rules only; no LP reset. [Game rules 10](game-rules.md#10-fair-play) |
+| **Season 1b** | The dated mid-season rules update of season 2026, proposed in ADR 0010: from Monday 26 October 2026, Madrid, the fair-play rules apply; the per-player daily, results at day close, the option shuffle and the fair-play totals ship in one release, v2.0.0, deployed before the date and switched on together at that Madrid midnight by the one setting, `IFS_RULES_1B_FROM`. Rules only; no LP reset. [Game rules 10](game-rules.md#10-fair-play) |
 | **Smoke test** | The quick checks `deploy/deploy.sh` runs against a new release before accepting it; failure rolls back. [Runbook 2](runbook.md#2-deploy) |
 | **Specialists** | Live quiz routing where each question goes to a table that owns its topic (aero questions to the Aerodynamics table), whose answer is the room's; tables owning the same topic take turns |
 | **Speed points** | An optional live quiz scoring: a right answer earns 1,000 points if instant, down to 500 at the buzzer. Ranks tables in the session; not XP |
@@ -78,6 +78,7 @@ Terms you'll meet in MingoQuiz and its docs, in alphabetical order. Each links t
 | **Top, the** | The division past DT V, from 1,500 rank points with uncapped LP. Its title depends on the vertical: Gigante Noble (Mechanical), Villano (Electronics, Tractive System, Driverless), Leyenda (everyone else) |
 | **Training wheels** (learning aids) | Help that comes off as you climb: the reading panel until Mingo IV, formulas until Mingo V, hints until Jefe V. They come back if you drop. [Game rules 2.6](game-rules.md#26-training-wheels) |
 | **Vertical** | A big division of the team: Management, Mechanical, Tractive System, Electronics, Driverless, Business, Board. Sets the top title and the vertical leaderboard |
+| **Withheld question** | From season 1b, a question another player drew as their daily and is still answering: kept out of practice, mock runs, review and live until they answer it, so a second place can't give its answer away. [Game rules 5](game-rules.md#5-the-daily-question) |
 | **XP** | Experience points, earned by every answer in every mode, never lost; they set the account level. [Game rules 3](game-rules.md#3-the-account-level-xp) |
 
 ## Sub-department codes

@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 from alembic import command
-from sqlalchemy import create_engine, inspect
+from sqlalchemy import Engine, create_engine, inspect
+from sqlalchemy.orm import Session
 
 from ..conftest import migrate
 
@@ -207,3 +210,154 @@ def test_0025_signals_survive_upgrade_and_downgrade_drops_them(postgres_url: str
         c.execute(text("DELETE FROM users WHERE id = 9911"))
         c.execute(text("DELETE FROM questions WHERE id = 9911"))
     command.check(cfg)
+
+
+def daily_index(engine: Engine) -> Any:
+    return next(
+        (i for i in inspect(engine).get_indexes("attempts") if i["name"] == "ix_attempts_daily_day"), None
+    )
+
+
+def mock_columns(engine: Engine) -> set[str]:
+    return {c["name"] for c in inspect(engine).get_columns("mock_sessions")}
+
+
+def test_0026_indexes_a_days_daily_attempts_and_downgrade_drops_only_the_index(postgres_url: str) -> None:
+    from sqlalchemy import text
+
+    cfg = migrate(postgres_url)
+    command.downgrade(cfg, "0025")
+    engine = create_engine(postgres_url)
+    assert daily_index(engine) is None
+    assert "skipped" not in mock_columns(engine)
+    with engine.begin() as c:
+        c.execute(
+            text(
+                "INSERT INTO users (id, email, password_hash, display_name) OVERRIDING SYSTEM VALUE "
+                "VALUES (9921, 'idx@alu.comillas.edu', 'x', 'I')"
+            )
+        )
+        c.execute(
+            text(
+                "INSERT INTO questions (id, type, text, area, answer_kind, source_hash, graded, playable) "
+                "OVERRIDING SYSTEM VALUE VALUES (9921, 'input', 'q', 'mech', 'number', 'h', true, true)"
+            )
+        )
+        c.execute(
+            text(
+                "INSERT INTO attempts (user_id, question_id, mode, answer, created_at, day, area, deadline_at) "
+                "VALUES (9921, 9921, 'daily', '{}', now(), current_date, 'mech', now()), "
+                "(9921, 9921, 'practice', '{}', now(), NULL, NULL, NULL)"
+            )
+        )
+
+    command.upgrade(cfg, "head")
+    assert "skipped" in mock_columns(engine)
+    index = daily_index(engine)
+    assert index is not None and index["column_names"] == ["day", "question_id"]
+    with engine.begin() as c:
+        definition = c.execute(
+            text("SELECT indexdef FROM pg_indexes WHERE indexname = 'ix_attempts_daily_day'")
+        ).scalar_one()
+        assert (
+            "WHERE" in definition and "'daily'" in definition and "mode" in definition
+        )  # partial: dailies only
+        assert c.execute(text("SELECT count(*) FROM attempts WHERE user_id = 9921")).scalar_one() == 2
+    command.check(cfg)
+
+    command.downgrade(cfg, "0025")  # a rollback to the release before: the index goes, the answers stay
+    assert daily_index(engine) is None
+    assert "skipped" not in mock_columns(engine)
+    with engine.begin() as c:
+        assert c.execute(text("SELECT count(*) FROM attempts WHERE user_id = 9921")).scalar_one() == 2
+        for kept in ("uq_attempts_daily", "ix_attempts_lp_day", "ix_attempts_user_question"):
+            assert (
+                c.execute(
+                    text("SELECT count(*) FROM pg_indexes WHERE indexname = :n"), {"n": kept}
+                ).scalar_one()
+                == 1
+            )
+
+    command.upgrade(cfg, "head")
+    assert daily_index(engine) is not None
+    with engine.begin() as c:
+        assert c.execute(text("SELECT count(*) FROM attempts WHERE user_id = 9921")).scalar_one() == 2
+        c.execute(text("DELETE FROM users WHERE id = 9921"))
+        c.execute(text("DELETE FROM questions WHERE id = 9921"))
+    command.check(cfg)
+
+
+def test_the_withheld_set_reads_the_daily_attempts_through_the_index_even_in_a_generic_plan(
+    app_engine: Engine, db: Session
+) -> None:
+    """Prepared statements (psycopg prepares one after five runs) get a plan made without the parameter values.
+    The partial index only serves a query whose `mode = 'daily'` is written into the SQL, not bound."""
+    import re
+    from datetime import UTC, datetime
+
+    from sqlalchemy import event, text
+
+    from ifs_tests.services.questions import withheld
+
+    sent: list[str] = []
+
+    def capture(conn: object, cursor: object, statement: str, *rest: object) -> None:
+        sent.append(statement)
+
+    event.listen(app_engine, "before_cursor_execute", capture)
+    try:
+        withheld(db, datetime(2026, 10, 1, 10, tzinfo=UTC))
+        db.rollback()
+    finally:
+        event.remove(app_engine, "before_cursor_execute", capture)
+    dailies = [q for q in sent if "attempts" in q and "'daily'" in q]
+    assert dailies, sent  # the predicate is a literal in the statement that reaches the database
+
+    with (
+        app_engine.begin() as c
+    ):  # a season's worth: 40 players, 90 days, 3 areas, and four times as many others
+        c.execute(
+            text(
+                "INSERT INTO users (id, email, password_hash, display_name) OVERRIDING SYSTEM VALUE "
+                "SELECT 99000 + i, 'u' || i || '@x.com', 'x', 'U' || i FROM generate_series(1, 40) i"
+            )
+        )
+        c.execute(
+            text(
+                "INSERT INTO questions (id, type, text, area, answer_kind, source_hash, graded, playable) "
+                "OVERRIDING SYSTEM VALUE VALUES (99001, 'input', 'q', 'mech', 'number', 'h', true, true)"
+            )
+        )
+        c.execute(
+            text(
+                "INSERT INTO attempts (user_id, question_id, mode, answer, created_at, day, area, deadline_at) "
+                "SELECT 99000 + u, 99001, 'daily', '{}', now(), current_date - d, a, now() "
+                "FROM generate_series(1, 40) u, generate_series(0, 89) d, unnest(ARRAY['mech', 'elec', 'rules']) a"
+            )
+        )
+        c.execute(
+            text(
+                "INSERT INTO attempts (user_id, question_id, mode, answer, created_at) "
+                "SELECT 99000 + u, 99001, 'practice', '{}', now() FROM generate_series(1, 40) u, "
+                "generate_series(1, 1000) n"
+            )
+        )
+        c.execute(text("ANALYZE attempts"))
+    with app_engine.connect() as c:
+        c.execute(text("SET plan_cache_mode = force_generic_plan"))
+        for i, statement in enumerate(dailies):
+            names: list[str] = []
+
+            def number(m: re.Match[str], names: list[str] = names) -> str:
+                if m[1] not in names:
+                    names.append(m[1])
+                return f"${names.index(m[1]) + 1}"
+
+            prepared = re.sub(r"%\((\w+)\)s", number, statement).replace("%%", "%")
+            c.exec_driver_sql(f"PREPARE withheld_{i} AS {prepared}")
+            call = f"({', '.join('NULL' for _ in names)})" if names else ""
+            plan = "\n".join(
+                r[0] for r in c.exec_driver_sql(f"EXPLAIN (COSTS OFF) EXECUTE withheld_{i}{call}")
+            )
+            assert "ix_attempts_daily_day" in plan, plan
+        c.rollback()

@@ -27,6 +27,7 @@ const blank = (a: MockItem['answer']) => !a || (!a.options?.length && !a.value?.
 
 function verdict(item: MockItem): string {
   const f = item.feedback
+  if (item.hidden) return 'result kept back'
   if (f.passed) return 'not sure'
   if (item.late || (f.correct === false && blank(item.answer))) return 'out of time'
   if (f.correct === null) return 'not graded'
@@ -136,7 +137,9 @@ export default function Mock() {
   )
 }
 
-function Summary({ summary }: { summary: MockSummary }) {
+const questions = (n: number) => (n === 1 ? '1 question' : `${n} questions`)
+
+function Summary({ summary, skipped }: { summary: MockSummary; skipped: number }) {
   const { data: me } = useMe()
   useEffect(() => {
     queryClient.invalidateQueries({ queryKey: ME_KEY }) // the run's LP and XP are in now
@@ -155,6 +158,20 @@ function Summary({ summary }: { summary: MockSummary }) {
       {rank && me?.progress && (
         <p className="muted">
           Now {rank.title} · {Math.floor(rank.lp)} LP · Level {me.progress.account.level}
+        </p>
+      )}
+      {summary.hidden > 0 && (
+        <p className="muted">
+          {questions(summary.hidden)} became another player's daily question while you had{' '}
+          {summary.hidden === 1 ? 'it' : 'them'} on screen.{' '}
+          {summary.hidden === 1 ? 'Its result is' : 'Their results are'} kept back, and left out of the totals above,
+          until that player has answered (or tomorrow).
+        </p>
+      )}
+      {skipped > 0 && (
+        <p className="muted">
+          {questions(skipped)} {skipped === 1 ? 'was' : 'were'} another player's daily question when the run got to{' '}
+          {skipped === 1 ? 'it' : 'them'}, so {skipped === 1 ? 'it was' : 'they were'} skipped and not scored.
         </p>
       )}
       {summary.unreached > 0 && (
@@ -203,6 +220,13 @@ export function MockRun() {
             Question {s.position + 1} of {s.total}
           </p>
           <progress className="quiz-progress" max={s.total} value={s.position} aria-label="Progress" />
+          {s.skipped > 0 && (
+            <p className="muted">
+              {questions(s.skipped)} of this quiz {s.skipped === 1 ? 'is' : 'are'} another player's daily question right
+              now, so the run skips {s.skipped === 1 ? 'it' : 'them'} unless {s.skipped === 1 ? 'it is' : 'they are'}{' '}
+              released before you get there.
+            </p>
+          )}
           <LearningAids question={current.question}>
             <QuestionCard
               key={current.attempt_id}
@@ -238,7 +262,7 @@ export function MockRun() {
       )}
       {s.summary && (
         <>
-          <Summary summary={s.summary} />
+          <Summary summary={s.summary} skipped={s.skipped} />
           <h2>Your answers</h2>
           {s.summary.items.length === 0 && <Notice tone="error">This quiz has no questions left.</Notice>}
           <ol className="review">

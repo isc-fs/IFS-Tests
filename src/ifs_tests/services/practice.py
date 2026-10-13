@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session as DB
 from ..db.models import AREAS, Attempt, Question, User
 from . import hints, xp
 from .errors import UserError
-from .questions import Checked, check, not_running, playable, running
+from .questions import Checked, check, not_running, playable, running, withheld
 
 
 @dataclass
@@ -58,7 +58,7 @@ def next_question(
     skip: int | None = None,
 ) -> Question:
     """A random question, preferring the ones this person has practised least, never one they still have to
-    answer in a daily, mock or live quiz."""
+    answer in a daily, mock or live quiz, or that is someone's daily question today."""
     mine = (
         select(Attempt.question_id, func.count().label("n"))
         .where(Attempt.user_id == user.id, Attempt.mode == "practice")
@@ -72,7 +72,7 @@ def next_question(
         stmt = stmt.where(Question.topic == topic)
     if skip:
         stmt = stmt.where(Question.id != skip)
-    if busy := running(db, user.id, now):
+    if busy := running(db, user.id, now) | withheld(db, now):
         stmt = stmt.where(Question.id.not_in(busy))
     q = db.scalars(stmt.order_by(func.coalesce(mine.c.n, 0), func.random()).limit(1)).first()
     if q is None:

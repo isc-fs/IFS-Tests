@@ -16,7 +16,7 @@ from ..domain import daily as timing
 from ..domain import hints as rules
 from ..domain import rank as rank_rules
 from .errors import UserError
-from .questions import not_running, playable
+from .questions import WITHHELD, not_running, playable, withheld
 
 
 def salt(db: DB) -> bytes:
@@ -89,6 +89,8 @@ def timed(db: DB, user: User, attempt_id: int, now: datetime, session_id: int | 
         raise UserError("That question isn't running.", 404)
     if a.submitted_at is not None or timing.is_late(now, a.deadline_at):
         raise UserError("Hints come before answering.", 409)
+    if a.mode == "mock" and a.question_id in withheld(db, now):
+        raise UserError(WITHHELD, 409)
     h = _hint(db, user, db.get_one(Question, a.question_id), now)
     db.execute(update(Attempt).where(Attempt.id == a.id).values(hint_used=True))
     db.commit()

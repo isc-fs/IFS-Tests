@@ -56,6 +56,15 @@ Go to **Live**. Under **Host a live quiz**, set the options and press **Create t
 Only questions that can be graded automatically and that reviewers haven't hidden are used. A full past quiz
 skips any of its questions that can't be graded.
 
+**Questions that are someone's daily today.** From season 1b each player's daily question is drawn for them, and a
+question stays kept back from every other place while its player is still answering it. A session you start leaves
+those questions out when it picks (random or in a past quiz's order), so it can have a few questions fewer than you
+asked for: about three per active player are out of the bank on a given day. A session you started before a
+question was drawn can still contain it; from the draw on, its answer and each table's right or wrong and points
+stay hidden in the reveal, and the CSV leaves its official answer empty. The warning "Likely to get no question" in the
+lobby is an estimate from the whole bank and still counts those questions, so it can be a little optimistic on a
+busy day.
+
 You can change every option until you start: open **Change the settings** in the lobby and press **Save the
 settings**. Once the quiz starts they are fixed.
 
@@ -246,6 +255,10 @@ captained gets its best-ranked member as captain, and every screen shows the cha
 
 **Someone joined late.** Open **Seating**, pick their table, press **Move**. They share XP only for questions their
 table answers after that.
+
+**A session has fewer questions than I asked for, or one answer is blank in the reveal.** It is someone's daily
+question today (season 1b), kept back until they answer it; see above. Start the session later in the day, or after
+midnight, for the whole bank.
 
 **A table got no questions.** In specialist mode a table only gets questions on the topics it owns. Check the
 warnings under the tables before you start: give it a topic this quiz asks about, or ask more questions.
