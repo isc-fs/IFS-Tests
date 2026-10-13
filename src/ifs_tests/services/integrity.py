@@ -441,7 +441,12 @@ def ranked_plays(s: Snapshot) -> dict[int, list[tuple[rules.Row, rules.Play]]]:
                 key=rules.grading_order,
             )
             out[uid] = [
-                (r, rules.to_play(r, byq[r.question_id], s.drawn_at, s.questions[r.question_id], s.per_player))
+                (
+                    r,
+                    rules.to_play(
+                        r, byq[r.question_id], s.drawn_at, s.questions[r.question_id], s.per_player
+                    ),
+                )
                 for r in plays
             ]
         return out
