@@ -1250,6 +1250,30 @@ export type LeaderRow = {
      * Account level
      */
     level: number;
+    /**
+     * Answered
+     *
+     * Questions counted: first answers to past daily questions and in finished first mock runs since season 1b (late and run-out ones as wrong). Null before season 1b
+     */
+    answered: number | null;
+    /**
+     * Accuracy
+     *
+     * Share right, 0 to 1; null under min_answered counted questions or before season 1b
+     */
+    accuracy: number | null;
+    /**
+     * Accuracy Low
+     *
+     * Wilson 95% interval of the share, widened outwards to 0.001; null as for accuracy
+     */
+    accuracy_low: number | null;
+    /**
+     * Accuracy High
+     *
+     * Wilson 95% interval of the share, widened outwards to 0.001; null as for accuracy
+     */
+    accuracy_high: number | null;
 };
 
 /**
@@ -1278,6 +1302,24 @@ export type Leaderboard = {
      * People on this board, including any beyond the rows shown
      */
     players: number;
+    /**
+     * Shows Accuracy
+     *
+     * Whether the accuracy fields are filled in (from season 1b)
+     */
+    shows_accuracy: boolean;
+    /**
+     * Accuracy From
+     *
+     * First day the accuracy figures count from, for this board's period; null before season 1b
+     */
+    accuracy_from: string | null;
+    /**
+     * Min Answered
+     *
+     * Questions counted before a share is shown
+     */
+    min_answered: number;
 };
 
 /**
@@ -1832,6 +1874,30 @@ export type MyRank = {
      * Opted out: others don't see them on the board
      */
     hidden: boolean;
+    /**
+     * Answered
+     *
+     * Questions counted: first answers to past daily questions and in finished first mock runs since season 1b (late and run-out ones as wrong). Null before season 1b
+     */
+    answered: number | null;
+    /**
+     * Accuracy
+     *
+     * Share right, 0 to 1; null under min_answered counted questions or before season 1b
+     */
+    accuracy: number | null;
+    /**
+     * Accuracy Low
+     *
+     * Wilson 95% interval of the share, widened outwards to 0.001; null as for accuracy
+     */
+    accuracy_low: number | null;
+    /**
+     * Accuracy High
+     *
+     * Wilson 95% interval of the share, widened outwards to 0.001; null as for accuracy
+     */
+    accuracy_high: number | null;
 };
 
 /**

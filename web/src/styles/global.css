@@ -778,6 +778,28 @@ details[open] > summary::before {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+/* From season 1b a second line under the name: how many questions counted and the share right.
+   Only rows that have the line span the extra grid row. */
+.board.with-accuracy .item.has-accuracy {
+  row-gap: 2px;
+}
+.board.with-accuracy .item.has-accuracy .place,
+.board.with-accuracy .item.has-accuracy > .emblem {
+  grid-row: span 2;
+}
+.board .accuracy {
+  grid-column: 3 / -1;
+  justify-self: start;
+  text-align: start;
+  overflow-wrap: anywhere;
+  font-size: var(--isc-fs-body-s);
+  font-variant-numeric: tabular-nums;
+  color: var(--isc-c-text-mut);
+}
+.board .accuracy .part {
+  display: inline-block;
+  max-width: 100%;
+}
 /* Phones: the rank and LP go under the name, which keeps the row's width. */
 @media (max-width: 560px) {
   .board .item {
@@ -792,6 +814,13 @@ details[open] > summary::before {
     grid-column: 3;
     font-size: var(--isc-fs-body-s);
     white-space: normal;
+  }
+  .board.with-accuracy .item.has-accuracy .place,
+  .board.with-accuracy .item.has-accuracy > .emblem {
+    grid-row: span 3;
+  }
+  .board .accuracy {
+    grid-column: 3;
   }
 }
 .my-rank {

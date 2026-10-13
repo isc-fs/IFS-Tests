@@ -4890,6 +4890,54 @@
       "type": "integer",
       "title": "Level",
       "description": "Account level"
+     },
+     "answered": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Answered",
+      "description": "Questions counted: first answers to past daily questions and in finished first mock runs since season 1b (late and run-out ones as wrong). Null before season 1b"
+     },
+     "accuracy": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Accuracy",
+      "description": "Share right, 0 to 1; null under min_answered counted questions or before season 1b"
+     },
+     "accuracy_low": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Accuracy Low",
+      "description": "Wilson 95% interval of the share, widened outwards to 0.001; null as for accuracy"
+     },
+     "accuracy_high": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Accuracy High",
+      "description": "Wilson 95% interval of the share, widened outwards to 0.001; null as for accuracy"
      }
     },
     "type": "object",
@@ -4901,7 +4949,11 @@
      "me",
      "division",
      "title",
-     "level"
+     "level",
+     "answered",
+     "accuracy",
+     "accuracy_low",
+     "accuracy_high"
     ],
     "title": "LeaderRow"
    },
@@ -4947,6 +4999,29 @@
       "type": "integer",
       "title": "Players",
       "description": "People on this board, including any beyond the rows shown"
+     },
+     "shows_accuracy": {
+      "type": "boolean",
+      "title": "Shows Accuracy",
+      "description": "Whether the accuracy fields are filled in (from season 1b)"
+     },
+     "accuracy_from": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Accuracy From",
+      "description": "First day the accuracy figures count from, for this board's period; null before season 1b"
+     },
+     "min_answered": {
+      "type": "integer",
+      "title": "Min Answered",
+      "description": "Questions counted before a share is shown"
      }
     },
     "type": "object",
@@ -4955,7 +5030,10 @@
      "board",
      "rows",
      "me",
-     "players"
+     "players",
+     "shows_accuracy",
+     "accuracy_from",
+     "min_answered"
     ],
     "title": "Leaderboard"
    },
@@ -5934,13 +6012,65 @@
       "type": "boolean",
       "title": "Hidden",
       "description": "Opted out: others don't see them on the board"
+     },
+     "answered": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Answered",
+      "description": "Questions counted: first answers to past daily questions and in finished first mock runs since season 1b (late and run-out ones as wrong). Null before season 1b"
+     },
+     "accuracy": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Accuracy",
+      "description": "Share right, 0 to 1; null under min_answered counted questions or before season 1b"
+     },
+     "accuracy_low": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Accuracy Low",
+      "description": "Wilson 95% interval of the share, widened outwards to 0.001; null as for accuracy"
+     },
+     "accuracy_high": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Accuracy High",
+      "description": "Wilson 95% interval of the share, widened outwards to 0.001; null as for accuracy"
      }
     },
     "type": "object",
     "required": [
      "rank",
      "score",
-     "hidden"
+     "hidden",
+     "answered",
+     "accuracy",
+     "accuracy_low",
+     "accuracy_high"
     ],
     "title": "MyRank",
     "description": "The requesting member's own place, shown even when they are hidden or outside the top rows."

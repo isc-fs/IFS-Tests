@@ -85,7 +85,8 @@ export function Privacy() {
         <ul>
           <li>
             <strong>Every member:</strong> your display name, vertical, rank, LP and account level on the leaderboards
-            (overall and by area, this week and this season), unless you hide yourself. Hiding only affects the
+            (overall and by area, this week and this season) and, from {RULES_FROM.en}, how many of your ranked
+            questions counted and the share you got right, unless you hide yourself. Hiding only affects the
             leaderboards.
           </li>
           <li>
@@ -319,7 +320,9 @@ export function About() {
               Nada se decide automáticamente. El rango, el nivel y los rankings no seleccionan a nadie: no deciden el
               equipo, quién hace el quiz de verdad ni quién va a las competiciones. Una decisión de juego limpio sí
               puede: la toman personas después de escucharte, nunca solo con estadísticas, y puede suponer quedarte sin
-              ir a las competiciones. Todo, en inglés, en la <Link to="/privacy">página de privacidad</Link>.
+              ir a las competiciones. Desde el {RULES_FROM.es}, los rankings muestran también cuántas de tus preguntas
+              de ranked cuentan y el porcentaje que acertaste, salvo que te ocultes (tú sigues viendo el tuyo). Todo, en
+              inglés, en la <Link to="/privacy">página de privacidad</Link>.
             </p>
           </div>
         </section>

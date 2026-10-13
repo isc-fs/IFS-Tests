@@ -2,17 +2,19 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 
-from .daily import MADRID
+from .daily import GRACE, MADRID, MAX_BUDGET, madrid_day
 from .mock import season
 
 PERIODS = ("season", "week")
 TOP = 50
 WEEK_DAYS = 7
 MIN_VERTICAL = 3
+MIN_ANSWERED = 5  # counted questions before a share is shown
 
 
 def first_day(period: str, today: date) -> date:
@@ -20,6 +22,35 @@ def first_day(period: str, today: date) -> date:
     if period == "season":
         return date(season(today), 9, 1)
     return today - timedelta(days=WEEK_DAYS - 1)
+
+
+@dataclass(frozen=True)
+class Accuracy:
+    answered: int
+    share: float | None
+    low: float | None
+    high: float | None
+
+
+def accuracy(right: int, answered: int, bounds: tuple[float, float]) -> Accuracy:
+    """Share right with its interval widened outwards to 0.001; none under MIN_ANSWERED questions."""
+    if answered < MIN_ANSWERED:
+        return Accuracy(answered, None, None, None)
+    low, high = bounds
+    share = round(right / answered, 3)
+    if 0 < right < answered:  # 100% and 0% only when exact
+        share = min(0.999, max(0.001, share))
+    return Accuracy(
+        answered,
+        share,
+        math.floor(round(low * 1000, 6)) / 1000,
+        math.ceil(round(high * 1000, 6)) / 1000,
+    )
+
+
+def accuracy_cutoff(now: datetime) -> date:
+    """Dailies of days before this one count for accuracy: nobody can still answer them in time."""
+    return madrid_day(now - timedelta(seconds=MAX_BUDGET) - GRACE)
 
 
 def madrid_midnight(day: date) -> datetime:

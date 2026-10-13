@@ -17,7 +17,10 @@ the controller at launch (release decision B1).
 
 **Data already stored** (ADR 0006, data-model `attempts`): for every answer, the answer given, whether it was right,
 when the question was shown and answered, whether a hint was used, the mode and the area, the LP and XP it moved;
-for every member, position, vertical and rank state. None of this is new.
+for every member, position, vertical and rank state. None of this is new. From the rule date the person boards also
+show each member's counted questions and share right, derived from these attempts and stored nowhere, for display
+only: never an input to a check or a decision. A named player's counts can be read off the board; the leaderboard
+opt-out hides them (the member still sees their own).
 
 **New from season 1b** (ADR 0010, part D; from the rule date, 26 October 2026: the release is deployed before it and
 switches on at Madrid midnight of that day), on ranked answers only (daily questions and the first run of each mock

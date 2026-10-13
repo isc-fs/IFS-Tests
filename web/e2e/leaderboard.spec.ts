@@ -41,3 +41,95 @@ test('score in a mock quiz, find yourself on the leaderboard, then hide', async 
   if (scored) await expect(page.getByText("You're hidden from others", { exact: false })).toBeVisible()
   await expect(page.getByText('You', { exact: true })).toHaveCount(0)
 })
+
+const FIELDS_OFF = { answered: null, accuracy: null, accuracy_low: null, accuracy_high: null }
+const figures = (answered: number, accuracy: number | null = null, low = accuracy, high = accuracy) => ({
+  answered,
+  accuracy,
+  accuracy_low: low,
+  accuracy_high: high,
+})
+const person = (rank: number, display_name: string, score: number, extra = {}) => ({
+  rank,
+  display_name,
+  vertical: 'Driverless',
+  score,
+  me: false,
+  division: 2,
+  title: 'Mingo III',
+  level: 12,
+  ...FIELDS_OFF,
+  ...extra,
+})
+// The worst cases for the second line: a name with no break, a clean sheet with a wide range, a row under the
+// minimum, a row with nothing counted (no line) and your own row at zero (the longest sentence).
+const WIDE = {
+  period: 'season',
+  board: 'everyone',
+  rows: [
+    person(1, 'Wolfeschlegelsteinhausenbergerdorff-Wolfeschlegelstein', 240, figures(1999, 0.999, 0.997, 1)),
+    person(2, 'Pau', 230.5, figures(5, 1, 0.565, 1)),
+    person(3, 'Eva', 200, figures(3)),
+    person(4, 'Ana', 190, figures(0)),
+    person(5, 'Me', 100, { me: true, ...figures(0) }),
+  ],
+  me: { rank: 5, score: 100, hidden: false, ...figures(0) },
+  players: 5,
+  shows_accuracy: true,
+  accuracy_from: '2026-10-26',
+  min_answered: 5,
+}
+
+for (const width of [320, 390, 1280]) {
+  test(`the accuracy line fits and lines up at ${width}px`, async ({ browser }, info) => {
+    test.skip(info.project.name === 'mobile', 'sets its own widths')
+    const page = await newMember(browser, `Wide ${Date.now().toString(36)}`)
+    await page.route(
+      (url) => url.pathname === '/api/leaderboard',
+      (route) => route.fulfill({ json: WIDE }),
+    )
+    await page.setViewportSize({ width, height: 900 })
+    await page.goto('/leaderboard')
+    const lines = page.locator('.board .accuracy')
+    await expect(lines).toHaveCount(4) // every row but the one with nothing counted
+    await expect(lines.first()).toBeVisible()
+    await expect(page.locator('.board .item')).toHaveCount(5)
+    await expect(page.locator('.board .item.has-accuracy')).toHaveCount(4)
+
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    )
+    expect(overflow).toBeLessThanOrEqual(0)
+
+    for (const line of await lines.all()) {
+      const box = (await line.boundingBox())!
+      expect(box.x).toBeGreaterThanOrEqual(0)
+      expect(box.x + box.width).toBeLessThanOrEqual(width)
+    }
+    // The figures sit under the names, whatever the width.
+    const names = page.locator('.board .item.has-accuracy .item-title')
+    for (const [i, line] of (await lines.all()).entries()) {
+      const name = (await names.nth(i).boundingBox())!
+      const under = (await line.boundingBox())!
+      expect(Math.abs(under.x - name.x)).toBeLessThanOrEqual(2)
+      expect(under.y).toBeGreaterThan(name.y)
+    }
+    // The line wraps between its parts and no part sticks out of its row.
+    const stray = await page.evaluate(
+      () =>
+        [...document.querySelectorAll('.board .item.has-accuracy')].filter((li) => {
+          const edge = li.getBoundingClientRect().right
+          return [...li.querySelectorAll('.accuracy .part')].some((p) => p.getBoundingClientRect().right > edge + 0.5)
+        }).length,
+    )
+    expect(stray).toBe(0)
+
+    // A row without a line takes no extra grid row.
+    const rowsOf = (selector: string) =>
+      page
+        .locator(selector)
+        .first()
+        .evaluate((el) => getComputedStyle(el).gridTemplateRows.split(' ').length)
+    expect(await rowsOf('.board .item:not(.has-accuracy)')).toBeLessThan(await rowsOf('.board .item.has-accuracy'))
+  })
+}
