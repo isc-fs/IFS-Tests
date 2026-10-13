@@ -9,9 +9,10 @@ from collections import Counter
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from datetime import date, datetime, timedelta
-from typing import Any
+from typing import Any, cast
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, delete, event, select, update
 from sqlalchemy.orm import Session
@@ -24,7 +25,7 @@ from ifs_tests.services import daily, maintenance, mock, questions
 from ifs_tests.services import signals as signal_service
 from ifs_tests.settings import Settings
 
-from ..conftest import Clock
+from ..conftest import PUBLIC_ORIGIN, Clock
 from .helpers import CANARY, GATED, PASSWORD, login, member, options, right_answer, set_daily, start_daily
 from .test_boundaries import at
 from .test_live import advance, lobby, room, state  # noqa: F401
@@ -1246,3 +1247,411 @@ def test_the_decoy_is_not_in_a_finished_runs_summary(player: TestClient, db: Ses
     ended = mock_start(player, 9003)
     out = player.post(f"/api/mock/sessions/{ended['session_id']}/end").json()
     assert "decoy_option_id" not in str(out["summary"]) and out["current"] is None
+
+
+# --- collect_signals: when the page measures ------------------------------------------------------------------
+
+
+def swap_gate(client: TestClient, start: date | None, canary: bool = False) -> None:
+    """Change the running app's settings, e.g. the gate unset by a rollback between a start and an answer."""
+    cast(FastAPI, client.app).state.settings = Settings(
+        _env_file=None, env="test", public_origin=PUBLIC_ORIGIN, rules_1b_from=start, canary=canary
+    )
+
+
+@pytest.mark.parametrize(
+    "app_settings",
+    [{"rules_1b_from": None, "canary": True}, {"rules_1b_from": date(2099, 1, 1), "canary": True}],
+    indirect=True,
+    ids=["unset", "not-reached"],
+)
+def test_collect_signals_is_false_before_the_gate_and_with_it_unset(
+    player: TestClient, db: Session, bank: dict[int, int], clock: Clock
+) -> None:
+    started = start_daily(player, db, clock.now, bank[90001])
+    assert started["collect_signals"] is False
+    clock.advance(seconds=15)
+    assert restart(player, db, started)["collect_signals"] is False
+    st = mock_start(player)
+    assert st["current"]["collect_signals"] is False
+    clock.advance(seconds=15)
+    assert mock_get(player, st["session_id"])["current"]["collect_signals"] is False
+    seen = finish(player, db, clock, st, None)
+    assert all(s["current"]["collect_signals"] is False for s in seen if s["current"])
+
+
+@pytest.mark.parametrize("app_settings", [GATED, CANARY], indirect=True, ids=["canary-off", "canary-on"])
+def test_collect_signals_is_true_for_daily_and_counted_mock_from_the_gate(
+    player: TestClient, db: Session, bank: dict[int, int], clock: Clock
+) -> None:
+    started = start_daily(player, db, clock.now, bank[90001])
+    assert started["collect_signals"] is True
+    clock.advance(seconds=15)
+    assert restart(player, db, started)["collect_signals"] is True  # reopened: still measured
+    st = mock_start(player)
+    assert st["current"]["collect_signals"] is True
+    clock.advance(seconds=15)
+    assert mock_get(player, st["session_id"])["current"]["collect_signals"] is True
+    seen = finish(player, db, clock, st, None)
+    assert seen[-1]["summary"]["counted"] is True
+    assert [s["current"]["collect_signals"] for s in seen if s["current"]] == [True] * 5
+
+
+def test_a_replay_never_collects(player: TestClient, db: Session, clock: Clock) -> None:
+    finish(player, db, clock, mock_start(player), None)
+    replay = mock_start(player)
+    assert replay["session_id"] and replay["current"]["collect_signals"] is False
+    clock.advance(seconds=15)
+    assert mock_get(player, replay["session_id"])["current"]["collect_signals"] is False
+    seen = finish(player, db, clock, replay, SIGNALS)
+    assert seen[-1]["summary"]["counted"] is False
+    assert [s["current"]["collect_signals"] for s in seen if s["current"]] == [False] * 5
+    assert all(cols(a) == NOTHING for a in mock_attempts(db, replay["session_id"]))
+
+
+@pytest.mark.parametrize("app_settings", [{"rules_1b_from": date(2026, 10, 2)}], indirect=True)
+def test_a_daily_started_before_the_gate_and_reopened_after_does_not_collect(
+    player: TestClient, db: Session, bank: dict[int, int], clock: Clock
+) -> None:
+    clock.now = at(date(2026, 10, 1), 23, 59, 30)
+    login(player, "marta@alu.comillas.edu", PASSWORD)
+    started = start_daily(player, db, clock.now, bank[90004])
+    assert started["collect_signals"] is False
+    clock.advance(seconds=40)  # 00:00:10 on 2 October: the gate is open
+    again = restart(player, db, started)
+    assert again["attempt_id"] == started["attempt_id"]
+    assert again["collect_signals"] is False
+    r = send_daily(player, started, {**right_answer(db, bank[90004]), "signals": SIGNALS})
+    assert r.status_code == 200, r.text
+    assert cols(row(db, started["attempt_id"])) == NOTHING
+    after = start_daily(player, db, clock.now, bank[90001])  # one started under the gate
+    assert after["collect_signals"] is True
+
+
+@pytest.mark.parametrize("app_settings", [{"rules_1b_from": date(2026, 10, 2)}], indirect=True)
+def test_a_counted_mock_run_crossing_midnight_collects_from_the_first_question_started_after(
+    player: TestClient, db: Session, clock: Clock
+) -> None:
+    clock.now = at(date(2026, 10, 1), 23, 59, 30)
+    login(player, "marta@alu.comillas.edu", PASSWORD)
+    st = mock_start(player)
+    first = st["current"]["attempt_id"]
+    assert st["current"]["collect_signals"] is False
+    clock.advance(seconds=40)
+    assert (
+        mock_get(player, st["session_id"])["current"]["collect_signals"] is False
+    )  # it began without the gate
+    r = mock_answer(player, st, {**answer_body(db, st["current"]), "signals": SIGNALS})
+    assert r.status_code == 200, r.text
+    assert cols(row(db, first)) == NOTHING
+    nxt = r.json()
+    assert nxt["current"]["collect_signals"] is True
+    assert mock_get(player, st["session_id"])["current"]["collect_signals"] is True
+    clock.advance(seconds=25)
+    r = mock_answer(player, nxt, {**answer_body(db, nxt["current"]), "signals": SIGNALS})
+    assert r.status_code == 200, r.text
+    assert reported(row(db, nxt["current"]["attempt_id"])) == (25, 0, None, 2)
+
+
+@pytest.mark.parametrize(
+    ("scenario", "flag", "stored"),
+    [
+        ("daily", True, True),
+        ("daily-text", True, True),
+        ("mock", True, True),
+        ("replay", False, False),
+        ("unset-at-start", False, False),
+        ("unset-at-start-mock", False, False),
+        ("unset-at-answer", True, False),  # a rollback between the page loading and the answer: discarded
+        ("unset-at-answer-mock", True, False),
+    ],
+)
+def test_collect_signals_matches_what_the_answer_keeps(
+    player: TestClient,
+    app_client: TestClient,
+    db: Session,
+    bank: dict[int, int],
+    clock: Clock,
+    scenario: str,
+    flag: bool,
+    stored: bool,
+) -> None:
+    if scenario == "replay":
+        finish(player, db, clock, mock_start(player), None)
+    if scenario.startswith("unset-at-start"):
+        swap_gate(app_client, None)
+    mock_run = scenario in ("mock", "replay") or scenario.endswith("mock")
+    if mock_run:
+        st = mock_start(player)
+        shown, attempt_id = st["current"], st["current"]["attempt_id"]
+        body = answer_body(db, shown)
+
+        def send(b: dict[str, Any]) -> Any:
+            return mock_answer(player, st, b)
+    else:
+        started = start_daily(player, db, clock.now, bank[90007 if scenario == "daily-text" else 90001])
+        shown, attempt_id = started, started["attempt_id"]
+        body = right_answer(db, started["question"]["id"])
+
+        def send(b: dict[str, Any]) -> Any:
+            return send_daily(player, started, b)
+
+    assert shown["collect_signals"] is flag
+    if scenario.startswith("unset-at-answer"):
+        swap_gate(app_client, None)
+    clock.advance(seconds=40)
+    r = send({**body, "signals": SIGNALS})
+    assert r.status_code == 200, r.text
+    a = row(db, attempt_id)
+    keeps = shown["collect_signals"] and not scenario.startswith("unset")
+    assert keeps is stored
+    assert (a.away_declared_s is not None) == keeps
+    assert (a.away_undeclared_s is not None) == keeps
+    assert (a.long_copies is not None) == keeps
+    assert (a.pasted is not None) == (keeps and shown["question"]["answer_kind"] == "text")
+    if stored:
+        assert reported(a)[:2] == (30, 10) and a.long_copies == 2
+
+
+def test_an_answer_without_signals_on_a_collecting_attempt_stores_nulls_not_zeros(
+    player: TestClient, db: Session, bank: dict[int, int], clock: Clock
+) -> None:
+    started = start_daily(player, db, clock.now, bank[90007])  # free text: the one kind that could say False
+    assert started["collect_signals"] is True
+    clock.advance(seconds=30)
+    assert send_daily(player, started, right_answer(db, bank[90007])).status_code == 200
+    a = row(db, started["attempt_id"])
+    assert reported(a) == (None, None, None, None) and a.resumes == 0
+
+    st = mock_start(player)
+    assert st["current"]["collect_signals"] is True
+    finish(player, db, clock, st, None)
+    rows = mock_attempts(db, st["session_id"])
+    assert len(rows) == 5
+    assert all(reported(m) == (None, None, None, None) and m.resumes == 0 for m in rows)
+
+
+@pytest.mark.parametrize(
+    "gate", [date(2026, 10, 25), date(2027, 3, 28)], ids=["clocks-back", "clocks-forward"]
+)
+def test_the_policy_flips_at_madrid_midnight_on_the_days_the_clocks_change(gate: date) -> None:
+    settings = Settings(_env_file=None, env="test", rules_1b_from=gate, canary=True)
+    midnight = at(gate, 0)
+    assert signal_service.policy(settings, midnight - timedelta(microseconds=1)) == rules.OFF
+    assert signal_service.policy(settings, midnight) == rules.Policy(collect=True, canary=True)
+    assert signal_service.policy(settings, at(gate, 23, 59, 59)).collect is True
+    assert signal_service.policy(settings, at(gate + timedelta(days=1), 0)).collect is True
+
+
+@pytest.mark.parametrize(
+    ("app_settings", "gate"),
+    [
+        ({"rules_1b_from": date(2026, 10, 25)}, date(2026, 10, 25)),
+        ({"rules_1b_from": date(2027, 3, 28)}, date(2027, 3, 28)),
+    ],
+    indirect=["app_settings"],
+    ids=["clocks-back", "clocks-forward"],
+)
+def test_collect_signals_flips_at_madrid_midnight_on_a_day_the_clocks_change(
+    player: TestClient, db: Session, bank: dict[int, int], clock: Clock, gate: date
+) -> None:
+    clock.now = at(gate - timedelta(days=1), 23, 59, 59)
+    login(player, "marta@alu.comillas.edu", PASSWORD)
+    before = start_daily(player, db, clock.now, bank[90001])
+    assert before["collect_signals"] is False
+    assert send_daily(player, before, right_answer(db, bank[90001])).status_code == 200
+    clock.now = at(gate, 0) - timedelta(microseconds=1)
+    assert mock_start(player, 9003)["current"]["collect_signals"] is False
+    clock.now = at(gate, 0)
+    after = start_daily(player, db, clock.now, bank[90004])
+    assert after["collect_signals"] is True
+    clock.advance(seconds=20)
+    assert send_daily(player, after, {**right_answer(db, bank[90004]), "signals": SIGNALS}).status_code == 200
+    assert row(db, after["attempt_id"]).away_declared_s == 20
+
+
+# --- the decoy needs measuring: a note nobody can be held to is never shown --------------------------------------
+
+
+@pytest.mark.parametrize("gate", [None, date(2020, 1, 1), date(2099, 1, 1)], ids=["unset", "past", "future"])
+@pytest.mark.parametrize("canary", [False, True], ids=["canary-off", "canary-on"])
+@pytest.mark.parametrize("hour", [0, 12, 23])
+def test_a_policy_with_the_canary_always_collects(gate: date | None, canary: bool, hour: int) -> None:
+    settings = Settings(_env_file=None, env="test", rules_1b_from=gate, canary=canary)
+    for now in (at(date(2020, 1, 1), hour), at(date(2026, 10, 1), hour), at(date(2099, 1, 1), hour)):
+        p = signal_service.policy(settings, now)
+        assert not p.canary or p.collect
+        assert p.collect or p == rules.OFF
+
+
+def assert_unmeasured(shown: dict[str, Any]) -> None:
+    assert shown["collect_signals"] is False
+    assert shown.get("decoy_option_id") is None
+
+
+def assert_measured_with_a_decoy(shown: dict[str, Any]) -> None:
+    assert shown["collect_signals"] is True
+    assert shown["decoy_option_id"] in shown_ids(shown["question"])
+
+
+@pytest.mark.parametrize(
+    "app_settings",
+    [{"rules_1b_from": None, "canary": True}, {"rules_1b_from": date(2099, 1, 1), "canary": True}],
+    indirect=True,
+    ids=["gate-unset", "gate-in-the-future"],
+)
+def test_no_decoy_without_collect_before_the_gate(
+    player: TestClient, db: Session, bank: dict[int, int], clock: Clock
+) -> None:
+    started = start_daily(player, db, clock.now, bank[90001])  # a four-option single choice: it would get one
+    st = mock_start(player)
+    for shown in (started, st["current"]):
+        assert_unmeasured(shown)
+    assert row(db, started["attempt_id"]).decoy_option_id is None  # nothing is even drawn
+    clock.advance(seconds=15)
+    assert_unmeasured(restart(player, db, started))
+    assert_unmeasured(mock_get(player, st["session_id"])["current"])
+
+
+def test_no_decoy_without_collect_on_a_counted_mock_replay(
+    player: TestClient, db: Session, clock: Clock
+) -> None:
+    counted = mock_start(player)
+    assert_measured_with_a_decoy(counted["current"])
+    finish(player, db, clock, counted, None)
+    replay = mock_start(player)
+    assert_unmeasured(replay["current"])
+    clock.advance(seconds=15)
+    assert_unmeasured(mock_get(player, replay["session_id"])["current"])
+    for s in finish(player, db, clock, replay, None):
+        if s["current"]:
+            assert_unmeasured(s["current"])
+
+
+@pytest.mark.parametrize(
+    "app_settings", [{"rules_1b_from": date(2026, 10, 2), "canary": True}], indirect=True
+)
+def test_no_decoy_without_collect_on_a_daily_and_a_mock_question_opened_before_the_date(
+    player: TestClient, db: Session, bank: dict[int, int], clock: Clock
+) -> None:
+    clock.now = at(date(2026, 10, 1), 23, 59, 30)
+    login(player, "marta@alu.comillas.edu", PASSWORD)
+    started = start_daily(player, db, clock.now, bank[90001])
+    st = mock_start(player)
+    assert_unmeasured(started)
+    assert_unmeasured(st["current"])
+    clock.advance(seconds=40)  # 00:00:10 on 2 October: the gate is open now
+    assert madrid_day(clock.now) == date(2026, 10, 2)
+    again = restart(player, db, started)
+    assert again["attempt_id"] == started["attempt_id"]
+    assert_unmeasured(again)
+    assert_unmeasured(mock_get(player, st["session_id"])["current"])
+    fresh = start_daily(player, db, clock.now, bank[90004])  # one started under the gate does measure
+    assert fresh["collect_signals"] is True
+
+
+@pytest.mark.parametrize(
+    "after",
+    [
+        pytest.param((None, True), id="gate-unset"),
+        pytest.param((None, False), id="gate-unset-canary-off"),
+        pytest.param((date(2099, 1, 1), True), id="gate-moved-to-the-future"),
+    ],
+)
+def test_a_rollback_shows_no_decoy_on_an_attempt_that_was_drawn_one(
+    player: TestClient,
+    app_client: TestClient,
+    db: Session,
+    bank: dict[int, int],
+    clock: Clock,
+    after: tuple[date | None, bool],
+) -> None:
+    started = start_daily(player, db, clock.now, bank[90001])
+    st = mock_start(player)
+    assert_measured_with_a_decoy(started)
+    assert_measured_with_a_decoy(st["current"])
+    drawn = (
+        row(db, started["attempt_id"]).decoy_option_id,
+        row(db, st["current"]["attempt_id"]).decoy_option_id,
+    )
+    assert None not in drawn
+
+    swap_gate(app_client, *after)
+    clock.advance(seconds=15)
+    assert_unmeasured(restart(player, db, started))
+    assert_unmeasured(mock_get(player, st["session_id"])["current"])
+    # shown never, but the draw stays on record
+    assert (
+        row(db, started["attempt_id"]).decoy_option_id,
+        row(db, st["current"]["attempt_id"]).decoy_option_id,
+    ) == drawn
+
+
+# --- keeps: the one rule behind collect_signals and the decoy --------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("collect", "resumes", "expected"),
+    [
+        (True, 0, True),
+        (True, 7, True),
+        (True, None, False),  # the attempt began before the gate: nothing is kept for it, now or later
+        (False, 0, False),
+        (False, None, False),
+    ],
+)
+def test_keeps_needs_the_policy_and_an_attempt_that_began_under_it(
+    collect: bool, resumes: int | None, expected: bool
+) -> None:
+    policy = rules.Policy(collect=collect, canary=collect)
+    assert signal_service.keeps(Attempt(resumes=resumes), policy) is expected
+
+
+def test_keeps_is_not_changed_by_the_canary() -> None:
+    attempt = Attempt(resumes=0)
+    assert signal_service.keeps(attempt, rules.Policy(collect=True, canary=False)) is True
+    assert signal_service.keeps(attempt, rules.Policy(collect=False, canary=True)) is False
+
+
+def test_a_route_decides_what_it_shows_with_one_call_to_keeps(
+    player: TestClient, db: Session, bank: dict[int, int], clock: Clock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[bool] = []
+    real = signal_service.keeps
+
+    def counting(attempt: Attempt, policy: rules.Policy) -> bool:
+        calls.append(real(attempt, policy))
+        return calls[-1]
+
+    monkeypatch.setattr(signal_service, "keeps", counting)
+
+    started = start_daily(player, db, clock.now, bank[90001])
+    assert calls == [True]  # one answer, used for both the flag and the decoy
+    assert started["collect_signals"] is True and started["decoy_option_id"] in shown_ids(started["question"])
+
+    calls.clear()
+    clock.advance(seconds=15)
+    assert restart(player, db, started)["collect_signals"] is True
+    assert calls == [True]
+
+    calls.clear()
+    st = mock_start(player)
+    assert calls == [True]
+    calls.clear()
+    clock.advance(seconds=15)
+    assert mock_get(player, st["session_id"])["current"]["collect_signals"] is True
+    assert calls == [True]
+
+
+def test_the_flag_and_the_decoy_never_disagree_whatever_keeps_says(
+    player: TestClient, db: Session, bank: dict[int, int], clock: Clock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The gate for the decoy is the same call as the flag: a keeps that says no hides both, whatever was drawn."""
+    started = start_daily(player, db, clock.now, bank[90001])
+    st = mock_start(player)
+    assert_measured_with_a_decoy(started)
+    assert_measured_with_a_decoy(st["current"])
+    monkeypatch.setattr(signal_service, "keeps", lambda attempt, policy: False)
+    clock.advance(seconds=15)
+    assert_unmeasured(restart(player, db, started))
+    assert_unmeasured(mock_get(player, st["session_id"])["current"])

@@ -1,7 +1,10 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { expect, test, vi } from 'vitest'
+import { afterEach, expect, test, vi } from 'vitest'
 import { MEMBER, renderApp } from '../test/render'
+import { away, chars, fire, select, SIGNAL_KEYS, useClock } from '../test/signals'
+
+afterEach(() => vi.useRealTimers())
 
 const quiz = (id: number, label: string, vehicle: string, extra = {}) => ({
   id,
@@ -42,11 +45,13 @@ const choice = (id: number, text: string) => ({
     { id: id * 10 + 1, text: 'Rear' },
   ],
 })
-const timed = (attempt: number, question: ReturnType<typeof q>) => ({
+const timed = (attempt: number, question: ReturnType<typeof q>, collect = false) => ({
   attempt_id: attempt,
   question,
   server_now: new Date().toISOString(),
   deadline_at: new Date(Date.now() + 300_000).toISOString(),
+  decoy_option_id: null,
+  collect_signals: collect,
 })
 const running = (position: number, current: unknown) => ({
   session_id: 44,
@@ -267,4 +272,153 @@ test('a run can be ended early, after confirming', async () => {
   expect(screen.getByText('You ended this run early: 3 questions not reached, not scored.')).toBeInTheDocument()
   expect(screen.queryByRole('button', { name: 'End this run' })).toBeNull()
   vi.unstubAllGlobals()
+})
+
+const LOOKUP = { name: 'Looking something up' }
+const ANSWER = 'POST /api/mock/sessions/44/answer'
+const REFUSED = {
+  detail: [{ type: 'extra_forbidden', loc: ['body', 'signals'], msg: 'Extra inputs are not permitted' }],
+}
+type Body = { value?: string; attempt_id: number; signals?: Record<string, unknown> }
+
+/** A two-question run whose questions are measured as `flags` say; the first question's text is long enough to copy. */
+function run(
+  flags: [boolean | undefined, boolean | undefined],
+  answerReply?: (body: Body) => { status?: number; body?: unknown } | undefined,
+) {
+  const first = q(1, chars(100))
+  const second = q(2, 'Damping?')
+  /** `undefined` leaves the field out, as a server that does not know it would. */
+  const play = (attempt: number, question: ReturnType<typeof q>, flag: boolean | undefined) => {
+    const out: Record<string, unknown> = { ...timed(attempt, question, flag) }
+    if (flag === undefined) delete out.collect_signals
+    return out
+  }
+  return renderApp('/mock/44', {
+    'GET /api/me': { body: MEMBER },
+    'GET /api/mock/sessions/44': { body: running(0, play(7, first, flags[0])) },
+    [ANSWER]: (raw) => {
+      const body = raw as Body
+      return answerReply?.(body) ?? { body: body.attempt_id === 7 ? running(1, play(8, second, flags[1])) : FINISHED }
+    },
+  })
+}
+const submit = async (value: string) => {
+  const field = await screen.findByLabelText('Your answer')
+  await userEvent.clear(field)
+  await userEvent.type(field, value)
+  await userEvent.click(screen.getByRole('button', { name: 'Check answer' }))
+}
+
+test('a counted run measures: the totals go with each answer, and each question starts from zero', async () => {
+  useClock()
+  const { sent } = run([true, true])
+  expect(await screen.findByRole('button', LOOKUP)).toBeInTheDocument()
+  away(10_000)
+  const text = document.querySelector<HTMLElement>('.question-text')!
+  select(text)
+  fire(text)
+  await submit('30')
+  expect(await screen.findByText('Damping?')).toBeInTheDocument()
+  expect(screen.getByRole('button', LOOKUP)).toBeInTheDocument()
+  await submit('0.5')
+  await screen.findByRole('heading', { name: '1 of 2 right' })
+  const [one, two] = sent(ANSWER).map((c) => c.body as Body)
+  expect(Object.keys(one.signals!).sort()).toEqual(SIGNAL_KEYS)
+  expect(one.signals).toEqual({ away_declared_s: 0, away_undeclared_s: 10, pasted: false, long_copies: 1 })
+  expect(two.signals).toEqual({ away_declared_s: 0, away_undeclared_s: 0, pasted: false, long_copies: 0 })
+  expect([one.attempt_id, two.attempt_id]).toEqual([7, 8])
+})
+
+test('a question the server does not measure, here a replay, has no button and sends no signals', async () => {
+  useClock()
+  const { sent } = run([false, false])
+  await screen.findByLabelText('Your answer')
+  expect(screen.queryByRole('button', LOOKUP)).toBeNull()
+  away(10_000)
+  await submit('30')
+  await screen.findByText('Damping?')
+  await submit('0.5')
+  await screen.findByRole('heading', { name: '1 of 2 right' })
+  expect(sent(ANSWER).map((c) => c.body)).toEqual([
+    { value: '30', attempt_id: 7 },
+    { value: '0.5', attempt_id: 8 },
+  ])
+})
+
+test('the flag is read for each question: a run that crossed the rule date measures from the question after', async () => {
+  useClock()
+  const { sent } = run([false, true])
+  await screen.findByLabelText('Your answer')
+  expect(screen.queryByRole('button', LOOKUP)).toBeNull()
+  away(10_000)
+  await submit('30')
+  await screen.findByText('Damping?')
+  expect(screen.getByRole('button', LOOKUP)).toBeInTheDocument()
+  away(5000)
+  await submit('0.5')
+  await screen.findByRole('heading', { name: '1 of 2 right' })
+  const [one, two] = sent(ANSWER).map((c) => c.body as Body)
+  expect('signals' in one).toBe(false)
+  expect(two.signals).toMatchObject({ away_undeclared_s: 5 })
+})
+
+test('a server that refuses the signals is answered once without them, and the next question tries again', async () => {
+  useClock()
+  const { sent } = run([true, true], (body) => (body.signals ? { status: 422, body: REFUSED } : (undefined as never)))
+  away(10_000)
+  await submit('30')
+  expect(await screen.findByText('Damping?')).toBeInTheDocument()
+  await submit('0.5')
+  await screen.findByRole('heading', { name: '1 of 2 right' })
+  const bodies = sent(ANSWER).map((c) => c.body as Body)
+  expect(bodies.map((b) => [b.attempt_id, 'signals' in b])).toEqual([
+    [7, true],
+    [7, false],
+    [8, true], // nothing is remembered: each answer finds out for itself
+    [8, false],
+  ])
+  expect(bodies[1]).toEqual({ value: '30', attempt_id: 7 })
+})
+
+test('the results of a measured run have no button on any card', async () => {
+  useClock()
+  run([true, true])
+  away(1000)
+  await submit('30')
+  await screen.findByText('Damping?')
+  await submit('0.5')
+  const review = (await screen.findByRole('heading', { name: '1 of 2 right' })).closest('main') ?? document.body
+  for (const summary of within(review as HTMLElement).getAllByText(/^Question \d/)) await userEvent.click(summary)
+  expect(screen.queryByRole('button', LOOKUP)).toBeNull()
+})
+
+test('a run whose questions come without the field measures nothing, and says nothing about it', async () => {
+  useClock()
+  const { sent } = run([undefined, undefined])
+  await screen.findByLabelText('Your answer')
+  expect(screen.queryByRole('button', LOOKUP)).toBeNull()
+  const text = document.querySelector<HTMLElement>('.question-text')!
+  select(text)
+  expect(fire(text).prevented).toBe(false)
+  away(10_000)
+  await submit('30')
+  await screen.findByText('Damping?')
+  await submit('0.5')
+  await screen.findByRole('heading', { name: '1 of 2 right' })
+  expect(sent(ANSWER).map((c) => c.body)).toEqual([
+    { value: '30', attempt_id: 7 },
+    { value: '0.5', attempt_id: 8 },
+  ])
+})
+
+test('a replay nobody measures leaves a long copy alone', async () => {
+  useClock()
+  run([false, false])
+  await screen.findByLabelText('Your answer')
+  const node = document.querySelector<HTMLElement>('.question-text')!
+  expect(select(node).length).toBeGreaterThanOrEqual(80)
+  const { prevented, data } = fire(node)
+  expect(prevented).toBe(false)
+  expect(data.setData).not.toHaveBeenCalled()
 })

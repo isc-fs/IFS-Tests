@@ -1,8 +1,9 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { expect, test, vi } from 'vitest'
+import { afterEach, expect, test, vi } from 'vitest'
 import { refresh } from '../lib/live'
 import { MEMBER, renderApp } from '../test/render'
+import { away, chars, fire, select, useClock } from '../test/signals'
 
 const HOST = { ...MEMBER, id: 9, display_name: 'Tere', position: 'technical_director', can_host: true }
 const QUESTION = {
@@ -77,6 +78,8 @@ const open = {
   question: QUESTION,
   question_table_id: null,
 }
+afterEach(() => vi.useRealTimers())
+
 const at = (path: string, me: object, state: object, extra: object = {}) =>
   renderApp(path, { 'GET /api/me': { body: me }, 'GET /api/live/sessions/ABC234': { body: state }, ...extra })
 
@@ -554,4 +557,26 @@ test('the reveal says who the question was for and its figures fit the screen, o
     expect(link).toHaveClass('question-image') // the rule that keeps a figure within the screen's width
     expect(link).toHaveAttribute('href', src)
   }
+})
+
+test('a live question is never measured: no look-up button, copies left alone, no signals in the answer', async () => {
+  useClock()
+  const state = { ...open, captain: true, question: { ...QUESTION, text: chars(120) } }
+  const { sent } = at('/live/ABC234', { ...MEMBER, id: 3 }, state, {
+    'POST /api/live/sessions/ABC234/answer': { status: 204 },
+  })
+  await userEvent.click(await screen.findByRole('radio', { name: 'Red and yellow' }))
+  expect(screen.queryByRole('button', { name: 'Looking something up' })).toBeNull()
+  const text = document.querySelector<HTMLElement>('.question-text')!
+  select(text)
+  const { prevented, data } = fire(text)
+  expect(prevented).toBe(false)
+  expect(data.setData).not.toHaveBeenCalled()
+  expect([...document.querySelectorAll('.choice-letter')].map((e) => e.textContent)).toEqual(['A', 'B'])
+  away(30_000)
+  await userEvent.click(screen.getByRole('button', { name: 'Send the table’s answer' }))
+  await waitFor(() => expect(sent('POST /api/live/sessions/ABC234/answer')).toHaveLength(1))
+  const body = sent('POST /api/live/sessions/ABC234/answer')[0].body as object
+  expect(body).toEqual({ options: [71] })
+  expect('signals' in body).toBe(false)
 })

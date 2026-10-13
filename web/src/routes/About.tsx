@@ -36,12 +36,13 @@ export function Privacy() {
             questions, and what your rank and XP run on: your best division this season, right and wrong answers in a
             row, rested XP, and streak freezes held and used. From {RULES_FROM.en} (season 1b), ranked answers also
             record, as totals per answer only: seconds away from the question (split between look-ups you open from the
-            question itself, such as the rulebook panel, and the rest), whether a typed answer was pasted, how often you
-            copied a long piece of the question (a count, never what you copied), and how often you reopened the
-            question. Leaving the tab is not an offence; these are context for a check, read together by people. Never
-            your keystrokes, screen, camera, what is on your clipboard, the pages you visit or your extensions. Your own
-            values are in your export. Each total is recorded from the site update that adds it, and never for answers
-            before {RULES_FROM.en}.
+            question itself, such as the rulebook panel, or announce with the <strong>Looking something up</strong>{' '}
+            button, and the rest), whether a typed answer was pasted or dropped in from outside the page, how often you
+            copied or dragged a long piece of the question (a count, never what you copied), and how often you reopened
+            the question. Leaving the tab is not an offence; these are context for a check, read together by people.
+            Never your keystrokes, screen, camera, what is on your clipboard, the pages you visit or your extensions.
+            Your own values are in your export. Each total is recorded from the site update that adds it, and never for
+            answers before {RULES_FROM.en}.
           </li>
           <li>
             <strong>Signing in:</strong> when each of your sign-ins started and was last used, and any password reset
@@ -306,18 +307,19 @@ export function About() {
             <p>
               Qué se guarda: desde la temporada 1b, cada respuesta de ranked guarda también, solo como totales por
               respuesta, los segundos fuera de la pregunta (separando las consultas abiertas desde la propia pregunta,
-              como el reglamento, del resto), si una respuesta escrita se pegó, cuántas veces copiaste un trozo largo de
-              la pregunta y cuántas veces volviste a abrirla. Nunca tus teclas, tu pantalla, tu cámara, lo que haya en
-              tu portapapeles, las páginas que visitas ni tus extensiones. Cada total se guarda desde la actualización
-              de la web que lo añade, y nunca para respuestas anteriores al {RULES_FROM.es}. Salir de la pestaña no es
-              una falta; son contexto para una revisión, que leen personas. Tus valores van en tu exportación, se
-              revisan con tu cuenta convertida en un código y se borran 90 días después de acabar la temporada. Las
-              comprobaciones también usan las respuestas y los tiempos ya guardados, comparados entre jugadores; antes
-              del {RULES_FROM.es} solo se usan en conjunto, para calibrarlas, nunca sobre una persona. Nada se decide
-              automáticamente. El rango, el nivel y los rankings no seleccionan a nadie: no deciden el equipo, quién
-              hace el quiz de verdad ni quién va a las competiciones. Una decisión de juego limpio sí puede: la toman
-              personas después de escucharte, nunca solo con estadísticas, y puede suponer quedarte sin ir a las
-              competiciones. Todo, en inglés, en la <Link to="/privacy">página de privacidad</Link>.
+              como el reglamento, o que anuncias con el botón <strong>Looking something up</strong>, del resto), si una
+              respuesta escrita se pegó o se soltó desde fuera de la página, cuántas veces copiaste o arrastraste un
+              trozo largo de la pregunta y cuántas veces volviste a abrirla. Nunca tus teclas, tu pantalla, tu cámara,
+              lo que haya en tu portapapeles, las páginas que visitas ni tus extensiones. Cada total se guarda desde la
+              actualización de la web que lo añade, y nunca para respuestas anteriores al {RULES_FROM.es}. Salir de la
+              pestaña no es una falta; son contexto para una revisión, que leen personas. Tus valores van en tu
+              exportación, se revisan con tu cuenta convertida en un código y se borran 90 días después de acabar la
+              temporada. Las comprobaciones también usan las respuestas y los tiempos ya guardados, comparados entre
+              jugadores; antes del {RULES_FROM.es} solo se usan en conjunto, para calibrarlas, nunca sobre una persona.
+              Nada se decide automáticamente. El rango, el nivel y los rankings no seleccionan a nadie: no deciden el
+              equipo, quién hace el quiz de verdad ni quién va a las competiciones. Una decisión de juego limpio sí
+              puede: la toman personas después de escucharte, nunca solo con estadísticas, y puede suponer quedarte sin
+              ir a las competiciones. Todo, en inglés, en la <Link to="/privacy">página de privacidad</Link>.
             </p>
           </div>
         </section>

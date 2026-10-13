@@ -303,6 +303,9 @@ Scoreboard-clear: solid, plainly worded, always at least 44px tall.
 ### Answer options
 The question card's choices: full-width rows, 6px corners, 1px border, a 20px radio or checkbox with a mono letter (A, B, C…). The whole row is the hit target. Graded: right gets an ISC Green border on OK Background; wrong gets an Error border on Error Background, each with a short note.
 
+### Look-up control (ranked play)
+**Looking something up** is a `.link-button` in a `.lookup` row (flex, wrap, `gap: 4px 12px`, `user-select: none` so a copied card never carries its text), placed after the rulebook links of the question card and before the question text. The row holds the button, one muted 13px hint line ("Press just before you switch to your notes, a rulebook, a translator or a calculator.") tied to it with `aria-describedby`, and a polite `<output>` that says "Noted. Switch to your look-up now." for 5 s after a press, in body colour, with no chip or motion. The hint and the message share one grid cell (`.lookup-note`; the hint turns `visibility: hidden` meanwhile), so a press never moves the question. At 375px the control takes at most three lines. It appears only in measured ranked play (daily, counted mock) and never in practice, live or review; at expiry it is hidden (`.lookup[hidden]`) and, if it had focus, focus moves to the question text. No token change, and `.impeccable/design.json` stays as it is: the control is local to the question card.
+
 ### Navigation
 The ISC Green top bar with the Jost wordmark. Links in Plex Sans at 82 % white, 44px tall; the active or hovered link turns white with a 2px gold underline. It wraps to a second row on narrow screens. The footer carries the FS-Quiz attribution (ODbL) on every page.
 

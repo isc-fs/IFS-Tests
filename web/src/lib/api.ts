@@ -88,6 +88,33 @@ export const resend = {
   retryDelay: (count: number) => 500 * 2 ** count,
 }
 
+const details = (error: unknown): { loc?: unknown }[] => {
+  const detail = (error as ApiError | null)?.detail
+  return Array.isArray(detail) ? detail : []
+}
+
+/** A 422 that names the `signals` block of the request body, or something inside it. */
+export const signalsRefused = (error: unknown) =>
+  details(error).some((d) => Array.isArray(d?.loc) && d.loc[0] === 'body' && d.loc[1] === 'signals')
+
+/** Wraps a daily or mock answer call: if the server refuses `signals`, the answer is sent once more without them.
+ * Each answer decides on its own; nothing is remembered between calls. */
+export function sendRanked<O extends { body?: { signals?: unknown } }, R, C>(
+  send: (options: O, context: C) => Promise<R>,
+) {
+  return async (o: O, context: C): Promise<R> => {
+    if (!o.body?.signals) return send(o, context)
+    try {
+      return await send(o, context)
+    } catch (e) {
+      if (!signalsRefused(e)) throw e
+      const body = { ...o.body }
+      delete body.signals
+      return send({ ...o, body }, context)
+    }
+  }
+}
+
 /** Messages the server attached to specific form fields, if any. */
 export function fieldErrors(error: unknown): Record<string, string> {
   return (error as ApiError | null)?.fields ?? {}

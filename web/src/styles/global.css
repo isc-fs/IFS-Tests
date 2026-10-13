@@ -1191,6 +1191,33 @@ details[open] > summary::before {
   font-size: var(--isc-fs-caption);
 }
 
+/* "Looking something up" under the rulebook links (ranked play). */
+.lookup {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  user-select: none;
+}
+.lookup[hidden] {
+  display: none;
+}
+.lookup .link-button {
+  margin-left: -4px;
+}
+/* The confirmation takes the hint's place, so pressing never moves the question. */
+.lookup-note {
+  display: grid;
+}
+.lookup-note > * {
+  grid-area: 1 / 1;
+}
+.lookup-note output {
+  font-size: var(--isc-fs-body-s);
+}
+.lookup-hushed {
+  visibility: hidden;
+}
 /* The documents a question's quizzes were based on. */
 .question-docs {
   font-size: var(--isc-fs-body-s);

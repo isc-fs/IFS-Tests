@@ -21,12 +21,14 @@ def _state(db: Db, s: mock.State, now: Now, policy: rules.Policy) -> MockState:
         q, a = s.current
         assert a.deadline_at is not None  # noqa: S101 - every mock attempt gets a deadline
         on_screen = questions.show(db, [q])[0]
+        keep = signals.keeps(a, policy)
         current = TimedQuestion(
             attempt_id=a.id,
             question=play_question(on_screen),
             deadline_at=a.deadline_at,
             server_now=now,
-            decoy_option_id=decoy_shown(a, on_screen, policy),
+            decoy_option_id=decoy_shown(a, on_screen, policy) if keep else None,
+            collect_signals=keep,
         )
     summary = None
     if s.summary:

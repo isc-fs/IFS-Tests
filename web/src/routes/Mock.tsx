@@ -16,7 +16,7 @@ import { ErrorNotice, Notice } from '../components/Form'
 import { LearningAids } from '../components/LearningAids'
 import { Page } from '../components/Page'
 import { QuestionCard } from '../components/QuestionCard'
-import { ME_KEY, queryClient, resend, useMe } from '../lib/api'
+import { ME_KEY, queryClient, resend, sendRanked, useMe } from '../lib/api'
 import { lp } from '../lib/rank'
 import { xp } from '../lib/xp'
 
@@ -197,7 +197,8 @@ export function MockRun() {
     setExpired(false)
     queryClient.setQueryData(key, next)
   }
-  const send = useMutation({ ...answerMockMutation(), ...resend, onSuccess: show })
+  const base = answerMockMutation()
+  const send = useMutation({ ...base, mutationFn: sendRanked(base.mutationFn!), ...resend, onSuccess: show })
   const end = useMutation({ ...endMockMutation(), onSuccess: show })
   const expire = useCallback(() => setExpired(true), [])
   const s = state.data
@@ -237,8 +238,12 @@ export function MockRun() {
               error={send.error}
               expired={expired}
               clock={<Countdown deadline={current.deadline_at} serverNow={current.server_now} onExpire={expire} />}
-              onAnswer={(body) =>
-                send.mutate({ path: { session_id: s.session_id }, body: { ...body, attempt_id: current.attempt_id } })
+              ranked={{ collect: current.collect_signals === true, decoy: current.decoy_option_id }}
+              onAnswer={(body, signals) =>
+                send.mutate({
+                  path: { session_id: s.session_id },
+                  body: { ...body, ...(signals && { signals }), attempt_id: current.attempt_id },
+                })
               }
               onHint={async () =>
                 (await mockHint({ path: { session_id: s.session_id, attempt_id: current.attempt_id } })).data

@@ -55,10 +55,19 @@ production.
 
 - **Nature.** Server-side statistics over ranked answers (daily questions, first mock runs): patterns between
   players' answers and their timing, answers that follow a public key the reviewers had corrected, and, from season
-  1b, per-answer totals of seconds away (split by look-ups opened from the question and the rest), a pasted typed
-  answer, long copies of the question text (count) and reopenings; while the canary flag is on and once named in the
-  notice, which option was the decoy. Output: a list of account codes with statistics, printed on the server, read by
-  two people, deleted.
+  1b, per-answer totals of seconds away (split by look-ups opened from the question or announced with the **Looking
+  something up** button, and the rest), a typed answer pasted or dropped in from outside the page, long copies or
+  drags of the question text (count) and reopenings; while the canary flag is on, which option was the decoy (`decoy_option_id`), and a long copy also gets
+  a short note for AI assistants appended to what the person copies, which the notice names before the flag flips
+  (ADR 0010). The page measures only when the server tells it to, and observes the tab being hidden or shown
+  (`visibilitychange`), window focus (`blur`, `focus`), capture `focusin` and `pointerdown` (whether the page itself
+  has focus, including whether the focused element is a frame, by tag name only), clicks on the question's look-up
+  links (`click`, `auxclick`, `contextmenu`), the press of the **Looking something up** button, `copy`, `cut` and
+  `dragstart` (the length of the selection and whether the page holds its own clipboard, never the text), and
+  `beforeinput` in the free-text answer (paste or drop from outside the page). There is no `keydown` listener. It
+  reads the length of the selected question text in memory to count it (the text is never sent or stored) and never
+  reads the clipboard, what is pasted, or drag and drop data; it stores nothing on the device. Output: a list of account
+  codes with statistics, printed on the server, read by two people, deleted.
 - **Scope.** Active members who play ranked after the season-1b date; tens of people; attempts from the date onward
   for anything per person, all attempts for cohort calibration. Retention of the totals: 90 days after the end of
   the season; the answers themselves as before (ADR 0006).
