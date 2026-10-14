@@ -613,6 +613,11 @@ def keep_order_column(engine: Engine) -> Any:
     return next((c for c in inspect(engine).get_columns("questions") if c["name"] == "keep_order"), None)
 
 
+def first_drawn_column(engine: Engine) -> Any:
+    columns = inspect(engine).get_columns("daily_questions")
+    return next((c for c in columns if c["name"] == "first_drawn_at"), None)
+
+
 def test_0028_adds_the_reviewers_pin_expand_only_and_downgrade_drops_just_the_column(
     postgres_url: str,
 ) -> None:
@@ -625,6 +630,7 @@ def test_0028_adds_the_reviewers_pin_expand_only_and_downgrade_drops_just_the_co
     command.downgrade(cfg, KEEP_ORDER_BEFORE)
     engine = create_engine(postgres_url)
     assert keep_order_column(engine) is None
+    assert first_drawn_column(engine) is None
     with engine.begin() as c:
         c.execute(
             text(
@@ -637,6 +643,8 @@ def test_0028_adds_the_reviewers_pin_expand_only_and_downgrade_drops_just_the_co
     column = keep_order_column(engine)
     assert column is not None and column["nullable"] is False
     assert "false" in str(column["default"]).lower()
+    first = first_drawn_column(engine)
+    assert first is not None and first["nullable"] is True
     with engine.begin() as c:
         assert c.execute(text("SELECT keep_order FROM questions WHERE id = 9931")).scalar_one() is False
         # what the previous release does: it inserts without knowing the column

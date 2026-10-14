@@ -1090,3 +1090,46 @@ describe('a result that waits for day close', () => {
     expect(screen.queryByText(/at midnight/)).toBeNull()
   })
 })
+
+describe('the problem report on a card names options by text only when told to', () => {
+  const HINT = 'Name the option by its text, not its letter.'
+  const OPEN = { name: 'Report a problem with this question' }
+  const feedback = { correct: true, official: 'AS Emergency', correct_options: [50], solutions: [] }
+
+  const mount = (props: Partial<ComponentProps<typeof QuestionCard>> = {}) => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(
+      async () =>
+        new Response(JSON.stringify(MEMBER), { status: 200, headers: { 'content-type': 'application/json' } }),
+    )
+    queryClient.clear()
+    return render(
+      <QueryClientProvider client={queryClient}>
+        <QuestionCard
+          question={{ ...QUESTION, documents: { year: 2025, used: [], newer: [] } }}
+          feedback={feedback}
+          onAnswer={vi.fn()}
+          {...props}
+        />
+      </QueryClientProvider>,
+    )
+  }
+
+  test('with nameByText the open form carries the hint', async () => {
+    mount({ nameByText: true })
+    await userEvent.click(screen.getByRole('button', OPEN))
+    expect(screen.getByText(HINT)).toBeInTheDocument()
+  })
+
+  test('without it the open form does not', async () => {
+    mount()
+    await userEvent.click(screen.getByRole('button', OPEN))
+    expect(screen.getByLabelText("What's wrong?")).toBeInTheDocument()
+    expect(screen.queryByText(HINT)).toBeNull()
+  })
+
+  test('there is no report, and so no hint, before the answer', () => {
+    mount({ feedback: undefined, nameByText: true })
+    expect(screen.queryByRole('button', OPEN)).toBeNull()
+    expect(screen.queryByText(HINT)).toBeNull()
+  })
+})

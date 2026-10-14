@@ -135,7 +135,7 @@ No session needed; the CSRF header still is.
 |---|---|
 | `GET /api/review/questions` | Search and queues (`queue`: `all`, `reports`, `changed`, `unclassified`, `ungraded`, `excluded`; `area`, `topic`, `q`, `offset`) |
 | `GET /api/review/questions/{question_id}` | One question with official answer, correction, reports and stats; the answer is withheld (`answer_hidden`) if it is running for the reviewer or withheld as someone's daily today |
-| `PATCH /api/review/questions/{question_id}` | Area, topic, exclusion and note, option order on the daily (`keep_order`; it applies on the next load, so a running daily attempt reorders its options on reload), "checked the upstream change" |
+| `PATCH /api/review/questions/{question_id}` | Area, topic, exclusion and note, option order on the daily (`keep_order`, audited as `question.update`; it applies on the next load, so a running daily attempt reorders its options on reload), "checked the upstream change" |
 | `PUT /api/review/questions/{question_id}/answer` | Replace FS-Quiz's answer with a correction; 409 while the question is running for the reviewer or is someone's daily today |
 | `DELETE /api/review/questions/{question_id}/answer` | Remove the correction; the same 409 |
 | `POST /api/review/reports/{report_id}/resolve` | Mark a player's report handled |

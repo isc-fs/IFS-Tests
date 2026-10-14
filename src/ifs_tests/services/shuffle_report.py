@@ -8,11 +8,12 @@ import re
 from collections import Counter, defaultdict
 from collections.abc import Sequence
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session as DB
 
 from ..db.models import AnswerOption, Question, Solution
 from ..domain import shuffle
+from ..domain.daily import AREAS
 
 # Letters are case-sensitive (a lowercase "a" is the article); a digit counts only next to a noun that names one.
 SUSPECT = re.compile(
@@ -50,20 +51,38 @@ def _share(n: int, total: int) -> str:
     return f"{n} ({100 * n / total:.0f} %)" if total else "0"
 
 
+def _bucket(n: int) -> str:
+    return "0-1" if n < 2 else str(n) if n < 4 else "4+"
+
+
 def _cap(n: int, limit: int) -> str:
     return f"  {n} in total" + (f", the first {limit} shown" if n > limit else "")
 
 
 def report(db: DB, sample: int = 30, seed: int = 0) -> str:
-    """The graded, playable choice questions: counts per reason and per area, a seeded sample of kept and of
+    """The graded, playable choice questions of the daily's areas (the only ones it draws; a reviewer's pin counts
+    as kept): counts per reason and per area, a seeded sample of kept and of
     shuffled ones, the shuffled ones with a letter-like token or a word that refers to other options, and the
     shuffled ones with images (a figure can print its own labels, which no text rule sees). Each list is capped
     at `sample` and says how many there are."""
     questions = db.scalars(
         select(Question)
-        .where(Question.graded, Question.playable, Question.answer_kind.in_(shuffle.SHUFFLED))
+        .where(
+            Question.graded,
+            Question.playable,
+            Question.area.in_(AREAS),
+            Question.answer_kind.in_(shuffle.SHUFFLED),
+        )
         .order_by(Question.id)
     ).all()
+    undrawn = db.scalar(
+        select(func.count()).where(
+            Question.graded,
+            Question.playable,
+            Question.area.notin_(AREAS),
+            Question.answer_kind.in_(shuffle.SHUFFLED),
+        )
+    )
     ids = [q.id for q in questions]
     options: dict[int, list[AnswerOption]] = defaultdict(list)
     for o in db.scalars(
@@ -87,15 +106,21 @@ def report(db: DB, sample: int = 30, seed: int = 0) -> str:
             solutions[q.id],
             has_images=bool(q.images),
         )
+        or ("pinned" if q.keep_order else None)
         for q in questions
     }
     total = len(questions)
     kept = [q for q in questions if verdicts[q.id]]
     shuffled = [q for q in questions if not verdicts[q.id]]
     counts = Counter(v for v in verdicts.values() if v)
-    out = [f"Graded, playable choice questions: {total}", f"  shuffled: {_share(len(shuffled), total)}"]
+    out = [
+        f"Graded, playable choice questions the daily can draw (areas {', '.join(AREAS)}): {total}",
+        f"  shuffled: {_share(len(shuffled), total)}",
+    ]
     out.append(f"  kept in bank order: {_share(len(kept), total)}")
     out += [f"      {reason}: {n}" for reason, n in counts.most_common()]
+    if undrawn:
+        out.append(f"  not counted, outside the daily's areas: {undrawn}")
     out.append(f"  kept by ladder-sorted alone: {_share(counts['ladder-sorted'], total)}")
     out.append("  by area (shuffled of all):")
     shares = {}
@@ -109,6 +134,39 @@ def report(db: DB, sample: int = 30, seed: int = 0) -> str:
     out.append(
         f"  go/no-go (at least {MIN_SHARE:.0%} overall, no area under {MIN_AREA_SHARE:.0%}): "
         + ("pass" if passed else "FAIL" + (f", under: {', '.join(below)}" if below else ""))
+    )
+
+    other = db.scalar(
+        select(func.count()).where(
+            Question.graded,
+            Question.playable,
+            Question.area.in_(AREAS),
+            Question.answer_kind.notin_(shuffle.SHUFFLED),
+        )
+    )
+    every = total + (other or 0)
+    out += [
+        "",
+        f"Coverage of all graded, playable questions the daily can draw (areas {', '.join(AREAS)}): {every}",
+        f"  choice, shuffled: {_share(len(shuffled), every)}",
+        f"  choice, kept in bank order: {_share(len(kept), every)}",
+        f"  typed or other (never shuffled): {_share(other or 0, every)}",
+    ]
+    live = {q.id: sum(not o.retired for o in options[q.id]) for q in questions}
+    out += ["", "By option count (shuffled of all choice questions):"]
+    for label in ("0-1", "2", "3", "4+"):
+        of_size = [q for q in questions if _bucket(live[q.id]) == label]
+        if of_size or label != "0-1":
+            n = sum(not verdicts[q.id] for q in of_size)
+            out.append(
+                f"  {label} options: {n} of {len(of_size)}"
+                + (f" ({100 * n / len(of_size):.0f} %)" if of_size else "")
+            )
+    wide = [q for q in questions if live[q.id] >= 4]
+    out.append(
+        "  share of candidates with 4 or more options that are shuffled: "
+        + _share(sum(not verdicts[q.id] for q in wide), len(wide))
+        + " (information only)"
     )
 
     rng = random.Random(seed)

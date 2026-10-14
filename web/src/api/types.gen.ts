@@ -2514,9 +2514,9 @@ export type ReviewQuestion = {
     /**
      * Option Order Reason
      *
-     * Why the automatic rules would keep the bank order (relative, label, yes-no, ladder-range, ladder-sorted, ladder-word, stem, solution, figure, blank or kind), if they would
+     * Why the automatic rules would keep the bank order, if they would; null while the answer is hidden from this reviewer
      */
-    option_order_reason: string | null;
+    option_order_reason: 'kind' | 'blank' | 'figure' | 'relative' | 'label' | 'yes-no' | 'ladder-range' | 'ladder-sorted' | 'ladder-word' | 'stem' | 'solution' | null;
     /**
      * Key Changed At
      */

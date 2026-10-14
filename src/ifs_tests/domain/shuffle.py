@@ -9,9 +9,25 @@ import re
 from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal, get_args
 
 SHUFFLED = ("choice-one", "choice-many")
+Reason = Literal[
+    "kind",
+    "blank",
+    "figure",
+    "relative",
+    "label",
+    "yes-no",
+    "ladder-range",
+    "ladder-sorted",
+    "ladder-word",
+    "stem",
+    "solution",
+]
+ORDER_REASONS: tuple[str, ...] = get_args(Reason)
+# Longer text is judged on its first characters: the patterns stay linear whatever the bank holds.
+CAP = 2000
 _NOUN = r"(?:answers?|options?|choices?|statements?|alternatives?)"
 _AFTER = r"(?=\s*(?:$|[).,;:&–—-]|(?:and|or|is|are|only|because|since)\b))"
 _ITEM = r"\(?(?:[A-E]|[1-5]|I{1,3}|IV|VI{0,3}|IX)\)?|\((?:[a-e]|i{1,3}|iv)\)"
@@ -59,12 +75,25 @@ _RELATIVE = [  # the casefolded, trimmed option text
         r"^(?:the\s+)?(?:previous|preceding|prior|above)\s+(?:two|three|four)\s+(?:statements?|answers?|options?|choices?)\b",
         rf"^(?!{_ORD}$)(?:(?:both|only|either|neither)\s+)?{_ORDS}$",
         r"^the\s+one\s+(?:above|below|before|after)$",
+        r"\b(?:one|two|three|each|every|some|most|at least \w+|only one|more than one)\s+of\s+(?:the\s+)?(?:above|below|these|those|them|others|options|answers)\b",
+        r"^(?:see|the answer is|as)\s+(?:above|below)$",
+        r"^(?:the\s+)?(?:two|three)\s+(?:above|below)$",
+        r"^(?:each|every one|everything|more than one)(?:\s+of them)?$",
+        r"\bof\s+(?:the\s+)?(?:above|below)\b",
+        r"^(?:only\s+)?the\s+(?:above|below)(?:\s+(?:two|three|four))?$|^(?:above|below)\s+(?:two|three|four)$",
+        r"^(?:none|all|any|both|neither|everything|anything|nothing|combination|mix)\s+(?:(?:of|from|in)\s+)?(?:the\s+)?(?:above|below)$",
+        r"^(?:the\s+)?(?:others?|remaining(?:\s+ones?)?|(?:other|remaining)\s+(?:two|three|four|ones?))$",
+        r"\b(?:first|second|third|fourth|last)\s+(?:two|three|four)\b",
+        r"\b(?:same as|as)\s+(?:the\s+)?(?:previous|preceding|prior)\b",
+        r"^(?:none|all|both|neither)\s+(?:apply|applies|work|works)$",
+        r"^(?:these|they|those)\s+(?:are\s+)?(?:all|both)\b",
     )
 ]
 _LABELLED = [  # the whitespace-collapsed option text: the letters are case-sensitive on purpose
     re.compile(p)
     for p in (
         rf"\b(?i:{_NOUN})\s*:?\s*\(?[A-E1-5]\)?{_AFTER}",
+        rf"\b(?i:{_NOUN})\s*:?\s*(?i:one|two|three|four|five){_AFTER}",
         r"^\(?[A-Ea-e1-5]\)\s|^[A-E1-5][.:]\s|^(?:[A-E]\s*[.):–—-]|[a-e]\s*[.)]|(?:i{1,3}|iv|I{1,3}|IV)\s*[.)])\s",
         rf"^(?:[A-Za-z]+\s+){{0,2}}\(?[A-E]\)?$|^(?!{_QUANTITY})(?:[A-Za-z]+\s+){{1,2}}\(?[1-5]\)?$|^\([1-5]\)$|^I{{1,3}}$|^IV$",
         rf"^{_LEAD}*(?:{_ITEM})(?:\s*{_SEP}\s*(?:{_ITEM}))+(?:\s+(?i:only|are\s+(?:correct|true|false|right|wrong|valid)|is\s+(?:correct|true)))?$",
@@ -147,7 +176,7 @@ def _monotone(seq: Sequence[Any]) -> bool:
     return len(set(seq)) >= 2 and (list(seq) == sorted(seq) or list(seq) == sorted(seq, reverse=True))
 
 
-def _numeric_ladder(texts: Sequence[str]) -> str | None:
+def _numeric_ladder(texts: Sequence[str]) -> Literal["ladder-range", "ladder-sorted"] | None:
     """'ladder-range' or 'ladder-sorted' when the options lead with monotone numbers, else None."""
     values, labels, bounded = [], set(), False
     for t in texts:
@@ -202,15 +231,17 @@ def keep_reason(
     solutions: Sequence[str] = (),
     *,
     has_images: bool = False,
-) -> str | None:
-    """Why this question stays in bank order (a short code), or None when it is shuffled. Judged over every
-    option, retired ones included, so retiring one can't flip the verdict. When unsure, keep: the cost is a lost
-    shuffle, never a misleading question."""
+) -> Reason | None:
+    """Why this question stays in bank order (a short code), or None when it is shuffled. `choices` come in bank
+    order: the ladder checks read that sequence. Judged over every option, retired ones included, so retiring
+    one can't flip the verdict. When unsure, keep: the cost is a lost shuffle, never a misleading question."""
     if answer_kind not in SHUFFLED or sum(not c.retired for c in choices) < 2:
         return "kind"
     if any(not c.text.strip() for c in choices):
         return "blank"
-    raw = [" ".join(c.text.split()) for c in choices]
+    raw = [" ".join(c.text.split())[:CAP] for c in choices]
+    stem = stem[:CAP]
+    solutions = [t[:CAP] for t in solutions]
     norm = [t.casefold().strip(" .;:") for t in raw]
     if has_images and (
         sum(_FIGURE_LABEL.match(n) is not None for n in norm) >= 2 or _FIGURE_STEM.search(stem)

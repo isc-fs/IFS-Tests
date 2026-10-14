@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -266,3 +267,41 @@ def test_nothing_a_player_gets_says_how_the_options_were_ordered(app_client: Tes
                 f for f in _fields(body, components, set()) if re.search(r"order_key|option_order|shuffle", f)
             }
             assert not asked, (method, path)
+
+
+def _enums(node: Any, components: dict[str, Any]) -> list[set[str]]:
+    """Every enum list under `node`, following $ref."""
+    found: list[set[str]] = []
+    if isinstance(node, dict):
+        if "enum" in node:
+            found.append({str(v) for v in node["enum"]})
+        ref = node.get("$ref")
+        if isinstance(ref, str):
+            found += _enums(components[ref.rsplit("/", 1)[-1]], components)
+        for v in node.values():
+            if isinstance(v, dict | list):
+                found += _enums(v, components)
+    elif isinstance(node, list):
+        for v in node:
+            found += _enums(v, components)
+    return found
+
+
+def test_the_reviewer_schema_types_the_order_state_and_reason_from_the_one_table(
+    app_client: TestClient,
+) -> None:
+    from ifs_tests.domain.shuffle import ORDER_REASONS
+
+    components = app_client.get("/api/openapi.json").json()["components"]["schemas"]
+    props = components["ReviewQuestion"]["properties"]
+    assert props["keep_order"]["type"] == "boolean"
+    assert _enums(props["option_order"], components) == [{"shuffled", "auto", "pinned"}]
+    assert _enums(props["option_order_reason"], components) == [set(ORDER_REASONS)]
+    nullable = props["option_order_reason"]
+    assert any(
+        branch.get("type") == "null" for branch in nullable.get("anyOf", [])
+    )  # null while the answer is hidden
+    required = set(components["ReviewQuestion"].get("required", []))
+    assert {"keep_order", "option_order"} <= required
+    patch = components["ReviewPatch"]
+    assert patch.get("additionalProperties") is False  # an unknown field is refused, not ignored

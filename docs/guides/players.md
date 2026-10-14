@@ -97,8 +97,8 @@ Enter your **Current password** and a **New password**, then **Change password**
 questions appear at midnight, Madrid time. **Until season 1b everyone gets the same three. From season 1b (Monday
 26 October 2026) your question is drawn for you when you press Start**, so the person next to you usually has a
 different one, and "what did you get?" has no answer to pass on.
-From the same date your options may also be listed in a different order from your teammates' (the letter beside an
-option is yours alone). When you discuss a past daily, quote the option's text, not its letter; the same goes when you
+From that Madrid midnight your options may also be listed in a different order from your teammates' (the letter beside an
+option is yours alone; the daily page says so). A day that was already shared keeps the bank order to its end. When you discuss a past daily, quote the option's text, not its letter; the same goes when you
 report a problem with a question.
 
 1. Each area shows its time budget: the time the question had in the real quiz (at least 1 minute, at most 10).

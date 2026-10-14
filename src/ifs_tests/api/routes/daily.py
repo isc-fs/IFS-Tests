@@ -25,7 +25,7 @@ Id = Annotated[int, Path(ge=1, le=2**63 - 1)]
 
 
 def _result(db: Db, r: daily.Result, settings: AppSettings) -> DailyResult:
-    key = hints.order_key(db, r.attempt_id, r.day, settings.rules_1b_from)
+    key = daily.option_key(db, r.attempt_id, r.day, r.created_at, settings.rules_1b_from)
     return DailyResult(
         day=r.day,
         question=play_question(
@@ -60,7 +60,7 @@ def start_daily(area: Area, user: Member, db: Db, now: Now, settings: AppSetting
     q, attempt = daily.start(db, user, area, now, policy, rules_from=settings.rules_1b_from)
     assert attempt.deadline_at is not None  # noqa: S101 - set when a daily attempt is created
     assert attempt.day is not None  # noqa: S101 - set when a daily attempt is created
-    key = hints.order_key(db, attempt.id, attempt.day, settings.rules_1b_from)
+    key = daily.option_key(db, attempt.id, attempt.day, attempt.created_at, settings.rules_1b_from)
     shown = questions.show(db, [q], order_key=key)[0]
     keep = signals.keeps(attempt, policy)
     return TimedQuestion(

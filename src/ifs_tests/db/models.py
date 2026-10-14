@@ -590,6 +590,8 @@ class DailyQuestion(Base):
     question_id: Mapped[int] = mapped_column(ForeignKey("questions.id", ondelete="CASCADE"), index=True)
     # When it was drawn (or redrawn after a reviewer hid it): only from then is it running for players.
     drawn_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # When the day was first drawn, whatever redraws followed: the option shuffle's gate reads this, not `drawn_at`.
+    first_drawn_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class MockSession(Base):

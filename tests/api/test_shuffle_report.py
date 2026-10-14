@@ -452,7 +452,7 @@ def test_the_capped_lists_are_the_same_for_the_same_seed_and_a_shorter_cap_does_
 
 def verdict(out: str) -> tuple[str, str]:
     """The word on the go/no-go line (PASS or FAIL) and whatever follows it."""
-    lines = [line for line in out.splitlines() if "go/no-go" in line.lower()]
+    lines = [line for line in out.splitlines() if line.strip().lower().startswith("go/no-go")]
     assert len(lines) == 1, out
     m = re.search(r"\b(PASS|FAIL)\b(.*)", lines[0], re.I)
     assert m, lines[0]
@@ -536,3 +536,240 @@ def test_the_gate_reads_playable_graded_choice_questions_only(
     db.execute(update(Question).where(Question.source_hash.like("gone-%")).values(playable=False))
     db.commit()
     assert verdict(run())[0] == "PASS"
+
+
+def test_a_pinned_question_counts_as_kept_everywhere_in_the_report(
+    cli_db: None, db: Session, bank: dict[int, int]
+) -> None:
+    all_areas_shuffled(db, bank)
+    assert verdict(run())[0] == "PASS"
+    assert number(run(), "pinned") is None
+    db.execute(update(Question).where(Question.area == "rules", Question.graded).values(keep_order=True))
+    db.commit()
+    out = run()
+    assert counts(out)["rules"] == [0, 1]
+    word, rest = verdict(out)
+    assert word == "FAIL" and "rules" in rest
+    assert number(out, "pinned") == 1
+    assert number(out, "shuffled") == 4
+    assert coverage(out)["kept"] == 1
+
+
+def test_a_question_outside_the_dailys_areas_is_not_counted_by_the_gate(
+    cli_db: None, db: Session, bank: dict[int, int]
+) -> None:
+    all_areas_shuffled(db, bank)
+    clones(db, 30, area="unclassified", last="All of the above", tag="stray", stem="MKs{i} plain")
+    out = run()
+    assert verdict(out)[0] == "PASS"
+    assert number(out, "shuffled") == 5
+    assert "unclassified" not in out.replace("outside the daily's areas", "")
+    assert number(out, "outside the daily's areas") == 30
+    assert coverage(out)["all"] == 5 + coverage(out)["typed"]
+
+
+# --- coverage of everything the daily can draw, and the breakdown by option count ---------------------------------
+
+
+def choice_clones(
+    db: Session, n: int, texts: list[str], area: str = "elec", tag: str = "nopt", stem: str = "MKn{i} plain"
+) -> None:
+    for i in range(n):
+        q = Question(
+            type="single-choice",
+            text=stem.format(i=i),
+            time_s=120,
+            area=area,
+            answer_kind="choice-one",
+            graded=True,
+            playable=True,
+            source_hash=f"{tag}-{area}-{len(texts)}-{i}",
+        )
+        db.add(q)
+        db.flush()
+        made = []
+        for p, text in enumerate(texts):
+            o = AnswerOption(question_id=q.id, position=p, text=text)
+            db.add(o)
+            db.flush()
+            made.append(o.id)
+        db.add(AnswerKey(question_id=q.id, key={"kind": "choice", "mode": "one", "options": [made[0]]}))
+    db.commit()
+
+
+def typed_clones(db: Session, n: int, area: str = "mech", tag: str = "typed") -> None:
+    for i in range(n):
+        db.add(
+            Question(
+                type="input",
+                text=f"MKt{i} how many",
+                time_s=120,
+                area=area,
+                answer_kind="number",
+                graded=True,
+                playable=True,
+                source_hash=f"{tag}-{area}-{i}",
+            )
+        )
+    db.commit()
+
+
+def coverage(out: str) -> dict[str, int]:
+    """Denominator and the three parts of the coverage block."""
+    block = section(out, "overage")
+    head = block.strip().splitlines()[0]
+    m = re.search(r"(\d+)\s*$", head)
+    assert m, head
+    got = {"all": int(m[1])}
+    for name, pattern in (
+        ("shuffled", r"choice\W+shuffled[^:\n]*:\s*(\d+)"),
+        ("kept", r"choice\W+kept[^:\n]*:\s*(\d+)"),
+        ("typed", r"typed or other[^:\n]*:\s*(\d+)"),
+    ):
+        m = re.search(pattern, block, re.I)
+        assert m, (name, block)
+        got[name] = int(m[1])
+    return got
+
+
+def by_options(out: str) -> dict[str, list[int]]:
+    """`2 options: 0 of 0` -> {"2": [0, 0]}; the 4-or-more row is keyed "4+"."""
+    got = {
+        m[1]: [int(m[2]), int(m[3])]
+        for m in re.finditer(r"^\s*(\d\+?) options?:\s*(\d+) of (\d+)", out, re.M)
+    }
+    assert set(got) == {"2", "3", "4+"}, out
+    return got
+
+
+def four_plus_share(out: str) -> tuple[int, int]:
+    m = re.search(r"4 or more options[^:\n]*:\s*(\d+)\s*\((\d+)\s*%\)", out)
+    assert m, out
+    return int(m[1]), int(m[2])
+
+
+def test_coverage_counts_every_graded_playable_question_the_daily_can_draw(
+    cli_db: None, db: Session, bank: dict[int, int]
+) -> None:
+    out = run()
+    drawable = int(
+        db.scalar(
+            select(func.count())
+            .select_from(Question)
+            .where(Question.graded, Question.playable, Question.area.in_(["mech", "elec", "rules"]))
+        )
+        or 0
+    )
+    got = coverage(out)
+    assert got["all"] == drawable
+    assert got["shuffled"] + got["kept"] + got["typed"] == got["all"]  # the denominator is shown and adds up
+    assert (got["shuffled"], got["kept"]) == (4, 1)
+    assert got["typed"] == drawable - 5
+    assert got["shuffled"] == number(out, "shuffled")
+
+
+def test_coverage_leaves_out_what_is_not_playable_and_grows_with_new_questions(
+    cli_db: None, db: Session, bank: dict[int, int]
+) -> None:
+    base = coverage(run())
+    db.execute(update(Question).where(Question.id == bank[90002]).values(playable=False))  # a typed one
+    db.commit()
+    less = coverage(run())
+    assert less == {**base, "all": base["all"] - 1, "typed": base["typed"] - 1}
+    typed_clones(db, 3)
+    choice_clones(db, 2, ["Cell balancing", "Pre-charge", "Isolation monitoring", "All of the above"])
+    choice_clones(
+        db, 3, ["Cell balancing", "Pre-charge", "Isolation monitoring", "Thermal runaway detection"]
+    )
+    more = coverage(run())
+    assert more == {
+        "all": less["all"] + 8,
+        "shuffled": less["shuffled"] + 3,
+        "kept": less["kept"] + 2,
+        "typed": less["typed"] + 3,
+    }
+
+
+def test_coverage_does_not_count_an_ungraded_or_hidden_question(
+    cli_db: None, db: Session, bank: dict[int, int]
+) -> None:
+    base = coverage(run())
+    db.add_all(
+        [
+            Question(
+                type="input",
+                text="MKu ungraded",
+                time_s=60,
+                area="mech",
+                answer_kind="number",
+                graded=False,
+                playable=True,
+                source_hash="u-1",
+            ),
+            Question(
+                type="input",
+                text="MKu hidden",
+                time_s=60,
+                area="mech",
+                answer_kind="number",
+                graded=True,
+                playable=False,
+                source_hash="u-2",
+            ),
+        ]
+    )
+    db.commit()
+    assert coverage(run()) == base
+
+
+def test_the_breakdown_by_option_count_splits_shuffled_from_all(
+    cli_db: None, db: Session, bank: dict[int, int]
+) -> None:
+    assert by_options(run()) == {"2": [0, 0], "3": [0, 0], "4+": [4, 5]}
+    choice_clones(db, 2, ["Voltage", "Current"])  # two plain options: shuffled
+    choice_clones(db, 1, ["Yes", "No"], tag="yn")  # kept
+    choice_clones(db, 3, ["Voltage", "Current", "Resistance"])  # shuffled
+    choice_clones(db, 1, ["Voltage", "Current", "All of the above"], tag="kept3")  # kept
+    choice_clones(
+        db, 2, ["Cell balancing", "Pre-charge", "Isolation monitoring", "None of the above"], tag="k4"
+    )
+    out = run()
+    assert by_options(out) == {"2": [2, 3], "3": [3, 4], "4+": [4, 7]}
+    assert number(out, "shuffled") == 4 + 2 + 3
+
+
+def test_the_four_or_more_share_is_printed_and_follows_the_shuffled_candidates(
+    cli_db: None, db: Session, bank: dict[int, int]
+) -> None:
+    assert four_plus_share(run()) == (4, 80)
+    choice_clones(
+        db, 5, ["Cell balancing", "Pre-charge", "Isolation monitoring", "All of the above"], tag="k"
+    )
+    assert four_plus_share(run()) == (4, 40)  # 4 of 10
+    choice_clones(db, 5, ["Voltage", "Current"], tag="two")  # fewer than four options: not in that share
+    assert four_plus_share(run()) == (4, 40)
+
+
+def test_the_share_of_four_or_more_options_is_information_not_part_of_the_go_no_go(
+    cli_db: None, db: Session, bank: dict[int, int]
+) -> None:
+    all_areas_shuffled(db, bank)
+    for area in ("mech", "elec", "rules"):
+        choice_clones(
+            db,
+            2,
+            ["Cell balancing", "Pre-charge", "Isolation monitoring", "All of the above"],
+            area=area,
+            tag="k4",
+        )
+    for area, n in (("mech", 4), ("elec", 4), ("rules", 4)):
+        choice_clones(db, n, ["Voltage", "Current", "Resistance"], area=area, tag="s3")
+    out = run()
+    assert four_plus_share(out)[1] < 60  # a low share of the big questions...
+    assert verdict(out)[0] == "PASS"  # ...does not decide the gate: 70 % overall, 60 % per area do
+
+
+def test_the_new_lines_print_no_user_data(cli_db: None, db: Session, bank: dict[int, int]) -> None:
+    out = run()
+    assert "Coverage" in out and "options" in out
+    assert not re.search(r"@|\b[0-9a-f]{32,}\b|password|hint_salt", out, re.I)

@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import secrets
-from datetime import date, datetime
+from datetime import datetime
 
 from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.postgresql import insert
@@ -45,11 +45,6 @@ def shuffle_key(db: DB, attempt_id: int) -> bytes:
     if row is None:
         db.commit()
     return hmac.new(secret, f"shuffle:{attempt_id}".encode(), hashlib.sha256).digest()
-
-
-def order_key(db: DB, attempt_id: int, day: date, rules_from: date | None) -> bytes | None:
-    """The key that orders this attempt's options, or None before season 1b (bank order)."""
-    return shuffle_key(db, attempt_id) if timing.per_player(day, rules_from) else None
 
 
 def _hint(db: DB, user: User, q: Question, now: datetime) -> rules.Hint:

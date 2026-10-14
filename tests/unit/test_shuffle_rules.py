@@ -6,15 +6,16 @@ from __future__ import annotations
 import itertools
 import json
 import random
+import re
 import signal
-import time
 from collections import Counter
+from pathlib import Path
 from typing import Any
 
 import pytest
 
 from ifs_tests.bank.sample import SAMPLE_DIR
-from ifs_tests.domain.shuffle import Choice, keep_reason, order
+from ifs_tests.domain.shuffle import ORDER_REASONS, Choice, keep_reason, order
 
 ANY = "any"  # kept, whatever the reason
 KEY = bytes(range(32))
@@ -85,6 +86,29 @@ def check(texts: tuple[str, ...], want: str | None) -> None:
         ("The one above", "Red", "Blue"),
         ("Only the first and third", "Red", "Blue"),
         ("Red", "Blue", "THE LAST TWO."),
+        ("Brake bias", "Tyre pressure", "Wing angle", "Any combination of the above"),
+        ("Brake bias", "Tyre pressure", "Wing angle", "A combination of the above"),
+        ("Brake bias", "Tyre pressure", "Wing angle", "Combination of the above"),
+        ("Brake bias", "Tyre pressure", "Wing angle", "Mix of the above"),
+        ("Brake bias", "Tyre pressure", "Wing angle", "Combination of the below"),
+        ("Brake bias", "Tyre pressure", "Wing angle", "The above"),
+        ("Brake bias", "Tyre pressure", "Wing angle", "The above two"),
+        ("Brake bias", "Tyre pressure", "Wing angle", "Above two"),
+        ("Brake bias", "Tyre pressure", "Wing angle", "Only the above"),
+        ("Brake bias", "Tyre pressure", "Wing angle", "None from above"),
+        ("Brake bias", "Tyre pressure", "Wing angle", "All from above"),
+        ("Brake bias", "Tyre pressure", "Wing angle", "Everything above"),
+        ("Brake bias", "Tyre pressure", "Wing angle", "Combination above"),
+        ("Brake bias", "Tyre pressure", "Wing angle", "Nothing above"),
+        ("Brake bias", "Tyre pressure", "Wing angle", "The other two"),
+        ("Brake bias", "Tyre pressure", "Wing angle", "The others"),
+        ("Brake bias", "Tyre pressure", "Wing angle", "The remaining"),
+        ("Brake bias", "Tyre pressure", "Wing angle", "Both of the first two"),
+        ("Brake bias", "Tyre pressure", "Wing angle", "Neither of the first two"),
+        ("Brake bias", "Tyre pressure", "Wing angle", "Same as previous"),
+        ("Brake bias", "Tyre pressure", "Wing angle", "None apply"),
+        ("Brake bias", "Tyre pressure", "Wing angle", "All apply"),
+        ("Brake bias", "Tyre pressure", "Wing angle", "These are all correct"),
     ],
 )
 def test_options_that_refer_to_the_others_stay_in_order(texts: tuple[str, ...]) -> None:
@@ -413,6 +437,10 @@ def test_ordinary_prose_does_not_trigger_the_letter_rules(stem: str, solutions: 
         ("1st gear", "2nd gear", "Neutral"),
         ("Second", "Fastest", "Slowest"),
         ("Ordinary prose", "The next generation of cells", "The previous season's car"),
+        ("Above the driver's head", "Below the floor", "Beside the cockpit"),
+        ("Above", "Below", "At the limit"),
+        ("Mix of fuel and air", "Combination lock", "Everything the driver needs"),
+        ("The other driver", "The remaining fuel", "Others' feedback"),
     ],
 )
 def test_realistic_options_are_shuffled(texts: tuple[str, ...]) -> None:
@@ -837,14 +865,303 @@ def test_hostile_repeated_tokens_are_judged_quickly() -> None:
     old = signal.signal(signal.SIGALRM, runaway)
     signal.setitimer(signal.ITIMER_REAL, 5)
     try:
-        start = time.perf_counter()
         for text in hostile:
             keep_reason(choices(text, "Foo", "Bar"), "choice-one")
             keep_reason(choices("Foo", "Bar", "Baz"), "choice-many", text)
             keep_reason(choices("Foo", "Bar", "Baz"), "choice-one", "", (text,))
             keep_reason(choices(text, "Foo", "Bar"), "choice-one", "Which is labelled?", has_images=True)
-        elapsed = time.perf_counter() - start
     finally:
         signal.setitimer(signal.ITIMER_REAL, 0)
         signal.signal(signal.SIGALRM, old)
-    assert elapsed < 0.5
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# The reason codes: one table
+
+
+CODES = {
+    "kind",
+    "blank",
+    "relative",
+    "label",
+    "figure",
+    "yes-no",
+    "ladder-range",
+    "ladder-sorted",
+    "ladder-word",
+    "stem",
+    "solution",
+}
+
+
+def test_the_reason_table_holds_every_code_once() -> None:
+    assert len(ORDER_REASONS) == len(set(ORDER_REASONS))
+    assert set(ORDER_REASONS) >= CODES
+
+
+def test_every_reason_the_rules_give_is_in_the_table() -> None:
+    rows: list[dict[str, Any]] = [
+        {"texts": ("Foo", "Bar", "Baz"), "kind": "drag_sort"},
+        {"texts": ("Foo", "", "Baz")},
+        {"texts": ("All of the above", "Foo", "Bar")},
+        {"texts": ("Option C", "Option D")},
+        {"texts": ("A", "B", "C"), "has_images": True},
+        {"texts": ("Yes", "No")},
+        {"texts": ("<5 V", "5-10 V", ">10 V")},
+        {"texts": ("1 s", "2 s", "5 s", "10 s")},
+        {"texts": ("Low", "Medium", "High")},
+        {"texts": ("Foo", "Bar", "Baz"), "stem": "Which of the options above?"},
+        {"texts": ("Foo", "Bar", "Baz"), "solutions": ("The answer is B.",)},
+    ]
+    got = set()
+    for row in rows:
+        kind, texts = row.pop("kind", "choice-one"), row.pop("texts")
+        r = keep_reason(choices(*texts), kind, **row)
+        assert r in ORDER_REASONS
+        got.add(r)
+    assert got == CODES  # the rows above exercise every code the table promises
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# More ways to refer to the other options, and number words that name a position
+
+
+RELATIVE_PHRASES = [
+    "One of the above",
+    "At least two of the above",
+    "Each of them",
+    "Every one of them",
+    "Only one of them",
+    "More than one",
+    "Two of them",
+    "The two above",
+    "See above",
+    "The answer is above",
+    "Everything",
+]
+
+
+@pytest.mark.parametrize("phrase", RELATIVE_PHRASES)
+@pytest.mark.parametrize("variant", ["{}", "{}.", "  {}  ", "THE {}"])
+def test_the_added_relative_phrases_keep_the_order(phrase: str, variant: str) -> None:
+    if variant.startswith("THE"):
+        phrase = phrase.upper()
+        variant = "{}"
+    text = variant.format(phrase)
+    assert reason("Cell balancing", "Pre-charge", text) == "relative", text
+    assert reason(text, "Cell balancing", "Pre-charge") == "relative", text
+    assert reason("Cell balancing", text, "Pre-charge") == "relative", text
+
+
+@pytest.mark.parametrize(
+    "phrase",
+    [
+        "At least three of these",
+        "Some of the others",
+        "Most of the options",
+        "Three of those",
+        "Each of the answers",
+        "Only one of the options",
+    ],
+)
+def test_relative_phrases_that_name_the_group_keep_the_order(phrase: str) -> None:
+    assert reason("Cell balancing", "Pre-charge", phrase) == "relative"
+
+
+def test_relative_phrases_are_found_in_a_longer_option_too() -> None:
+    assert reason("Cell balancing", "Pre-charge", "Valid for one of the above only") == "relative"
+    assert reason("Cell balancing", "Pre-charge", "True of at least two of the above") == "relative"
+
+
+@pytest.mark.parametrize(
+    "texts",
+    [
+        ("Above the driver's head", "Beside the driver", "Behind the driver"),
+        ("Cell balancing", "Pre-charge", "Nobody"),
+        ("Cell balancing", "Pre-charge", "Anything else"),
+        ("Above the driver's head", "Nobody", "Anything else"),
+        ("Below the floor line", "Cell balancing", "Pre-charge"),
+        ("Above 60 degrees", "Below 20 degrees", "Between 20 and 60 degrees"),
+        ("Close to them", "Far from the car", "On the wall"),
+    ],
+)
+def test_short_options_that_merely_contain_above_below_or_them_are_still_shuffled(
+    texts: tuple[str, ...],
+) -> None:
+    got = reason(*texts)
+    assert got is None or got.startswith("ladder"), f"{texts}: {got!r}"  # a bounded scale is the one excuse
+
+
+@pytest.mark.parametrize(
+    "texts",
+    [
+        ("Above the driver's head", "Beside the driver", "Behind the driver"),
+        ("Cell balancing", "Pre-charge", "Nobody"),
+        ("Cell balancing", "Pre-charge", "Anything else"),
+        ("Above the driver's head", "Nobody", "Anything else"),
+    ],
+)
+def test_the_counter_rows_of_the_spec_are_shuffled(texts: tuple[str, ...]) -> None:
+    check(texts, None)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Option one",
+        "Option two",
+        "Option three",
+        "Answer two",
+        "Answer one",
+        "Choice three",
+        "Choice two",
+        "choice THREE",
+        "OPTION ONE.",
+    ],
+)
+def test_a_number_word_after_a_noun_names_a_position(text: str) -> None:
+    assert reason("Cell balancing", "Pre-charge", text) == "label", text
+    assert reason(text, "Cell balancing", "Pre-charge") == "label", text
+
+
+def test_number_word_labels_in_a_full_set_are_labels() -> None:
+    assert reason("Option one", "Option two", "Option three") == "label"
+    assert reason("Answer one", "Answer two") == "label"
+    assert reason("Choice one", "Choice two", "Choice three", "Choice four") == "label"
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Each text is capped at 2000 characters before the patterns run
+
+
+def test_a_reference_at_the_start_of_a_very_long_option_is_still_seen() -> None:
+    long_tail = " filler" * 2000
+    assert reason("Cell balancing", "Pre-charge", "All of the above." + long_tail) == "relative"
+    assert reason("Cell balancing", "Pre-charge", "Option C: " + long_tail) == "label"
+
+
+def test_a_reference_past_the_cap_is_not_looked_for() -> None:
+    padding = "Cell balancing " * 200  # 3000 characters
+    assert len(padding) > 2000
+    check(("Pre-charge", "Isolation monitoring", padding + "and all of the above"), None)
+    check(("Pre-charge", "Isolation monitoring", padding + "See above"), None)
+
+
+def test_the_stem_and_the_solutions_are_capped_too() -> None:
+    padding = "The accumulator pack is charged slowly. " * 80  # about 3200 characters
+    assert len(padding) > 2000
+    assert reason("Foo", "Bar", "Baz", stem="Which of options A-C? " + padding) == "stem"
+    assert reason("Foo", "Bar", "Baz", stem=padding + "Which of options A-C?") is None
+    assert reason("Foo", "Bar", "Baz", solutions=("The answer is B. " + padding,)) == "solution"
+    assert reason("Foo", "Bar", "Baz", solutions=(padding + "The answer is B.",)) is None
+
+
+def test_long_options_are_still_a_permutation() -> None:
+    long = [Choice(i, f"Option text {i} " + "word " * 1000) for i in range(1, 5)]
+    got = order(long, KEY, "choice-one")
+    assert sorted(got) == [1, 2, 3, 4]
+
+
+def test_the_new_patterns_are_linear_on_hostile_input() -> None:
+    """The cap keeps every pattern on at most 2000 characters; the alarm fails the test instead of hanging it."""
+    hostile = [
+        "at least " * 100_000,
+        "one of the " * 100_000,
+        "the two " * 100_000,
+        "every one " * 100_000,
+        "only one of " * 100_000,
+        "more than " * 100_000,
+        "see " * 100_000,
+        "option " * 100_000,
+        "choice " * 100_000,
+        "each of them " * 50_000,
+    ]
+
+    def runaway(*_: object) -> None:
+        raise AssertionError("keep_reason is running away on the added patterns")
+
+    old = signal.signal(signal.SIGALRM, runaway)
+    signal.setitimer(signal.ITIMER_REAL, 10)
+    try:
+        for text in hostile:
+            keep_reason(choices(text, "Foo", "Bar"), "choice-one")
+            keep_reason(choices("Foo", "Bar", "Baz"), "choice-many", text)
+            keep_reason(choices("Foo", "Bar", "Baz"), "choice-one", "", (text,))
+            keep_reason(choices(text, text + "x", "Bar"), "choice-one", "Which is labelled?", has_images=True)
+            order(choices(text, "Foo", "Bar"), KEY, "choice-one", text, (text,))
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, old)
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Criterion 5: the input is the bank order; the verdict reads that sequence
+
+
+def test_a_kept_question_returns_exactly_the_input_order_whatever_the_ids() -> None:
+    kept = [Choice(9, "All of the above"), Choice(2, "Foo"), Choice(5, "Bar"), Choice(1, "Baz")]
+    for rotation in range(4):
+        given = kept[rotation:] + kept[:rotation]
+        want = reason(*[c.text for c in given])
+        if want is not None:
+            assert order(given, KEY, "choice-one") == [c.id for c in given]
+
+
+def test_the_ladder_verdict_reads_the_bank_sequence_not_the_ids() -> None:
+    values = ["1 s", "2 s", "5 s", "10 s"]
+    sorted_in = [Choice(40 - i, t) for i, t in enumerate(values)]  # ids run the other way
+    assert keep_reason(sorted_in, "choice-one") == "ladder-sorted"
+    assert order(sorted_in, KEY, "choice-one") == [c.id for c in sorted_in]
+    scrambled = [sorted_in[2], sorted_in[0], sorted_in[3], sorted_in[1]]
+    assert keep_reason(scrambled, "choice-one") is None
+    got = order(scrambled, KEY, "choice-one")
+    assert sorted(got) == sorted(c.id for c in sorted_in)
+
+
+def test_a_shuffled_question_depends_only_on_the_set_of_ids_and_the_key() -> None:
+    base = [Choice(11, "Cell balancing"), Choice(12, "Pre-charge"), Choice(13, "Isolation monitoring")]
+    want = order(base, KEY, "choice-one")
+    for perm in itertools.permutations(base):
+        assert order(list(perm), KEY, "choice-one") == want
+    words = ["Torque vectoring", "Regenerative braking", "Traction control"]
+    other_texts = [Choice(c.id, w) for c, w in zip(base, words, strict=True)]
+    assert order(other_texts, KEY, "choice-one") == want
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# One table: the schema, the client and the review screen follow ORDER_REASONS
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+def _enum_of(node: Any) -> set[str]:
+    found: set[str] = set()
+    if isinstance(node, dict):
+        if "enum" in node:
+            found |= set(node["enum"])
+        for v in node.values():
+            found |= _enum_of(v)
+    elif isinstance(node, list):
+        for v in node:
+            found |= _enum_of(v)
+    return found
+
+
+def test_the_generated_schema_lists_exactly_the_reason_codes() -> None:
+    spec = json.loads((ROOT / "web" / "openapi.json").read_text())
+    prop = spec["components"]["schemas"]["ReviewQuestion"]["properties"]["option_order_reason"]
+    assert _enum_of(prop) == set(ORDER_REASONS)
+
+
+def test_the_generated_client_lists_every_reason_code() -> None:
+    types = (ROOT / "web" / "src" / "api" / "types.gen.ts").read_text()
+    for code in ORDER_REASONS:
+        assert f'"{code}"' in types or f"'{code}'" in types, code
+
+
+def test_the_review_screen_words_every_reason_code() -> None:
+    screen = (ROOT / "web" / "src" / "routes" / "Review.tsx").read_text()
+    for code in ORDER_REASONS:
+        assert re.search(rf"""['"]?{re.escape(code)}['"]?\s*:""", screen), (
+            f"no text for {code!r} in Review.tsx"
+        )

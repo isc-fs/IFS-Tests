@@ -8,6 +8,7 @@ from typing import Annotated, Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator, model_validator
 
 from ..db.models import Position, Role, Status, Vertical
+from ..domain.shuffle import Reason
 
 
 class In(BaseModel):
@@ -800,9 +801,9 @@ class ReviewQuestion(BaseModel):
         description="How the daily shows the options: in a per-attempt order, kept in bank order by the "
         "automatic rules (see option_order_reason), or pinned in bank order by a reviewer"
     )
-    option_order_reason: str | None = Field(
-        description="Why the automatic rules would keep the bank order (relative, label, yes-no, ladder-range, "
-        "ladder-sorted, ladder-word, stem, solution, figure, blank or kind), if they would"
+    option_order_reason: Reason | None = Field(
+        description="Why the automatic rules would keep the bank order, if they would; null while the answer "
+        "is hidden from this reviewer"
     )
     key_changed_at: datetime | None
     upstream_change: Literal["answer", "wording", "content", "removed", "back"] | None = Field(

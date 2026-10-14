@@ -290,6 +290,7 @@ export function QuestionCard({
   recorded,
   deferred,
   releasedAt,
+  nameByText,
 }: {
   question: PlayQuestion
   feedback?: Feedback
@@ -328,6 +329,8 @@ export function QuestionCard({
   deferred?: boolean
   /** When a recorded answer's result shows. */
   releasedAt?: string | null
+  /** The options may be in a different order for each player: the problem report asks to name them by text. */
+  nameByText?: boolean
 }) {
   const [chosen, setChosen] = useState<number[]>(preset?.options ?? [])
   const [value, setValue] = useState(preset?.value ?? '')
@@ -588,7 +591,7 @@ export function QuestionCard({
           {next}
         </div>
       )}
-      {answered && <ReportProblem questionId={question.id} />}
+      {answered && <ReportProblem questionId={question.id} nameByText={nameByText} />}
     </article>
   )
 }

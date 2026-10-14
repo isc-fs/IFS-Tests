@@ -7105,14 +7105,27 @@
      "option_order_reason": {
       "anyOf": [
        {
-        "type": "string"
+        "type": "string",
+        "enum": [
+         "kind",
+         "blank",
+         "figure",
+         "relative",
+         "label",
+         "yes-no",
+         "ladder-range",
+         "ladder-sorted",
+         "ladder-word",
+         "stem",
+         "solution"
+        ]
        },
        {
         "type": "null"
        }
       ],
       "title": "Option Order Reason",
-      "description": "Why the automatic rules would keep the bank order (relative, label, yes-no, ladder-range, ladder-sorted, ladder-word, stem, solution, figure, blank or kind), if they would"
+      "description": "Why the automatic rules would keep the bank order, if they would; null while the answer is hidden from this reviewer"
      },
      "key_changed_at": {
       "anyOf": [

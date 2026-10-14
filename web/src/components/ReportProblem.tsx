@@ -3,8 +3,9 @@ import { useEffect, useId, useRef, useState } from 'react'
 import { reportQuestionMutation } from '../api/@tanstack/react-query.gen'
 import { ErrorNotice, Form, Notice, useFieldErrors } from './Form'
 
-/** Lets a player tell reviewers that a question or its answer looks wrong. */
-export function ReportProblem({ questionId }: { questionId: number }) {
+/** Lets a player tell reviewers that a question or its answer looks wrong. `nameByText`: the options may be in a
+ * different order for each player, so the report should name an option by its text, not its letter. */
+export function ReportProblem({ questionId, nameByText }: { questionId: number; nameByText?: boolean }) {
   const [open, setOpen] = useState(false)
   const [message, setMessage] = useState('')
   const id = useId()
@@ -62,14 +63,18 @@ export function ReportProblem({ questionId }: { questionId: number }) {
             touch('message')
           }}
           aria-invalid={!!errors.message}
-          aria-describedby={errors.message ? `${id}-hint ${id}-letter ${id}-error` : `${id}-hint ${id}-letter`}
+          aria-describedby={[`${id}-hint`, nameByText && `${id}-letter`, errors.message && `${id}-error`]
+            .filter(Boolean)
+            .join(' ')}
         />
         <p className="hint" id={`${id}-hint`}>
           For example: the official answer is wrong, a figure is missing, or the rules have changed.
         </p>
-        <p className="hint" id={`${id}-letter`}>
-          Name the option by its text, not its letter.
-        </p>
+        {nameByText && (
+          <p className="hint" id={`${id}-letter`}>
+            Name the option by its text, not its letter.
+          </p>
+        )}
         {errors.message && (
           <p className="field-error" id={`${id}-error`}>
             {errors.message}

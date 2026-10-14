@@ -15,6 +15,7 @@ import type { ReviewQuestion, ReviewQuestionsData } from '../api/types.gen'
 import { ErrorNotice, Field, Form, Notice, SelectField, useFieldErrors } from '../components/Form'
 import { Page } from '../components/Page'
 import { queryClient, useMe } from '../lib/api'
+import { fairPlayOn } from '../lib/fairPlay'
 import { AREA_TOPICS, AREAS, TOPICS } from '../lib/areas'
 
 type Queue = NonNullable<NonNullable<ReviewQuestionsData['query']>['queue']>
@@ -187,24 +188,34 @@ function Detail() {
   useEffect(() => {
     if (saved?.focus) notice.current?.focus()
   }, [saved])
-  // `focus` is for actions whose button disappears once they succeed.
-  const done = (text: string | ((q: ReviewQuestion) => string), focus = false) => ({
+  // `focus` is for actions whose button disappears once they succeed; a function decides from the saved question.
+  const done = (
+    text: string | ((q: ReviewQuestion) => string),
+    focus: boolean | ((q: ReviewQuestion) => boolean) = false,
+  ) => ({
     onMutate: () => setSaved(null),
     onSuccess: (q: ReviewQuestion) => {
       queryClient.setQueryData(reviewQuestionQueryKey({ path }), q)
       queryClient.invalidateQueries({ queryKey: reviewQuestionsInfiniteQueryKey() })
-      setSaved({ text: typeof text === 'string' ? text : text(q), focus })
+      setSaved({
+        text: typeof text === 'string' ? text : text(q),
+        focus: typeof focus === 'function' ? focus(q) : focus,
+      })
     },
   })
   const labels = useMutation({ ...updateQuestionMutation(), ...done('Labels saved.') })
   const visibility = useMutation({ ...updateQuestionMutation(), ...done('Saved.') })
   const order = useMutation({
     ...updateQuestionMutation(),
-    ...done((r) => {
-      if (r.keep_order) return "Pinned: bank order from each player's next load. Open attempts reorder on reload."
-      if (r.option_order === 'auto') return `Pin removed. This question is still kept in order: ${orderReason(r)}.`
-      return "Pin removed: shuffled from each player's next load."
-    }),
+    ...done(
+      (r) => {
+        if (r.keep_order) return "Pinned: bank order from each player's next load. Open attempts reorder on reload."
+        if (r.option_order === 'auto')
+          return `Pin removed. This question is still kept in order${orderReason(r) ? `: ${orderReason(r)}` : ''}.`
+        return "Pin removed: shuffled from each player's next load."
+      },
+      (r) => r.option_order === 'auto',
+    ),
   })
   const acknowledge = useMutation({ ...updateQuestionMutation(), ...done('Marked as checked.', true) })
   const correct = useMutation({ ...correctAnswerMutation(), ...done('Answer corrected.') })
@@ -326,7 +337,9 @@ function Detail() {
       {q.reports.length > 0 && (
         <section className="panel stack" aria-labelledby="reports-title">
           <h2 id="reports-title">Reports from players</h2>
-          <p className="muted">Letters in a report are the player's own order.</p>
+          {fairPlayOn() && q.option_order === 'shuffled' && (
+            <p className="muted">Letters in a report are the player's own order.</p>
+          )}
           <ErrorNotice error={resolve.error} />
           <ul className="list">
             {q.reports.map((r) => (
@@ -535,7 +548,9 @@ function Answer({
   )
 }
 
-const ORDER_REASONS: Record<string, string> = {
+type Reason = NonNullable<ReviewQuestion['option_order_reason']>
+
+const ORDER_REASONS: Record<Reason, string> = {
   relative: 'an option refers to the other options, like all of the above',
   label: 'the options are letters or labels, like Fig. A or A and B',
   figure: 'the question has a picture and its options are labels, or its text talks about labels',
@@ -550,7 +565,7 @@ const ORDER_REASONS: Record<string, string> = {
 }
 
 function orderReason(q: ReviewQuestion) {
-  return q.option_order_reason ? (ORDER_REASONS[q.option_order_reason] ?? q.option_order_reason) : null
+  return q.option_order_reason ? ORDER_REASONS[q.option_order_reason] : null
 }
 
 function OptionOrder({ q, pending, error, onSave }: FormProps<{ keep_order: boolean }>) {
@@ -560,7 +575,7 @@ function OptionOrder({ q, pending, error, onSave }: FormProps<{ keep_order: bool
       <section className="panel stack" aria-labelledby="order-title">
         <h2 id="order-title">Option order on the daily</h2>
         <p className="muted">
-          Kept in this order automatically: {reason}. A rule decides this; it can't be changed here.
+          Kept in this order automatically{reason ? `: ${reason}` : ''}. A rule decides this; it can't be changed here.
         </p>
         <p className="muted">
           If a shuffle would read fine, report the false positive as the reviewers guide says (section "Option order").

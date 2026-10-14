@@ -1,7 +1,7 @@
 import { act, cleanup, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { RULES_FROM } from '../lib/fairPlay'
+import { RULES_FROM, RULES_FROM_ISO } from '../lib/fairPlay'
 import { MEMBER, renderApp } from '../test/render'
 import { away, chars, fire, note, select, SIGNAL_KEYS, useClock } from '../test/signals'
 
@@ -849,5 +849,125 @@ describe('options listed in an order of their own', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Check answer' }))
     await screen.findByText(/Correct: \+15 LP/)
     expect(sent(ANSWER)[0].body).toEqual({ options: [51] })
+  })
+})
+
+describe('the static hint about option order (season 1b)', () => {
+  const HINT =
+    'From season 1b the options can appear in a different order for each player. Name an option by its text, not its letter.'
+  const REPORT = 'Name the option by its text, not its letter.'
+  const OPEN = { name: 'Report a problem with this question' }
+
+  /** The first instant of the rule date in Madrid. */
+  const midnight = () => {
+    const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' })
+    const [y, m, d] = RULES_FROM_ISO.split('-').map(Number)
+    for (const offset of [1, 2, 0, 3]) {
+      const t = Date.UTC(y, m - 1, d, -offset)
+      if (fmt.format(t) === RULES_FROM_ISO && fmt.format(t - 1) !== RULES_FROM_ISO) return t
+    }
+    throw new Error('no midnight')
+  }
+  const at = (t: number) => {
+    useClock()
+    vi.setSystemTime(t)
+  }
+  const answered = async () => {
+    await userEvent.click(await screen.findByRole('button', { name: 'Start the Mechanical question' }))
+    await userEvent.click(await screen.findByRole('radio', { name: 'AS Emergency' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Check answer' }))
+    await screen.findByText(/Correct: \+15 LP/)
+  }
+
+  test.each([
+    ['one millisecond before Madrid midnight of the rule date', () => midnight() - 1, false],
+    ['a day before', () => midnight() - 24 * 3600_000, false],
+    ['at Madrid midnight of the rule date', () => midnight(), true],
+    ['a week after', () => midnight() + 7 * 24 * 3600_000, true],
+  ])('the hint on the question card, %s', async (_when, instant, shown) => {
+    at(instant())
+    renderApp('/daily', api(timed(120)))
+    await userEvent.click(await screen.findByRole('button', { name: 'Start the Mechanical question' }))
+    await screen.findByText(QUESTION.text)
+    if (shown) expect(screen.getByText(HINT)).toBeInTheDocument()
+    else expect(screen.queryByText(HINT)).toBeNull()
+    expect(screen.queryAllByText(/different order for each player/)).toHaveLength(shown ? 1 : 0)
+  })
+
+  test('the problem report asks for the text from the rule date on', async () => {
+    at(midnight())
+    renderApp('/daily', { ...api(timed(120)), 'POST /api/questions/5/report': { status: 204 } })
+    await answered()
+    await userEvent.click(screen.getByRole('button', OPEN))
+    expect(screen.getByText(REPORT)).toBeInTheDocument()
+  })
+
+  test('before the rule date the problem report is as it always was', async () => {
+    at(midnight() - 1)
+    renderApp('/daily', api(timed(120)))
+    await answered()
+    await userEvent.click(screen.getByRole('button', OPEN))
+    expect(screen.getByLabelText("What's wrong?")).toBeInTheDocument()
+    expect(screen.queryByText(REPORT)).toBeNull()
+    expect(screen.queryByText(HINT)).toBeNull()
+  })
+
+  test('a typed question gets neither the hint nor the report note', async () => {
+    at(midnight())
+    const typed = { ...QUESTION, answer_kind: 'number', options: [] }
+    const play = { ...timed(120), question: typed }
+    renderApp('/daily', {
+      ...api(play),
+      'POST /api/daily/attempts/99/answer': {
+        body: { day: '2026-10-01', question: typed, feedback: FEEDBACK, late: false, xp: 60, lp: 15, streak: 3 },
+      },
+    })
+    await userEvent.click(await screen.findByRole('button', { name: 'Start the Mechanical question' }))
+    await screen.findByText(QUESTION.text)
+    expect(screen.queryByText(HINT)).toBeNull()
+    await userEvent.type(screen.getByRole('textbox'), '4')
+    await userEvent.click(screen.getByRole('button', { name: 'Check answer' }))
+    await screen.findByText(/Correct: \+15 LP/)
+    await userEvent.click(screen.getByRole('button', OPEN))
+    expect(screen.getByLabelText("What's wrong?")).toBeInTheDocument()
+    expect(screen.queryByText(REPORT)).toBeNull()
+  })
+
+  test.each([
+    ['choice-one', QUESTION.options, true],
+    ['number', [], false],
+  ])('the review of a %s question and the report note', async (kind, options, shown) => {
+    at(midnight())
+    const typed = { ...QUESTION, area: 'elec', answer_kind: kind, options }
+    renderApp('/daily', {
+      ...api(timed(120)),
+      'GET /api/daily/elec/review': {
+        body: {
+          day: '2026-10-01',
+          question: typed,
+          feedback: FEEDBACK,
+          answer: { options: [], value: 4 },
+          late: false,
+          xp: 55,
+          lp: 16.2,
+          streak: 2,
+        },
+      },
+    })
+    await userEvent.click(await screen.findByRole('button', { name: 'See the Electrical question' }))
+    await screen.findByText(QUESTION.text)
+    await userEvent.click(screen.getByRole('button', OPEN))
+    expect(screen.getByLabelText("What's wrong?")).toBeInTheDocument()
+    if (shown) expect(screen.getByText(REPORT)).toBeInTheDocument()
+    else expect(screen.queryByText(REPORT)).toBeNull()
+  })
+
+  test('the hint says nothing about whether this question was shuffled', async () => {
+    at(midnight())
+    renderApp('/daily', api(timed(120))) // two options in bank order
+    await userEvent.click(await screen.findByRole('button', { name: 'Start the Mechanical question' }))
+    await screen.findByText(QUESTION.text)
+    expect(screen.getByText(HINT)).toBeInTheDocument()
+    expect(screen.queryByText(/this question|was shuffled|kept in order/i)).toBeNull()
   })
 })

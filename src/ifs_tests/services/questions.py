@@ -202,7 +202,7 @@ def show(
     ]
 
 
-def order_verdict(db: DB, q: Question) -> tuple[OrderVerdict, str | None]:
+def order_verdict(db: DB, q: Question) -> tuple[OrderVerdict, shuffle.Reason | None]:
     """How the daily shows this question's options: ('pinned' | 'auto' | 'shuffled', the reason it would be kept
     in bank order, if any). Reviewers see it so the pin isn't blind."""
     opts = db.scalars(

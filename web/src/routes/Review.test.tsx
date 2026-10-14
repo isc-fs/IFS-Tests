@@ -1,7 +1,16 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, test } from 'vitest'
+import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { ADMIN, MEMBER, renderApp } from '../test/render'
+
+const fairPlay = vi.hoisted(() => ({ on: true }))
+vi.mock('../lib/fairPlay', async (original) => ({
+  ...(await original<typeof import('../lib/fairPlay')>()),
+  fairPlayOn: () => fairPlay.on,
+}))
+beforeEach(() => {
+  fairPlay.on = true
+})
 
 const REVIEWER = { ...MEMBER, id: 3, display_name: 'Rev', role: 'reviewer' }
 const QUEUES = { reports: 1, changed: 1, unclassified: 174, ungraded: 80, excluded: 0 }
@@ -616,5 +625,117 @@ describe('option order on the daily', () => {
     })
     expect(await screen.findByText('The answer is the precharge relay')).toBeInTheDocument()
     expect(screen.getByText("Letters in a report are the player's own order.")).toBeInTheDocument()
+  })
+
+  test.each([
+    ['before the rule date', { ...DETAIL }, false],
+    [
+      'on a question kept in bank order by a rule',
+      { ...DETAIL, option_order: 'auto', option_order_reason: 'relative' },
+      true,
+    ],
+    ['on a question a reviewer pinned', { ...DETAIL, keep_order: true, option_order: 'pinned' }, true],
+    [
+      'on a question with no options to shuffle',
+      { ...DETAIL, option_order: 'auto', option_order_reason: 'kind' },
+      true,
+    ],
+  ])('the line about letters is not shown %s', async (_when, detail, on) => {
+    fairPlay.on = on
+    renderApp('/review/7', {
+      'GET /api/me': { body: REVIEWER },
+      'GET /api/review/questions/7': { body: detail },
+    })
+    expect(await screen.findByText('The answer is the precharge relay')).toBeInTheDocument()
+    expect(screen.queryByText("Letters in a report are the player's own order.")).toBeNull()
+  })
+})
+
+describe('option order: focus and the words for every reason', () => {
+  const quiet = { ...DETAIL, reports: [], key_changed_at: null }
+  const PANEL = { name: 'Option order on the daily' }
+  const SWITCH = { name: 'Keep bank order on the daily' }
+  const CODES = [
+    'kind',
+    'blank',
+    'relative',
+    'label',
+    'figure',
+    'yes-no',
+    'ladder-range',
+    'ladder-sorted',
+    'ladder-word',
+    'stem',
+    'solution',
+  ]
+  const open = async (detail: object, patched?: object) => {
+    renderApp('/review/7', {
+      'GET /api/me': { body: REVIEWER },
+      'GET /api/review/questions/7': { body: detail },
+      ...(patched ? { 'PATCH /api/review/questions/7': { body: patched } } : {}),
+    })
+    return screen.findByRole('form', PANEL)
+  }
+  const kept = async (code: string) => {
+    renderApp('/review/7', {
+      'GET /api/me': { body: REVIEWER },
+      'GET /api/review/questions/7': {
+        body: {
+          ...quiet,
+          options: code === 'kind' ? [quiet.options[0]] : quiet.options,
+          option_order: 'auto',
+          option_order_reason: code,
+        },
+      },
+    })
+    const panel = await screen.findByRole('region', PANEL)
+    return within(panel).getByText(/Kept in this order automatically: \S/).textContent ?? ''
+  }
+
+  test('removing a pin the rules would keep anyway moves focus to the saved notice, because the switch is gone', async () => {
+    const pinned = { ...quiet, keep_order: true, option_order: 'pinned', option_order_reason: 'relative' }
+    const panel = await open(pinned, { ...pinned, keep_order: false, option_order: 'auto' })
+    await userEvent.click(within(panel).getByRole('switch', SWITCH))
+    const notice = await screen.findByText(/Pin removed\. This question is still kept in order/)
+    expect(screen.queryByRole('switch', SWITCH)).toBeNull()
+    await waitFor(() => {
+      const active = document.activeElement
+      expect(active).not.toBe(document.body)
+      expect(active === notice || notice.contains(active) || (active?.contains(notice) ?? false)).toBe(true)
+    })
+  })
+
+  test('removing a pin from a question that is shuffled again leaves focus on the switch', async () => {
+    const pinned = { ...quiet, keep_order: true, option_order: 'pinned', option_order_reason: null }
+    const panel = await open(pinned, { ...pinned, keep_order: false, option_order: 'shuffled' })
+    const toggle = within(panel).getByRole('switch', SWITCH)
+    await userEvent.click(toggle)
+    await screen.findByText(/Pin removed: shuffled/)
+    expect(within(panel).getByRole('switch', SWITCH)).toHaveFocus()
+  })
+
+  test('pinning keeps focus on the switch', async () => {
+    const panel = await open(quiet, { ...quiet, keep_order: true, option_order: 'pinned' })
+    await userEvent.click(within(panel).getByRole('switch', SWITCH))
+    await screen.findByText(/Pinned: bank order/)
+    expect(within(panel).getByRole('switch', SWITCH)).toHaveFocus()
+  })
+
+  test.each(CODES)('the reason %s has words of its own, not the code', async (code) => {
+    const text = await kept(code)
+    expect(text.replace(/^Kept in this order automatically:\s*/, '').trim().length).toBeGreaterThan(8)
+    if (code.includes('-')) expect(text).not.toContain(code) // a plain word like "stem" may be part of the sentence
+    expect(text).not.toMatch(new RegExp(`: ${code}\\.`))
+  })
+
+  test('no two reasons are explained with the same sentence', async () => {
+    const seen = new Map<string, string>()
+    for (const code of CODES) {
+      const text = await kept(code)
+      expect(seen.get(text), `${code} reads like ${seen.get(text)}`).toBeUndefined()
+      seen.set(text, code)
+      document.body.innerHTML = ''
+    }
+    expect(seen.size).toBe(CODES.length)
   })
 })

@@ -134,6 +134,8 @@ you which of three states the question is in:
 - **Pinned.** Always shown in bank order. To lift the pin, turn **Keep bank order on the daily** off; the confirmation reads "Pin removed". If the rules would
   keep the question in order anyway, the panel says so.
 
+The switch is the only control: there is no way to force a shuffle on an automatic keep. A pin applies to running attempts, is a trusted action recorded in the audit log (`question.update`, with `keep_order` before and after), and restores letter relay for that question until you lift it. When you lift a pin on a question the rules keep anyway, the panel becomes the read-only reason and focus moves to the confirmation. The reason codes are listed in [game rules 5](../game-rules.md#5-the-daily-question).
+
 Pin a question when its options only make sense in order and the rules did not recognise it, and when a figure prints
 its own labels (the picture says "A", "B", "C" and the options are the images' contents). The rules keep questions
 with pictures and label-like options in order by themselves, but cannot read a label inside an image: a picture with
