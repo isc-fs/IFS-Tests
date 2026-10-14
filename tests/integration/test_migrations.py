@@ -625,7 +625,9 @@ def test_0028_adds_the_reviewers_pin_expand_only_and_downgrade_drops_just_the_co
     from sqlalchemy import text
 
     cfg = migrate(postgres_url)
-    script = ScriptDirectory.from_config(cfg).get_revision(KEEP_ORDER_REVISION)
+    scripts = ScriptDirectory.from_config(cfg)
+    assert scripts.get_current_head() == KEEP_ORDER_REVISION
+    script = scripts.get_revision(KEEP_ORDER_REVISION)
     assert script is not None and script.down_revision == KEEP_ORDER_BEFORE
     command.downgrade(cfg, KEEP_ORDER_BEFORE)
     engine = create_engine(postgres_url)

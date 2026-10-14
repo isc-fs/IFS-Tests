@@ -4,8 +4,8 @@ daily_questions.first_drawn_at: when the day was first drawn, which a redraw nev
 Expand only: a NOT NULL column with a constant default (metadata only on PostgreSQL 11+) and a nullable one,
 which the previous release ignores.
 
-Revision ID: 0027
-Revises: 0026
+Revision ID: 0028
+Revises: 0027
 Create Date: 2026-10-13 12:00:00
 
 """
@@ -15,8 +15,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0027"
-down_revision: str | Sequence[str] | None = "0026"
+revision: str = "0028"
+down_revision: str | Sequence[str] | None = "0027"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
