@@ -132,8 +132,8 @@ phases:
 
   - number: 7
     title: Fair play
-    tag: v1.2.0
-    note: "ADR 0010: the rules per mode in English and Spanish, honest boards and read-only forensics. Branch numbers 28–35 and fix/40 were assigned by the plan; 22–26 and 36 stay in phase 6 for the deferred ideas; 27 moved to phase 8"
+    tag: v2.0.0
+    note: "Ships in v2.0.0. ADR 0010: the rules per mode in English and Spanish, honest boards and read-only forensics. Branch numbers 28–35 and fix/41 were assigned by the plan; 22–26 and 36 stay in phase 6 for the deferred ideas; 27 moved to phase 8"
     branches:
       - name: feat/28-fair-play-policy
         scope: Fair-play rules per mode in English and Spanish dated to season 1b, the privacy purpose and signals notice, the board caption, ADR 0010, LIA and DPIA
@@ -144,8 +144,8 @@ phases:
 
   - number: 8
     title: Season 1b
-    tag: v1.3.0
-    note: "Season 1b mechanisms: a per-player daily with results at day close, option shuffle, and the server side of the announced per-answer totals. The rules apply from 26 October 2026 (IFS_RULES_1B_FROM); each mechanism switches on at a Madrid midnight through its own effective-date setting, chosen at deploy (ADR 0010)"
+    tag: v2.0.0
+    note: "Season 1b ships as the single release v2.0.0, deployed dark: a per-player daily with results at day close, option shuffle, and the server side of the announced per-answer totals (phases 7 and 9 land in it too). One switch, IFS_RULES_1B_FROM (26 October 2026, Madrid), turns them all on at one Madrid midnight; IFS_CANARY stays off until the recall pilot (ADR 0010)"
     branches:
       - name: feat/27-daily-per-player
         scope: A daily question drawn per player from its own Madrid-midnight effective date; today's drawn set withheld from practice, mock summary, review and live picks
@@ -155,11 +155,13 @@ phases:
         scope: Option order shuffled per daily attempt, with exclusions for positional and ordered options and a reviewer toggle
       - name: feat/33-ranked-signals-server
         scope: Nullable per-answer totals on ranked attempts, uniform decoy draw behind IFS_CANARY, export and purge 90 days after season end, two-step rollout
+      - name: fix/40-release-v2.0.0
+        scope: "Release v2.0.0, ranked-play integrity deployed dark: version, notes, roadmap and API client"
 
   - number: 9
     title: Signals
-    tag: v1.4.0
-    note: "One release after phase 8: the client sends the totals the notice already names, from a Madrid midnight set at deploy, and the report reads them"
+    tag: v2.0.0
+    note: "Ships in v2.0.0 with phase 8, from the same switch: the client sends the totals the notice already names, from a Madrid midnight set at deploy, and the report reads them"
     branches:
       - name: feat/34-ranked-signals-client
         scope: Ranked-signals hook (declared and undeclared time away, paste on typed answers, long copies) and the honest AI note on copy
@@ -168,10 +170,10 @@ phases:
 
   - number: 10
     title: Contract
-    tag: v1.5.0
-    note: "After the per-player daily is in effect: the shared daily goes"
+    tag: v2.1.0
+    note: "v2.1: after v2.0.0 has run in prod with the per-player daily in effect, the shared daily goes (the contract step)"
     branches:
-      - name: fix/40-drop-shared-daily
+      - name: fix/41-drop-shared-daily
         scope: Contract step in its own release after the per-player daily is in effect; drop daily_questions, ensure_daily and the scheduler job
 
 sidequests: []

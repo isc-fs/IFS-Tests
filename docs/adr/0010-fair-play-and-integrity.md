@@ -293,7 +293,7 @@ without a schema change. Extension probing stays rejected under the same article
     the rule and every mechanism" because it tied the rule to the slowest branch, and gave each mechanism its own
     effective-date setting. That is reversed before sign-off, and the opposite is now the rejected option (below):
     with every mechanism landing in one release, per-mechanism dates are more knobs to mis-set than leaks removed.
-    The canary flip stays separate (`IFS_CANARY`), and so does fix/40.
+    The canary flip stays separate (`IFS_CANARY`), and so does fix/41.
 - **Timeline:**
 
   | Branch | Release | Takes effect | Notice needed before? |
@@ -308,7 +308,7 @@ without a schema change. Extension probing stays rejected under the same article
   | feat/34 signals, client | v2.0.0 | the same switch | yes: the feat/28 notice already names the totals |
   | feat/35 signals and canary in the report | v2.0.0 | n/a | yes |
   | canary flip (`IFS_CANARY`) | a later change, after the pilot | at a Madrid midnight, with the About line | yes, with the About line |
-  | fix/40 drop the shared daily | a later release | after the per-player daily is in effect | no |
+  | fix/41 drop the shared daily | v2.1, a later release | after the per-player daily is in effect | no |
 
 - **Gates.** The About and privacy notice (feat/28) is live on production **before 26 October 2026, with a target of
   at least 7 days before, by 19 October**, and the team announcement, in Spanish and English, goes out with it. The
@@ -318,7 +318,7 @@ without a schema change. Extension probing stays rejected under the same article
   canary's decoy) switches on only once the notice names it; the notice does not describe processing as running
   before the code that does it is deployed. The admin-settable hide ships before the first decision that takes
   someone off the boards. Any hotfix cut from `dev` before the release that carries this copy either meets the same
-  gates or reverts the copy. fix/40 is a later release again, in its own roadmap phase.
+  gates or reverts the copy. fix/41 is a later release again (v2.1, the contract step once v2.0.0 has run in prod), in its own roadmap phase.
 - **Season 1b changes rules only; no LP reset.** What `season_reset` does with this season's LP on 1 September 2027
   (a plain soft reset as every year, or something that accounts for LP won under the old rule) is **open for the
   TDs**, to decide before then and record in a superseding ADR if it changes. Also open: whether the boards get a
