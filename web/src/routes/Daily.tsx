@@ -15,7 +15,7 @@ import { Page } from '../components/Page'
 import { QuestionCard } from '../components/QuestionCard'
 import { ME_KEY, queryClient, resend, sendRanked } from '../lib/api'
 import { AREAS, duration } from '../lib/areas'
-import { RULES_FROM } from '../lib/fairPlay'
+import { fairPlayOn, RULES_FROM } from '../lib/fairPlay'
 import { lp, RANK_CHANGE } from '../lib/rank'
 import { BONUS_NAMES, xp } from '../lib/xp'
 
@@ -133,6 +133,9 @@ function AreaCard({
   )
 }
 
+/** Only picked options can be shuffled: a typed answer has none, so the note about their order would be noise. */
+const namesByText = (q: { answer_kind: string }) => fairPlayOn() && q.answer_kind.startsWith('choice')
+
 function Play({ play, onDone }: { play: TimedQuestion; onDone: () => void }) {
   const [expired, setExpired] = useState(false)
   const [result, setResult] = useState<DailyResult>()
@@ -149,6 +152,12 @@ function Play({ play, onDone }: { play: TimedQuestion; onDone: () => void }) {
   const expire = useCallback(() => setExpired(true), [])
   return (
     <>
+      {namesByText(play.question) && (
+        <p className="muted">
+          From season 1b the options can appear in a different order for each player. Name an option by its text, not
+          its letter.
+        </p>
+      )}
       <LearningAids question={play.question}>
         <QuestionCard
           question={play.question}
@@ -167,6 +176,7 @@ function Play({ play, onDone }: { play: TimedQuestion; onDone: () => void }) {
           }
           onHint={async () => (await dailyHint({ path: { attempt_id: play.attempt_id } })).data}
           next={<Summary result={result} onDone={onDone} />}
+          nameByText={namesByText(play.question)}
         />
       </LearningAids>
       <ErrorNotice error={send.error} />
@@ -229,6 +239,7 @@ export default function Daily() {
           preset={review.answer ?? undefined}
           onAnswer={() => {}}
           next={<Summary result={review} onDone={back} />}
+          nameByText={namesByText(review.question)}
         />
       </Page>
     )

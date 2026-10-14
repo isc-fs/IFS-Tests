@@ -29,6 +29,7 @@ PREVIEW = 200
 def _detail(db: Db, reviewer: User, question_id: int, now: datetime) -> ReviewQuestion:
     d = review.detail(db, reviewer, question_id, now)
     q, key = d.question, (None if d.answer_hidden else d.key)
+    verdict, reason = questions.order_verdict(db, q)
     official = set(key.key["options"]) if key and key.key and key.key["kind"] == "choice" else set()
     corrected = (
         set(key.override["options"]) if key and key.override and key.override["kind"] == "choice" else set()
@@ -48,6 +49,9 @@ def _detail(db: Db, reviewer: User, question_id: int, now: datetime) -> ReviewQu
         images_missing=q.images_missing,
         excluded=q.excluded,
         exclusion_note=q.exclusion_note,
+        keep_order=q.keep_order,
+        option_order=verdict,
+        option_order_reason=None if d.answer_hidden else reason,
         key_changed_at=q.key_changed_at,
         upstream_change=q.upstream_change,
         official=key.display if key else None,

@@ -4,7 +4,7 @@ per player from it (ADR 0010). The server owns every deadline; the browser only 
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from typing import Any
 
@@ -63,6 +63,28 @@ def is_per_player(db: DB, day: date, rules_from: date | None) -> bool:
     )
 
 
+def option_key(
+    db: DB, attempt_id: int, day: date, created_at: datetime, rules_from: date | None
+) -> bytes | None:
+    """The only place that decides whether and how a daily attempt's options are shuffled: the key, or None
+    for bank order. Shuffled only on a day the daily was drawn per player (`rules.per_player`) and with no
+    shared draw already running when the attempt was created (judged on when the day was first drawn, so a redraw
+    never turns the shuffle on for an attempt in progress; a row without `first_drawn_at` comes from a release
+    that had no per-player mode, so it counts as drawn at midnight), so a late deploy or a changed setting never
+    reorders anything mid-day: the shuffle starts at a Madrid midnight, like the per-player draw."""
+    if not rules.per_player(day, rules_from):
+        return None
+    shared = db.scalar(
+        select(
+            exists().where(
+                DailyQuestion.day == day,
+                func.coalesce(DailyQuestion.first_drawn_at, madrid_midnight(day)) <= created_at,
+            )
+        )
+    )
+    return None if shared else hints.shuffle_key(db, attempt_id)
+
+
 def ensure_daily(db: DB, day: date, now: datetime) -> dict[str, int]:
     """Choose the day's questions once; concurrent callers wait for the first and reuse its choice.
     A chosen question that a reviewer hid (or that stopped being gradable) is replaced for everyone who
@@ -91,9 +113,14 @@ def ensure_daily(db: DB, day: date, now: datetime) -> dict[str, int]:
         if qid is not None:
             db.execute(
                 insert(DailyQuestion)
-                .values(day=day, area=area, question_id=qid, drawn_at=now)
+                .values(day=day, area=area, question_id=qid, drawn_at=now, first_drawn_at=now)
                 .on_conflict_do_update(
-                    index_elements=["day", "area"], set_={"question_id": qid, "drawn_at": now}
+                    index_elements=["day", "area"],
+                    set_={
+                        "question_id": qid,
+                        "drawn_at": now,
+                        "first_drawn_at": func.coalesce(DailyQuestion.first_drawn_at, madrid_midnight(day)),
+                    },
                 )
             )
             chosen[area] = qid
@@ -522,6 +549,8 @@ class Result:
     answer: dict[str, Any]
     released_at: datetime | None = None  # set while the result waits for day close
     pending: bool = False
+    attempt_id: int = field(kw_only=True)
+    created_at: datetime = field(kw_only=True)
 
 
 def answer(
@@ -712,11 +741,35 @@ def review_attempt(db: DB, user: User, a: Attempt, now: datetime) -> Result:
     assert a.day is not None  # noqa: S101 - every daily attempt has its day
     if pending(a):
         checked = Checked(correct=None, official=None, correct_options=[], solutions=[], passed=a.passed)
-        return Result(a.day, q, checked, bool(a.late), 0, 0.0, run, a.answer, a.released_at, True)
+        return Result(
+            a.day,
+            q,
+            checked,
+            bool(a.late),
+            0,
+            0.0,
+            run,
+            a.answer,
+            a.released_at,
+            True,
+            attempt_id=a.id,
+            created_at=a.created_at,
+        )
     checked = explain(db, q, a.correct, a.passed)
     checked.score = xp.stored(db, user.id, a)
     if a.released_at is None:  # a shared day: as before the switch
-        return Result(a.day, q, checked, bool(a.late), a.xp, a.lp, run, a.answer)
+        return Result(
+            a.day,
+            q,
+            checked,
+            bool(a.late),
+            a.xp,
+            a.lp,
+            run,
+            a.answer,
+            attempt_id=a.id,
+            created_at=a.created_at,
+        )
     busy = q.id in running(db, user.id, now)  # drawn again as their own daily, mock or live question
     hidden = not busy and q.id in withheld(db, now)  # or still running as someone else's daily
     if busy or hidden:
@@ -724,8 +777,12 @@ def review_attempt(db: DB, user: User, a: Attempt, now: datetime) -> Result:
     if hidden:  # right or wrong beside the answer sent gives the key away
         checked.correct = None
         checked.score = xp.Grant(xp=0, lp=0.0, level=0)
-        return Result(a.day, q, checked, bool(a.late), 0, 0.0, run, a.answer)
-    return Result(a.day, q, checked, bool(a.late), a.xp, a.lp, run, a.answer)
+        return Result(
+            a.day, q, checked, bool(a.late), 0, 0.0, run, a.answer, attempt_id=a.id, created_at=a.created_at
+        )
+    return Result(
+        a.day, q, checked, bool(a.late), a.xp, a.lp, run, a.answer, attempt_id=a.id, created_at=a.created_at
+    )
 
 
 def review(db: DB, user: User, area: str, now: datetime, day: date | None = None) -> Result:

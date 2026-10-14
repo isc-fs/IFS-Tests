@@ -34,7 +34,8 @@ def decoy_for(
     policy: rules.Policy,
     choice: Callable[[Sequence[int]], int] = secrets.choice,
 ) -> int | None:
-    """One of the options as questions.show offers them (not retired, by position then id)."""
+    """One of the options in bank order (not retired, by position then id). A daily may display another order:
+    the id is what counts."""
     if not policy.canary:
         return None
     ids = db.scalars(

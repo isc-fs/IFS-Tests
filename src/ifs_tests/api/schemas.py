@@ -8,6 +8,7 @@ from typing import Annotated, Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator, model_validator
 
 from ..db.models import Position, Role, Status, Vertical
+from ..domain.shuffle import Reason
 
 
 class In(BaseModel):
@@ -795,6 +796,15 @@ class ReviewQuestion(BaseModel):
     images_missing: bool
     excluded: bool
     exclusion_note: str | None
+    keep_order: bool = Field(description="Never shuffled on the daily: shown in bank order")
+    option_order: Literal["shuffled", "auto", "pinned"] = Field(
+        description="How the daily shows the options: in a per-attempt order, kept in bank order by the "
+        "automatic rules (see option_order_reason), or pinned in bank order by a reviewer"
+    )
+    option_order_reason: Reason | None = Field(
+        description="Why the automatic rules would keep the bank order, if they would; null while the answer "
+        "is hidden from this reviewer"
+    )
     key_changed_at: datetime | None
     upstream_change: Literal["answer", "wording", "content", "removed", "back"] | None = Field(
         description="Why it is in the changed-upstream queue: its answer or options changed (any correction was "
@@ -822,6 +832,7 @@ class ReviewPatch(In):
     labels_reviewed: bool | None = None
     excluded: bool | None = None
     exclusion_note: str | None = Field(default=None, max_length=200)
+    keep_order: bool | None = None
     acknowledge_change: bool | None = None
 
 

@@ -6,7 +6,7 @@ from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 from urllib.parse import urlsplit
 
 from sqlalchemy import and_, exists, or_, select, union
@@ -32,6 +32,7 @@ from ..db.models import (
     quiz_documents,
     quiz_events,
 )
+from ..domain import shuffle
 from ..domain.daily import GRACE, madrid_day
 from ..domain.grading import grade, unreadable
 from ..domain.keys import decimal_comma
@@ -41,6 +42,7 @@ if TYPE_CHECKING:
     from .xp import Grant
 
 MAX_QUIZ_LABELS = 4
+OrderVerdict = Literal["shuffled", "auto", "pinned"]
 WITHHELD = "This question is someone's daily question today: practise it later."
 YOURS_TONIGHT = "Your daily answer to this question shows at midnight (Madrid time)."
 
@@ -154,19 +156,43 @@ def _value_count(key: dict[str, Any] | None) -> int | None:
     return counts.pop() if len(counts) == 1 else None
 
 
-def show(db: DB, questions: list[Question], picked: Iterable[int] = ()) -> list[Shown]:
-    """`picked`: option IDs a player already chose, shown even if FS-Quiz has since removed them."""
-    ids = [q.id for q in questions]
-    options: dict[int, list[AnswerOption]] = defaultdict(list)
-    for o in db.scalars(
-        select(AnswerOption)
-        .where(
-            AnswerOption.question_id.in_(ids),
-            AnswerOption.retired.is_(False) | AnswerOption.id.in_(list(picked)),
-        )
-        .order_by(AnswerOption.position, AnswerOption.id)
+def _solutions(db: DB, ids: list[int]) -> dict[int, list[str]]:
+    found: dict[int, list[str]] = defaultdict(list)
+    for qid, text in db.execute(
+        select(Solution.question_id, Solution.text).where(Solution.question_id.in_(ids)).order_by(Solution.id)
     ):
+        if text:
+            found[qid].append(text)
+    return found
+
+
+def show(
+    db: DB, questions: list[Question], picked: Iterable[int] = (), *, order_key: bytes | None = None
+) -> list[Shown]:
+    """`picked`: option IDs a player already chose, shown even if FS-Quiz has since removed them. `order_key`:
+    the daily's per-attempt shuffle; every other caller keeps bank order."""
+    ids = [q.id for q in questions]
+    picked_ids = set(picked)
+    options: dict[int, list[AnswerOption]] = defaultdict(list)
+    stmt = select(AnswerOption).where(AnswerOption.question_id.in_(ids))
+    if order_key is None:
+        stmt = stmt.where(AnswerOption.retired.is_(False) | AnswerOption.id.in_(list(picked_ids)))
+    for o in db.scalars(stmt.order_by(AnswerOption.position, AnswerOption.id)):
         options[o.question_id].append(o)
+    if order_key is not None:
+        solutions = _solutions(db, ids)
+        for q in questions:
+            opts = options[q.id]
+            if not q.keep_order:
+                choices = [shuffle.Choice(o.id, o.text, o.retired) for o in opts]
+                by_id = {o.id: o for o in opts}
+                opts = [
+                    by_id[i]
+                    for i in shuffle.order(
+                        choices, order_key, q.answer_kind, q.text, solutions[q.id], has_images=bool(q.images)
+                    )
+                ]
+            options[q.id] = [o for o in opts if not o.retired or o.id in picked_ids]
     found = db.scalars(select(AnswerKey).where(AnswerKey.question_id.in_(ids)))
     keys = {k.question_id: k.effective for k in found}
     labels = _quiz_labels(db, ids)
@@ -174,6 +200,24 @@ def show(db: DB, questions: list[Question], picked: Iterable[int] = ()) -> list[
     return [
         Shown(q, options[q.id], labels[q.id], _value_count(keys.get(q.id)), docs[q.id]) for q in questions
     ]
+
+
+def order_verdict(db: DB, q: Question) -> tuple[OrderVerdict, shuffle.Reason | None]:
+    """How the daily shows this question's options: ('pinned' | 'auto' | 'shuffled', the reason it would be kept
+    in bank order, if any). Reviewers see it so the pin isn't blind."""
+    opts = db.scalars(
+        select(AnswerOption)
+        .where(AnswerOption.question_id == q.id)
+        .order_by(AnswerOption.position, AnswerOption.id)
+    ).all()
+    reason = shuffle.keep_reason(
+        [shuffle.Choice(o.id, o.text, o.retired) for o in opts],
+        q.answer_kind,
+        q.text,
+        _solutions(db, [q.id])[q.id],
+        has_images=bool(q.images),
+    )
+    return ("pinned" if q.keep_order else "auto" if reason else "shuffled"), reason
 
 
 def playable(db: DB, question_id: int) -> Question:

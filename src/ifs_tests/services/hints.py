@@ -36,6 +36,17 @@ def _seed(db: DB, question_id: int) -> int:
     return int.from_bytes(digest[:8], "big")
 
 
+def shuffle_key(db: DB, attempt_id: int) -> bytes:
+    """The order key of one daily attempt. A gated attempt exists only after a draw that stored and committed the
+    secret, so the mint here is a rare fallback. Call it after your own work is committed: it commits only if it
+    had to mint. `salt()` isn't used for the read because it writes on every call."""
+    row = db.get(Setting, "hint_salt")
+    secret = bytes.fromhex(row.value["salt"]) if row else salt(db)
+    if row is None:
+        db.commit()
+    return hmac.new(secret, f"shuffle:{attempt_id}".encode(), hashlib.sha256).digest()
+
+
 def _hint(db: DB, user: User, q: Question, now: datetime) -> rules.Hint:
     if not rank_rules.standing(user.rank_points, user.rank_season, user.position, None, now).division.hint:
         raise UserError("Hints end at DT I: from there it's the quiz as it is on the day.", 403)

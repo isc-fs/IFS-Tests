@@ -118,6 +118,40 @@ live quizzes (both use only graded questions).
 To hide a question that is wrong, outdated or unanswerable, write **Why (optional)** and press **Hide from
 players**. The page then reads "Hidden from players: *reason*". **Show to players again** brings it back.
 
+### Option order
+
+Choice questions have an **Option order on the daily** panel. From season 1b each player sees the options of a daily
+question in an order of their own, so a letter ("it's B") means something different to each reader. The panel tells
+you which of three states the question is in:
+
+- **Shuffled.** Players see their own order. The switch **Keep bank order on the daily** pins the question.
+- **Kept in this order automatically**, with the reason: the options refer to the others ("all of the above", "the
+  previous statement"), to a letter or label, or form a scale (numbers in increasing order, ranges, word scales);
+  the question has a picture and its options are labels ("Fig. A", "Graph 2") or its text talks about labels ("labelled", "shown as A"); or the question or its solution mentions options by letter. The
+  panel shows the reason and no switch: an automatic keep cannot be overridden, so a reviewer cannot force a shuffle
+  on it. If you think an automatic keep is wrong (a question that would read fine shuffled), do not work around it:
+  tell the lead which question and which reason, and the rule is narrowed.
+- **Pinned.** Always shown in bank order. To lift the pin, turn **Keep bank order on the daily** off; the confirmation reads "Pin removed". If the rules would
+  keep the question in order anyway, the panel says so.
+
+The switch is the only control: there is no way to force a shuffle on an automatic keep. A pin applies to running attempts, is a trusted action recorded in the audit log (`question.update`, with `keep_order` before and after), and restores letter relay for that question until you lift it. When you lift a pin on a question the rules keep anyway, the panel becomes the read-only reason and focus moves to the confirmation. The reason codes are listed in [game rules 5](../game-rules.md#5-the-daily-question).
+
+Pin a question when its options only make sense in order and the rules did not recognise it, and when a figure prints
+its own labels (the picture says "A", "B", "C" and the options are the images' contents). The rules keep questions
+with pictures and label-like options in order by themselves, but cannot read a label inside an image: a picture with
+numeric or worded options whose labels are printed in it is shuffled unless you pin it, so check those.
+Anything else you leave to the rules.
+
+A pin, a removed pin or an edit that changes the verdict applies on the next load, **including to attempts already
+open**: a player in the middle of a question may see the options reorder once when the page reloads (answers are
+graded by option, not by position). The panel warns about this. Avoid pinning or rewording options of today's daily
+questions when you can wait until the day closes. The change is recorded in the audit log like your other edits.
+
+This page lists the options in bank order, so a player's letter can differ from yours, and **letters in a report are
+the player's own order** (the review screen says so beside the reports; players are asked to name an option by its
+text). In a note, a reply to a report or a message to a player, name an option by its text, not its letter, and check
+the option's text before you correct an answer key because of a letter.
+
 ## How changes reach players
 
 Every change applies straight away.
@@ -126,6 +160,7 @@ Every change applies straight away.
 |---|---|---|---|---|
 | **Hide** | Never served. | If it is today's shared question (before season 1b), everyone who hasn't opened it yet gets a replacement; people who already started keep theirs. From season 1b each player's question is their own: the player who drew it keeps it and still sees it in the daily page, and nobody else draws it. | Runs already open keep it if they have already shown it; otherwise it is skipped. It no longer counts in the quiz's question total. | Sessions not started skip it; sessions already started keep their questions. |
 | **Correct the answer** | The next answer is graded against it. | The same, including a question someone has open. | The same, question by question. | The same, for answers not yet sent. |
+| **Pin the option order** | No effect: practice keeps bank order. | Applies on the next load of an attempt on a gated day (from season 1b), including one already open: its options may reorder once. | No effect. | No effect. |
 | **Relabel** | Moves to the new area and topic. | Today's questions stay; from the next day it can be drawn for its new area. | Answers from now on count under the new area. | Routed by its new topic in sessions not yet started. |
 
 Answers already given are never re-graded: a correction doesn't change past results, XP or LP.

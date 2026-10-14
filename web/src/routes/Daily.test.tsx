@@ -1,9 +1,9 @@
 import { act, cleanup, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { RULES_FROM } from '../lib/fairPlay'
+import { RULES_FROM, RULES_FROM_ISO } from '../lib/fairPlay'
 import { MEMBER, renderApp } from '../test/render'
-import { away, SIGNAL_KEYS, useClock } from '../test/signals'
+import { away, chars, fire, note, select, SIGNAL_KEYS, useClock } from '../test/signals'
 
 afterEach(() => vi.useRealTimers())
 
@@ -753,4 +753,221 @@ test("a result already shown as yesterday's card is not listed twice", async () 
   })
   expect(await screen.findByText("Yesterday's question. Correct: +15 LP, +60 XP.")).toBeInTheDocument()
   expect(screen.queryByRole('heading', { name: 'Your latest results' })).toBeNull()
+})
+
+describe('options listed in an order of their own', () => {
+  const NBSP = /\u00a0/g
+  /** Ids out of bank order, as a gated day sends them: Charlie, Alpha, Bravo. */
+  const OPTIONS = [
+    { id: 52, text: 'Charlie' },
+    { id: 50, text: 'Alpha' },
+    { id: 51, text: 'Bravo' },
+  ]
+  const letters = () =>
+    [...document.querySelectorAll('.choice-letter')].map((el) => ({
+      letter: el.textContent?.replace(NBSP, ''),
+      name: el.nextSibling?.textContent,
+    }))
+  const longCopy = () => {
+    const text = document.querySelector<HTMLElement>('.question-text')!
+    select(text)
+    const { data } = fire(text)
+    return data.setData.mock.calls[0]?.[1] as string | undefined
+  }
+
+  test('the letters follow the list the server sent, not the ids', async () => {
+    useClock()
+    renderApp('/daily', api({ ...timed(120, 0, true), question: { ...QUESTION, options: OPTIONS } }))
+    await start()
+    await screen.findByRole('timer')
+    expect(letters()).toEqual([
+      { letter: 'A', name: 'Charlie' },
+      { letter: 'B', name: 'Alpha' },
+      { letter: 'C', name: 'Bravo' },
+    ])
+  })
+
+  test.each([
+    [50, 'Alpha', 'B'],
+    [52, 'Charlie', 'A'],
+    [51, 'Bravo', 'C'],
+  ])('the canary note names the letter shown beside the decoy %i (%s)', async (decoy, name, letter) => {
+    useClock()
+    const question = { ...QUESTION, text: chars(240), options: OPTIONS }
+    renderApp('/daily', api({ ...timed(120, 0, true), question, decoy_option_id: decoy }))
+    await start()
+    await screen.findByRole('timer')
+    const shown = letters().find((l) => l.name === name)?.letter
+    expect(shown).toBe(letter)
+    const copied = longCopy()
+    expect(copied).toBeDefined()
+    expect(copied!.endsWith(note(shown!))).toBe(true)
+  })
+
+  test('a different order for the same options moves the note with the decoy', async () => {
+    useClock()
+    const other = [OPTIONS[2], OPTIONS[0], OPTIONS[1]] // Bravo, Charlie, Alpha
+    const question = { ...QUESTION, text: chars(240), options: other }
+    renderApp('/daily', api({ ...timed(120, 0, true), question, decoy_option_id: 50 }))
+    await start()
+    await screen.findByRole('timer')
+    expect(letters().find((l) => l.name === 'Alpha')?.letter).toBe('C')
+    expect(longCopy()?.endsWith(note('C'))).toBe(true)
+  })
+
+  test('a finished question is reviewed in the order the server sent', async () => {
+    renderApp('/daily', {
+      ...api(timed(120)),
+      'GET /api/daily/elec/review': {
+        body: {
+          day: '2026-10-01',
+          question: { ...QUESTION, area: 'elec', options: OPTIONS },
+          feedback: { ...FEEDBACK, correct_options: [50] },
+          answer: { options: [50], value: null },
+          late: false,
+          xp: 55,
+          lp: 16.2,
+          streak: 2,
+        },
+      },
+    })
+    await userEvent.click(await screen.findByRole('button', { name: 'See the question: Electrical' }))
+    const card = await screen.findByRole('article')
+    const rows = within(card).getAllByRole('radio')
+    expect(rows.map((r) => r.closest('label')?.textContent)).toEqual([
+      expect.stringContaining('Charlie'),
+      expect.stringContaining('Alpha'),
+      expect.stringContaining('Bravo'),
+    ])
+    expect(rows[1]).toBeChecked()
+  })
+
+  test('the answer sent is the option id, whatever its place in the list', async () => {
+    const { sent } = renderApp('/daily', api({ ...timed(120), question: { ...QUESTION, options: OPTIONS } }))
+    await start()
+    await userEvent.click(await screen.findByRole('radio', { name: 'Bravo' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Check answer' }))
+    await screen.findByText(/Correct: \+15 LP/)
+    expect(sent(ANSWER)[0].body).toEqual({ options: [51] })
+  })
+})
+
+describe('the static hint about option order (season 1b)', () => {
+  const HINT =
+    'From season 1b the options can appear in a different order for each player. Name an option by its text, not its letter.'
+  const REPORT = 'Name the option by its text, not its letter.'
+  const OPEN = { name: 'Report a problem with this question' }
+
+  /** The first instant of the rule date in Madrid. */
+  const midnight = () => {
+    const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' })
+    const [y, m, d] = RULES_FROM_ISO.split('-').map(Number)
+    for (const offset of [1, 2, 0, 3]) {
+      const t = Date.UTC(y, m - 1, d, -offset)
+      if (fmt.format(t) === RULES_FROM_ISO && fmt.format(t - 1) !== RULES_FROM_ISO) return t
+    }
+    throw new Error('no midnight')
+  }
+  const at = (t: number) => {
+    useClock()
+    vi.setSystemTime(t)
+  }
+  const answered = async () => {
+    await userEvent.click(await screen.findByRole('button', { name: 'Start the Mechanical question' }))
+    await userEvent.click(await screen.findByRole('radio', { name: 'AS Emergency' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Check answer' }))
+    await screen.findByText(/Correct: \+15 LP/)
+  }
+
+  test.each([
+    ['one millisecond before Madrid midnight of the rule date', () => midnight() - 1, false],
+    ['a day before', () => midnight() - 24 * 3600_000, false],
+    ['at Madrid midnight of the rule date', () => midnight(), true],
+    ['a week after', () => midnight() + 7 * 24 * 3600_000, true],
+  ])('the hint on the question card, %s', async (_when, instant, shown) => {
+    at(instant())
+    renderApp('/daily', api(timed(120)))
+    await userEvent.click(await screen.findByRole('button', { name: 'Start the Mechanical question' }))
+    await screen.findByText(QUESTION.text)
+    if (shown) expect(screen.getByText(HINT)).toBeInTheDocument()
+    else expect(screen.queryByText(HINT)).toBeNull()
+    expect(screen.queryAllByText(/different order for each player/)).toHaveLength(shown ? 1 : 0)
+  })
+
+  test('the problem report asks for the text from the rule date on', async () => {
+    at(midnight())
+    renderApp('/daily', { ...api(timed(120)), 'POST /api/questions/5/report': { status: 204 } })
+    await answered()
+    await userEvent.click(screen.getByRole('button', OPEN))
+    expect(screen.getByText(REPORT)).toBeInTheDocument()
+  })
+
+  test('before the rule date the problem report is as it always was', async () => {
+    at(midnight() - 1)
+    renderApp('/daily', api(timed(120)))
+    await answered()
+    await userEvent.click(screen.getByRole('button', OPEN))
+    expect(screen.getByLabelText("What's wrong?")).toBeInTheDocument()
+    expect(screen.queryByText(REPORT)).toBeNull()
+    expect(screen.queryByText(HINT)).toBeNull()
+  })
+
+  test('a typed question gets neither the hint nor the report note', async () => {
+    at(midnight())
+    const typed = { ...QUESTION, answer_kind: 'number', options: [] }
+    const play = { ...timed(120), question: typed }
+    renderApp('/daily', {
+      ...api(play),
+      'POST /api/daily/attempts/99/answer': {
+        body: { day: '2026-10-01', question: typed, feedback: FEEDBACK, late: false, xp: 60, lp: 15, streak: 3 },
+      },
+    })
+    await userEvent.click(await screen.findByRole('button', { name: 'Start the Mechanical question' }))
+    await screen.findByText(QUESTION.text)
+    expect(screen.queryByText(HINT)).toBeNull()
+    await userEvent.type(screen.getByRole('textbox'), '4')
+    await userEvent.click(screen.getByRole('button', { name: 'Check answer' }))
+    await screen.findByText(/Correct: \+15 LP/)
+    await userEvent.click(screen.getByRole('button', OPEN))
+    expect(screen.getByLabelText("What's wrong?")).toBeInTheDocument()
+    expect(screen.queryByText(REPORT)).toBeNull()
+  })
+
+  test.each([
+    ['choice-one', QUESTION.options, true],
+    ['number', [], false],
+  ])('the review of a %s question and the report note', async (kind, options, shown) => {
+    at(midnight())
+    const typed = { ...QUESTION, area: 'elec', answer_kind: kind, options }
+    renderApp('/daily', {
+      ...api(timed(120)),
+      'GET /api/daily/elec/review': {
+        body: {
+          day: '2026-10-01',
+          question: typed,
+          feedback: FEEDBACK,
+          answer: { options: [], value: 4 },
+          late: false,
+          xp: 55,
+          lp: 16.2,
+          streak: 2,
+        },
+      },
+    })
+    await userEvent.click(await screen.findByRole('button', { name: 'See the question: Electrical' }))
+    await screen.findByText(QUESTION.text)
+    await userEvent.click(screen.getByRole('button', OPEN))
+    expect(screen.getByLabelText("What's wrong?")).toBeInTheDocument()
+    if (shown) expect(screen.getByText(REPORT)).toBeInTheDocument()
+    else expect(screen.queryByText(REPORT)).toBeNull()
+  })
+
+  test('the hint says nothing about whether this question was shuffled', async () => {
+    at(midnight())
+    renderApp('/daily', api(timed(120))) // two options in bank order
+    await userEvent.click(await screen.findByRole('button', { name: 'Start the Mechanical question' }))
+    await screen.findByText(QUESTION.text)
+    expect(screen.getByText(HINT)).toBeInTheDocument()
+    expect(screen.queryByText(/this question|was shuffled|kept in order/i)).toBeNull()
+  })
 })

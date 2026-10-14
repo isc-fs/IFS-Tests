@@ -24,10 +24,13 @@ Area = Literal["mech", "elec", "rules"]
 Id = Annotated[int, Path(ge=1, le=2**63 - 1)]
 
 
-def _result(db: Db, r: daily.Result) -> DailyResult:
+def _result(db: Db, r: daily.Result, settings: AppSettings) -> DailyResult:
+    key = daily.option_key(db, r.attempt_id, r.day, r.created_at, settings.rules_1b_from)
     return DailyResult(
         day=r.day,
-        question=play_question(questions.show(db, [r.question], r.answer.get("options") or [])[0]),
+        question=play_question(
+            questions.show(db, [r.question], r.answer.get("options") or [], order_key=key)[0]
+        ),
         feedback=None if r.pending else feedback(r.checked),
         released_at=r.released_at,
         answer=sent(r.answer),
@@ -56,7 +59,9 @@ def start_daily(area: Area, user: Member, db: Db, now: Now, settings: AppSetting
     policy = signals.policy(settings, now)
     q, attempt = daily.start(db, user, area, now, policy, rules_from=settings.rules_1b_from)
     assert attempt.deadline_at is not None  # noqa: S101 - set when a daily attempt is created
-    shown = questions.show(db, [q])[0]
+    assert attempt.day is not None  # noqa: S101 - set when a daily attempt is created
+    key = daily.option_key(db, attempt.id, attempt.day, attempt.created_at, settings.rules_1b_from)
+    shown = questions.show(db, [q], order_key=key)[0]
     keep = signals.keeps(attempt, policy)
     return TimedQuestion(
         attempt_id=attempt.id,
@@ -84,14 +89,19 @@ def answer_daily(
         signals_sent(body),
         signals.policy(settings, now),
     )
-    return _result(db, r)
+    return _result(db, r, settings)
 
 
 @router.get("/{area}/review")
 def review_daily(
-    area: Area, user: Member, db: Db, now: Now, day: Annotated[date | None, Query()] = None
+    area: Area,
+    user: Member,
+    db: Db,
+    now: Now,
+    settings: AppSettings,
+    day: Annotated[date | None, Query()] = None,
 ) -> DailyResult:
-    return _result(db, daily.review(db, user, area, now, day))
+    return _result(db, daily.review(db, user, area, now, day), settings)
 
 
 @router.post("/attempts/{attempt_id}/hint")

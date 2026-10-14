@@ -816,6 +816,46 @@ describe('ranked play: the signals a card sends and the note it copies', () => {
     })
   })
 
+  describe('a refetch with the same options in another order', () => {
+    const [charlie, alpha, bravo] = shuffled.options
+    const many = { ...shuffled, answer_kind: 'choice-many' }
+
+    test('keeps the selected option by its id, not by its place', async () => {
+      const view = card()
+      await userEvent.click(screen.getByRole('radio', { name: /Alpha/ }))
+      view.rerender({ question: { ...shuffled, options: [bravo, charlie, alpha] } })
+      expect(screen.getByRole('radio', { name: /Alpha/ })).toBeChecked()
+      expect(screen.getByRole('radio', { name: /Bravo/ })).not.toBeChecked()
+      expect(screen.getByRole('radio', { name: /Charlie/ })).not.toBeChecked()
+      await submit()
+      expect(view.onAnswer.mock.calls[0][0]).toEqual({ options: [alpha.id] })
+    })
+
+    test('keeps every selected option of a multiple choice question', async () => {
+      const view = card({ question: many })
+      await userEvent.click(screen.getByRole('checkbox', { name: /Charlie/ }))
+      await userEvent.click(screen.getByRole('checkbox', { name: /Alpha/ }))
+      view.rerender({ question: { ...many, options: [alpha, bravo, charlie] } })
+      expect(screen.getByRole('checkbox', { name: /Charlie/ })).toBeChecked()
+      expect(screen.getByRole('checkbox', { name: /Alpha/ })).toBeChecked()
+      expect(screen.getByRole('checkbox', { name: /Bravo/ })).not.toBeChecked()
+      await submit()
+      expect([...(view.onAnswer.mock.calls[0][0].options as number[])].sort()).toEqual([alpha.id, charlie.id])
+    })
+
+    test('keeps the letters as list positions and the hint on the option it ruled out', async () => {
+      const onHint = vi.fn(async () => ({ text: 'Not that one.', removed_options: [bravo.id] }))
+      const view = card({ onHint })
+      await userEvent.click(await screen.findByRole('button', { name: 'Hint (a right answer earns half)' }))
+      await screen.findByText(/Not that one\./)
+      view.rerender({ question: { ...shuffled, options: [bravo, alpha, charlie] } })
+      expect(view.letters().map((l) => l?.replace(NBSP, ''))).toEqual(['A', 'B', 'C'])
+      const row = screen.getByRole('radio', { name: /Bravo/ })
+      expect(row).toBeDisabled()
+      expect(screen.getByRole('radio', { name: /Alpha/ })).toBeEnabled()
+    })
+  })
+
   describe('a hint can rule the decoy out', () => {
     const HINT_BUTTON = { name: 'Hint (a right answer earns half)' }
     const hinted = async (removed: number[], decoy: number) => {
@@ -1048,5 +1088,48 @@ describe('a result that waits for day close', () => {
     recorded({ mode: 'practice', deferred: true })
     expect(screen.getByText(/Practice moves no LP/)).toBeInTheDocument()
     expect(screen.queryByText(/at midnight/)).toBeNull()
+  })
+})
+
+describe('the problem report on a card names options by text only when told to', () => {
+  const HINT = 'Name the option by its text, not its letter.'
+  const OPEN = { name: 'Report a problem with this question' }
+  const feedback = { correct: true, official: 'AS Emergency', correct_options: [50], solutions: [] }
+
+  const mount = (props: Partial<ComponentProps<typeof QuestionCard>> = {}) => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(
+      async () =>
+        new Response(JSON.stringify(MEMBER), { status: 200, headers: { 'content-type': 'application/json' } }),
+    )
+    queryClient.clear()
+    return render(
+      <QueryClientProvider client={queryClient}>
+        <QuestionCard
+          question={{ ...QUESTION, documents: { year: 2025, used: [], newer: [] } }}
+          feedback={feedback}
+          onAnswer={vi.fn()}
+          {...props}
+        />
+      </QueryClientProvider>,
+    )
+  }
+
+  test('with nameByText the open form carries the hint', async () => {
+    mount({ nameByText: true })
+    await userEvent.click(screen.getByRole('button', OPEN))
+    expect(screen.getByText(HINT)).toBeInTheDocument()
+  })
+
+  test('without it the open form does not', async () => {
+    mount()
+    await userEvent.click(screen.getByRole('button', OPEN))
+    expect(screen.getByLabelText("What's wrong?")).toBeInTheDocument()
+    expect(screen.queryByText(HINT)).toBeNull()
+  })
+
+  test('there is no report, and so no hint, before the answer', () => {
+    mount({ feedback: undefined, nameByText: true })
+    expect(screen.queryByRole('button', OPEN)).toBeNull()
+    expect(screen.queryByText(HINT)).toBeNull()
   })
 })

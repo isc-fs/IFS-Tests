@@ -2428,6 +2428,10 @@ export type ReviewPatch = {
      */
     exclusion_note?: string | null;
     /**
+     * Keep Order
+     */
+    keep_order?: boolean | null;
+    /**
      * Acknowledge Change
      */
     acknowledge_change?: boolean | null;
@@ -2495,6 +2499,24 @@ export type ReviewQuestion = {
      * Exclusion Note
      */
     exclusion_note: string | null;
+    /**
+     * Keep Order
+     *
+     * Never shuffled on the daily: shown in bank order
+     */
+    keep_order: boolean;
+    /**
+     * Option Order
+     *
+     * How the daily shows the options: in a per-attempt order, kept in bank order by the automatic rules (see option_order_reason), or pinned in bank order by a reviewer
+     */
+    option_order: 'shuffled' | 'auto' | 'pinned';
+    /**
+     * Option Order Reason
+     *
+     * Why the automatic rules would keep the bank order, if they would; null while the answer is hidden from this reviewer
+     */
+    option_order_reason: 'kind' | 'blank' | 'figure' | 'relative' | 'label' | 'yes-no' | 'ladder-range' | 'ladder-sorted' | 'ladder-word' | 'stem' | 'solution' | null;
     /**
      * Key Changed At
      */

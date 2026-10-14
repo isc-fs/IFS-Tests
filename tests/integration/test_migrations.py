@@ -603,3 +603,71 @@ def test_the_0027_downgrade_refuses_while_a_result_is_pending_and_goes_when_none
             c.execute(text("DELETE FROM users WHERE id = 9941"))
             c.execute(text("DELETE FROM questions WHERE id = 9941"))
     command.check(cfg)
+
+
+KEEP_ORDER_REVISION = "0028"
+KEEP_ORDER_BEFORE = "0027"
+
+
+def keep_order_column(engine: Engine) -> Any:
+    return next((c for c in inspect(engine).get_columns("questions") if c["name"] == "keep_order"), None)
+
+
+def first_drawn_column(engine: Engine) -> Any:
+    columns = inspect(engine).get_columns("daily_questions")
+    return next((c for c in columns if c["name"] == "first_drawn_at"), None)
+
+
+def test_0028_adds_the_reviewers_pin_expand_only_and_downgrade_drops_just_the_column(
+    postgres_url: str,
+) -> None:
+    from alembic.script import ScriptDirectory
+    from sqlalchemy import text
+
+    cfg = migrate(postgres_url)
+    scripts = ScriptDirectory.from_config(cfg)
+    assert scripts.get_current_head() == KEEP_ORDER_REVISION
+    script = scripts.get_revision(KEEP_ORDER_REVISION)
+    assert script is not None and script.down_revision == KEEP_ORDER_BEFORE
+    command.downgrade(cfg, KEEP_ORDER_BEFORE)
+    engine = create_engine(postgres_url)
+    assert keep_order_column(engine) is None
+    assert first_drawn_column(engine) is None
+    with engine.begin() as c:
+        c.execute(
+            text(
+                "INSERT INTO questions (id, type, text, area, answer_kind, source_hash, graded, playable) "
+                "OVERRIDING SYSTEM VALUE VALUES (9931, 'input', 'before', 'mech', 'number', 'h1', true, true)"
+            )
+        )
+
+    command.upgrade(cfg, "head")
+    column = keep_order_column(engine)
+    assert column is not None and column["nullable"] is False
+    assert "false" in str(column["default"]).lower()
+    first = first_drawn_column(engine)
+    assert first is not None and first["nullable"] is True
+    with engine.begin() as c:
+        assert c.execute(text("SELECT keep_order FROM questions WHERE id = 9931")).scalar_one() is False
+        # what the previous release does: it inserts without knowing the column
+        c.execute(
+            text(
+                "INSERT INTO questions (id, type, text, area, answer_kind, source_hash, graded, playable) "
+                "OVERRIDING SYSTEM VALUE VALUES (9932, 'input', 'old code', 'mech', 'number', 'h2', true, true)"
+            )
+        )
+        assert c.execute(text("SELECT keep_order FROM questions WHERE id = 9932")).scalar_one() is False
+        c.execute(text("UPDATE questions SET keep_order = true WHERE id = 9931"))
+    command.check(cfg)
+
+    command.downgrade(cfg, KEEP_ORDER_BEFORE)
+    assert keep_order_column(engine) is None
+    with engine.begin() as c:
+        assert c.execute(text("SELECT count(*) FROM questions WHERE id IN (9931, 9932)")).scalar_one() == 2
+
+    command.upgrade(cfg, "head")
+    assert keep_order_column(engine) is not None
+    with engine.begin() as c:
+        assert c.execute(text("SELECT keep_order FROM questions WHERE id = 9931")).scalar_one() is False
+        c.execute(text("DELETE FROM questions WHERE id IN (9931, 9932)"))
+    command.check(cfg)

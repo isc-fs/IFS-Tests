@@ -1,7 +1,16 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { expect, test } from 'vitest'
+import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { ADMIN, MEMBER, renderApp } from '../test/render'
+
+const fairPlay = vi.hoisted(() => ({ on: true }))
+vi.mock('../lib/fairPlay', async (original) => ({
+  ...(await original<typeof import('../lib/fairPlay')>()),
+  fairPlayOn: () => fairPlay.on,
+}))
+beforeEach(() => {
+  fairPlay.on = true
+})
 
 const REVIEWER = { ...MEMBER, id: 3, display_name: 'Rev', role: 'reviewer' }
 const QUEUES = { reports: 1, changed: 1, unclassified: 174, ungraded: 80, excluded: 0 }
@@ -47,6 +56,9 @@ const DETAIL = {
   answered: 8,
   right: 2,
   quiz_notes: [],
+  keep_order: false,
+  option_order: 'shuffled',
+  option_order_reason: null,
 }
 
 test('members are told the review area is for reviewers', async () => {
@@ -398,4 +410,332 @@ test("FS-Quiz's quiz notes are shown with the question", async () => {
   expect(within(shown).getByText("FS-Quiz's notes on its quizzes")).toBeInTheDocument()
   expect(within(shown).getByText(note)).toBeInTheDocument()
   expect(screen.getByText(/^Hidden from players: FS-Quiz: Question 15/)).toBeInTheDocument()
+})
+
+describe('option order on the daily', () => {
+  const quiet = { ...DETAIL, reports: [], key_changed_at: null }
+  const PANEL = { name: 'Option order on the daily' }
+  const SWITCH = { name: 'Keep bank order on the daily' }
+  const PINNED = "Pinned: bank order from each player's next load. Open attempts reorder on reload."
+  const SHUFFLED_AGAIN = "Pin removed: shuffled from each player's next load."
+  /** What the server answers to a save: the pin as sent, and the verdict the rules give once it is off. */
+  const saved =
+    (detail: object, whenOff: { option_order: string; option_order_reason: string | null }) => (body: unknown) => {
+      const { keep_order } = body as { keep_order: boolean }
+      return {
+        body: keep_order ? { ...detail, keep_order, option_order: 'pinned' } : { ...detail, keep_order, ...whenOff },
+      }
+    }
+  const open = async (detail: object, extra = {}, role: 'form' | 'region' = 'form') => {
+    const view = renderApp('/review/7', {
+      'GET /api/me': { body: REVIEWER },
+      'GET /api/review/questions/7': { body: detail },
+      'PATCH /api/review/questions/7': saved(detail, { option_order: 'shuffled', option_order_reason: null }),
+      ...extra,
+    })
+    return { ...view, panel: await screen.findByRole(role, PANEL) }
+  }
+
+  test.each(['choice-one', 'choice-many'])('a shuffled %s question has a switch that is off', async (kind) => {
+    const { panel } = await open({ ...quiet, answer_kind: kind })
+    const toggle = within(panel).getByRole('switch', SWITCH)
+    expect(toggle).toHaveAttribute('aria-checked', 'false')
+    expect(toggle).toBeEnabled()
+    expect(within(panel).getAllByRole('switch')).toHaveLength(1) // one control, not a pin and an unpin button
+    expect(within(panel).queryAllByRole('button')).toHaveLength(0)
+    const described = toggle.getAttribute('aria-describedby')
+    expect(described).toBeTruthy()
+    const text = document.getElementById(described as string)
+    expect(text).not.toBeNull()
+    expect(panel).toContainElement(text)
+    expect(text?.textContent?.trim()).toBeTruthy()
+  })
+
+  test.each([
+    ['off', quiet],
+    ['on', { ...quiet, keep_order: true, option_order: 'pinned', option_order_reason: null }],
+  ])('the switch that is %s is described by text that says what it does', async (_, detail) => {
+    const { panel } = await open(detail)
+    const text = document.getElementById(
+      within(panel).getByRole('switch', SWITCH).getAttribute('aria-describedby') as string,
+    )
+    expect(text?.textContent?.trim().length).toBeGreaterThan(10)
+    expect(text?.textContent).toMatch(/order/i)
+  })
+
+  test('turning the switch on pins the question, says so, and warns that open attempts reorder', async () => {
+    const { sent, panel } = await open(quiet)
+    await userEvent.click(within(panel).getByRole('switch', SWITCH))
+    expect(await screen.findByText(PINNED)).toBeInTheDocument()
+    expect(sent('PATCH /api/review/questions/7')).toHaveLength(1)
+    expect(sent('PATCH /api/review/questions/7')[0].body).toEqual({ keep_order: true })
+    expect(within(panel).getByRole('switch', SWITCH)).toHaveAttribute('aria-checked', 'true')
+  })
+
+  test('the saved message is announced to a screen reader', async () => {
+    const { panel } = await open(quiet)
+    await userEvent.click(within(panel).getByRole('switch', SWITCH))
+    const saved = await screen.findByText(PINNED)
+    expect(
+      saved.closest('[role="status"], [aria-live="polite"], [aria-live="assertive"], [role="alert"]'),
+    ).not.toBeNull()
+  })
+
+  test('turning it off again says the question is shuffled when the rules would shuffle it', async () => {
+    const { sent, panel } = await open(quiet)
+    await userEvent.click(within(panel).getByRole('switch', SWITCH))
+    await screen.findByText(PINNED)
+    await userEvent.click(within(panel).getByRole('switch', SWITCH))
+    expect(await screen.findByText(SHUFFLED_AGAIN)).toBeInTheDocument()
+    expect(screen.queryByText(PINNED)).toBeNull()
+    expect(sent('PATCH /api/review/questions/7')[1].body).toEqual({ keep_order: false })
+    expect(within(panel).getByRole('switch', SWITCH)).toHaveAttribute('aria-checked', 'false')
+  })
+
+  test('the message after removing a pin comes from what the server says now, not from the click', async () => {
+    const pinned = { ...quiet, keep_order: true, option_order: 'pinned', option_order_reason: 'relative' }
+    const { sent, panel } = await open(pinned, {
+      'PATCH /api/review/questions/7': saved(pinned, { option_order: 'auto', option_order_reason: 'relative' }),
+    })
+    await userEvent.click(within(panel).getByRole('switch', SWITCH))
+    expect(
+      await screen.findByText(/Pin removed\. This question is still kept in order: an option refers/),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(SHUFFLED_AGAIN)).toBeNull()
+    expect(sent('PATCH /api/review/questions/7')[0].body).toEqual({ keep_order: false })
+  })
+
+  test('unpinning a question the server now shuffles is told apart from one it still keeps', async () => {
+    const pinned = { ...quiet, keep_order: true, option_order: 'pinned', option_order_reason: 'figure' }
+    const { panel } = await open(pinned, {
+      'PATCH /api/review/questions/7': saved(pinned, { option_order: 'shuffled', option_order_reason: null }),
+    })
+    await userEvent.click(within(panel).getByRole('switch', SWITCH))
+    expect(await screen.findByText(SHUFFLED_AGAIN)).toBeInTheDocument()
+    expect(screen.queryByText(/still kept in order/)).toBeNull()
+  })
+
+  test('a question kept in order for ladder-sorted says it in the words of the rule', async () => {
+    const { panel } = await open({ ...quiet, option_order: 'auto', option_order_reason: 'ladder-sorted' }, {}, 'region')
+    expect(within(panel).getByText(/the options are numbers in increasing order/)).toBeInTheDocument()
+  })
+
+  test('the figure rule is worded for labels, not for any picture with short options', async () => {
+    const { panel } = await open({ ...quiet, option_order: 'auto', option_order_reason: 'figure' }, {}, 'region')
+    const kept = within(panel).getByText(/Kept in this order automatically: \S/)
+    expect(kept.textContent).toMatch(/picture|image|figure/i)
+    expect(kept.textContent).toMatch(/label/i)
+    expect(within(panel).queryByText(/picture and short options/)).toBeNull()
+  })
+
+  test.each([
+    'relative',
+    'label',
+    'figure',
+    'yes-no',
+    'ladder-range',
+    'ladder-sorted',
+    'ladder-word',
+    'stem',
+    'solution',
+    'blank',
+  ])('a question kept in order by the rules (%s) says why and cannot be switched', async (reason) => {
+    const { panel } = await open({ ...quiet, option_order: 'auto', option_order_reason: reason }, {}, 'region')
+    expect(screen.queryByRole('form', PANEL)).toBeNull()
+    expect(within(panel).getByText(/Kept in this order automatically: \S/)).toBeInTheDocument()
+    expect(within(panel).queryByText(new RegExp(`: ${reason}\\.`))).toBeNull() // words, not the code
+    expect(within(panel).queryByRole('button')).toBeNull()
+    expect(within(panel).queryByRole('switch')).toBeNull() // an automatic keep cannot be overridden
+  })
+
+  test('an automatic keep says it cannot be overridden and where to report a false positive', async () => {
+    const { panel } = await open({ ...quiet, option_order: 'auto', option_order_reason: 'relative' }, {}, 'region')
+    const text = panel.textContent ?? ''
+    expect(text).toMatch(/can(no|')t be (overridden|overruled|switched|changed|turned off)/i)
+    expect(text).toMatch(/false positive/i)
+    expect(text).toMatch(/reviewers?['’]? guide/i)
+  })
+
+  test.each([
+    ['shuffled', quiet],
+    ['pinned', { ...quiet, keep_order: true, option_order: 'pinned', option_order_reason: null }],
+  ])('the line about false positives is not shown on a %s question', async (_, detail) => {
+    const { panel } = await open(detail)
+    expect(within(panel).queryByText(/false positive/i)).toBeNull()
+  })
+
+  test('a pinned question that the rules would keep anyway says both', async () => {
+    const { panel } = await open({
+      ...quiet,
+      keep_order: true,
+      option_order: 'pinned',
+      option_order_reason: 'figure',
+    })
+    expect(within(panel).getByRole('switch', SWITCH)).toHaveAttribute('aria-checked', 'true')
+    expect(within(panel).getByText(/label/i)).toBeInTheDocument()
+    expect(within(panel).getByText(/anyway/i)).toBeInTheDocument()
+  })
+
+  test('a pinned question the rules would shuffle says nothing about a rule', async () => {
+    const { panel } = await open({ ...quiet, keep_order: true, option_order: 'pinned', option_order_reason: null })
+    expect(within(panel).queryByText(/anyway/i)).toBeNull()
+    expect(within(panel).queryByText(/an option refers|picture|scale/)).toBeNull()
+  })
+
+  test.each(['number', 'numbers', 'range', 'text', 'self', 'drag_sort'])(
+    'a %s question has no option order panel',
+    async (kind) => {
+      renderApp('/review/7', {
+        'GET /api/me': { body: REVIEWER },
+        'GET /api/review/questions/7': {
+          body: { ...quiet, answer_kind: kind, options: [], option_order: 'auto', option_order_reason: 'kind' },
+        },
+      })
+      expect(await screen.findByText('Which relay must open?')).toBeInTheDocument()
+      expect(screen.queryByRole('form', PANEL)).toBeNull()
+      expect(screen.queryByRole('heading', PANEL)).toBeNull()
+      expect(screen.queryByRole('switch', SWITCH)).toBeNull()
+    },
+  )
+
+  test('a refused save is shown in the panel and nothing is pinned', async () => {
+    const { panel } = await open(quiet, {
+      'PATCH /api/review/questions/7': { status: 409, body: { detail: 'Someone else just changed it.' } },
+    })
+    await userEvent.click(within(panel).getByRole('switch', SWITCH))
+    expect(await within(panel).findByRole('alert')).toHaveTextContent('Someone else just changed it.')
+    expect(screen.queryByText(PINNED)).toBeNull()
+    expect(within(panel).getByRole('switch', SWITCH)).toHaveAttribute('aria-checked', 'false')
+  })
+
+  test('the panel sits with the other forms and pinning leaves the labels form alone', async () => {
+    const { sent } = await open(quiet)
+    expect(screen.getByRole('form', { name: 'Area and topic' })).toBeInTheDocument()
+    expect(screen.getByRole('form', { name: 'Who sees it' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('switch', SWITCH))
+    await screen.findByText(PINNED)
+    expect(sent('PATCH /api/review/questions/7')).toHaveLength(1)
+    expect(sent('PATCH /api/review/questions/7')[0].body).toEqual({ keep_order: true })
+  })
+
+  test('reports are shown with a line saying that their letters are the player’s own order', async () => {
+    renderApp('/review/7', {
+      'GET /api/me': { body: REVIEWER },
+      'GET /api/review/questions/7': { body: DETAIL },
+    })
+    expect(await screen.findByText('The answer is the precharge relay')).toBeInTheDocument()
+    expect(screen.getByText("Letters in a report are the player's own order.")).toBeInTheDocument()
+  })
+
+  test.each([
+    ['before the rule date', { ...DETAIL }, false],
+    [
+      'on a question kept in bank order by a rule',
+      { ...DETAIL, option_order: 'auto', option_order_reason: 'relative' },
+      true,
+    ],
+    ['on a question a reviewer pinned', { ...DETAIL, keep_order: true, option_order: 'pinned' }, true],
+    [
+      'on a question with no options to shuffle',
+      { ...DETAIL, option_order: 'auto', option_order_reason: 'kind' },
+      true,
+    ],
+  ])('the line about letters is not shown %s', async (_when, detail, on) => {
+    fairPlay.on = on
+    renderApp('/review/7', {
+      'GET /api/me': { body: REVIEWER },
+      'GET /api/review/questions/7': { body: detail },
+    })
+    expect(await screen.findByText('The answer is the precharge relay')).toBeInTheDocument()
+    expect(screen.queryByText("Letters in a report are the player's own order.")).toBeNull()
+  })
+})
+
+describe('option order: focus and the words for every reason', () => {
+  const quiet = { ...DETAIL, reports: [], key_changed_at: null }
+  const PANEL = { name: 'Option order on the daily' }
+  const SWITCH = { name: 'Keep bank order on the daily' }
+  const CODES = [
+    'kind',
+    'blank',
+    'relative',
+    'label',
+    'figure',
+    'yes-no',
+    'ladder-range',
+    'ladder-sorted',
+    'ladder-word',
+    'stem',
+    'solution',
+  ]
+  const open = async (detail: object, patched?: object) => {
+    renderApp('/review/7', {
+      'GET /api/me': { body: REVIEWER },
+      'GET /api/review/questions/7': { body: detail },
+      ...(patched ? { 'PATCH /api/review/questions/7': { body: patched } } : {}),
+    })
+    return screen.findByRole('form', PANEL)
+  }
+  const kept = async (code: string) => {
+    renderApp('/review/7', {
+      'GET /api/me': { body: REVIEWER },
+      'GET /api/review/questions/7': {
+        body: {
+          ...quiet,
+          options: code === 'kind' ? [quiet.options[0]] : quiet.options,
+          option_order: 'auto',
+          option_order_reason: code,
+        },
+      },
+    })
+    const panel = await screen.findByRole('region', PANEL)
+    return within(panel).getByText(/Kept in this order automatically: \S/).textContent ?? ''
+  }
+
+  test('removing a pin the rules would keep anyway moves focus to the saved notice, because the switch is gone', async () => {
+    const pinned = { ...quiet, keep_order: true, option_order: 'pinned', option_order_reason: 'relative' }
+    const panel = await open(pinned, { ...pinned, keep_order: false, option_order: 'auto' })
+    await userEvent.click(within(panel).getByRole('switch', SWITCH))
+    const notice = await screen.findByText(/Pin removed\. This question is still kept in order/)
+    expect(screen.queryByRole('switch', SWITCH)).toBeNull()
+    await waitFor(() => {
+      const active = document.activeElement
+      expect(active).not.toBe(document.body)
+      expect(active === notice || notice.contains(active) || (active?.contains(notice) ?? false)).toBe(true)
+    })
+  })
+
+  test('removing a pin from a question that is shuffled again leaves focus on the switch', async () => {
+    const pinned = { ...quiet, keep_order: true, option_order: 'pinned', option_order_reason: null }
+    const panel = await open(pinned, { ...pinned, keep_order: false, option_order: 'shuffled' })
+    const toggle = within(panel).getByRole('switch', SWITCH)
+    await userEvent.click(toggle)
+    await screen.findByText(/Pin removed: shuffled/)
+    expect(within(panel).getByRole('switch', SWITCH)).toHaveFocus()
+  })
+
+  test('pinning keeps focus on the switch', async () => {
+    const panel = await open(quiet, { ...quiet, keep_order: true, option_order: 'pinned' })
+    await userEvent.click(within(panel).getByRole('switch', SWITCH))
+    await screen.findByText(/Pinned: bank order/)
+    expect(within(panel).getByRole('switch', SWITCH)).toHaveFocus()
+  })
+
+  test.each(CODES)('the reason %s has words of its own, not the code', async (code) => {
+    const text = await kept(code)
+    expect(text.replace(/^Kept in this order automatically:\s*/, '').trim().length).toBeGreaterThan(8)
+    if (code.includes('-')) expect(text).not.toContain(code) // a plain word like "stem" may be part of the sentence
+    expect(text).not.toMatch(new RegExp(`: ${code}\\.`))
+  })
+
+  test('no two reasons are explained with the same sentence', async () => {
+    const seen = new Map<string, string>()
+    for (const code of CODES) {
+      const text = await kept(code)
+      expect(seen.get(text), `${code} reads like ${seen.get(text)}`).toBeUndefined()
+      seen.set(text, code)
+      document.body.innerHTML = ''
+    }
+    expect(seen.size).toBe(CODES.length)
+  })
 })

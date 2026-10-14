@@ -7,17 +7,17 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from ifs_tests.bank.mirror import load_bank
 from ifs_tests.bank.sample import SAMPLE_DIR
-from ifs_tests.db.models import AuditLog, Question, User
+from ifs_tests.db.models import AnswerOption, AuditLog, Question, Solution, User
 from ifs_tests.services import review
 from ifs_tests.services.bank import import_bank
 
 from ..conftest import Clock
-from .helpers import invite, login, member, register
+from .helpers import invite, login, member, options, register
 
 pytestmark = pytest.mark.integration
 NewClient = Callable[[], TestClient]
@@ -394,3 +394,277 @@ def test_a_correction_reads_a_decimal_comma_where_the_question_asks_for_three_de
     assert (fixed["answer_kind"], fixed["correction"]) == ("number", "59,988")  # Q864
     ok = player.post(f"/api/practice/questions/{qid}/answer", json={"value": "59.988"}).json()
     assert ok["correct"] is True
+
+
+# --- option order on the daily (feat/32) -------------------------------------------------------------------
+
+
+def order_audit(db: Session, qid: int) -> list[dict[str, Any]]:
+    entries = db.scalars(
+        select(AuditLog).where(AuditLog.target == f"question:{qid}", AuditLog.action == "question.update")
+    ).all()
+    return [e.details for e in entries]
+
+
+def test_pinning_a_question_is_saved_shown_and_audited(
+    reviewer: TestClient, db: Session, bank: dict[int, int]
+) -> None:
+    qid = bank[90011]
+    before = reviewer.get(f"/api/review/questions/{qid}").json()
+    assert (before["keep_order"], before["option_order"], before["option_order_reason"]) == (
+        False,
+        "shuffled",
+        None,
+    )
+    r = reviewer.patch(f"/api/review/questions/{qid}", json={"keep_order": True})
+    assert r.status_code == 200, r.text
+    assert (r.json()["keep_order"], r.json()["option_order"]) == (True, "pinned")
+    after = reviewer.get(f"/api/review/questions/{qid}").json()
+    assert (after["keep_order"], after["option_order"]) == (True, "pinned")
+    assert order_audit(db, qid) == [{"keep_order": [False, True]}]
+    back = reviewer.patch(f"/api/review/questions/{qid}", json={"keep_order": False}).json()
+    assert (back["keep_order"], back["option_order"]) == (False, "shuffled")
+    assert order_audit(db, qid) == [{"keep_order": [False, True]}, {"keep_order": [True, False]}]
+
+
+def test_saving_the_value_it_already_has_writes_no_audit_row(
+    reviewer: TestClient, db: Session, bank: dict[int, int]
+) -> None:
+    qid = bank[90011]
+    assert reviewer.patch(f"/api/review/questions/{qid}", json={"keep_order": False}).status_code == 200
+    assert order_audit(db, qid) == []
+    reviewer.patch(f"/api/review/questions/{qid}", json={"keep_order": True})
+    assert reviewer.patch(f"/api/review/questions/{qid}", json={"keep_order": True}).status_code == 200
+    assert order_audit(db, qid) == [{"keep_order": [False, True]}]
+
+
+def test_pinning_alone_does_not_confirm_the_labels(reviewer: TestClient, bank: dict[int, int]) -> None:
+    qid = bank[90011]
+    d = reviewer.patch(f"/api/review/questions/{qid}", json={"keep_order": True}).json()
+    assert d["labels_reviewed"] is False
+    assert reviewer.get(f"/api/review/questions/{qid}").json()["labels_reviewed"] is False
+
+
+def test_null_leaves_the_pin_as_it_is(reviewer: TestClient, bank: dict[int, int]) -> None:
+    qid = bank[90011]
+    reviewer.patch(f"/api/review/questions/{qid}", json={"keep_order": True})
+    same = reviewer.patch(f"/api/review/questions/{qid}", json={"keep_order": None, "topic": None}).json()
+    assert same["keep_order"] is True
+
+
+def test_the_pin_can_travel_with_other_changes_in_one_audit_row(
+    reviewer: TestClient, db: Session, bank: dict[int, int]
+) -> None:
+    qid = bank[90012]
+    r = reviewer.patch(
+        f"/api/review/questions/{qid}", json={"area": "mech", "topic": "powertrain", "keep_order": True}
+    )
+    assert r.status_code == 200, r.text
+    (details,) = order_audit(db, qid)
+    assert details["keep_order"] == [False, True] and details["area"] == ["unclassified", "mech"]
+
+
+def test_only_reviewers_can_pin(reviewer: TestClient, player: TestClient, bank: dict[int, int]) -> None:
+    qid = bank[90011]
+    assert player.patch(f"/api/review/questions/{qid}", json={"keep_order": True}).status_code == 403
+    assert reviewer.get(f"/api/review/questions/{qid}").json()["keep_order"] is False
+
+
+def test_a_pin_survives_a_reimport_of_the_bank(
+    reviewer: TestClient, db: Session, clock: Clock, tmp_path: Path, bank: dict[int, int]
+) -> None:
+    qid = bank[90011]
+    reviewer.patch(f"/api/review/questions/{qid}", json={"keep_order": True})
+    unchanged = copy.deepcopy(load_bank(SAMPLE_DIR))
+    import_bank(db, unchanged, SAMPLE_DIR / "img", tmp_path, clock.now)
+    assert reviewer.get(f"/api/review/questions/{qid}").json()["keep_order"] is True
+    changed = copy.deepcopy(load_bank(SAMPLE_DIR))
+    edited = next(q for q in changed["questions"] if q["question_id"] == 90011)
+    edited["text"] += " (edited upstream)"
+    edited["answers"][0]["text"] += " (reworded)"
+    import_bank(db, changed, SAMPLE_DIR / "img", tmp_path, clock.now)
+    after = reviewer.get(f"/api/review/questions/{qid}").json()
+    assert after["keep_order"] is True and after["option_order"] == "pinned"
+    assert reviewer.get(f"/api/review/questions/{bank[90001]}").json()["keep_order"] is False
+
+
+def test_the_reviewers_option_list_stays_in_bank_order(
+    reviewer: TestClient, db: Session, bank: dict[int, int]
+) -> None:
+    for fsquiz_id in (90001, 90003, 90006, 90011):
+        qid = bank[fsquiz_id]
+        d = reviewer.get(f"/api/review/questions/{qid}").json()
+        assert [o["id"] for o in d["options"]] == options(db, qid)
+    reviewer.patch(f"/api/review/questions/{bank[90011]}", json={"keep_order": True})
+    d = reviewer.get(f"/api/review/questions/{bank[90011]}").json()
+    assert [o["id"] for o in d["options"]] == options(db, bank[90011])
+
+
+def test_the_panel_says_why_a_question_is_kept_in_order_without_anyone_pinning_it(
+    reviewer: TestClient, db: Session, bank: dict[int, int]
+) -> None:
+    qid = bank[90011]
+    last = options(db, qid)[-1]
+    db.execute(update(AnswerOption).where(AnswerOption.id == last).values(text="All of the above"))
+    db.commit()
+    d = reviewer.get(f"/api/review/questions/{qid}").json()
+    assert (d["keep_order"], d["option_order"], d["option_order_reason"]) == (False, "auto", "relative")
+    pinned = reviewer.patch(f"/api/review/questions/{qid}", json={"keep_order": True}).json()
+    assert (pinned["option_order"], pinned["option_order_reason"]) == (
+        "pinned",
+        "relative",
+    )  # it would stay anyway
+    plain = reviewer.get(f"/api/review/questions/{bank[90001]}").json()
+    assert (plain["option_order"], plain["option_order_reason"]) == ("shuffled", None)
+    scale = reviewer.get(f"/api/review/questions/{bank[90008]}").json()
+    assert (scale["option_order"], scale["option_order_reason"]) == ("auto", "ladder-sorted")
+    typed = reviewer.get(f"/api/review/questions/{bank[90002]}").json()
+    assert typed["option_order"] == "auto" and typed["option_order_reason"] == "kind"
+
+
+def test_a_retired_option_still_counts_for_the_verdict_shown(
+    reviewer: TestClient, db: Session, bank: dict[int, int]
+) -> None:
+    qid = bank[90011]
+    last = options(db, qid)[-1]
+    db.execute(
+        update(AnswerOption).where(AnswerOption.id == last).values(text="None of the above", retired=True)
+    )
+    db.commit()
+    d = reviewer.get(f"/api/review/questions/{qid}").json()
+    assert (d["option_order"], d["option_order_reason"]) == ("auto", "relative")
+
+
+def test_pinning_touches_nothing_else_about_the_question(
+    reviewer: TestClient, db: Session, bank: dict[int, int]
+) -> None:
+    qid = bank[90011]
+    before = reviewer.get(f"/api/review/questions/{qid}").json()
+    reviewer.patch(f"/api/review/questions/{qid}", json={"keep_order": True})
+    after = reviewer.get(f"/api/review/questions/{qid}").json()
+    changed = {k for k in before if before[k] != after[k]}
+    assert changed == {"keep_order", "option_order"}
+    assert (
+        db.scalar(select(func.count()).select_from(AuditLog).where(AuditLog.action == "question.update")) == 1
+    )
+
+
+def test_unpinning_a_question_the_rules_keep_leaves_it_auto(
+    reviewer: TestClient, db: Session, bank: dict[int, int]
+) -> None:
+    qid = bank[90011]
+    last = options(db, qid)[-1]
+    db.execute(update(AnswerOption).where(AnswerOption.id == last).values(text="All of the above"))
+    db.commit()
+    assert reviewer.get(f"/api/review/questions/{qid}").json()["option_order"] == "auto"
+    on = reviewer.patch(f"/api/review/questions/{qid}", json={"keep_order": True}).json()
+    assert (on["keep_order"], on["option_order"], on["option_order_reason"]) == (True, "pinned", "relative")
+    off = reviewer.patch(f"/api/review/questions/{qid}", json={"keep_order": False}).json()
+    assert (off["keep_order"], off["option_order"], off["option_order_reason"]) == (False, "auto", "relative")
+    assert reviewer.get(f"/api/review/questions/{qid}").json()["option_order"] == "auto"
+    assert order_audit(db, qid) == [{"keep_order": [False, True]}, {"keep_order": [True, False]}]
+
+
+def test_the_panel_names_a_picture_with_printed_labels_and_clears_when_the_picture_goes(
+    reviewer: TestClient, db: Session, bank: dict[int, int]
+) -> None:
+    beam = reviewer.get(f"/api/review/questions/{bank[90006]}").json()  # a figure, but numeric options
+    assert (beam["option_order"], beam["option_order_reason"]) == ("shuffled", None)
+    qid = bank[90011]
+    for option_id, text in zip(options(db, qid), ["A", "B", "C", "D"], strict=True):
+        db.execute(update(AnswerOption).where(AnswerOption.id == option_id).values(text=text))
+    db.execute(update(Question).where(Question.id == qid).values(images=["sample/beam.png"]))
+    db.commit()
+    imaged = reviewer.get(f"/api/review/questions/{qid}").json()
+    assert (imaged["option_order"], imaged["option_order_reason"]) == ("auto", "figure")
+    db.execute(update(Question).where(Question.id == qid).values(images=[]))
+    db.commit()
+    plain = reviewer.get(f"/api/review/questions/{qid}").json()
+    assert (plain["option_order"], plain["option_order_reason"]) == ("auto", "label")
+
+
+def test_a_picture_with_short_free_options_alone_is_shuffled(
+    reviewer: TestClient, db: Session, bank: dict[int, int]
+) -> None:
+    qid = bank[90011]
+    db.execute(update(Question).where(Question.id == qid).values(images=["sample/beam.png"]))
+    db.commit()
+    d = reviewer.get(f"/api/review/questions/{qid}").json()
+    assert (d["option_order"], d["option_order_reason"]) == ("shuffled", None)
+    db.execute(
+        update(Question).where(Question.id == qid).values(text="Which state is labelled in the image?")
+    )
+    db.commit()
+    d = reviewer.get(f"/api/review/questions/{qid}").json()
+    assert (d["option_order"], d["option_order_reason"]) == ("auto", "figure")
+
+
+def test_the_reason_is_withheld_while_the_question_is_the_reviewers_own_running_one(
+    reviewer: TestClient, db: Session, bank: dict[int, int]
+) -> None:
+    """The reason `solution` says something about the solution text, which the reviewer must not see yet."""
+    qid = bank[90008]  # the one graded question in rules: the reviewer's own daily
+    db.add(Solution(question_id=qid, text="The correct answer is C because the cones cost time."))
+    db.commit()
+    open_ = reviewer.get(f"/api/review/questions/{qid}").json()
+    assert open_["answer_hidden"] is False
+    assert open_["option_order"] == "auto" and open_["option_order_reason"] is not None
+
+    started = reviewer.post("/api/daily/rules/start").json()
+    assert started["question"]["id"] == qid
+    hidden = reviewer.get(f"/api/review/questions/{qid}").json()
+    assert hidden["answer_hidden"] is True
+    assert hidden["option_order_reason"] is None
+    assert "cones cost time" not in str(hidden["option_order_reason"])
+    patched = reviewer.patch(f"/api/review/questions/{qid}", json={"keep_order": True}).json()
+    assert patched["answer_hidden"] is True and patched["option_order_reason"] is None
+    assert patched["keep_order"] is True
+
+    reviewer.post(f"/api/daily/attempts/{started['attempt_id']}/answer", json={"options": []})
+    released = reviewer.get(f"/api/review/questions/{qid}").json()
+    assert released["answer_hidden"] is False and released["option_order_reason"] is not None
+
+
+def test_the_verdict_cannot_be_set_through_the_patch(reviewer: TestClient, bank: dict[int, int]) -> None:
+    qid = bank[90011]
+    url = f"/api/review/questions/{qid}"
+    for body in (
+        {"option_order": "pinned"},
+        {"option_order_reason": "relative"},
+        {"shuffle": True},
+        {"keep_order": "maybe"},
+        {"keep_order": 2},
+    ):
+        assert reviewer.patch(url, json=body).status_code == 422, body
+    d = reviewer.get(url).json()
+    assert (d["keep_order"], d["option_order"]) == (False, "shuffled")
+
+
+def test_a_player_cannot_read_the_verdict(player: TestClient, bank: dict[int, int]) -> None:
+    assert player.get(f"/api/review/questions/{bank[90011]}").status_code == 403
+
+
+def test_a_text_only_question_that_mentions_a_circuit_is_not_a_figure(
+    reviewer: TestClient, bank: dict[int, int]
+) -> None:
+    d = reviewer.get(
+        f"/api/review/questions/{bank[90003]}"
+    ).json()  # "... when the shutdown circuit is opened"
+    assert (d["option_order"], d["option_order_reason"]) == ("shuffled", None)
+
+
+def test_the_options_the_panel_judges_are_read_in_position_order(
+    reviewer: TestClient, db: Session, bank: dict[int, int]
+) -> None:
+    qid = bank[90011]
+    ids_in_order = sorted(db.scalars(select(AnswerOption.id).where(AnswerOption.question_id == qid)).all())
+    for option_id, text, position in zip(
+        ids_in_order, ["5 s", "1 s", "10 s", "2 s"], [2, 0, 3, 1], strict=True
+    ):
+        db.execute(
+            update(AnswerOption).where(AnswerOption.id == option_id).values(text=text, position=position)
+        )
+    db.commit()
+    d = reviewer.get(f"/api/review/questions/{qid}").json()  # by position: 1 s, 2 s, 5 s, 10 s
+    assert (d["option_order"], d["option_order_reason"]) == ("auto", "ladder-sorted")
+    assert [o["text"] for o in d["options"]] == ["1 s", "2 s", "5 s", "10 s"]

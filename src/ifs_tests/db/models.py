@@ -295,6 +295,8 @@ class Question(Base):
     images_missing: Mapped[bool] = mapped_column(server_default="false")
     excluded: Mapped[bool] = mapped_column(server_default="false")
     exclusion_note: Mapped[str | None] = mapped_column(String(200))
+    # A reviewer's override: this question is never shuffled on the daily, whatever its options say.
+    keep_order: Mapped[bool] = mapped_column(server_default="false")
     # Set once a reviewer confirmed area and topic; re-imports keep them.
     labels_reviewed: Mapped[bool] = mapped_column(server_default="false")
     source_hash: Mapped[str] = mapped_column(String(64))
@@ -588,6 +590,8 @@ class DailyQuestion(Base):
     question_id: Mapped[int] = mapped_column(ForeignKey("questions.id", ondelete="CASCADE"), index=True)
     # When it was drawn (or redrawn after a reviewer hid it): only from then is it running for players.
     drawn_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # When the day was first drawn, whatever redraws followed: the option shuffle's gate reads this, not `drawn_at`.
+    first_drawn_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class MockSession(Base):
