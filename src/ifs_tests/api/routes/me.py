@@ -1,13 +1,14 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 
 from fastapi import APIRouter, Request, Response
 
 from ...db.models import User
 from ...domain import rank as rank_rules
 from ...domain import xp as xp_rules
-from ...services import accounts, live, privacy, streaks, xp
+from ...domain.daily import madrid_day
+from ...services import accounts, daily, live, privacy, streaks, xp
 from ..deps import AppSettings, Db, Member, Now
 from ..schemas import (
     AccountOut,
@@ -38,7 +39,10 @@ def _step(d: rank_rules.Division, title: str | None) -> Step:
     )
 
 
-def _me(db: Db, user: User, now: datetime) -> Me:
+def _me(db: Db, user: User, now: datetime, rules_from: date | None) -> Me:
+    # Like the daily page: the rank card never lags a result revealed at midnight.
+    if daily.settle_results(db, now, user.id)[0]:
+        db.refresh(user)
     r = rank_rules.standing(user.rank_points, user.rank_season, user.position, user.vertical, now)
     d = r.division
     seen_top = d.number >= rank_rules.TOP - 1
@@ -55,6 +59,7 @@ def _me(db: Db, user: User, now: datetime) -> Me:
             lp=r.lp,
             stakes=round(d.stakes * 100),
             swing=rank_rules.swing(r.points),
+            daily_at_midnight=daily.is_per_player(db, madrid_day(now), rules_from),
             miss_streak=user.miss_streak,
             aids=Aids.model_validate(d),
             ladder=[
@@ -85,13 +90,14 @@ def _me(db: Db, user: User, now: datetime) -> Me:
 
 
 @router.get("")
-def me(user: Member, db: Db, now: Now) -> Me:
-    return _me(db, user, now)
+def me(user: Member, db: Db, now: Now, settings: AppSettings) -> Me:
+    return _me(db, user, now, settings.rules_1b_from)
 
 
 @router.patch("")
-def update_me(body: ProfileIn, user: Member, db: Db, now: Now) -> Me:
-    return _me(db, accounts.update_profile(db, user, body.model_dump(exclude_unset=True)), now)
+def update_me(body: ProfileIn, user: Member, db: Db, now: Now, settings: AppSettings) -> Me:
+    updated = accounts.update_profile(db, user, body.model_dump(exclude_unset=True))
+    return _me(db, updated, now, settings.rules_1b_from)
 
 
 @router.post("/password", status_code=204)

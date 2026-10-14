@@ -128,6 +128,14 @@ def fresh_boards() -> None:
 
 
 @pytest.fixture(autouse=True)
+def fresh_failures() -> None:
+    """Attempt ids repeat on every fresh database: a failing settle is logged in full once per id per process."""
+    from ifs_tests.services import xp
+
+    xp._REPORTED.clear()
+
+
+@pytest.fixture(autouse=True)
 def no_crits(monkeypatch: pytest.MonkeyPatch) -> None:
     """Critical answers are a 5 % draw from a random server secret: off everywhere, so XP can be asserted exactly.
     A test that wants one patches `services.xp._crit` back."""

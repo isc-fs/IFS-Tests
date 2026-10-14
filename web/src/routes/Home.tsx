@@ -1,16 +1,45 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router'
 import { dailyStatusOptions } from '../api/@tanstack/react-query.gen'
-import type { DailyArea } from '../api/types.gen'
+import type { DailyArea, DailyStatus } from '../api/types.gen'
 import { AccountCard, RankCard } from '../components/RankCard'
 import { Page } from '../components/Page'
 import { useMe } from '../lib/api'
 import { AREAS, duration } from '../lib/areas'
+import { lp, RANK_CHANGE } from '../lib/rank'
+
+const DONE = ['Done', 'Locked in', 'Ran out']
 
 function areaState(a: DailyArea, today: string) {
-  if (a.state === 'done' && a.day === today) return 'Done'
+  if (a.state === 'done' && a.day === today) return a.pending ? (a.ran_out ? 'Ran out' : 'Locked in') : 'Done'
   if (a.state === 'started' && a.day === today) return 'Clock running'
   return `${duration(a.budget_s)} on the clock`
+}
+
+/** "Yesterday: 2 of 3 right, 1 ran out, +14 LP. Promoted!": yesterday's daily results, revealed at midnight. A
+ * result held back (its question is another player's daily) or not granted yet leaves the totals out: they
+ * would be short of what the rank card moved by. */
+function lastNight(s: DailyStatus): string | undefined {
+  const day = new Date(Date.parse(`${s.day}T12:00:00Z`) - 86_400_000).toISOString().slice(0, 10)
+  const items = (s.revealed ?? []).filter((r) => r.day === day)
+  if (!items.length) return undefined
+  const waiting = items.filter((r) => r.held || r.pending).length
+  if (waiting) {
+    const out = items.length - waiting
+    return `Yesterday: ${out} of ${items.length} results are in; ${waiting} held back for now.`
+  }
+  const right = items.filter((r) => r.correct === true && !r.late && !r.passed).length
+  const ranOut = items.filter((r) => r.ran_out).length
+  const moved = items.reduce((sum, r) => sum + r.lp, 0)
+  const changes = new Set(items.map((r) => r.rank_change))
+  const change = changes.has('promoted')
+    ? RANK_CHANGE.promoted
+    : changes.has('rose') !== changes.has('demoted')
+      ? RANK_CHANGE[changes.has('rose') ? 'rose' : 'demoted']
+      : ''
+  const parts = [`${right} of ${items.length} right`, ranOut ? `${ranOut} ran out` : '', lp(moved, true)]
+  const level = Math.max(0, ...items.map((r) => r.level_up ?? 0))
+  return `Yesterday: ${parts.filter(Boolean).join(', ')}.${change ? ` ${change}` : ''}${level ? ` Level ${level}!` : ''}`
 }
 
 /** The daily questions lead: they're what moves your rank, one try a day. */
@@ -21,8 +50,10 @@ function Today() {
   const areas = status.isPending
     ? ['mech', 'elec', 'rules'].map((area) => ({ area, now: '\u00a0' }))
     : (s?.areas ?? []).map((a) => ({ area: a.area, now: areaState(a, s?.day ?? '') }))
-  const left = areas.filter((a) => a.now !== 'Done').length
+  const left = areas.filter((a) => !DONE.includes(a.now)).length
+  const yesterday = s ? lastNight(s) : undefined
   const done = !!s && areas.length > 0 && left === 0
+  const waiting = !!s?.areas.some((a) => a.pending && !a.ran_out)
   return (
     <section className="panel today isc-dark" aria-labelledby="today-title">
       <div className="today-head">
@@ -36,7 +67,7 @@ function Today() {
       {areas.length > 0 ? (
         <ul className="today-areas">
           {areas.map((a) => (
-            <li key={a.area} className={a.now === 'Done' ? 'done' : undefined}>
+            <li key={a.area} className={DONE.includes(a.now) ? 'done' : undefined}>
               <span className="today-area">{AREAS[a.area] ?? a.area}</span>
               <span className="muted">{a.now}</span>
             </li>
@@ -45,9 +76,10 @@ function Today() {
       ) : (
         <p>One mechanical, one electrical and one rules question every day, against the clock.</p>
       )}
+      {yesterday && <p>{yesterday}</p>}
       <div className="today-foot">
         <Link to="/daily" className={done ? 'button secondary' : 'button'}>
-          {done ? "See today's answers" : "Answer today's questions"}
+          {!done ? "Answer today's questions" : waiting ? 'See what you sent' : "See today's answers"}
         </Link>
         <p className="muted">
           {s && s.streak > 0 ? `Streak: ${s.streak === 1 ? '1 day' : `${s.streak} days`}. ` : 'Keep your streak. '}

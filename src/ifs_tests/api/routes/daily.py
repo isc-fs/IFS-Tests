@@ -1,14 +1,23 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+from datetime import date
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Path
+from fastapi import APIRouter, Path, Query
 
 from ...services import daily, hints, questions, signals
 from ..deps import AppSettings, Db, Member, Now
 from ..present import decoy_shown, feedback, play_question, sent, signals_sent
-from ..schemas import DailyArea, DailyResult, DailyStatus, HintOut, TimedAnswerIn, TimedQuestion
+from ..schemas import (
+    DailyArea,
+    DailyResult,
+    DailyRevealed,
+    DailyStatus,
+    HintOut,
+    TimedAnswerIn,
+    TimedQuestion,
+)
 
 router = APIRouter(prefix="/api/daily", tags=["daily"])
 Area = Literal["mech", "elec", "rules"]
@@ -19,7 +28,8 @@ def _result(db: Db, r: daily.Result) -> DailyResult:
     return DailyResult(
         day=r.day,
         question=play_question(questions.show(db, [r.question], r.answer.get("options") or [])[0]),
-        feedback=feedback(r.checked),
+        feedback=None if r.pending else feedback(r.checked),
+        released_at=r.released_at,
         answer=sent(r.answer),
         late=r.late,
         xp=r.xp,
@@ -37,6 +47,7 @@ def daily_status(user: Member, db: Db, now: Now, settings: AppSettings) -> Daily
         xp_today=s.xp_today,
         lp_today=s.lp_today,
         areas=[DailyArea.model_validate(asdict(a)) for a in s.areas],
+        revealed=[DailyRevealed.model_validate(asdict(x)) for x in s.revealed],
     )
 
 
@@ -54,6 +65,7 @@ def start_daily(area: Area, user: Member, db: Db, now: Now, settings: AppSetting
         server_now=now,
         decoy_option_id=decoy_shown(attempt, shown, policy) if keep else None,
         collect_signals=keep,
+        result_at=attempt.released_at if attempt.released_at and attempt.released_at > now else None,
     )
 
 
@@ -76,8 +88,10 @@ def answer_daily(
 
 
 @router.get("/{area}/review")
-def review_daily(area: Area, user: Member, db: Db, now: Now) -> DailyResult:
-    return _result(db, daily.review(db, user, area, now))
+def review_daily(
+    area: Area, user: Member, db: Db, now: Now, day: Annotated[date | None, Query()] = None
+) -> DailyResult:
+    return _result(db, daily.review(db, user, area, now, day))
 
 
 @router.post("/attempts/{attempt_id}/hint")

@@ -550,6 +550,9 @@ button.danger:hover {
 .daily-areas .panel {
   margin-top: 0;
 }
+.panel + .daily-areas {
+  margin-top: 24px;
+}
 .daily-area button {
   margin-top: auto;
 }

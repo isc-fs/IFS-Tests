@@ -16,6 +16,8 @@ export function RankCard({ me, road = true }: { me: Me; road?: boolean }) {
   const have = Math.floor(r.lp)
   const fragile = r.division > 0 && r.division < r.ladder.length - 1 && r.lp < -wrong
   const below = r.ladder[r.division - 1]?.title
+  const late = r.daily_at_midnight ? ' at midnight' : ''
+  const counted = r.daily_at_midnight ? ' It counts at midnight.' : ''
   const aids = [
     r.aids.formulas && 'useful formulas',
     r.aids.learn_more && 'reading to learn more',
@@ -58,11 +60,12 @@ export function RankCard({ me, road = true }: { me: Me; road?: boolean }) {
       <ul className="level-facts">
         <li>
           <strong>At your rank:</strong> a daily question is worth {lp(right)} right, {lp(wrong)} wrong, {lp(wrong / 2)}{' '}
-          if you're not sure.
+          if you're not sure.{counted}
         </li>
         {fragile && below && (
           <li>
-            <strong>Careful:</strong> one wrong daily question and you drop to {below}.
+            <strong>Careful:</strong> one wrong daily question and you drop to {below}
+            {late}.
           </li>
         )}
         {r.miss_streak >= 3 && (

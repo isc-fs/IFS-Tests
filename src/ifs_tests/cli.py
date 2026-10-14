@@ -8,7 +8,7 @@ import sys
 from datetime import UTC, date, datetime, timedelta
 from datetime import time as clock_time
 from pathlib import Path
-from typing import NoReturn
+from typing import TYPE_CHECKING, NoReturn
 
 from .bank.client import FSQuiz
 from .bank.mirror import load_bank, mirror
@@ -16,6 +16,9 @@ from .db.models import ROLES, VERTICALS
 from .domain.integrity import CHECKS as INTEGRITY_CHECKS
 from .domain.integrity import PERSON_CHECKS, walk_from
 from .settings import get_settings
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -108,13 +111,41 @@ def main(argv: list[str] | None = None) -> None:
     v.add_argument("--salt-stdin", action="store_true")
 
     sub.add_parser("maintenance", help="run the nightly maintenance job now (idempotent)")
+    st = sub.add_parser(
+        "settle",
+        help="grant the daily results whose Madrid day has closed now, as the 00:01 job does (idempotent)",
+    )
+    st.add_argument(
+        "--now",
+        type=datetime.fromisoformat,
+        help="as of this past instant (ISO 8601 with an offset); never a later one, which would reveal results early",
+    )
+    st.add_argument(
+        "--drained",
+        action="store_true",
+        help="exit 1 while any result is still pending, due or not (the gate before a rollback)",
+    )
     sub.add_parser("scheduler", help="run the nightly jobs forever (the scheduler service)")
 
     args = p.parse_args(argv)
+    if args.cmd == "settle" and args.now:
+        if args.now.tzinfo is None:
+            p.error("--now needs an offset, e.g. 2026-10-27T00:05:00+01:00")
+        if args.now > datetime.now(UTC):
+            p.error("--now can't be in the future: it would grant results before their midnight")
     # the integrity tools read their own settings and name a bad variable instead of a traceback
     if args.cmd not in ("integrity-report", "integrity-reveal"):
         args.data = args.data or get_settings().bank_dir
-    if args.cmd in ("create-admin", "invite", "reset-link", "maintenance", "scheduler", "openapi", "push"):
+    if args.cmd in (
+        "create-admin",
+        "invite",
+        "reset-link",
+        "maintenance",
+        "settle",
+        "scheduler",
+        "openapi",
+        "push",
+    ):
         _app_command(args)
         return
     if args.cmd == "mirror":
@@ -274,12 +305,28 @@ def _thresholds_exit(bad: dict[str, set[str]]) -> NoReturn:
     )
 
 
+def _settle(db: Session, at: datetime) -> dict[str, int]:
+    from .services.daily import settle_results
+
+    settled, failed = settle_results(db, at)
+    return {"dailies_settled": settled, "dailies_settle_failed": failed}
+
+
+def _settle_job(db: Session, at: datetime) -> dict[str, int]:
+    """The 00:01 job: the counts, and a failure the scheduler logs as `settle failed` (runbook 5.1)."""
+    counts = _settle(db, at)
+    if counts["dailies_settle_failed"]:
+        logging.getLogger("ifs_tests.scheduler").info("settle: %s", counts)
+        raise RuntimeError(f"{counts['dailies_settle_failed']} daily result(s) could not be granted")
+    return counts
+
+
 def _app_command(args: argparse.Namespace) -> None:
     from sqlalchemy import select, text
 
     from .db.models import User
     from .db.session import session_factory
-    from .services import accounts, maintenance
+    from .services import accounts, daily, maintenance
 
     if args.cmd == "openapi":
         from .api.app import create_app
@@ -306,12 +353,20 @@ def _app_command(args: argparse.Namespace) -> None:
             with make_db() as db:
                 return scheduled(db, at, rules_from=settings.rules_1b_from)
 
+        def settle(at: datetime) -> dict[str, int]:
+            with make_db() as db:
+                return _settle_job(db, at)
+
         def ping() -> None:
             with make_db() as db:
                 db.execute(text("SELECT 1"))
 
         run_forever(
-            [Job("daily", clock_time(0, 1), daily_questions), Job("maintenance", clock_time(3, 0), nightly)],
+            [
+                Job("daily", clock_time(0, 1), daily_questions),
+                Job("settle", clock_time(0, 1), settle),
+                Job("maintenance", clock_time(3, 0), nightly),
+            ],
             ping,
         )
         return
@@ -330,6 +385,14 @@ def _app_command(args: argparse.Namespace) -> None:
                 print(f"Bank loaded from {source}: {report}")
             elif args.cmd == "maintenance":
                 print(maintenance.run(db, now))
+            elif args.cmd == "settle":
+                counts = _settle(db, args.now or now)
+                counts["dailies_pending"] = daily.pending_count(db)
+                print(counts)
+                if stuck := daily.stuck(db, args.now or now):
+                    print(f"stuck attempt ids: {stuck}")
+                if counts["dailies_settle_failed"] or (args.drained and counts["dailies_pending"]):
+                    sys.exit(1)
             elif args.cmd == "create-admin":
                 if args.password_stdin:
                     password = sys.stdin.readline().rstrip("\n")

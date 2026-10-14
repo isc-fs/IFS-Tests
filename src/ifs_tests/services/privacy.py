@@ -35,7 +35,7 @@ from ..db.models import (
 from ..domain import accounts as rules
 from ..domain import rank as rank_rules
 from ..domain import signals as signal_rules
-from . import live
+from . import daily, live
 from .accounts import AccountError, _active_admin_ids, _record_failure, audit, check_still_admin
 from .questions import withheld
 
@@ -65,8 +65,11 @@ def _signals(a: Any) -> dict[str, Any] | None:
 
 def export(db: DB, user: User, now: datetime, signals: bool = True) -> dict[str, Any]:
     """Everything stored about `user`, as they could read it back. Nothing that reveals an answer early:
-    right and wrong stay hidden for a mock run still going and a live quiz not finished. `signals` is False for
-    an admin's copy: raw per-person ranked-play signals never travel that way (ADR 0010)."""
+    right and wrong stay hidden for a mock run still going, a live quiz not finished, and a daily whose result
+    waits for day close. `signals` is False for an admin's copy: raw per-person ranked-play signals never travel
+    that way (ADR 0010)."""
+    if daily.settle_results(db, now, user.id)[0]:
+        db.refresh(user)
     open_runs = set(
         db.scalars(
             select(MockSession.id).where(MockSession.user_id == user.id, MockSession.finished_at.is_(None))
@@ -103,6 +106,9 @@ def export(db: DB, user: User, now: datetime, signals: bool = True) -> dict[str,
             Attempt.created_at,
             Attempt.deadline_at,
             Attempt.submitted_at,
+            Attempt.released_at,
+            Attempt.settled_at,
+            Attempt.reward,
             Attempt.session_id,
             Attempt.live_session_id,
             Attempt.away_declared_s,
@@ -122,6 +128,9 @@ def export(db: DB, user: User, now: datetime, signals: bool = True) -> dict[str,
             a.session_id in open_runs
             or a.live_session_id in running
             or (a.mode != "daily" and a.question_id in drawn)
+            or (
+                a.released_at is not None and a.settled_at is None
+            )  # daily.pending: its result shows at midnight
         )
         attempts.append(
             {
@@ -140,6 +149,9 @@ def export(db: DB, user: User, now: datetime, signals: bool = True) -> dict[str,
                 "started_at": a.created_at,
                 "deadline_at": a.deadline_at,
                 "submitted_at": a.submitted_at,
+                "released_at": a.released_at,
+                "settled_at": a.settled_at,
+                "reward": None if hidden else a.reward,
                 "signals": _signals(a) if signals else None,
             }
         )

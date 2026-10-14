@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 MADRID = ZoneInfo("Europe/Madrid")
@@ -41,6 +41,11 @@ def pick(candidates: list[Candidate], day: date, area: str, secret: bytes = b"")
     ranked = sorted(candidates, key=lambda c: (c.last_used or date.min, c.practised, c.id))
     pool = ranked[: max(1, min(POOL, len(ranked) // 4))]
     return min(pool, key=lambda c: _draw(secret, day, area, c.id)).id
+
+
+def released_at(day: date) -> datetime:
+    """When a daily of `day` reveals its result: the Madrid midnight that closes the day (ADR 0010)."""
+    return datetime.combine(day + timedelta(days=1), time(), MADRID)
 
 
 def per_player(day: date, rules_from: date | None) -> bool:

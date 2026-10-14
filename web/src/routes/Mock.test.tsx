@@ -224,7 +224,9 @@ test('a result kept back is said so, and the run tells what it skipped', async (
   renderApp('/mock/44', { 'GET /api/me': { body: MEMBER }, 'GET /api/mock/sessions/44': { body: kept } })
   expect(
     await screen.findByText(/1 question became another player's daily question while you had it on screen/),
-  ).toHaveTextContent('Its result is kept back, and left out of the totals above, until that player has answered')
+  ).toHaveTextContent(
+    'Its result is kept back, and left out of the totals above, until the Madrid midnight that reveals that player',
+  )
   expect(
     screen.getByText(/2 questions were another player's daily question when the run got to them/),
   ).toBeInTheDocument()

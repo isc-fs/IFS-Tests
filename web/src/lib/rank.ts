@@ -52,6 +52,9 @@ export function lp(amount: number, precise = false): string {
   return '0 LP'
 }
 
+/** A daily result's division change, as revealed at midnight. */
+export const RANK_CHANGE = { promoted: 'Promoted!', rose: 'Back up a division.', demoted: 'Down a division.' }
+
 type Step = { aids: { formulas: boolean; learn_more: boolean; hint: boolean }; stakes: number }
 
 /** What reaching `step` changes compared with the division before it, in a few words each. */

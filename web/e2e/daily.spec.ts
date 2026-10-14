@@ -27,7 +27,7 @@ test('answer a daily question once, against the clock', async ({ browser }, info
   await card.getByRole('button', { name: 'Check answer' }).click()
   await expect(card.getByText(/^(Correct|Not quite)\.$/)).toBeVisible()
   await card.getByRole('button', { name: "Back to today's questions" }).click()
-  await expect(page.getByRole('button', { name: 'See the Rules question' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'See the question: Rules' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Start the Rules question' })).toHaveCount(0)
 })
 

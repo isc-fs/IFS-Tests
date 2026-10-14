@@ -159,6 +159,47 @@ const UNSURE_NOTE: Record<Mode, string> = {
   live: 'Not sure? Pass for your table: no LP. The answer shows at the reveal.',
 }
 
+/** A daily from season 1b: "I'm not sure" shows the answer at midnight too, like every result. */
+const UNSURE_DEFERRED =
+  'Not sure? Pass for at most half the LP a wrong answer costs. The answer shows at midnight (Madrid time).'
+
+const NIGHT_OF = new Intl.DateTimeFormat('en-GB', {
+  weekday: 'long',
+  day: 'numeric',
+  month: 'long',
+  timeZone: 'Europe/Madrid',
+})
+
+/** How far off a result's midnight is: past (the grant is on its way), within a day, or later. */
+function releaseIn(at: number): 'past' | 'tonight' | 'later' {
+  const left = at - Date.now()
+  return left <= 0 ? 'past' : left <= 86_400_000 ? 'tonight' : 'later'
+}
+
+/** An answer stored and graded whose result shows at midnight: nothing about how it went before then. Once that
+ * midnight has passed, no time. */
+function LockedIn({ releasedAt }: { releasedAt?: string | null }) {
+  const at = releasedAt ? Date.parse(releasedAt) : NaN
+  if (!releasedAt || Number.isNaN(at)) {
+    return <Notice tone="info">Locked in. Your result shows at midnight (Madrid time).</Notice>
+  }
+  const when = releaseIn(at)
+  if (when === 'past') return <Notice tone="info">Locked in. Your result is on its way.</Notice>
+  if (when === 'tonight') {
+    return (
+      <Notice tone="info">
+        Locked in. Your result shows <time dateTime={releasedAt}>tonight at midnight</time> (Madrid time).
+      </Notice>
+    )
+  }
+  return (
+    <Notice tone="info">
+      Locked in. Your result shows at midnight (Madrid time) on the night of{' '}
+      <time dateTime={releasedAt}>{NIGHT_OF.format(at - 60_000)}</time>.
+    </Notice>
+  )
+}
+
 const PASSED: Record<Mode, string> = {
   ranked: "You weren't sure, so here is the answer. It costs at most half the LP a wrong answer would.",
   practice: "You weren't sure, so here is the answer.",
@@ -246,6 +287,9 @@ export function QuestionCard({
   answerLabel = 'Your answer',
   optionNotes,
   mode = 'ranked',
+  recorded,
+  deferred,
+  releasedAt,
 }: {
   question: PlayQuestion
   feedback?: Feedback
@@ -278,6 +322,12 @@ export function QuestionCard({
   optionNotes?: Record<number, string>
   /** What is at stake, for the "I'm not sure" and hint notes. */
   mode?: Mode
+  /** The answer is stored and its result waits for midnight: no feedback yet. */
+  recorded?: boolean
+  /** This answer's result will show at midnight, so "I'm not sure" shows nothing now either. */
+  deferred?: boolean
+  /** When a recorded answer's result shows. */
+  releasedAt?: string | null
 }) {
   const [chosen, setChosen] = useState<number[]>(preset?.options ?? [])
   const [value, setValue] = useState(preset?.value ?? '')
@@ -302,7 +352,8 @@ export function QuestionCard({
   const legend = useId()
   const kind = question.answer_kind
   const choice = kind.startsWith('choice')
-  const answered = !!feedback
+  const answered = !!feedback || !!recorded
+  const waiting = !feedback && !!recorded
   // Time's up and the send failed even after its retries: the player sends again, and may fix what they typed.
   const stuck = !!expired && !answered && !!failed && !pending
   const locked = answered || (!!expired && !stuck)
@@ -331,8 +382,8 @@ export function QuestionCard({
   }, [timedText, sig])
 
   useEffect(() => {
-    if (feedback) after.current?.querySelector<HTMLElement>('button')?.focus()
-  }, [feedback])
+    if (feedback || waiting) after.current?.querySelector<HTMLElement>('button')?.focus()
+  }, [feedback, waiting])
   useEffect(() => {
     if (focusOnShow) text.current?.focus()
   }, [focusOnShow])
@@ -385,7 +436,17 @@ export function QuestionCard({
               const right = feedback?.correct_options.includes(o.id)
               const picked = chosen.includes(o.id)
               const removed = !answered && hint?.removed_options.includes(o.id)
-              const state = !answered ? (removed ? 'removed' : '') : right ? 'right' : picked ? 'wrong' : ''
+              const state = !answered
+                ? removed
+                  ? 'removed'
+                  : ''
+                : !feedback
+                  ? ''
+                  : right
+                    ? 'right'
+                    : picked
+                      ? 'wrong'
+                      : ''
               return (
                 <label key={o.id} className={`choice ${state}`}>
                   <input
@@ -407,6 +468,7 @@ export function QuestionCard({
                     <span className="choice-note">{picked ? 'Correct answer · your pick' : 'Correct answer'}</span>
                   )}
                   {state === 'wrong' && <span className="choice-note">Your pick</span>}
+                  {waiting && picked && <span className="choice-note">Your answer</span>}
                 </label>
               )
             })}
@@ -491,7 +553,7 @@ export function QuestionCard({
         {hintError && <Notice tone="error">{hintError}</Notice>}
         {unsure && !answered && !expired && (
           <p className="muted answer-note" id={`${legend}-unsure`}>
-            {UNSURE_NOTE[mode]}
+            {deferred && mode === 'ranked' ? UNSURE_DEFERRED : UNSURE_NOTE[mode]}
           </p>
         )}
       </Form>
@@ -520,7 +582,13 @@ export function QuestionCard({
           {next}
         </div>
       )}
-      {feedback && <ReportProblem questionId={question.id} />}
+      {waiting && (
+        <div className="stack" ref={after}>
+          <LockedIn releasedAt={releasedAt} />
+          {next}
+        </div>
+      )}
+      {answered && <ReportProblem questionId={question.id} />}
     </article>
   )
 }

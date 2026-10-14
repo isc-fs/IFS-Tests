@@ -165,7 +165,7 @@ function Summary({ summary, skipped }: { summary: MockSummary; skipped: number }
           {questions(summary.hidden)} became another player's daily question while you had{' '}
           {summary.hidden === 1 ? 'it' : 'them'} on screen.{' '}
           {summary.hidden === 1 ? 'Its result is' : 'Their results are'} kept back, and left out of the totals above,
-          until that player has answered (or tomorrow).
+          until the Madrid midnight that reveals that player's result.
         </p>
       )}
       {skipped > 0 && (

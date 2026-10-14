@@ -20,7 +20,7 @@ from ifs_tests.services import daily, maintenance
 from ifs_tests.services.bank import import_bank
 
 from ..conftest import Clock
-from .helpers import PASSWORD, login, member, right_answer, shape
+from .helpers import PASSWORD, close_run_outs, login, member, right_answer, shape
 
 pytestmark = pytest.mark.integration
 NewClient = Callable[[], TestClient]
@@ -121,11 +121,15 @@ def test_one_try_scored_once(player: TestClient, db: Session) -> None:
         {"first_win": DAILY - xp_award(True, 3, "daily").amount},
     )
     assert points(db) == MINGO + won
+    stored = db.scalars(select(Attempt).where(Attempt.mode == "daily")).one()
+    assert stored.released_at is None  # a shared day shows its result at once: nothing to wait for
+    assert result["released_at"] is None
     attempt = player.post("/api/daily/elec/start")
     assert attempt.status_code == 409
     status = player.get("/api/daily").json()
     elec = next(a for a in status["areas"] if a["area"] == "elec")
     assert (elec["state"], elec["correct"], elec["xp"], elec["lp"]) == ("done", True, DAILY, won)
+    assert elec["pending"] is False and status["revealed"] == []
     assert (status["xp_today"], status["lp_today"], status["streak"]) == (DAILY, won, 1)
     review = player.get("/api/daily/elec/review").json()
     assert (review["xp"], review["lp"], review["feedback"]["lp"]) == (DAILY, won, won)
@@ -224,7 +228,7 @@ def test_neither_the_page_nor_the_nightly_job_closes_a_question_inside_its_grace
     started = player.post("/api/daily/rules/start").json()
     clock.now = datetime.fromisoformat(started["deadline_at"])
     clock.advance(seconds=3)
-    assert daily.close_expired(db, clock.now) == 0
+    assert close_run_outs(db, clock.now) == 0
     area = next(a for a in player.get("/api/daily").json()["areas"] if a["area"] == "rules")
     assert area["state"] == "started"
     r = player.post(

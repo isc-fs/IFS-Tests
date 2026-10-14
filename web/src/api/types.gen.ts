@@ -358,6 +358,24 @@ export type DailyArea = {
      * Lp
      */
     lp: number;
+    /**
+     * Pending
+     *
+     * Answered, result not yet revealed: from season 1b a daily's right or wrong, XP and LP show at Madrid midnight; correct is null and xp, lp are 0 until then
+     */
+    pending?: boolean;
+    /**
+     * Released At
+     *
+     * While pending: the Madrid midnight the result shows at
+     */
+    released_at?: string | null;
+    /**
+     * Ran Out
+     *
+     * While pending: left to run out, no answer was sent
+     */
+    ran_out?: boolean;
 };
 
 /**
@@ -371,7 +389,16 @@ export type DailyResult = {
      */
     day: string;
     question: PlayQuestion;
-    feedback: Feedback;
+    /**
+     * Null while the result waits for day close (season 1b): no right or wrong, official answer, XP or LP until released_at; xp and lp read 0 then, so feedback being null is the discriminator
+     */
+    feedback: Feedback | null;
+    /**
+     * Released At
+     *
+     * When a pending result is revealed: the Madrid midnight closing the question's day; null once revealed
+     */
+    released_at?: string | null;
     /**
      * What you sent
      */
@@ -392,6 +419,76 @@ export type DailyResult = {
      * Streak
      */
     streak: number;
+};
+
+/**
+ * DailyRevealed
+ */
+export type DailyRevealed = {
+    /**
+     * Area
+     */
+    area: string;
+    /**
+     * Day
+     */
+    day: string;
+    /**
+     * Correct
+     */
+    correct: boolean | null;
+    /**
+     * Late
+     */
+    late: boolean;
+    /**
+     * Passed
+     */
+    passed: boolean;
+    /**
+     * Xp
+     */
+    xp: number;
+    /**
+     * Lp
+     */
+    lp: number;
+    /**
+     * Bonuses
+     *
+     * The XP bonuses the grant paid, by name
+     */
+    bonuses?: Array<string>;
+    /**
+     * Rank Change
+     *
+     * Whether the grant moved you into another division
+     */
+    rank_change?: 'promoted' | 'rose' | 'demoted' | null;
+    /**
+     * Ran Out
+     *
+     * Left to run out: no answer was sent
+     */
+    ran_out?: boolean;
+    /**
+     * Level Up
+     *
+     * The account level the grant reached, when it went up
+     */
+    level_up?: number | null;
+    /**
+     * Pending
+     *
+     * Its midnight has passed but the result is not granted yet (the grant failed and will be tried again): correct is null and xp, lp are 0
+     */
+    pending?: boolean;
+    /**
+     * Held
+     *
+     * Granted, but the question is another player's running daily: how it went is not shown until that question is out of play; correct is null and xp, lp are 0
+     */
+    held?: boolean;
 };
 
 /**
@@ -418,6 +515,12 @@ export type DailyStatus = {
      * Areas
      */
     areas: Array<DailyArea>;
+    /**
+     * Revealed
+     *
+     * Your latest revealed daily results per area from the last 7 days, not today's: from season 1b results show at midnight, here
+     */
+    revealed?: Array<DailyRevealed>;
 };
 
 /**
@@ -672,7 +775,7 @@ export type ExportAnswer = {
     /**
      * Correct
      *
-     * Hidden (null) while a mock run or live quiz is still going
+     * Hidden (null) while a mock run or live quiz is still going, and while a daily's result waits for day close
      */
     correct: boolean | null;
     /**
@@ -713,6 +816,26 @@ export type ExportAnswer = {
      * Submitted At
      */
     submitted_at: string | null;
+    /**
+     * Released At
+     *
+     * A daily from season 1b: when its result is revealed (Madrid midnight); null otherwise
+     */
+    released_at: string | null;
+    /**
+     * Settled At
+     *
+     * When that daily's XP and LP were granted; null while it waits, and on other answers
+     */
+    settled_at: string | null;
+    /**
+     * Reward
+     *
+     * What that grant paid on top: XP bonuses by name and any division change; null otherwise
+     */
+    reward: {
+        [key: string]: unknown;
+    } | null;
     /**
      * Ranked play from season 1b on: what the page saw while the clock ran, how often the question was reopened, and the canary's decoy; null otherwise, and 90 days after the season ended
      */
@@ -1699,7 +1822,7 @@ export type MockItem = {
     /**
      * Hidden
      *
-     * The result is kept back for now: the question became someone's daily question after you had it on screen. It is left out of the totals and shows when its player has answered
+     * The result is kept back for now: the question became someone's daily question after you had it on screen. It is left out of the totals and shows at the Madrid midnight that reveals its player's result
      */
     hidden: boolean;
 };
@@ -2140,6 +2263,12 @@ export type RankOut = {
         number,
         number
     ];
+    /**
+     * Daily At Midnight
+     *
+     * Today's daily results are granted at Madrid midnight, not on the answer
+     */
+    daily_at_midnight?: boolean;
     /**
      * Miss Streak
      *
@@ -2756,6 +2885,12 @@ export type TimedQuestion = {
      * Measure and send `signals` with the answer: true exactly when the answer will keep them (season 1b reached and the attempt created under it: daily, or a counted mock run). False before the rule date, with the gate unset, on replays, and on a daily started before the date
      */
     collect_signals: boolean;
+    /**
+     * Result At
+     *
+     * When this answer's result will show; null when it shows at once
+     */
+    result_at?: string | null;
 };
 
 /**
@@ -3656,7 +3791,12 @@ export type ReviewDailyData = {
          */
         area: 'mech' | 'elec' | 'rules';
     };
-    query?: never;
+    query?: {
+        /**
+         * Day
+         */
+        day?: string | null;
+    };
     url: '/api/daily/{area}/review';
 };
 

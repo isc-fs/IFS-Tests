@@ -24,7 +24,14 @@ def run(db: DB, now: datetime) -> dict[str, int]:
         "sessions": purge_expired(db, now),
         "invites": cast(CursorResult[Any], invites).rowcount,
         "resets": cast(CursorResult[Any], resets).rowcount,
-        "dailies_closed": daily.close_expired(db, now),
+    }
+    db.commit()  # a failing settle rolls back its own row only
+    # Before difficulty and the rollover: a daily answered on 31 August is granted in its season.
+    dailies = daily.close_and_settle(db, now)
+    counts |= {
+        "dailies_closed": dailies.closed,
+        "dailies_settled": dailies.settled,
+        "dailies_settle_failed": dailies.failed,
         "mock_questions_closed": mock.close_expired(db, now),
         "mock_runs_ended": mock.end_stale(db, now),
         "live_sessions_finished": live.finish_abandoned(db, now),

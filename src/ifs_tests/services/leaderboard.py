@@ -28,7 +28,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Session as DB
 from sqlalchemy.orm import aliased
 
-from ..db.models import LP_DAY, RANKED_PLAY, Attempt, MockSession, Question, User
+from ..db.models import LP_DAY, RANKED_PLAY, REVEALED, Attempt, MockSession, Question, User
 from ..domain import leaderboard as rules
 from ..domain import rank as rank_rules
 from ..domain.daily import madrid_day
@@ -210,6 +210,7 @@ def _counted(window: date, season: date, cutoff: date) -> CompoundSelect[tuple[s
             Attempt.mode == literal_column("'daily'"),  # a literal, to match uq_attempts_daily
             Attempt.day >= window,
             Attempt.day < cutoff,
+            REVEALED,  # a per-player daily counts once its result is out (a failed settle is retried)
             *shared,
         )
         .group_by(area)

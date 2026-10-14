@@ -145,6 +145,49 @@ def test_the_canary_decoy_is_in_the_timed_question_and_the_export_only(app_clien
         assert "decoy_option_id" not in components[n]["properties"], n
 
 
+def test_a_daily_result_waiting_for_day_close_adds_no_answer_field_and_stays_on_the_revealing_routes(
+    app_client: TestClient,
+) -> None:
+    spec = app_client.get("/api/openapi.json").json()
+    components = spec["components"]["schemas"]
+    holders = {
+        (method, path)
+        for path, ops in spec["paths"].items()
+        for method, op in ops.items()
+        if _refs(op.get("responses", {}), "DailyResult")
+    }
+    assert holders == {
+        ("post", "/api/daily/attempts/{attempt_id}/answer"),
+        ("get", "/api/daily/{area}/review"),
+    }
+    assert holders <= MAY_REVEAL
+    # no feedback until the release: the field is nullable, and the discriminator is documented
+    feedback = components["DailyResult"]["properties"]["feedback"]
+    assert any(branch.get("type") == "null" for branch in feedback["anyOf"])
+    assert "released_at" in components["DailyResult"]["properties"]
+    # the status page lists settled results (pending and held ones as empty placeholders), with no field the answer fields guard
+    revealed = components["DailyRevealed"]["properties"]
+    assert set(revealed) == {
+        "area",
+        "day",
+        "correct",
+        "late",
+        "passed",
+        "xp",
+        "lp",
+        "bonuses",
+        "rank_change",
+        "ran_out",
+        "level_up",
+        "pending",
+        "held",
+    }
+    assert not set(revealed) & ANSWER_FIELDS
+    assert "revealed" in components["DailyStatus"]["properties"]
+    assert "pending" in components["DailyArea"]["properties"]
+    assert "result_at" in components["TimedQuestion"]["properties"]
+
+
 def test_collect_signals_is_a_required_field_of_the_timed_question_alone(app_client: TestClient) -> None:
     components = app_client.get("/api/openapi.json").json()["components"]["schemas"]
     timed = components["TimedQuestion"]

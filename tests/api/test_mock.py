@@ -20,7 +20,7 @@ from ifs_tests.services import maintenance, mock
 from ifs_tests.services.bank import import_bank
 
 from ..conftest import Clock
-from .helpers import PASSWORD, login, member, right_answer, shape
+from .helpers import GATED, PASSWORD, login, member, right_answer, shape, start_area
 
 pytestmark = pytest.mark.integration
 NewClient = Callable[[], TestClient]
@@ -482,3 +482,23 @@ def test_a_question_whose_answer_a_finished_run_showed_is_a_repeat_as_the_daily(
     repeat = _full_daily_lp(db, q, repeat=True)
     r = _daily_right(player, db, q)
     assert r["lp"] == approx(repeat)
+
+
+@pytest.mark.parametrize("app_settings", [GATED], indirect=True)
+def test_a_run_leaves_out_the_players_own_answered_daily_and_says_so(
+    player: TestClient, db: Session, bank: dict[int, int]
+) -> None:
+    """From season 1b the daily's result waits for midnight, so its question is out of the player's mock runs
+    until then: the run goes on without it and counts it as skipped, not as missed."""
+    started = start_area(player, "rules")
+    q = started["question"]["id"]
+    r = player.post(f"/api/daily/attempts/{started['attempt_id']}/answer", json=right_answer(db, q))
+    assert r.status_code == 200 and r.json()["feedback"] is None
+    state = player.post(f"/api/mock/quizzes/{CV}/start").json()
+    assert (state["total"], state["skipped"]) == (4, 1)
+    seen = []
+    while state["current"]:
+        seen.append(state["current"]["question"]["id"])
+        state = answer(player, state, right_answer(db, state["current"]["question"]["id"]))
+    assert q not in seen and len(seen) == 4
+    assert state["summary"]["hidden"] == 0 and state["summary"]["unreached"] == 0

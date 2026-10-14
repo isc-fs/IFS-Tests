@@ -38,6 +38,7 @@ from ifs_tests.services import daily, hints, mock, practice, signals
 from ifs_tests.services import integrity as service
 from ifs_tests.settings import IntegritySettings
 
+from ..api.helpers import close_run_outs
 from . import planted
 from .conftest import (
     INTEGRITY_SALT,
@@ -1121,7 +1122,7 @@ def test_replay_fidelity_through_the_real_services(db: Session, integrity_env: s
     daily.answer(db, user, again.id, pick(repeat_o, False), None, md(10, 5, 9, 6))
     daily.start(db, user, "rules", md(10, 5, 9, 20))
     # 6 October, 03:00: the nightly job charges the one that ran out
-    assert daily.close_expired(db, md(10, 6, 3)) == 1
+    assert close_run_outs(db, md(10, 6, 3)) == 1
     # a counted mock run: right, pass, late, three wrong in a row, the comeback, then ended on the last question
     now = md(10, 6, 9)
     first_run = mock.start(db, user, 9100, now)
@@ -1167,7 +1168,7 @@ def test_replay_fidelity_through_the_real_services(db: Session, integrity_env: s
     tie_run = mock.start(db, user, 9102, md(10, 7, 22))
     mock.state(db, user, tie_run.id, md(10, 7, 22))
     daily.start(db, user, "rules", md(10, 7, 22, 5))
-    assert daily.close_expired(db, md(10, 8, 3)) == 1
+    assert close_run_outs(db, md(10, 8, 3)) == 1
     assert mock.close_expired(db, md(10, 8, 3)) == 1
     db.expire_all()
 
@@ -2052,3 +2053,99 @@ def test_signals_start_at_the_madrid_midnight_of_the_rule_date_across_clock_chan
     assert set(snap.signals.rows) == set(ids[1:]), (
         "from the instant of Madrid midnight on, not a minute before"
     )
+
+
+def test_a_pending_daily_is_left_out_of_the_canary_cohort_until_it_is_granted(db: Session) -> None:
+    """From season 1b a daily's correctness is only revealed at the Madrid midnight, and the canary reads the
+    decoy pick against it: a result still waiting is not part of the cohort, a granted one is."""
+    rules_from = date(2026, 10, 25)
+    midnight = datetime(2026, 10, 24, 22, 0, tzinfo=UTC)
+    waiting, granted, old_release = lone_players(
+        db, [midnight + timedelta(minutes=30), midnight + timedelta(hours=1), midnight + timedelta(hours=2)]
+    )
+    release = midnight + timedelta(hours=24)
+    db.execute(update(Attempt).where(Attempt.id == waiting).values(released_at=release, settled_at=None))
+    db.execute(
+        update(Attempt)
+        .where(Attempt.id == granted)
+        .values(released_at=release, settled_at=release + timedelta(minutes=1))
+    )
+    db.commit()  # the third has neither column: what the previous release wrote
+    window = service.Window(rules_from, rules_from + timedelta(days=2))
+    snap = service.fetch(db, window, frozenset({"canary"}), rules_from)
+    assert snap.signals is not None
+    assert set(snap.signals.rows) == {granted, old_release}
+    db.execute(update(Attempt).where(Attempt.id == waiting).values(settled_at=release + timedelta(minutes=2)))
+    db.commit()
+    snap = service.fetch(db, window, frozenset({"canary"}), rules_from)
+    assert snap.signals is not None
+    assert set(snap.signals.rows) == {waiting, granted, old_release}
+
+
+def test_replay_of_a_daily_granted_at_day_close_follows_the_grant_not_the_answer(
+    db: Session, integrity_env: str
+) -> None:
+    """From season 1b a daily is graded when answered and granted at the Madrid midnight. Answered first and
+    wrong, then four wrong mock answers the same day, it is granted after them: it meets the bad run they built
+    (the cushion), where in answer order it would have met none. The report walks the grant order, and leaves a
+    result still waiting out of the replay."""
+    gated = date(2020, 1, 1)
+    user = User(
+        email="gate@plant.test",
+        password_hash="x",
+        display_name="Gate Gus",
+        vertical="Driverless",
+        position="member",
+    )
+    db.add(user)
+    only_elec, _ = make_question(db, "elec", "only-elec", 3)  # the daily draw has one question to pick
+    mock_questions = [make_question(db, "mech", f"gate-mock{k}", 3) for k in range(4)]
+    db.add(Quiz(id=9110, year=2026, vehicle_class="cv", held_on=date(2026, 3, 1), status="complete"))
+    db.flush()
+    for position, (q, _) in enumerate(mock_questions):
+        db.add(QuizQuestion(quiz_id=9110, question_id=q.id, position=position))
+    db.commit()
+
+    # 5 October: a wrong daily at 09:01, waiting for midnight
+    q, daily_attempt = daily.start(db, user, "elec", md(10, 5, 9), rules_from=gated)
+    assert q.id == only_elec.id
+    daily.answer(db, user, daily_attempt.id, [_options(db, q)[1]], None, md(10, 5, 9, 1))
+    # then a counted mock run, all wrong: a bad run of four
+    now = md(10, 5, 11)
+    run_ = mock.start(db, user, 9110, now)
+    state = mock.state(db, user, run_.id, now)
+    for _ in mock_questions:
+        assert state.current is not None
+        mq, a = state.current
+        ids = next(o for (m, o) in mock_questions if m.id == mq.id)
+        now += timedelta(seconds=45)
+        state = mock.answer(db, user, run_.id, a.id, [ids[1]], None, now)
+    db.expire_all()
+    waiting = db.get_one(Attempt, daily_attempt.id)
+    assert waiting.released_at is not None and waiting.settled_at is None and waiting.lp == 0
+
+    window = service.Window(date(2026, 9, 1), date(2026, 10, 12))
+    before = service.ranked_plays(service.fetch(db, window, frozenset({"fidelity"})))[user.id]
+    assert all(row.mode == "mock" for row, _ in before), "a result still waiting is not replayed"
+
+    assert daily.settle_results(db, md(10, 6, 0, 30)) == (1, 0)  # the night's first page
+    db.expire_all()
+    attempts = db.scalars(
+        select(Attempt).where(Attempt.user_id == user.id, Attempt.submitted_at.is_not(None))
+    ).all()
+    by_grant = sorted(attempts, key=lambda a: (a.settled_at or a.submitted_at, a.id))
+    assert by_grant[-1].id == daily_attempt.id and by_grant[-1].settled_at == md(10, 6, 0, 30)
+    stored = [a.lp for a in by_grant]
+    assert all(x < 0 for x in stored)
+
+    snap = service.fetch(db, window, frozenset({"fidelity"}))
+    played = service.ranked_plays(snap)[user.id]
+    assert [row.id for row, _ in played] == [a.id for a in by_grant], "the replay walks the grant order"
+    assert [p.lp for _, p in played] == pytest.approx(stored, abs=1e-9)
+    start = round(db.scalars(select(User.rank_points).where(User.id == user.id)).one() - sum(stored), 2)
+    plays = [p for _, p in played]
+    assert rules.replay_lp(plays, start) == pytest.approx(stored, abs=1e-9)
+    in_answer_order = [p for _, p in sorted(played, key=lambda rp: (rp[0].submitted_at, rp[0].id))]
+    assert rules.replay_lp(in_answer_order, start) != pytest.approx(
+        [p.lp for p in in_answer_order], abs=1e-9
+    ), "walked in answer order, the daily would not meet the bad run"

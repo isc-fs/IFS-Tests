@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session as DB
 
 from ..bank.topics import AREAS as TOPICS_BY_AREA
 from ..db.models import (
+    REVEALED,
     AnswerKey,
     AnswerOption,
     Attempt,
@@ -131,7 +132,9 @@ def detail(db: DB, reviewer: User, question_id: int, now: datetime) -> Detail:
     ).all()
     answered, right = db.execute(
         select(func.count(), func.count(case((Attempt.correct.is_(True), 1)))).where(
-            Attempt.question_id == q.id, Attempt.submitted_at.is_not(None) | (Attempt.mode == "practice")
+            Attempt.question_id == q.id,
+            Attempt.submitted_at.is_not(None) | (Attempt.mode == "practice"),
+            REVEALED,
         )
     ).one()
     hidden = running_for(db, reviewer.id, q.id, now)

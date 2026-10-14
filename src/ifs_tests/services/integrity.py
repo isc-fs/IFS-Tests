@@ -264,6 +264,9 @@ def fetch(db: DB, window: Window, checks: frozenset[str], rules_from: date | Non
             Attempt.passed,
             Attempt.hint_used,
             Attempt.lp,
+            Attempt.released_at,
+            Attempt.settled_at,
+            Attempt.deadline_at,
         )
         .outerjoin(MockSession, MockSession.id == Attempt.session_id)
         .where(Attempt.user_id.in_(in_cohort))
@@ -285,6 +288,9 @@ def fetch(db: DB, window: Window, checks: frozenset[str], rules_from: date | Non
                 passed=r.passed,
                 hint_used=r.hint_used,
                 lp=float(r.lp),
+                released_at=r.released_at,
+                settled_at=r.settled_at,
+                deadline_at=r.deadline_at,
             )
         )
     for rows in history.values():
@@ -435,6 +441,7 @@ def ranked_plays(s: Snapshot) -> dict[int, list[tuple[rules.Row, rules.Play]]]:
                     for r in rows
                     if r.mode in ("daily", "mock")
                     and r.submitted_at is not None
+                    and not rules.pending(r)  # not granted yet: nothing to replay
                     and rules.season_anchor(r) >= s.season_start
                     and r.question_id in s.questions
                 ),
