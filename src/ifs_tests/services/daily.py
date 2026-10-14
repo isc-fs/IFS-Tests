@@ -741,11 +741,35 @@ def review_attempt(db: DB, user: User, a: Attempt, now: datetime) -> Result:
     assert a.day is not None  # noqa: S101 - every daily attempt has its day
     if pending(a):
         checked = Checked(correct=None, official=None, correct_options=[], solutions=[], passed=a.passed)
-        return Result(a.day, q, checked, bool(a.late), 0, 0.0, run, a.answer, a.released_at, True, attempt_id=a.id, created_at=a.created_at)
+        return Result(
+            a.day,
+            q,
+            checked,
+            bool(a.late),
+            0,
+            0.0,
+            run,
+            a.answer,
+            a.released_at,
+            True,
+            attempt_id=a.id,
+            created_at=a.created_at,
+        )
     checked = explain(db, q, a.correct, a.passed)
     checked.score = xp.stored(db, user.id, a)
     if a.released_at is None:  # a shared day: as before the switch
-        return Result(a.day, q, checked, bool(a.late), a.xp, a.lp, run, a.answer, attempt_id=a.id, created_at=a.created_at)
+        return Result(
+            a.day,
+            q,
+            checked,
+            bool(a.late),
+            a.xp,
+            a.lp,
+            run,
+            a.answer,
+            attempt_id=a.id,
+            created_at=a.created_at,
+        )
     busy = q.id in running(db, user.id, now)  # drawn again as their own daily, mock or live question
     hidden = not busy and q.id in withheld(db, now)  # or still running as someone else's daily
     if busy or hidden:
@@ -753,8 +777,12 @@ def review_attempt(db: DB, user: User, a: Attempt, now: datetime) -> Result:
     if hidden:  # right or wrong beside the answer sent gives the key away
         checked.correct = None
         checked.score = xp.Grant(xp=0, lp=0.0, level=0)
-        return Result(a.day, q, checked, bool(a.late), 0, 0.0, run, a.answer, attempt_id=a.id, created_at=a.created_at)
-    return Result(a.day, q, checked, bool(a.late), a.xp, a.lp, run, a.answer, attempt_id=a.id, created_at=a.created_at)
+        return Result(
+            a.day, q, checked, bool(a.late), 0, 0.0, run, a.answer, attempt_id=a.id, created_at=a.created_at
+        )
+    return Result(
+        a.day, q, checked, bool(a.late), a.xp, a.lp, run, a.answer, attempt_id=a.id, created_at=a.created_at
+    )
 
 
 def review(db: DB, user: User, area: str, now: datetime, day: date | None = None) -> Result:

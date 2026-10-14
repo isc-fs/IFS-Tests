@@ -558,13 +558,35 @@ def test_grading_follows_option_ids_not_where_they_are_shown(
         where.setdefault(ids(s["question"]).index(right), (p, s))
     assert len(where) >= 2, "the right option was shown in the same place to everyone"
     for p, s in where.values():
-        done = answer(p, s, {"options": [right]})
-        assert done["feedback"]["correct"] is True
+        answer(
+            p, s, {"options": [right]}
+        )  # its result waits for midnight: the stored grading is the evidence
         assert is_correct(db, s["attempt_id"]) is True
     wrong = next(o for o in options(db, qid) if o != right)
     p, s = next(v for v in orders(crowd, area, 1, "Late"))
-    assert answer(p, s, {"options": [wrong]})["feedback"]["correct"] is False
+    answer(p, s, {"options": [wrong]})
     assert is_correct(db, s["attempt_id"]) is False
+
+
+def test_a_result_waiting_for_day_close_and_the_revealed_one_keep_the_order_of_the_attempt(
+    crowd: Crowd, db: Session, bank: dict[int, int]
+) -> None:
+    qid = bank[90011]
+    area = solo(crowd.admin, db, qid)
+    bank_order = options(db, qid)
+    p, s = next((p, s) for p, s in orders(crowd, area, 8) if ids(s["question"]) != bank_order)
+    day = madrid_day(crowd.clock.now)
+    done = answer(p, s, right_answer(db, qid))
+    assert done["feedback"] is None and ids(done["question"]) == ids(s["question"])
+    pending = review(p, area)
+    assert pending["feedback"] is None and ids(pending["question"]) == ids(s["question"])
+
+    crowd.travel(at(day + timedelta(days=1), 0, 5))
+    r = p.get(f"/api/daily/{area}/review", params={"day": str(day)})
+    assert r.status_code == 200, r.text
+    revealed = r.json()
+    assert revealed["feedback"]["correct"] is True
+    assert ids(revealed["question"]) == ids(s["question"]) != bank_order
 
 
 def test_a_pinned_question_grades_the_same(crowd: Crowd, db: Session, bank: dict[int, int]) -> None:
@@ -573,8 +595,8 @@ def test_a_pinned_question_grades_the_same(crowd: Crowd, db: Session, bank: dict
     pin(crowd.admin, qid, True)
     p, s = orders(crowd, area, 1)[0]
     assert ids(s["question"]) == options(db, qid)
-    done = answer(p, s, right_answer(db, qid))
-    assert done["feedback"]["correct"] is True and is_correct(db, s["attempt_id"]) is True
+    answer(p, s, right_answer(db, qid))
+    assert is_correct(db, s["attempt_id"]) is True
 
 
 # --- before the switch --------------------------------------------------------------------------------------
@@ -952,7 +974,7 @@ def test_a_push_that_rewrites_positions_flips_a_scales_verdict_on_the_next_load_
     right = right_answer(db, qid)["options"][0]
     for p, s in placed:
         done = answer(p, s, {"options": [right]})
-        assert done["feedback"]["correct"] is True and is_correct(db, s["attempt_id"]) is True
+        assert is_correct(db, s["attempt_id"]) is True
         assert ids(done["question"]) == by_id
 
 
@@ -988,8 +1010,8 @@ def test_pinning_during_a_running_attempt_changes_only_what_the_next_load_shows(
     assert resumed["attempt_id"] == s["attempt_id"] and resumed["deadline_at"] == s["deadline_at"]
     assert ids(resumed["question"]) == bank_order
     assert {t for t in shown_options(resumed["question"])} == set(texts_before)  # same options, same texts
-    done = answer(p, s, right_answer(db, qid))
-    assert done["feedback"]["correct"] is True and is_correct(db, s["attempt_id"]) is True
+    answer(p, s, right_answer(db, qid))
+    assert is_correct(db, s["attempt_id"]) is True
     pin(crowd.admin, qid, False)
     assert ids(review(p, area)["question"]) == ids(s["question"])
 
@@ -1252,8 +1274,10 @@ def test_practice_mock_and_the_reviewers_page_keep_bank_order_on_a_gated_day(
     bank_order = options(db, mine)
     played = orders(crowd, "mech", 6, "Daily")
     daily_orders = [ids(s["question"]) for _, s in played]
-    for p, s in played:  # answered: the question is no longer anybody's running daily, so practice opens
+    for p, s in played:
         answer(p, s, right_answer(db, mine))
+    # its results show at midnight; until then the question is still somebody's daily and practice refuses it
+    crowd.travel(at(madrid_day(crowd.clock.now) + timedelta(days=1), 0, 5))
     assert any(o != bank_order for o in daily_orders)  # the daily shuffled it
     assert {tuple(o) for o in daily_orders} != {tuple(bank_order)}
 

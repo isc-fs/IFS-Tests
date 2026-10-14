@@ -831,7 +831,7 @@ describe('options listed in an order of their own', () => {
         },
       },
     })
-    await userEvent.click(await screen.findByRole('button', { name: 'See the Electrical question' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'See the question: Electrical' }))
     const card = await screen.findByRole('article')
     const rows = within(card).getAllByRole('radio')
     expect(rows.map((r) => r.closest('label')?.textContent)).toEqual([
@@ -954,7 +954,7 @@ describe('the static hint about option order (season 1b)', () => {
         },
       },
     })
-    await userEvent.click(await screen.findByRole('button', { name: 'See the Electrical question' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'See the question: Electrical' }))
     await screen.findByText(QUESTION.text)
     await userEvent.click(screen.getByRole('button', OPEN))
     expect(screen.getByLabelText("What's wrong?")).toBeInTheDocument()
