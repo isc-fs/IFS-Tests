@@ -7,8 +7,9 @@ from fastapi.testclient import TestClient
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from ifs_tests.db.models import AnswerKey, AnswerOption, DailyQuestion, Question
+from ifs_tests.db.models import AnswerKey, AnswerOption, Attempt, DailyQuestion, Question
 from ifs_tests.domain.daily import madrid_day
+from ifs_tests.services import daily
 
 # app_settings (tests/conftest.py) for the apps under test: season 1b started long ago, with and without the canary.
 GATED: dict[str, Any] = {"rules_1b_from": date(2020, 1, 1)}
@@ -107,3 +108,15 @@ def start_area(c: TestClient, area: str) -> dict[str, Any]:
     r = c.post(f"/api/daily/{area}/start")
     assert r.status_code == 200, r.text
     return dict(r.json())
+
+
+def close_run_outs(db: Session, now: datetime, user_id: int | None = None) -> int:
+    """Close the dailies left to run out the way the nightly job does (the day-close settle) and say how many
+    that was: counted from the rows, whatever the settle returns."""
+    open_ = select(Attempt.id).where(Attempt.mode == "daily", Attempt.submitted_at.is_(None))
+    if user_id is not None:
+        open_ = open_.where(Attempt.user_id == user_id)
+    before = set(db.scalars(open_))
+    daily.settle_results(db, now, user_id)
+    db.expire_all()
+    return len(before - set(db.scalars(open_)))

@@ -2218,3 +2218,80 @@ def test_the_rule_date_is_the_apps_own_variable(monkeypatch: pytest.MonkeyPatch)
     assert not [
         f for f in IntegritySettings.model_fields if "date" in f or "from" in f.replace("rules_1b_from", "")
     ]
+
+
+# --- a daily from season 1b is granted at day close ---------------------------------------------------------------
+
+
+def pending_daily(**kw: Any) -> rules.Row:
+    """Answered on 5 October at 10:05, result released at the Madrid midnight and not yet granted."""
+    return daily_play(released_at=md(10, 6), settled_at=None, **kw)
+
+
+def settled_daily(**kw: Any) -> rules.Row:
+    """The same answer, granted by the settle at 00:01 on the 6th."""
+    return daily_play(released_at=md(10, 6), settled_at=md(10, 6, 0, 1), **kw)
+
+
+def test_a_row_the_previous_release_wrote_has_no_release_and_is_never_pending() -> None:
+    old = row()
+    assert (old.released_at, old.settled_at) == (None, None)
+    assert rules.pending(old) is False
+    assert rules.granted_at(old) == rules.graded_at(old)
+
+
+def test_pending_is_released_without_a_settle() -> None:
+    assert rules.pending(pending_daily()) is True
+    assert rules.pending(settled_daily()) is False
+    assert rules.pending(daily_play()) is False  # shown at once: neither column is set
+
+
+def test_graded_at_is_the_submit_whether_or_not_the_result_was_settled() -> None:
+    """Correctness is decided at submit; key corrections and the windows compare it."""
+    submit = md(10, 5, 10, 5)
+    assert rules.graded_at(pending_daily()) == submit
+    assert rules.graded_at(settled_daily()) == submit
+    assert rules.graded_at(daily_play()) == submit
+
+
+def test_a_settled_daily_is_granted_at_its_settle_and_anything_else_at_its_grading() -> None:
+    assert rules.granted_at(settled_daily()) == md(10, 6, 0, 1)
+    assert rules.granted_at(daily_play()) == md(10, 5, 10, 5)
+    assert rules.granted_at(practice(md(10, 5, 11))) == md(10, 5, 11)
+
+
+def test_the_state_chain_follows_the_grant_so_a_practice_answer_before_the_settle_comes_first() -> None:
+    settled = settled_daily(id=1)
+    practised = practice(md(10, 5, 11), id=2)  # answered after the daily was submitted, before it was granted
+    assert rules.grading_order(practised) < rules.grading_order(settled)
+    assert sorted([settled, practised], key=rules.grading_order) == [practised, settled]
+    later = practice(md(10, 6, 9), id=4)
+    assert rules.grading_order(settled) < rules.grading_order(later)
+
+
+def test_dailies_settled_together_keep_their_answer_order() -> None:
+    first = settled_daily(id=9, submitted_at=md(10, 5, 9), created_at=md(10, 5, 8, 55))
+    second = settled_daily(id=3, submitted_at=md(10, 5, 11), created_at=md(10, 5, 10, 55))
+    same_instant = md(10, 6, 0, 1)
+    assert same_instant == rules.granted_at(first) == rules.granted_at(second)
+    assert sorted([second, first], key=rules.grading_order) == [first, second]  # by answer, not by id
+
+
+def test_a_settled_daily_still_precedes_the_mock_closed_in_the_same_instant() -> None:
+    at = md(10, 6, 0, 1)
+    mock_timeout = row(id=10, mode="mock", run_started_at=md(10, 5, 9), submitted_at=at, answered=False)
+    settled = settled_daily(id=20)
+    assert sorted([mock_timeout, settled], key=rules.grading_order) == [settled, mock_timeout]
+
+
+def test_the_repeat_rule_of_a_daily_is_as_of_its_answer_not_as_of_its_settle() -> None:
+    """xp.last_seen(before=submitted_at): what the player did between the submit and the settle was not seen when
+    the daily was answered, so the daily is no repeat of it even though that is granted first."""
+    settled = settled_daily(id=1, question_id=7, correct=True)
+    practised = practice(md(10, 5, 11), id=2, question_id=7, correct=True)
+    assert rules.is_repeat(settled, [practised, settled], {}) is False
+    assert rules.is_again_today(settled, [practised, settled], {}) is False
+    # while an answer given before the daily's submit is, as it always was
+    earlier = practice(md(10, 5, 9), id=3, question_id=7, correct=True)
+    assert rules.is_repeat(settled, [earlier, settled], {}) is True
+    assert rules.is_again_today(settled, [earlier, settled], {}) is True

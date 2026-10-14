@@ -50,7 +50,7 @@ The page is headed "Question *id*", with **Back to the queues** at the top. From
 ### The question
 
 - Badges for its area, topic and the past quizzes it appeared in.
-- How people did: "Answered *n* times, *x*% right." (or "Nobody has answered it yet."), and its FS-Quiz number.
+- How people did: "Answered *n* times, *x*% right." (or "Nobody has answered it yet."), and its FS-Quiz number. A daily answer counts here from its reveal at midnight, not before.
 - The text, the figures, and the options.
 - **FS-Quiz's answer**: on a choice question the right option is marked "FS-Quiz's answer"; on a typed one it is
   written out. If a reviewer corrected it, the correction is marked "Corrected answer" and is what players are graded
@@ -174,16 +174,19 @@ is:
 - a question of a mock run you have open, not yet answered in that run;
 - the open question of a live quiz you are playing in, or any question of a live rehearsal you are in, until it
   ends;
-- from season 1b, **a question that another player drew as their daily and is still answering**. That is not yours to
-  answer, but it is running for them, so the review page treats it the same way for everyone.
+- from season 1b, **a question that another player drew as their daily** until the Madrid midnight that reveals their
+  result, answered or not. That is not yours to answer, but it is running for them, so the review page treats it the
+  same way for everyone; and the daily you answered yourself stays running for you until your own result shows at
+  midnight.
 
 On a running question the review page hides FS-Quiz's answer, the correction and the **Correct answer** form, and
 says "This question is still running for you (your daily question, a mock quiz you're running, or a live quiz
 you're playing in), or it is someone's daily question today. Its answer stays hidden until you've answered it (in a
-live quiz, until the results are shown) or, for someone's daily, until its player has answered it (or tomorrow)." The
+live quiz, until the results are shown) or, for a daily from season 1b, yours or someone's, until the Madrid midnight
+that reveals its result." The
 page doesn't say which of the two it is. You can still fix its labels, hide it, and handle its reports; **you can't
 correct or clear its official answer while it is hidden** (the save is refused, 409), because a correction is a way to
-read the key. Once you have answered it (or the run or live quiz is over, or the player has answered their daily), everything shows again.
+read the key. Once you have answered it (or the run or live quiz is over, or the daily's result has been revealed at midnight), everything shows again.
 
 Why: the daily questions move the rank (the same for the whole team before season 1b, one per player from it), and so do mock runs. A reviewer who
 could read the answer first would climb unfairly, and the rest of the team would rightly stop trusting the ranking.
@@ -207,7 +210,7 @@ answers aren't re-graded.
 
 **I hid today's daily question.** Before season 1b, people who hadn't opened it get another question; those who had keep theirs and their result. From season 1b the player who drew it keeps it, and nobody else will draw it.
 
-**A question I need to correct is "someone's daily today".** Its key stays hidden and uncorrectable until that player answers it, or until tomorrow if they never do. Correct it then; nothing is lost, because answers already graded are not re-graded anyway.
+**A question I need to correct is "someone's daily today".** Its key stays hidden and uncorrectable until the Madrid midnight that reveals that player's result. Correct it then; nothing is lost, because answers already graded are not re-graded anyway.
 
 **My relabel didn't change the leaderboard.** By design: LP stays with the area the answer was played under.
 

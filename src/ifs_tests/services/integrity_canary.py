@@ -14,7 +14,7 @@ from typing import Any
 from sqlalchemy import ColumnElement, Select, func, select
 from sqlalchemy.orm import Session as DB
 
-from ..db.models import AnswerKey, AnswerOption, Attempt, AuditLog, MockSession, Question
+from ..db.models import REVEALED, AnswerKey, AnswerOption, Attempt, AuditLog, MockSession, Question
 from ..domain import integrity as rules
 from ..domain.leaderboard import madrid_midnight
 
@@ -96,6 +96,7 @@ def fetch_signals(
             Attempt.resumes.is_not(None),
             Attempt.created_at >= madrid_midnight(rules_from),
             Attempt.submitted_at < end,
+            REVEALED,  # a daily whose result is not out yet joins the cohort at its grant
             window,
         )
     ):

@@ -37,14 +37,16 @@ const at = (points: number, top: string | null = null, account: object = {}) => 
 })
 
 test('home shows your rank in LP, what a question is worth and your account level', async () => {
-  renderApp('/', { 'GET /api/me': { body: at(237) } })
+  const me = at(237)
+  me.progress.rank.daily_at_midnight = true
+  renderApp('/', { 'GET /api/me': { body: me } })
   const card = await screen.findByRole('region', { name: 'Your rank: Mingo III' })
   expect(card.querySelector('.emblem-mingo')).toHaveAttribute('aria-hidden', 'true')
   expect(card).toHaveTextContent('37 LP · 63 LP to Mingo IV')
   expect(within(card).getByRole('progressbar', { name: 'Progress to Mingo IV' })).toHaveAttribute('value', '37')
   expect(card).toHaveTextContent(
-    "At your rank: a daily question is worth +16 LP right, −11 LP wrong, −6 LP if you're not sure.",
-  )
+    /At your rank: a daily question is worth \+16 LP right, −11 LP wrong, −6 LP if you're not sure.*at midnight/,
+  ) // from season 1b the daily's LP arrives at midnight
   expect(card).toHaveTextContent('Help: useful formulas, reading to learn more, a hint per question.')
   expect(within(card).getByRole('link', { name: 'Your road to the top' })).toHaveAttribute('href', '/profile#road')
   const account = screen.getByRole('region', { name: 'Your account: Level 4' })

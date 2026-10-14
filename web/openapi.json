@@ -1219,6 +1219,23 @@
        "type": "string",
        "title": "Area"
       }
+     },
+     {
+      "name": "day",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "format": "date"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Day"
+      }
      }
     ],
     "responses": {
@@ -3351,6 +3368,31 @@
      "lp": {
       "type": "number",
       "title": "Lp"
+     },
+     "pending": {
+      "type": "boolean",
+      "title": "Pending",
+      "description": "Answered, result not yet revealed: from season 1b a daily's right or wrong, XP and LP show at Madrid midnight; correct is null and xp, lp are 0 until then",
+      "default": false
+     },
+     "released_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Released At",
+      "description": "While pending: the Madrid midnight the result shows at"
+     },
+     "ran_out": {
+      "type": "boolean",
+      "title": "Ran Out",
+      "description": "While pending: left to run out, no answer was sent",
+      "default": false
      }
     },
     "type": "object",
@@ -3379,7 +3421,28 @@
       "$ref": "#/components/schemas/PlayQuestion"
      },
      "feedback": {
-      "$ref": "#/components/schemas/Feedback"
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Feedback"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "Null while the result waits for day close (season 1b): no right or wrong, official answer, XP or LP until released_at; xp and lp read 0 then, so feedback being null is the discriminator"
+     },
+     "released_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Released At",
+      "description": "When a pending result is revealed: the Madrid midnight closing the question's day; null once revealed"
      },
      "answer": {
       "anyOf": [
@@ -3421,6 +3484,112 @@
     ],
     "title": "DailyResult"
    },
+   "DailyRevealed": {
+    "properties": {
+     "area": {
+      "type": "string",
+      "title": "Area"
+     },
+     "day": {
+      "type": "string",
+      "format": "date",
+      "title": "Day"
+     },
+     "correct": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Correct"
+     },
+     "late": {
+      "type": "boolean",
+      "title": "Late"
+     },
+     "passed": {
+      "type": "boolean",
+      "title": "Passed"
+     },
+     "xp": {
+      "type": "integer",
+      "title": "Xp"
+     },
+     "lp": {
+      "type": "number",
+      "title": "Lp"
+     },
+     "bonuses": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Bonuses",
+      "description": "The XP bonuses the grant paid, by name"
+     },
+     "rank_change": {
+      "anyOf": [
+       {
+        "type": "string",
+        "enum": [
+         "promoted",
+         "rose",
+         "demoted"
+        ]
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Rank Change",
+      "description": "Whether the grant moved you into another division"
+     },
+     "ran_out": {
+      "type": "boolean",
+      "title": "Ran Out",
+      "description": "Left to run out: no answer was sent",
+      "default": false
+     },
+     "level_up": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Level Up",
+      "description": "The account level the grant reached, when it went up"
+     },
+     "pending": {
+      "type": "boolean",
+      "title": "Pending",
+      "description": "Its midnight has passed but the result is not granted yet (the grant failed and will be tried again): correct is null and xp, lp are 0",
+      "default": false
+     },
+     "held": {
+      "type": "boolean",
+      "title": "Held",
+      "description": "Granted, but the question is another player's running daily: how it went is not shown until that question is out of play; correct is null and xp, lp are 0",
+      "default": false
+     }
+    },
+    "type": "object",
+    "required": [
+     "area",
+     "day",
+     "correct",
+     "late",
+     "passed",
+     "xp",
+     "lp"
+    ],
+    "title": "DailyRevealed"
+   },
    "DailyStatus": {
     "properties": {
      "day": {
@@ -3446,6 +3615,14 @@
       },
       "type": "array",
       "title": "Areas"
+     },
+     "revealed": {
+      "items": {
+       "$ref": "#/components/schemas/DailyRevealed"
+      },
+      "type": "array",
+      "title": "Revealed",
+      "description": "Your latest revealed daily results per area from the last 7 days, not today's: from season 1b results show at midnight, here"
      }
     },
     "type": "object",
@@ -3891,7 +4068,7 @@
        }
       ],
       "title": "Correct",
-      "description": "Hidden (null) while a mock run or live quiz is still going"
+      "description": "Hidden (null) while a mock run or live quiz is still going, and while a daily's result waits for day close"
      },
      "passed": {
       "type": "boolean",
@@ -3962,6 +4139,45 @@
       ],
       "title": "Submitted At"
      },
+     "released_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Released At",
+      "description": "A daily from season 1b: when its result is revealed (Madrid midnight); null otherwise"
+     },
+     "settled_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Settled At",
+      "description": "When that daily's XP and LP were granted; null while it waits, and on other answers"
+     },
+     "reward": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Reward",
+      "description": "What that grant paid on top: XP bonuses by name and any division change; null otherwise"
+     },
      "signals": {
       "anyOf": [
        {
@@ -3992,6 +4208,9 @@
      "started_at",
      "deadline_at",
      "submitted_at",
+     "released_at",
+     "settled_at",
+     "reward",
      "signals"
     ],
     "title": "ExportAnswer"
@@ -5733,7 +5952,7 @@
      "hidden": {
       "type": "boolean",
       "title": "Hidden",
-      "description": "The result is kept back for now: the question became someone's daily question after you had it on screen. It is left out of the totals and shows when its player has answered"
+      "description": "The result is kept back for now: the question became someone's daily question after you had it on screen. It is left out of the totals and shows at the Madrid midnight that reveals its player's result"
      }
     },
     "type": "object",
@@ -6477,6 +6696,12 @@
       "minItems": 2,
       "title": "Swing",
       "description": "A middling daily question right and wrong, at this rank"
+     },
+     "daily_at_midnight": {
+      "type": "boolean",
+      "title": "Daily At Midnight",
+      "description": "Today's daily results are granted at Madrid midnight, not on the answer",
+      "default": false
      },
      "miss_streak": {
       "type": "integer",
@@ -7515,6 +7740,19 @@
       "type": "boolean",
       "title": "Collect Signals",
       "description": "Measure and send `signals` with the answer: true exactly when the answer will keep them (season 1b reached and the attempt created under it: daily, or a counted mock run). False before the rule date, with the gate unset, on replays, and on a daily started before the date"
+     },
+     "result_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Result At",
+      "description": "When this answer's result will show; null when it shows at once"
      }
     },
     "type": "object",

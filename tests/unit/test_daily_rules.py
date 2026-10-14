@@ -13,6 +13,7 @@ from ifs_tests.domain.daily import (
     per_player,
     pick,
     pick_for,
+    released_at,
     streak,
 )
 
@@ -329,3 +330,75 @@ def test_a_tiny_pool_with_everything_busy_or_reserved_still_gives_a_question() -
     pool = [pc(1, reserved=True, drawn=2, answered=2), pc(2, reserved=True, drawn=2, answered=1)]
     assert draw_for(pool) in (1, 2)
     assert draw_for(pool[:1]) == 1
+
+
+@pytest.mark.parametrize(
+    ("day", "released"),
+    [
+        (date(2026, 10, 1), datetime(2026, 10, 1, 22, tzinfo=UTC)),  # CEST: midnight in Madrid is 22:00 UTC
+        (date(2026, 10, 24), datetime(2026, 10, 24, 22, tzinfo=UTC)),
+        (date(2026, 10, 25), datetime(2026, 10, 25, 23, tzinfo=UTC)),  # the 25-hour day: midnight is CET
+        (date(2026, 3, 28), datetime(2026, 3, 28, 23, tzinfo=UTC)),  # midnight on the 29th is still CET
+        (date(2026, 3, 29), datetime(2026, 3, 29, 22, tzinfo=UTC)),  # the 23-hour day ends in CEST
+        (
+            date(2027, 3, 27),
+            datetime(2027, 3, 27, 23, tzinfo=UTC),
+        ),  # still CET: the clocks go forward at 02:00
+        (date(2027, 3, 28), datetime(2027, 3, 28, 22, tzinfo=UTC)),  # the 23-hour day: midnight is CEST
+        (date(2026, 12, 31), datetime(2026, 12, 31, 23, tzinfo=UTC)),
+        (date(2026, 8, 31), datetime(2026, 8, 31, 22, tzinfo=UTC)),  # the last day of the season
+    ],
+)
+def test_results_are_released_at_the_madrid_midnight_closing_the_day(day: date, released: datetime) -> None:
+    assert released_at(day) == released
+    assert released_at(day).tzinfo is not None
+    assert madrid_day(released) == day + timedelta(days=1)
+    assert madrid_day(released - timedelta(seconds=1)) == day  # the last second of the day is still the day
+
+
+def test_the_release_is_keyed_on_the_day_not_on_when_the_answer_came() -> None:
+    last_minute = datetime(2026, 10, 25, 22, 59, tzinfo=UTC)  # 23:59 in Madrid on the 25th
+    assert madrid_day(last_minute) == date(2026, 10, 25)
+    assert released_at(madrid_day(last_minute)) == last_minute + timedelta(minutes=1)
+    after_midnight = datetime(2026, 10, 25, 23, 1, tzinfo=UTC)  # 00:01 on the 26th
+    assert madrid_day(after_midnight) == date(2026, 10, 26)
+    assert released_at(madrid_day(after_midnight)) == datetime(2026, 10, 26, 23, tzinfo=UTC)
+
+
+@pytest.mark.parametrize("answered", [datetime(2026, 10, 25, h, tzinfo=UTC) for h in (0, 1, 2, 12, 22)])
+def test_every_answer_of_the_25_hour_day_releases_at_the_same_instant(answered: datetime) -> None:
+    """00:00 UTC is 02:00 CEST and 01:00 UTC is 02:00 CET: both are the 25th, and one midnight closes them."""
+    assert madrid_day(answered) == date(2026, 10, 25)
+    assert released_at(madrid_day(answered)) == datetime(2026, 10, 25, 23, tzinfo=UTC)
+    assert released_at(madrid_day(answered)) > answered
+
+
+@pytest.mark.parametrize(
+    "answered",
+    [
+        datetime(2027, 3, 27, 23, tzinfo=UTC),  # 00:00 CET on the 28th, the first minute of the day
+        datetime(2027, 3, 28, 0, 59, tzinfo=UTC),  # 01:59 CET, the last minute before the jump
+        datetime(2027, 3, 28, 1, tzinfo=UTC),  # 03:00 CEST: the clocks have jumped
+        datetime(2027, 3, 28, 12, tzinfo=UTC),
+        datetime(2027, 3, 28, 21, 59, tzinfo=UTC),  # 23:59 CEST
+    ],
+)
+def test_every_answer_of_the_23_hour_day_releases_at_the_same_instant(answered: datetime) -> None:
+    assert madrid_day(answered) == date(2027, 3, 28)
+    assert released_at(madrid_day(answered)) == datetime(2027, 3, 28, 22, tzinfo=UTC)
+    assert released_at(madrid_day(answered)) > answered
+
+
+def test_the_releases_around_the_23_hour_day_are_23_and_24_hours_apart() -> None:
+    def utc(day: date) -> datetime:
+        return released_at(day).astimezone(UTC)  # same-zone subtraction would ignore the offset change
+
+    assert utc(date(2027, 3, 28)) - utc(date(2027, 3, 27)) == timedelta(hours=23)
+    assert utc(date(2027, 3, 29)) - utc(date(2027, 3, 28)) == timedelta(hours=24)
+
+
+def test_a_release_is_never_in_the_past_of_an_answer_of_its_own_day() -> None:
+    start = datetime(2026, 3, 28, 0, tzinfo=UTC)
+    for hour in range(0, 24 * 3):  # across the spring-forward weekend
+        answered = start + timedelta(hours=hour)
+        assert released_at(madrid_day(answered)) > answered

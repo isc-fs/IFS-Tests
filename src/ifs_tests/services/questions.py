@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session as DB
 
 from ..db.models import (
     DAILY,
+    PENDING,
     AnswerKey,
     AnswerOption,
     Attempt,
@@ -41,6 +42,7 @@ if TYPE_CHECKING:
 
 MAX_QUIZ_LABELS = 4
 WITHHELD = "This question is someone's daily question today: practise it later."
+YOURS_TONIGHT = "Your daily answer to this question shows at midnight (Madrid time)."
 
 
 @dataclass
@@ -218,9 +220,10 @@ def check(db: DB, q: Question, options: list[int] | None, value: str | None, uns
 
 def running(db: DB, user_id: int, now: datetime, *, daily: bool = True, on_screen: bool = False) -> set[int]:
     """The questions `user_id` still has to answer in a scored mode: today's daily questions (and one they
-    started before midnight and haven't answered), the questions of their open mock runs, and the open question
-    (every question, in a rehearsal) of a live quiz they play in. Their answers must not reach them another way
-    first. A per-player day has no `daily_questions` row, so its daily part is the player's own started attempts.
+    started before midnight and haven't answered, and one they answered whose result shows at midnight), the
+    questions of their open mock runs, and the open question (every question, in a rehearsal) of a live quiz they
+    play in. Their answers must not reach them another way first. A per-player day has no `daily_questions` row,
+    so its daily part is the player's own started attempts and those still to be revealed.
     `daily=False` leaves the daily part out; `on_screen=True` narrows a mock run to the question it has shown
     and is waiting for (the rest of the run is skipped once it is someone's daily: `mock._run`)."""
     day = madrid_day(now)
@@ -237,10 +240,10 @@ def running(db: DB, user_id: int, now: datetime, *, daily: bool = True, on_scree
         DailyQuestion.day == day,
         ~answered(DailyQuestion.question_id, Attempt.mode == "daily", Attempt.day == day),
     )
-    # feat/31: answered-but-unrevealed attempts join this branch
     started = select(Attempt.question_id).where(
         Attempt.user_id == user_id, Attempt.mode == "daily", Attempt.submitted_at.is_(None)
     )
+    pending = _yours_tonight(user_id, now)
     in_run = (
         select(QuizQuestion.question_id)
         .join(MockSession, QuizQuestion.quiz_id == MockSession.quiz_id)
@@ -271,27 +274,37 @@ def running(db: DB, user_id: int, now: datetime, *, daily: bool = True, on_scree
             ),
         )
     )
-    return set(db.scalars(union(today, started, in_run, in_live) if daily else union(in_run, in_live)))
+    return set(
+        db.scalars(union(today, started, pending, in_run, in_live) if daily else union(in_run, in_live))
+    )
+
+
+def _yours_tonight(user_id: int, now: datetime) -> Any:
+    """The player's answered per-player dailies whose result is still to come at midnight."""
+    return select(Attempt.question_id).where(Attempt.user_id == user_id, PENDING, Attempt.released_at > now)
 
 
 def withheld(db: DB, now: datetime) -> set[int]:
-    """The questions still running for whoever drew them as their per-player daily: today's attempts and
-    yesterday's still inside their clock, unanswered, on a day with no shared draw. Kept from every second
-    surface (practice, the mock run and summary, the reviewer view, live picks, reveals and the CSV): one of
-    them answering it would pass the answer on. Empty on shared days, where every attempt has its row."""
-    day = madrid_day(now)
-    shared = exists().where(DailyQuestion.day == Attempt.day, DailyQuestion.area == Attempt.area)
-    # feat/31: "not yet revealed" replaces "not yet answered"
+    """The questions still running for whoever drew them as their per-player daily: today's, answered or not (the
+    result is revealed at midnight, so the key is out for nobody before then), and yesterday's still unanswered
+    inside its clock. Kept from every second surface (practice, the mock run and summary, the reviewer view, live
+    picks, reveals and the CSV): one of them answering it would pass the answer on. Keyed on `released_at`,
+    written when the attempt was started, so it never changes for an attempt already started; empty on shared
+    days, which don't write it."""
     return set(
         db.scalars(
             select(Attempt.question_id).where(
                 DAILY,
-                Attempt.submitted_at.is_(None),
+                Attempt.day
+                >= madrid_day(now) - timedelta(days=1),  # implied below; lets ix_attempts_daily_day serve
                 or_(
-                    Attempt.day == day,
-                    and_(Attempt.day == day - timedelta(days=1), Attempt.deadline_at >= now - GRACE),
+                    Attempt.released_at > now,
+                    and_(
+                        Attempt.released_at.is_not(None),
+                        Attempt.submitted_at.is_(None),
+                        Attempt.deadline_at >= now - GRACE,
+                    ),
                 ),
-                ~shared,
             )
         )
     )
@@ -303,6 +316,8 @@ def running_for(db: DB, user_id: int, question_id: int, now: datetime) -> bool:
 
 def not_running(db: DB, user_id: int, question_id: int, now: datetime) -> None:
     """Practice can't answer or hint at a question still to be answered elsewhere: that would give it away."""
+    if question_id in set(db.scalars(_yours_tonight(user_id, now))):
+        raise UserError(YOURS_TONIGHT, 409)
     if question_id in running(db, user_id, now):
         raise UserError(
             "This question is running in your daily question, mock or live quiz: answer it there first.", 409

@@ -116,6 +116,7 @@ def test_the_position_you_join_with_places_your_rank(
         "lp": 50,
         "stakes": stakes,
         "swing": list(rank_rules.swing(points)),
+        "daily_at_midnight": False,  # no switch date set in these tests
         "miss_streak": 0,
         "aids": aids,
     }

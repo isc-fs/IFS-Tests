@@ -29,7 +29,7 @@ from ifs_tests.services import daily, leaderboard, mock, practice
 from ifs_tests.services.bank import import_bank
 
 from ..conftest import Clock
-from .helpers import PASSWORD, login, member, right_answer, set_daily
+from .helpers import PASSWORD, close_run_outs, login, member, right_answer, set_daily
 
 pytestmark = pytest.mark.integration
 NewClient = Callable[[], TestClient]
@@ -953,7 +953,7 @@ def test_accuracy_counts_first_ranked_answers_from_the_rule_date(
     play_on(db, ana, 5, at(9, 23), unsure=True)  # "I'm not sure" is a wrong answer
     play_on(db, ana, 7, at(9, 24), late=True)  # right, but late: wrong
     play_on(db, ana, 11, at(9, 25), leave=True)  # left to run out
-    assert daily.close_expired(db, at(9, 25, 12), ana.id) == 1
+    assert close_run_outs(db, at(9, 25, 12), ana.id) == 1
     assert play_mock(db, ana, at(9, 26)).counted
     ended_run(db, bo, "end")
     ended_run(db, cy, "stale")
@@ -1058,8 +1058,26 @@ def test_a_daily_left_to_run_out_joins_as_wrong_when_it_is_closed_not_at_the_cut
     fill(db, ana, 3)
     play_on(db, ana, POOL[3], at(9, 25, 9), leave=True)  # opened on a past day, never sent
     assert figures(mine(db, ana, clock.now)) == shown(3, 3)  # no answer yet, so nothing to count
-    assert daily.close_expired(db, clock.now, ana.id) == 1
+    assert close_run_outs(db, clock.now, ana.id) == 1
     assert figures(mine(db, ana, clock.now)) == shown(4, 3)  # closed: late and wrong
+
+
+def test_a_pending_daily_does_not_move_accuracy(team: None, db: Session, clock: Clock) -> None:
+    """From season 1b a daily is graded when it is sent and revealed at the Madrid midnight. The boards must not
+    tell a right from a wrong one before that, even when the job that grants it is late: it joins the tally when
+    it is granted, not when the cutoff for answering it passes."""
+    ana, leo = add(db, "Ana"), add(db, "Leo")
+    fill(db, ana, 4)
+    waiting = put(db, ana, POOL[4], created_at=at(9, 25, 9), correct=False, lp=0.0)
+    release = madrid(date(2026, 9, 26))
+    waiting.released_at, waiting.settled_at = release, None
+    db.commit()
+    assert figures(mine(db, ana, clock.now)) == shown(4, 4)  # days after the cutoff: still not counted
+    leaderboard._tallies.clear()
+    assert figures(row_of(leaderboard.board(db, leo, None, "season", clock.now, SINCE), "Ana")) == shown(4, 4)
+    waiting.settled_at = release + timedelta(minutes=1)
+    db.commit()
+    assert figures(mine(db, ana, clock.now)) == shown(5, 4)  # granted: it is a wrong answer in the tally
 
 
 @pytest.mark.parametrize(

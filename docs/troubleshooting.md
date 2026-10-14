@@ -169,22 +169,29 @@ These look like bugs to users and reviewers. They aren't; point people here or t
 
 ### A reviewer can't see a question's answer
 
-- **Symptom:** in Review, a question shows "This question is still running for you (your daily question, a mock quiz you're running, or a live quiz you're playing in), or it is someone's daily question today. Its answer stays hidden until you've answered it (in a live quiz, until the results are shown) or, for someone's daily, until its player has answered it (or tomorrow).", and correcting or clearing its official answer is refused (409).
-- **Cause:** answer secrecy applies to reviewers too: nobody is shown the answer to a question still running for them, and from season 1b nobody is shown the answer to a question another player drew as their daily and is still answering (`running_for` in `src/ifs_tests/services/questions.py`, used by `services/review.detail`, `set_answer` and `clear_answer`). See [architecture.md](architecture.md#answer-secrecy).
-- **Fix:** answer it where it's running (your daily question, the open mock run, or the live quiz), or ask another reviewer; for someone else's daily, wait until they answer it or until tomorrow (another reviewer sees it hidden too). Daily questions stop running when answered or at the end of the Madrid day; a live question when it closes (in a rehearsal, when the quiz ends).
+- **Symptom:** in Review, a question shows "This question is still running for you (your daily question, a mock quiz you're running, or a live quiz you're playing in), or it is someone's daily question today. Its answer stays hidden until you've answered it (in a live quiz, until the results are shown) or, for a daily from season 1b, yours or someone's, until the Madrid midnight that reveals its result.", and correcting or clearing its official answer is refused (409).
+- **Cause:** answer secrecy applies to reviewers too: nobody is shown the answer to a question still running for them, and from season 1b nobody is shown the answer to a question another player drew as their daily, nor the answer to their own answered daily, until the Madrid midnight that reveals its result (`running_for` in `src/ifs_tests/services/questions.py`, used by `services/review.detail`, `set_answer` and `clear_answer`). See [architecture.md](architecture.md#answer-secrecy).
+- **Fix:** answer it where it's running (your daily question, the open mock run, or the live quiz), or ask another reviewer; for someone else's daily, wait for the Madrid midnight that reveals their result (another reviewer sees it hidden too). A daily question stops running when answered (from season 1b, at the Madrid midnight that reveals its result); a live question when it closes (in a rehearsal, when the quiz ends).
 
 ### Practice refuses a question, or never offers it
 
 - **Symptom:** opening a question in practice (`GET /api/practice/questions/{id}`), answering it or asking a hint returns "This question is running in your daily question, mock or live quiz: answer it there first." (409), and the question doesn't come up as the next practice question.
 - **Cause:** the same rule: practice would give the answer away (`not_running` in `services/questions.py`, used by `services/practice.py` and `services/hints.py`).
 - **Fix:** answer it in the mode where it's running first.
-- **Also:** from season 1b, "This question is someone's daily question today: practise it later." (409) means another player drew it as their daily and hasn't answered it yet (`withheld` in `services/questions.py`). It comes back when they answer it, or tomorrow. The same set makes a mock run skip a question it hasn't shown yet, and a live session start with fewer questions than asked for.
+- **Also:** from season 1b, "This question is someone's daily question today: practise it later." (409) means another player drew it as their daily and its result is not revealed yet (`withheld` in `services/questions.py`). It comes back at the Madrid midnight that reveals it. The same set makes a mock run skip a question it hasn't shown yet, and a live session start with fewer questions than asked for.
+- **Also:** from season 1b, "Your daily answer to this question shows at midnight (Madrid time)." (409) means it is the question you answered as today's daily: its result, and so its answer, is revealed at midnight (`YOURS_TONIGHT`, `_yours_tonight` in `services/questions.py`). After midnight it is practised as a repeat.
 
 ### The daily question won't start
 
 - **Symptom:** starting a daily question returns "This question is running in your mock or live quiz: answer it there first." (409).
 - **Cause:** today's question for that area is also a question you still have to answer in an open mock run or a live quiz you're playing (`services/daily.start`). Starting the daily would show it to you early. From season 1b the draw ranks a question on screen in any run or live quiz last, so this needs an area with hardly any questions left for you, and a question your mock run hasn't shown yet doesn't count (the run skips it instead).
 - **Fix:** answer it in the mock run or live quiz, then start the daily question.
+
+### A daily result hasn't shown after midnight
+
+- **Symptom:** after Madrid midnight, the Daily page still says "Locked in. Your result is on its way." (or "Ran out of time. Your result is on its way."), and the rank and XP have not moved.
+- **Cause:** results at day close (season 1b) are granted by the 00:01 `settle` job, by `maintenance` at 03:00, and on the player's next visit or scored answer (`daily.close_and_settle`, `xp.settle_due`). An open page asks again at midnight and a few times in the next minutes. If it stays, that one row raised while being granted: it is rolled back, logged as `settle: attempt <id> of user <id>` with a traceback and counted in `dailies_settle_failed`, and retried on every visit and job run; nothing else of the player's fails meanwhile. The traceback is logged once per row per process (`fails again` lines after that), and `ifs-tests settle` lists the stuck attempt ids. The page keeps showing the answer as "on its way" under Your latest results.
+- **Fix:** read the traceback ([runbook 5.1](runbook.md#51-logs)), repair the row's cause, then `ifs-tests settle` ([runbook 5.3](runbook.md#53-run-the-maintenance-by-hand)) or wait for the player's next visit; nothing is lost while it waits.
 
 ### Sign-up says "That display name is taken." for a new name
 

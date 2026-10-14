@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import UTC, datetime
 
 import pytest
 from fastapi.testclient import TestClient
@@ -13,7 +14,7 @@ from ifs_tests.domain.rank import placement
 from ifs_tests.domain.xp import xp_award
 
 from ..conftest import Clock
-from .helpers import login, member, options
+from .helpers import GATED, login, member, options, right_answer, start_area
 
 pytestmark = pytest.mark.integration
 NewClient = Callable[[], TestClient]
@@ -219,3 +220,31 @@ def test_a_comma_is_a_decimal_one_where_the_question_asks_for_three_decimals(
     db.commit()
     r = player.post(url, json={"value": "2,778"})
     assert r.status_code == 200 and r.json()["correct"] is False  # 2.778, as the question asks: not 2778
+
+
+@pytest.mark.parametrize("app_settings", [GATED], indirect=True)
+def test_practice_says_when_the_player_will_see_the_result_of_their_own_daily(
+    player: TestClient, db: Session, bank: dict[int, int], clock: Clock
+) -> None:
+    """The daily from season 1b: on the clock it is "answer it there first"; once answered it stays out of
+    practice, in its own words, until the Madrid midnight that reveals it."""
+    started = start_area(player, "rules")
+    q = started["question"]["id"]
+    on_the_clock = player.get(f"/api/practice/questions/{q}")
+    assert on_the_clock.status_code == 409 and "answer it there first" in on_the_clock.json()["detail"]
+    r = player.post(f"/api/daily/attempts/{started['attempt_id']}/answer", json=right_answer(db, q))
+    assert r.status_code == 200 and r.json()["feedback"] is None
+    own = "Your daily answer to this question shows at midnight (Madrid time)."
+    clock.now = datetime(2026, 10, 1, 21, 59, 59, tzinfo=UTC)
+    for resp in (
+        player.get(f"/api/practice/questions/{q}"),
+        player.post(f"/api/practice/questions/{q}/answer", json=right_answer(db, q)),
+        player.post(f"/api/practice/questions/{q}/hint"),
+    ):
+        assert resp.status_code == 409 and resp.json()["detail"] == own
+    assert q not in {player.get("/api/practice/next").json()["id"] for _ in range(20)}
+    assert (
+        db.scalar(select(func.count()).select_from(Attempt).where(Attempt.mode == "practice")) == 0
+    )  # nothing was recorded by the refusals
+    clock.now = datetime(2026, 10, 1, 22, 0, 0, tzinfo=UTC)
+    assert player.get(f"/api/practice/questions/{q}").status_code == 200

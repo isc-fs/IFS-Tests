@@ -80,6 +80,7 @@ export function progress(points = 137, account: object = {}, top: string | null 
       lp: points - division * 100,
       stakes: step.stakes,
       swing: [16.2, -11.4],
+      daily_at_midnight: false,
       miss_streak: 0,
       aids: step.aids,
       ladder: ladder(top),

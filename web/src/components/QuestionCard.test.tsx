@@ -921,3 +921,132 @@ describe('ranked play: the signals a card sends and the note it copies', () => {
     })
   })
 })
+
+describe('a result that waits for day close', () => {
+  const NOTICE = /Locked in\. Your result shows tonight at midnight \(Madrid time\)\./
+  const RELEASE = '2026-10-01T22:00:00Z'
+  const BACK = { name: "Back to today's questions" }
+  const PLAY: PlayQuestion = { ...QUESTION, documents: { year: 2025, used: [], newer: [] } }
+  type Props = Partial<ComponentProps<typeof QuestionCard>>
+
+  afterEach(() => vi.useRealTimers())
+
+  /** The player's tonight is 22:00 UTC on 1 October: ten in the morning in Madrid. */
+  function at(now: string) {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(now))
+  }
+
+  function recorded(props: Props = {}) {
+    at('2026-10-01T10:00:00Z')
+    vi.spyOn(globalThis, 'fetch').mockImplementation(
+      async () =>
+        new Response(JSON.stringify(MEMBER), { status: 200, headers: { 'content-type': 'application/json' } }),
+    )
+    queryClient.clear()
+    const ui = (p: Props) => (
+      <QueryClientProvider client={queryClient}>
+        <QuestionCard
+          question={PLAY}
+          onAnswer={vi.fn()}
+          next={<button type="button">Back to today&apos;s questions</button>}
+          {...p}
+        />
+      </QueryClientProvider>
+    )
+    const view = render(ui(props))
+    return { ...view, rerender: (next: Props) => view.rerender(ui({ ...props, ...next })) }
+  }
+
+  /** The notices that talk about the waiting result (the card has other status regions, empty or not). */
+  const locked = () => screen.queryAllByRole('status').filter((e) => /Locked in/.test(e.textContent ?? ''))
+
+  test('a recorded answer says so once, locks the inputs and earns nothing on screen', () => {
+    recorded({ recorded: true, releasedAt: RELEASE })
+    expect(locked()).toHaveLength(1)
+    expect(locked()[0]).toHaveTextContent(NOTICE)
+    for (const radio of screen.getAllByRole('radio')) expect(radio).toBeDisabled()
+    expect(screen.queryByRole('button', { name: 'Check answer' })).toBeNull()
+    expect(screen.queryByRole('button', { name: "I'm not sure" })).toBeNull()
+    expect(screen.queryByText(/\d XP|\d LP/)).toBeNull()
+    expect(screen.queryByText(/Official answer|Correct|Not quite|Not this time/)).toBeNull()
+    expect(screen.getByRole('button', BACK)).toBeInTheDocument()
+  })
+
+  test('the notice is the only thing announced', () => {
+    recorded({ recorded: true, releasedAt: RELEASE })
+    const spoken = screen.getAllByRole('status').filter((e) => e.textContent)
+    expect(spoken).toHaveLength(1)
+    expect(spoken[0]).toHaveTextContent(NOTICE)
+  })
+
+  test('the time of the release is a machine-readable <time>, labelled tonight when it is tonight', () => {
+    const { container } = recorded({ recorded: true, releasedAt: RELEASE })
+    const time = container.querySelector('time')
+    expect(time).not.toBeNull()
+    expect(time!.getAttribute('datetime')).toBe(RELEASE)
+    expect(time).toHaveTextContent('tonight')
+  })
+
+  test('a release on another day is named by its date, not by tonight', () => {
+    const { container } = recorded({ recorded: true, releasedAt: '2026-10-26T23:00:00Z' })
+    const time = container.querySelector('time')!
+    expect(time.getAttribute('datetime')).toBe('2026-10-26T23:00:00Z')
+    expect(time.textContent).not.toMatch(/tonight/)
+    expect(time.textContent).toMatch(/October/)
+  })
+
+  test('without a release time the notice still says what happens at midnight', () => {
+    recorded({ recorded: true })
+    expect(locked()).toHaveLength(1)
+    expect(locked()[0]).toHaveTextContent(/Locked in\. Your result shows at midnight \(Madrid time\)/)
+  })
+
+  test('the answer given is marked by a word, not only by a colour, and nothing is marked right or wrong', async () => {
+    const { rerender } = recorded()
+    await userEvent.click(screen.getByRole('radio', { name: 'AS Off' }))
+    rerender({ recorded: true, releasedAt: RELEASE })
+    const mine = screen.getByText('AS Off').closest('label')!
+    const other = screen.getByText('AS Emergency').closest('label')!
+    expect(mine).toHaveTextContent('Your answer')
+    expect(other).not.toHaveTextContent('Your answer')
+    expect(screen.getByRole('radio', { name: /AS Off/ })).toBeChecked()
+    for (const label of [mine, other]) expect(label).not.toHaveTextContent(/Correct answer|Wrong|Right|Your pick/)
+  })
+
+  test('the focus moves to the way on when the answer is recorded', async () => {
+    const { rerender } = recorded({ recorded: false })
+    expect(locked()).toHaveLength(0)
+    rerender({ recorded: true, releasedAt: RELEASE })
+    await waitFor(() => expect(screen.getByRole('button', BACK)).toHaveFocus())
+  })
+
+  test('a card whose answer is not recorded shows no notice', () => {
+    recorded()
+    expect(locked()).toHaveLength(0)
+    expect(screen.getByRole('button', { name: 'Check answer' })).toBeInTheDocument()
+  })
+
+  test('a question whose result will wait for midnight does not promise the answer to a pass', () => {
+    recorded({ deferred: true })
+    expect(screen.getByText(/The answer shows at midnight \(Madrid time\)\./)).toBeInTheDocument()
+    expect(screen.queryByText(/See the answer/)).toBeNull()
+    expect(screen.queryByText(/earn a little XP/)).toBeNull()
+  })
+
+  test('a question whose result shows at once keeps the old note', () => {
+    recorded({ deferred: false })
+    expect(
+      screen.getByText(
+        'Not sure? See the answer for at most half the LP a wrong answer costs. You still earn a little XP.',
+      ),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/at midnight/)).toBeNull()
+  })
+
+  test('practice keeps its own note whatever the flag says', () => {
+    recorded({ mode: 'practice', deferred: true })
+    expect(screen.getByText(/Practice moves no LP/)).toBeInTheDocument()
+    expect(screen.queryByText(/at midnight/)).toBeNull()
+  })
+})

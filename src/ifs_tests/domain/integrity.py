@@ -325,6 +325,9 @@ class Row:
     passed: bool
     hint_used: bool
     lp: float
+    released_at: datetime | None = None  # a per-player daily: the midnight its result is revealed at
+    settled_at: datetime | None = None  # and when its XP and LP were granted
+    deadline_at: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -348,14 +351,43 @@ def graded_at(r: Row) -> datetime:
     return r.submitted_at or NEVER
 
 
-def grading_order(r: Row) -> tuple[datetime, int, int]:
-    """The order grant saw the rows in: by grading time; at the same instant the nightly job closes the dailies
-    before the mock questions (services/maintenance.run), then by id."""
-    return graded_at(r), 0 if r.mode == "daily" else 1, r.id
+def pending(r: Row) -> bool:
+    """db.models.PENDING: a per-player daily answered (or run out) whose result is not yet granted."""
+    return (
+        r.mode == "daily"
+        and r.released_at is not None
+        and r.submitted_at is not None
+        and r.settled_at is None
+    )
+
+
+def as_of(r: Row) -> datetime:
+    """What grant saw the row as of (db.models.AS_OF): a per-player daily left to run out at the end of its
+    clock, anything else when graded."""
+    if r.released_at is not None and not r.answered and r.deadline_at is not None:
+        return r.deadline_at
+    return graded_at(r)
+
+
+def granted_at(r: Row) -> datetime:
+    """When grant ran for the row: a per-player daily at its settle, anything else when graded."""
+    return r.settled_at or graded_at(r)
+
+
+def grading_order(r: Row) -> tuple[datetime, int, datetime, int]:
+    """The order grant saw the rows in: by grant time (combo, bad run and first wins follow it); at one instant
+    the dailies first, which every grant settles and the nightly job closes before the mock questions
+    (services/xp.settle_due, services/maintenance.run), then as of their answer, then by id."""
+    return granted_at(r), 0 if r.mode == "daily" else 1, as_of(r), r.id
 
 
 def _before(r: Row, play: Row) -> bool:
-    return grading_order(r) < grading_order(play)
+    """Seen before `play` was answered (xp.last_seen and answered_today with `before`), whenever it was granted."""
+    return (as_of(r), 0 if r.mode == "daily" else 1, r.id) < (
+        as_of(play),
+        0 if play.mode == "daily" else 1,
+        play.id,
+    )
 
 
 def hidden_mock(r: Row, since: datetime) -> bool:
@@ -382,7 +414,7 @@ def running_since(
     question_id: int | None = None,
     per_player: PerPlayer | None = None,
 ) -> datetime:
-    """daily._running_since: when the day's question in `area` started running, never before midnight. With no
+    """daily.running_since: when the day's question in `area` started running, never before midnight. With no
     shared draw on a day from the switch, when the first player started this question that day."""
     midnight = madrid_midnight(day)
     drawn = drawn_at.get((day, area or ""))
@@ -411,7 +443,7 @@ def is_repeat(
     nightly job's for a timeout; a mock run's start), another graded row of the question before this one was
     graded, its season anchor in that season; for a daily, mock questions hidden since it started running
     don't count."""
-    clock = play.run_started_at if play.mode == "mock" and play.run_started_at else graded_at(play)
+    clock = play.run_started_at if play.mode == "mock" and play.run_started_at else as_of(play)
     season_start = madrid_midnight(first_day("season", madrid_day(clock)))
     hidden = _hidden_since(play, drawn_at, per_player)
     return any(
@@ -436,7 +468,7 @@ def is_again_today(
     this play's submit; for a daily answer, hidden mock questions don't count."""
     if play.mode == "daily" and not play.answered:
         return False
-    now = graded_at(play)
+    now = as_of(play)
     start = madrid_midnight(madrid_day(now))
     hidden = _hidden_since(play, drawn_at, per_player)
     return any(

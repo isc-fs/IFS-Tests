@@ -13,20 +13,20 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DB
 
-from ..db.models import DAILY, Attempt, DailyQuestion, LiveQuestion, LiveSession, Question, User
+from ..db.models import DAILY, PENDING, Attempt, DailyQuestion, LiveQuestion, LiveSession, Question, User
 from ..domain import daily as rules
 from ..domain import signals as signal_rules
 from ..domain.leaderboard import madrid_midnight
 from . import hints, signals, streaks, xp
 from .errors import UserError
-from .questions import Checked, check, explain, running
+from .questions import Checked, check, explain, running, withheld
 
 LOCK = 0x1F5DA11  # pg advisory lock key for choosing the day's questions
 DRAW_LOCK = 0x1F5DA12  # first key of the two-key lock a per-player draw takes, per day and area
 log = logging.getLogger(__name__)
 
 
-def _running_since(db: DB, day: date, area: str | None, question_id: int) -> datetime:
+def running_since(db: DB, day: date, area: str | None, question_id: int) -> datetime:
     """When the day's question in `area` started running for players, never before that day's midnight: when it
     was drawn (a reviewer's redraw included; rows drawn before `drawn_at` existed: midnight). On a per-player
     day there is no row, and it is when the first player started this question that day."""
@@ -42,6 +42,16 @@ def _running_since(db: DB, day: date, area: str | None, question_id: int) -> dat
         )
     )
     return max(midnight, first) if first else midnight
+
+
+def pending(a: Attempt) -> bool:
+    """db.models.PENDING for one loaded row: answered (or run out) on a per-player day, not yet granted."""
+    return (
+        a.mode == "daily"
+        and a.released_at is not None
+        and a.submitted_at is not None
+        and a.settled_at is None
+    )
 
 
 def is_per_player(db: DB, day: date, rules_from: date | None) -> bool:
@@ -255,6 +265,32 @@ class AreaState:
     passed: bool
     xp: int
     lp: float
+    pending: bool = False
+    released_at: datetime | None = None  # while pending
+    ran_out: bool = False  # while pending: left to run out, nothing was sent
+
+
+@dataclass
+class Revealed:
+    area: str
+    day: date
+    correct: bool | None
+    late: bool
+    passed: bool
+    xp: int
+    lp: float
+    bonuses: list[str]
+    rank_change: str | None  # "promoted", "rose" or "demoted"
+    ran_out: bool
+    level_up: int | None = None  # the account level the grant reached, when it went up
+    pending: bool = False  # its midnight has passed but the grant has not gone through: an operator's to fix
+    held: bool = (
+        False  # settled, but its question is someone else's running daily: nothing shown of how it went
+    )
+
+
+def _rank_change(reward: dict[str, Any]) -> str | None:
+    return next((k for k in ("promoted", "rose", "demoted") if reward.get(k)), None)
 
 
 @dataclass
@@ -264,10 +300,86 @@ class Status:
     xp_today: int
     lp_today: float
     areas: list[AreaState]
+    revealed: list[Revealed]
+
+
+REVEALED_DAYS = 7
+
+
+def _revealed(db: DB, user: User, day: date, now: datetime) -> list[Revealed]:
+    """The latest result per area from a per-player day in the last week, not today's: where results show once
+    they are out. A result that is out but not yet granted (its settle failed) is listed as pending, and one whose
+    question is someone else's running daily as held, so neither goes missing from the page. A result also shown
+    as a card is listed too: the page leaves it out, the Home summary counts it."""
+    rows = db.scalars(
+        select(Attempt)
+        .where(
+            Attempt.user_id == user.id,
+            DAILY,
+            Attempt.released_at.is_not(None),
+            Attempt.submitted_at.is_not(None),
+            or_(Attempt.settled_at.is_not(None), Attempt.released_at <= now),
+            Attempt.day < day,
+            Attempt.day >= day - timedelta(days=REVEALED_DAYS),
+        )
+        .order_by(Attempt.day.desc(), Attempt.id.desc())
+    )
+    latest: dict[str, Attempt] = {}
+    for a in rows:
+        if a.area and a.area not in latest:
+            latest[a.area] = a
+    if not latest:
+        return []
+    hidden = withheld(db, now) - running(db, user.id, now)  # someone else's running daily
+    order = {a: i for i, a in enumerate(rules.AREAS)}
+    out = []
+    for area, a in sorted(latest.items(), key=lambda x: order.get(x[0], len(order))):
+        if a.day is None:
+            continue
+        waiting = a.settled_at is None
+        held = (
+            not waiting and a.question_id in hidden
+        )  # right or wrong beside the answer sent gives the key away
+        if waiting or held:
+            out.append(
+                Revealed(
+                    area,
+                    a.day,
+                    None,
+                    bool(a.late),
+                    a.passed,
+                    0,
+                    0.0,
+                    [],
+                    None,
+                    a.answer == {},
+                    None,
+                    waiting,
+                    held,
+                )
+            )
+            continue
+        reward = a.reward or {}
+        out.append(
+            Revealed(
+                area,
+                a.day,
+                a.correct,
+                bool(a.late),
+                a.passed,
+                a.xp,
+                a.lp,
+                list(reward.get("bonuses") or {}),
+                _rank_change(reward),
+                a.answer == {},
+                reward.get("level_up"),
+            )
+        )
+    return out
 
 
 def status(db: DB, user: User, now: datetime, *, rules_from: date | None = None) -> Status:
-    close_expired(db, now, user.id)
+    close_and_settle(db, now, user.id)
     day = rules.madrid_day(now)
     gated = is_per_player(db, day, rules_from)
     chosen = {} if gated else ensure_daily(db, day, now)
@@ -289,6 +401,7 @@ def status(db: DB, user: User, now: datetime, *, rules_from: date | None = None)
         q = db.get_one(Question, a.question_id if a else chosen[area])
         budget_s = rules.budget(q.time_s, q.answer_kind)
         state = "new" if a is None else "done" if a.submitted_at else "started"
+        waiting = a is not None and pending(a)
         areas.append(
             AreaState(
                 area=area,
@@ -296,11 +409,14 @@ def status(db: DB, user: User, now: datetime, *, rules_from: date | None = None)
                 budget_s=budget_s,
                 state=state,
                 deadline_at=a.deadline_at if a else None,
-                correct=a.correct if a else None,
+                correct=a.correct if a and not waiting else None,
                 late=a.late if a else None,
                 passed=bool(a and a.passed),
                 xp=a.xp if a else 0,
                 lp=a.lp if a else 0.0,
+                pending=waiting,
+                released_at=a.released_at if a and waiting else None,
+                ran_out=bool(a and waiting and a.answer == {}),
             )
         )
     order = {a: i for i, a in enumerate(rules.AREAS)}
@@ -309,7 +425,8 @@ def status(db: DB, user: User, now: datetime, *, rules_from: date | None = None)
     # A day whose question is still running is still open, like today.
     run = max([rules.streak(kept, d) for d in {day} | {a.day for a in carried.values() if a.day}])
     own = [a for a in areas if a.day == day]  # a carried question's result counts for its own day
-    return Status(day, run, sum(a.xp for a in own), round(sum(a.lp for a in own), 2), areas)
+    revealed = _revealed(db, user, day, now)
+    return Status(day, run, sum(a.xp for a in own), round(sum(a.lp for a in own), 2), areas, revealed)
 
 
 def _resumed(db: DB, a: Attempt, now: datetime, policy: signal_rules.Policy) -> None:
@@ -377,6 +494,7 @@ def start(
                 deadline_at=now + timedelta(seconds=rules.budget(q.time_s, q.answer_kind)),
                 resumes=0 if policy.collect else None,
                 decoy_option_id=signals.decoy_for(db, q, policy),
+                released_at=rules.released_at(day) if gated else None,
             )
             # A literal predicate: once psycopg prepares the statement, a bound parameter here stops
             # Postgres matching the partial unique index and the insert fails.
@@ -402,6 +520,8 @@ class Result:
     lp: float
     streak: int
     answer: dict[str, Any]
+    released_at: datetime | None = None  # set while the result waits for day close
+    pending: bool = False
 
 
 def answer(
@@ -415,7 +535,9 @@ def answer(
     signals: signal_rules.Signals | None = None,
     policy: signal_rules.Policy = signal_rules.OFF,
 ) -> Result:
-    """Submit once. Late answers are recorded and count as wrong; repeats return the stored result."""
+    """Submit once. Late answers are recorded and count as wrong; repeats return the stored result. On a
+    per-player day the answer is graded and stored now, and granted at day close (`close_and_settle`): until then
+    nothing the player can read shows how it went."""
     a = db.scalar(
         select(Attempt).where(Attempt.id == attempt_id, Attempt.user_id == user.id, Attempt.mode == "daily")
     )
@@ -437,14 +559,15 @@ def answer(
                 submitted_at=now,
                 late=late,
                 passed=checked.passed,
+                reward={"priced": xp.priced(db, q)} if a.released_at is not None else None,
                 **signal_rules.stored(
                     reported, signal_rules.elapsed_s(a.created_at, a.deadline_at, now), q.answer_kind
                 ),
             )
             .returning(Attempt.id)
         ).first()
-        if recorded:  # only the request that recorded the answer earns the XP
-            hidden = _running_since(db, a.day, a.area, q.id)  # see xp._hidden_mock
+        if recorded and a.released_at is None:  # only the request that recorded the answer earns the XP
+            hidden = running_since(db, a.day, a.area, q.id)  # see xp._hidden_mock
             repeat = xp.last_seen(db, user.id, q.id, now, other_than=a.id, hidden_since=hidden) is not None
             granted = xp.grant(
                 db,
@@ -461,9 +584,14 @@ def answer(
                 season_at=a.created_at,
                 played_on=a.day,
             )
-            db.execute(update(Attempt).where(Attempt.id == a.id).values(xp=granted.xp, lp=granted.lp))
+            db.execute(
+                update(Attempt).where(Attempt.id == a.id).values(xp=granted.xp, lp=granted.lp, settled_at=now)
+            )
         db.refresh(a)  # while the player's lock still keeps the account, and so this attempt, in place
         db.commit()
+    if pending(a) and a.released_at is not None and a.released_at <= now:  # started before midnight
+        settle_results(db, now, user.id)
+        db.refresh(a)
     result = review_attempt(db, user, a, now)
     if (
         granted
@@ -472,69 +600,147 @@ def answer(
     return result
 
 
-def close_expired(db: DB, now: datetime, user_id: int | None = None) -> int:
-    """Close daily questions left to run out: late and wrong, like an answer sent after the time.
-    Otherwise closing the tab on a hard question would dodge the XP a wrong answer costs."""
-    stmt = (
-        select(
-            Attempt.id, Attempt.question_id, Attempt.user_id, Attempt.created_at, Attempt.day, Attempt.area
+def run_outs(db: DB, user_id: int, now: datetime) -> list[Attempt]:
+    """The player's dailies left to run out and not closed yet, in deadline order, locked. The caller holds the
+    player's lock (the order answering takes)."""
+    return list(
+        db.scalars(
+            select(Attempt)
+            .where(xp.due(now)[1], Attempt.user_id == user_id)
+            .order_by(Attempt.deadline_at, Attempt.id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
         )
-        .where(
-            Attempt.mode == "daily", Attempt.submitted_at.is_(None), Attempt.deadline_at < now - rules.GRACE
-        )
-        .order_by(Attempt.user_id, Attempt.id)
     )
-    if user_id is not None:
-        stmt = stmt.where(Attempt.user_id == user_id)
-    closed = 0
-    for attempt_id, question_id, owner, started, day, area in db.execute(stmt).all():
-        xp.lock(db, owner)
-        q = db.get_one(Question, question_id)
-        correct = False if q.graded else None
-        recorded = db.execute(
-            update(Attempt)
-            .where(Attempt.id == attempt_id, Attempt.submitted_at.is_(None))
-            .values(correct=correct, submitted_at=now, late=True)
-            .returning(Attempt.id)
-        ).first()
-        if recorded:
-            hidden = _running_since(db, day or rules.madrid_day(started), area, q.id)
-            repeat = (
-                xp.last_seen(db, owner, q.id, now, other_than=attempt_id, hidden_since=hidden) is not None
-            )
-            granted = xp.grant(
-                db,
-                owner,
-                q,
-                "daily",
-                correct,
-                now,
-                answered=False,
-                late=True,
-                repeat=repeat,
-                season_at=started,
-            )
-            db.execute(update(Attempt).where(Attempt.id == attempt_id).values(xp=granted.xp, lp=granted.lp))
-            closed += 1
-        db.commit()  # one attempt per transaction: player, then attempt, the order answering takes
-    return closed
+
+
+def close_run_out(db: DB, a: Attempt, now: datetime) -> None:
+    """Record a daily left to run out: late and wrong, like an answer sent after the time. Otherwise closing the
+    tab on a hard question would dodge the XP a wrong answer costs. On a per-player day it then waits for day
+    close like an answer (`xp.settle_due` charges it as of its deadline); otherwise `charge_run_out` follows."""
+    q = db.get_one(Question, a.question_id)
+    a.correct, a.submitted_at, a.late = (False if q.graded else None), now, True
+    if a.released_at is not None:
+        a.reward = {"priced": xp.priced(db, q)}
+    db.flush()
+
+
+def charge_run_out(db: DB, a: Attempt, now: datetime) -> None:
+    """Charge a closed run-out of a shared day now, inside `xp.settling()`."""
+    q = db.get_one(Question, a.question_id)
+    played = a.day or rules.madrid_day(a.created_at)
+    hidden = running_since(db, played, a.area, q.id)
+    repeat = xp.last_seen(db, a.user_id, q.id, now, other_than=a.id, hidden_since=hidden) is not None
+    granted = xp.grant(
+        db,
+        a.user_id,
+        q,
+        "daily",
+        a.correct,
+        now,
+        answered=False,
+        late=True,
+        repeat=repeat,
+        season_at=a.created_at,
+    )
+    a.xp, a.lp, a.settled_at = granted.xp, granted.lp, now
+    db.flush()
+
+
+def _due(now: datetime, user_id: int | None) -> Any:
+    """The players `xp.settle_due` has something for."""
+    mine = [] if user_id is None else [Attempt.user_id == user_id]
+    return union(*(select(Attempt.user_id).where(due, *mine) for due in xp.due(now)))
+
+
+def close_and_settle(db: DB, now: datetime, user_id: int | None = None) -> xp.Settled:
+    """Close the dailies left to run out and grant the results whose Madrid day has closed (ADR 0010), each
+    player's in the order they answered (`xp.settle_due`). One player per transaction, the player's row then the
+    attempts; the nightly jobs, the player's own page and a parallel settle can all run at once. A row that
+    raises is rolled back alone and counted in `failed`, never the rest."""
+    owners = sorted(db.scalars(_due(now, user_id)))
+    total = xp.Settled()
+    if not owners:
+        return total
+    db.commit()
+    for owner in owners:
+        try:
+            try:
+                xp.lock(db, owner)
+            except UserError:  # deleted meanwhile: the cascade took the attempts
+                db.rollback()
+                continue
+            done = xp.settle_due(db, owner, now)
+            db.commit()
+        except Exception:
+            db.rollback()
+            total.failed += 1
+            log.exception("settle: user %s", owner)
+            continue
+        total.closed += done.closed
+        total.settled += done.settled
+        total.failed += done.failed
+    return total
+
+
+def close_expired(db: DB, now: datetime, user_id: int | None = None) -> int:
+    """`close_and_settle`, counting the dailies closed."""
+    return close_and_settle(db, now, user_id).closed
+
+
+def pending_count(db: DB) -> int:
+    """The results still waiting for their midnight, due or not: zero is what a rollback needs (runbook 5.8)."""
+    return db.scalar(select(func.count()).select_from(Attempt).where(PENDING)) or 0
+
+
+def stuck(db: DB, now: datetime, limit: int = 20) -> list[int]:
+    """The results past their midnight and still not granted: what a settle that fails leaves behind."""
+    return list(db.scalars(select(Attempt.id).where(xp.due(now)[0]).order_by(Attempt.id).limit(limit)))
+
+
+def settle_results(db: DB, now: datetime, user_id: int | None = None) -> tuple[int, int]:
+    """`close_and_settle`, counting (settled, failed)."""
+    done = close_and_settle(db, now, user_id)
+    return done.settled, done.failed
 
 
 def review_attempt(db: DB, user: User, a: Attempt, now: datetime) -> Result:
-    """The stored result of a submitted attempt: retries and reloads never re-grade."""
+    """The stored result of a submitted attempt: retries and reloads never re-grade. While it waits for day
+    close only the question, the answer sent and whether it was a pass show."""
     q = db.get_one(Question, a.question_id)
-    checked = explain(db, q, a.correct, a.passed)
     run = rules.streak(_on_time_days(db, user, now), a.day) if a.day else 0
-    checked.score = xp.stored(db, user.id, a)
     assert a.day is not None  # noqa: S101 - every daily attempt has its day
+    if pending(a):
+        checked = Checked(correct=None, official=None, correct_options=[], solutions=[], passed=a.passed)
+        return Result(a.day, q, checked, bool(a.late), 0, 0.0, run, a.answer, a.released_at, True)
+    checked = explain(db, q, a.correct, a.passed)
+    checked.score = xp.stored(db, user.id, a)
+    if a.released_at is None:  # a shared day: as before the switch
+        return Result(a.day, q, checked, bool(a.late), a.xp, a.lp, run, a.answer)
+    busy = q.id in running(db, user.id, now)  # drawn again as their own daily, mock or live question
+    hidden = not busy and q.id in withheld(db, now)  # or still running as someone else's daily
+    if busy or hidden:
+        checked.official, checked.correct_options, checked.solutions = None, [], []
+    if hidden:  # right or wrong beside the answer sent gives the key away
+        checked.correct = None
+        checked.score = xp.Grant(xp=0, lp=0.0, level=0)
+        return Result(a.day, q, checked, bool(a.late), 0, 0.0, run, a.answer)
     return Result(a.day, q, checked, bool(a.late), a.xp, a.lp, run, a.answer)
 
 
-def review(db: DB, user: User, area: str, now: datetime) -> Result:
+def review(db: DB, user: User, area: str, now: datetime, day: date | None = None) -> Result:
     """Today's answer in this area; before today's question is started, one from yesterday answered (or run
-    out) since midnight."""
-    day = rules.madrid_day(now)
-    a = _attempt(db, user, day, area) or _carried_done(db, user, day).get(area)
-    if a is None or a.submitted_at is None:
-        raise UserError("Answer today's question first.", 409)
+    out) since midnight. With `day`, that day's answer: a result revealed at day close stays reviewable."""
+    today = rules.madrid_day(now)
+    if day is not None:
+        a = _attempt(db, user, day, area) if today - timedelta(days=REVEALED_DAYS) <= day <= today else None
+        if a is None or a.submitted_at is None:
+            raise UserError("No answer of yours for that day.", 404)
+    else:
+        a = _attempt(db, user, today, area) or _carried_done(db, user, today).get(area)
+        if a is None or a.submitted_at is None:
+            raise UserError("Answer today's question first.", 409)
+    if pending(a) and a.released_at is not None and a.released_at <= now:  # opened before the page settled it
+        settle_results(db, now, user.id)
+        db.refresh(a)
     return review_attempt(db, user, a, now)

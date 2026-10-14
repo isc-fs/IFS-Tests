@@ -42,6 +42,7 @@ from .helpers import (
     member,
     register,
     right_answer,
+    start_area,
     start_daily,
 )
 from .test_boundaries import at
@@ -165,6 +166,8 @@ COLUMNS = {
     ("attempts", "area"): "answers.area",
     ("attempts", "deadline_at"): "answers.deadline_at",
     ("attempts", "submitted_at"): "answers.submitted_at",
+    ("attempts", "released_at"): "answers.released_at",
+    ("attempts", "settled_at"): "answers.settled_at",
     ("attempts", "late"): "answers.late",
     ("attempts", "xp"): "answers.xp",
     ("attempts", "lp"): "answers.lp",
@@ -221,6 +224,10 @@ COLUMNS = {
 COLUMNS_NOT_EXPORTED = {
     ("attempts", "id"): KEY,
     ("attempts", "points"): "season points of an early design, unused since 0008 (data-model.md)",
+    (
+        "attempts",
+        "reward",
+    ): "what a settled daily paid on top (bonuses, rank change) for the status page: its xp and lp are exported",
     ("attempts", "session_id"): "the run's key: the run itself is in mock_runs",
     ("attempts", "live_session_id"): "the quiz's key: the quiz itself is in live",
     ("invites", "id"): KEY,
@@ -560,6 +567,61 @@ def play_daily_with_signals(c: TestClient, db: Session, clock: Clock, qid: int) 
 
 def sign_in_again(c: TestClient, email: str) -> None:
     login(c, email, PASSWORD)
+
+
+def pending_daily(
+    app_client: TestClient, new_client: NewClient, db: Session
+) -> tuple[TestClient, int, dict[str, Any]]:
+    """Marta answers her per-player daily in rules: stored and graded, its result waiting for midnight."""
+    login(app_client)
+    marta = new_client()
+    uid = int(member(app_client, marta, "marta@alu.comillas.edu", "Marta")["id"])
+    started = start_area(marta, "rules")
+    r = marta.post(
+        f"/api/daily/attempts/{started['attempt_id']}/answer",
+        json=right_answer(db, started["question"]["id"]),
+    )
+    assert r.status_code == 200 and r.json()["feedback"] is None
+    return marta, uid, started
+
+
+@pytest.mark.parametrize("app_settings", [GATED], indirect=True)
+def test_the_export_hides_a_pending_daily_result(
+    app_client: TestClient,
+    admin: User,
+    new_client: NewClient,
+    db: Session,
+    bank: dict[int, int],
+    clock: Clock,
+) -> None:
+    marta, uid, started = pending_daily(app_client, new_client, db)
+    data = export(marta)
+    mine = next(a for a in data["answers"] if a["mode"] == "daily")
+    assert (mine["correct"], mine["xp"], mine["lp"], mine["settled_at"]) == (None, 0, 0, None)
+    assert mine["released_at"] is not None and mine["submitted_at"] is not None
+    assert (data["account"]["xp"], data["account"]["rank_points"]) == (0, 50)  # and her account says the same
+    assert (
+        db.scalars(select(Attempt.correct).where(Attempt.user_id == uid)).one() is True
+    )  # stored, not shown
+
+    clock.now = at(date(2026, 10, 2), 0, 30)
+    sign_in_again(marta, "marta@alu.comillas.edu")
+    after = next(a for a in export(marta)["answers"] if a["mode"] == "daily")  # the export settles first
+    assert after["correct"] is True and after["xp"] > 0 and after["lp"] > 0
+    assert after["settled_at"] is not None and after["released_at"] == mine["released_at"]
+    assert export(marta)["account"]["xp"] == after["xp"]
+
+
+@pytest.mark.parametrize("app_settings", [GATED], indirect=True)
+def test_deleting_an_account_takes_its_pending_daily_result(
+    app_client: TestClient, admin: User, new_client: NewClient, db: Session, bank: dict[int, int]
+) -> None:
+    marta, uid, _ = pending_daily(app_client, new_client, db)
+    assert count(db, Attempt, Attempt.user_id == uid, Attempt.released_at.is_not(None)) == 1
+    assert marta.post("/api/me/delete", json={"password": PASSWORD}).status_code == 204
+    db.expire_all()
+    assert count(db, Attempt, Attempt.user_id == uid) == 0
+    assert count(db, Attempt, Attempt.released_at.is_not(None), Attempt.settled_at.is_(None)) == 0
 
 
 @pytest.mark.parametrize("app_settings", [GATED], indirect=True)

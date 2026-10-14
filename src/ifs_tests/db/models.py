@@ -21,8 +21,10 @@ from sqlalchemy import (
     Table,
     Text,
     and_,
+    case,
     func,
     literal_column,
+    or_,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -389,6 +391,13 @@ class Attempt(Base):
     deadline_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     late: Mapped[bool | None]
+    # A per-player daily (ADR 0010): the Madrid midnight its result is revealed at, written when it is started;
+    # NULL on every other row, whose result shows at once.
+    released_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # When its XP and LP were granted (services/xp.settle_due); NULL while pending and on rows older than 0027.
+    settled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # What that grant paid on top (bonuses, rank change), for the revealed card.
+    reward: Mapped[dict[str, Any] | None]
     points: Mapped[int] = mapped_column(server_default="0")
     session_id: Mapped[int | None] = mapped_column(
         ForeignKey("mock_sessions.id", ondelete="CASCADE"), index=True
@@ -555,6 +564,18 @@ Index("ix_attempts_lp_day", Attempt.user_id, LP_DAY, postgresql_where=RANKED_PLA
 # user_id, so it can't serve a scan of one day; the literal keeps prepared (generic) plans matching the predicate.
 DAILY = Attempt.mode == literal_column("'daily'")
 Index("ix_attempts_daily_day", Attempt.day, Attempt.question_id, postgresql_where=DAILY)
+
+# A per-player daily answered (or run out) whose result waits for day close, and every row whose result is out.
+# One rule for every reader: services/daily.pending and domain/integrity.pending say the same of one row. AS_OF is
+# the moment a pending result is granted as of: the answer, or the end of the clock for one left to run out.
+PENDING = and_(
+    DAILY, Attempt.released_at.is_not(None), Attempt.submitted_at.is_not(None), Attempt.settled_at.is_(None)
+)
+REVEALED = or_(Attempt.released_at.is_(None), Attempt.settled_at.is_not(None))
+AS_OF = case(
+    (Attempt.answer == literal_column("'{}'::jsonb"), Attempt.deadline_at), else_=Attempt.submitted_at
+)
+Index("ix_attempts_daily_pending", Attempt.user_id, Attempt.released_at, postgresql_where=PENDING)
 
 
 class DailyQuestion(Base):

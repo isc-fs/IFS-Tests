@@ -160,17 +160,36 @@ Never automatic: every step is a decision by people, after a conversation and, f
   correctness, XP and LP are granted at Madrid day close, in a `settle` step. The presentation-only variant (hide the
   result but grant at answer time) was rejected because `xp.grant` writes rank state (`rank_points`, `combo`,
   `miss_streak`, `rested_xp`) at answer time, and `/me`, the rank card and practice feedback would leak it. A
-  player's own daily stays "running" (in the answer-secrecy sense) until it is revealed.
+  player's own daily stays "running" (in the answer-secrecy sense) until it is revealed. Decisions taken in building
+  it: (1) *Grant at settle, inside scoring.* `xp.grant` settles the player's due dailies first, under the player lock,
+  so no scored path (practice, mock, live share) can be paid ahead of an earlier daily, and the 00:01 job, a player's
+  visit and the maintenance are the other triggers. (2) *Decided at Start.* A per-player day's start stores
+  `released_at`; that, not the setting or a shared row appearing later, decides whether the attempt waits, so moving
+  the date mid-day cannot ungate a started attempt. (3) *Grant order for state.* First wins (capped at three a day),
+  combo, bad run and rested XP follow the order grants happen, like all state, while the streak day, the crit, the
+  play day and the season are those of the answer; a pending daily reserves no first-win slot. (4) *Streak credit at
+  the answer*, since it carries no information about the key (the brief listed it as waiting; this deviates).
+  (5) *Reveal at Madrid midnight*, per the brief, so a daily started at 23:59 and answered at 00:01 is revealed at
+  once, ten minutes or so before the accuracy board's cutoff; a relay of the key to another player's carried daily on
+  the same question needs the pool exhausted. Releasing at the cutoff or refusing a start that crosses midnight were
+  weighed and left for the release decision. (6) *A settle after the rollover* moves XP and the old season's LP but
+  never the new season's rank; the rollover itself skips a player with a due pending row. (7) Pending answers are left out of the integrity replay and the canary cohort until
+  they are settled; they are replayed in grant order. (8) *Priced at the answer.* The question's difficulty and
+  option counts are stored on the pending attempt and used by the settle, so the 03:00 recalibration between an
+  answer and its midnight cannot change what the grant pays. Rolling back needs the pending results drained first (runbook
+  5.8, step 7).
 - **Option shuffle on the daily** (feat/32): option order keyed per attempt, with automatic exclusions for options
   that refer to position or order ("all of the above", "both A and B", numeric ladders) and a reviewer toggle to keep
   bank order. Devtools can un-shuffle a page; the shuffle breaks "it was B" in chat, not a determined attacker.
 - **A drawn question is withheld while it is still running for whoever drew it**, from every other surface: practice
   (the next question, opening it, answering, hint), the mock run (skipped if not yet shown) and summary (hidden if
   shown) and its hint, the reviewer view and its answer edits, live picks, reveals and the host's CSV, and other
-  people's attempts in the data export. The set is derived from data, not from the setting: a daily attempt not yet
-  answered whose day has no shared draw, so it is empty on every shared day. With results at day close in the same
-  release, a player's own daily stays running until the reveal, so the window is the whole Madrid day and "today's
-  drawn set" is exact; on its own, feat/27 releases a question when its owner answers (a documented seam). A reviewer
+  people's attempts in the data export. The set is derived from data, not from the setting: a daily attempt whose
+  `released_at` (stored at Start on a per-player day, null on every shared day) is still in the future, or one not yet
+  answered inside its clock, so it is empty on every shared day. With results at day close in the same release, a
+  player's own daily stays running until the reveal and is withheld from everyone else all day, answered or not, so
+  the window is the whole Madrid day and "today's drawn set" is exact; on its own, feat/27 releases a question when
+  its owner answers (a documented seam). A reviewer
   hiding a drawn question changes nothing for the player who drew it: they keep it, and nobody else draws it.
 - **Side effects accepted:**
   - *Difficulty luck.* The base XP of the question drawn is 10 to 60 before the daily's doubling, so two players'
@@ -180,11 +199,13 @@ Never automatic: every step is a decision by people, after a conversation and, f
   - *Less comparable area boards.* An area board compares players who answered different questions; accuracy and
     the number of answers sit beside LP for that reason (feat/30).
   - *The cost of withholding.* About three questions per active player per day leave practice, mock, review and live
-    while they run: roughly 180 of the bank's roughly 1,070 at 60 players. A 30-question mock loses about 3 of its
+    while they run, which is the whole Madrid day answered or not: roughly 180 of the bank's roughly 1,070 at 60 players
+    (about 17 %, growing with the number of players). A 30-question mock loses about 3 of its
     questions at 40 players, up to about 7 in the worst case. The 409 on a practice request tells anyone asking which
     ids are someone's daily today (ids, never keys).
-  - Streaks and "answered today" follow the answer, not the reveal; the daily's XP bonuses are computed as of the
-    answer time.
+  - Streaks and "answered today" follow the answer, not the reveal; the daily's streak and crit bonuses are computed
+    as of the answer time, while first wins, combo, bad run and rested XP follow the order of the grants.
+  - *Sunday's LP* lands on Monday at 00:01, in the Sunday's week; a board's ranks for a day settle the next morning.
 - **What this removes and what stays.** It removes the **free broadcast relay**: "+16 LP, it was B" in the team chat
   is about a question most readers do not hold. It does not stop a helper who answers your own question for you, a
   lookup of the public key, or a pool exhausted on purpose (more starters than questions repeats questions); a

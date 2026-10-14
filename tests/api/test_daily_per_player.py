@@ -32,6 +32,7 @@ from ..conftest import PUBLIC_ORIGIN, Clock
 from .helpers import (
     GATED,
     PASSWORD,
+    close_run_outs,
     invite,
     login,
     options,
@@ -200,9 +201,11 @@ def test_the_status_says_nothing_about_which_question_it_will_be(
 ) -> None:
     status = crowd.player("Ana").get("/api/daily")
     assert all(a["state"] == "new" for a in status.json()["areas"])
-    assert set(status.json()["areas"][0]) == {
-        "area", "day", "budget_s", "state", "deadline_at", "correct", "late", "passed", "xp", "lp",
-    }  # fmt: skip
+    shown = set(status.json()["areas"][0])
+    assert {
+        "area", "day", "budget_s", "state", "deadline_at", "correct", "late", "passed", "pending", "xp", "lp",
+    } <= shown  # fmt: skip
+    assert not any("question" in k or k.endswith("_id") for k in shown)
     texts = db.scalars(select(Question.text)).all()
     assert not any(t in status.text for t in texts)
 
@@ -331,13 +334,23 @@ def test_a_per_player_daily_is_scored_like_the_shared_one(
     ana = crowd.player("Ana")
     started = start_area(ana, "mech")
     result = answer_daily(ana, db, started)
-    assert (result["feedback"]["correct"], result["late"], result["streak"]) == (True, False, 1)
-    assert result["xp"] == xp_award(True, 3, "daily", first_win=True).amount
-    assert result["lp"] > 0
-    status = ana.get("/api/daily").json()
-    assert (status["streak"], status["xp_today"]) == (1, result["xp"])
-    assert ana.get("/api/daily/mech/review").json()["feedback"]["official"]
+    assert (result["feedback"], result["late"], result["streak"]) == (
+        None,
+        False,
+        1,
+    )  # recorded: see the next module
+    assert (result["xp"], result["lp"]) == (0, 0)
+    assert ana.get("/api/daily").json()["xp_today"] == 0
     assert ana.post("/api/daily/mech/start").status_code == 409  # one try
+    assert ana.get("/api/leaderboard").json()["me"] is None  # nothing scored yet
+    crowd.travel(at(madrid_day(crowd.clock.now), 22, 30))  # 00:30 on the 2nd
+    review = ana.get("/api/daily/mech/review", params={"day": "2026-10-01"}).json()
+    assert review["feedback"]["correct"] is True and review["feedback"]["official"]
+    assert review["xp"] == xp_award(True, 3, "daily", first_win=True).amount
+    assert review["lp"] > 0
+    status = ana.get("/api/daily").json()
+    assert (status["streak"], status["xp_today"]) == (1, 0)
+    assert status["revealed"][0]["xp"] == review["xp"]
     assert ana.get("/api/leaderboard").json()["me"] is not None
 
 
@@ -347,12 +360,16 @@ def test_a_daily_left_to_run_out_is_closed_by_the_nightly_job(
     ana = crowd.player("Ana")
     started = start_area(ana, "rules")
     clock.advance(hours=2)
-    assert daily.close_expired(db, clock.now) == 1
+    assert close_run_outs(db, clock.now) == 1
     row = db.execute(
         select(Attempt.submitted_at, Attempt.late, Attempt.correct).where(Attempt.id == started["attempt_id"])
     ).one()
     assert (row.submitted_at is not None, row.late, row.correct) == (True, True, False)
-    assert withheld(db, clock.now) == set()
+    assert withheld(db, clock.now) == {
+        db.scalar(select(Attempt.question_id).where(Attempt.id == started["attempt_id"]))
+    }
+    midnight = at(madrid_day(clock.now), 22, 30)  # its day is not over: the question stays out until it is
+    assert withheld(db, midnight) == set()
 
 
 def test_areas_nobody_can_be_asked_are_left_out_and_a_started_one_stays(
@@ -492,13 +509,16 @@ def test_what_everyone_has_drawn_is_withheld_and_nothing_else(crowd: Crowd, db: 
     assert len(drawn) == 5  # mech and elec differ between the two; rules has one question for both
 
 
-def test_the_answer_to_the_withheld_question_is_released_once_its_owner_answers(
+def test_the_answer_to_the_withheld_question_is_released_at_midnight_not_when_its_owner_answers(
     crowd: Crowd, db: Session, rules_q: int
 ) -> None:
     ana, leo = crowd.player("Ana"), crowd.player("Leo")
     started = start_area(ana, "rules")
     blocked(leo, db, rules_q)
     answer_daily(ana, db, started)
+    assert withheld(db, crowd.clock.now) == {rules_q}  # the key is out for nobody before the day closes
+    blocked(leo, db, rules_q)
+    crowd.travel(at(madrid_day(crowd.clock.now), 22, 30))
     assert withheld(db, crowd.clock.now) == set()
     open_to_practice(leo, rules_q)
     assert (
@@ -565,7 +585,7 @@ def test_a_mock_run_does_not_show_a_question_someone_has_drawn_and_does_not_coun
     assert (state["skipped"], summary["hidden"]) == (1, 0)  # the run says what it left out
 
 
-def test_the_run_gets_the_question_back_when_its_owner_has_answered(
+def test_the_run_gets_the_question_back_the_next_day(
     crowd: Crowd, db: Session, bank: dict[int, int], rules_q: int
 ) -> None:
     ana, leo = crowd.player("Ana"), crowd.player("Leo")
@@ -573,6 +593,10 @@ def test_the_run_gets_the_question_back_when_its_owner_has_answered(
     started = start_area(ana, "rules")
     assert leo.get(f"/api/mock/sessions/{state['session_id']}").json()["total"] == 4
     answer_daily(ana, db, started)
+    assert (
+        leo.get(f"/api/mock/sessions/{state['session_id']}").json()["total"] == 4
+    )  # answered: still out today
+    crowd.travel(at(madrid_day(crowd.clock.now), 22, 30))
     state = leo.get(f"/api/mock/sessions/{state['session_id']}").json()
     assert state["total"] == 5
     assert mock_until(leo, db, state, rules_q)["current"]["question"]["id"] == rules_q
@@ -626,7 +650,10 @@ def test_a_question_already_on_screen_when_it_is_drawn_has_no_answer_in_the_summ
     only_the_others_count(summary, rules_q)
     again = leo.get(f"/api/mock/sessions/{state['session_id']}").json()["summary"]
     only_the_others_count(again, rules_q)
-    answer_daily(ana, db, started)  # released: the run shows what it always stored
+    answer_daily(ana, db, started)  # answered: the key is still out until the day closes
+    still = leo.get(f"/api/mock/sessions/{state['session_id']}").json()["summary"]
+    only_the_others_count(still, rules_q)
+    crowd.travel(at(madrid_day(crowd.clock.now), 22, 30))  # released: the run shows what it always stored
     shown = leo.get(f"/api/mock/sessions/{state['session_id']}").json()["summary"]
     item = next(i for i in shown["items"] if i["question"]["id"] == rules_q)["feedback"]
     assert item["correct"] is True and item["official"] and item["xp"] > 0
@@ -666,6 +693,8 @@ def test_the_export_does_not_give_away_a_withheld_answer_either(
     assert (hidden["correct"], hidden["xp"], hidden["lp"]) == (None, 0, 0)
     assert all(a["correct"] is True and a["xp"] > 0 for q, a in mine().items() if q != rules_q)
     answer_daily(ana, db, started)
+    assert mine()[rules_q]["correct"] is None  # answered: the key stays out until the day closes
+    crowd.travel(at(madrid_day(crowd.clock.now), 22, 30))
     assert mine()[rules_q]["correct"] is True and mine()[rules_q]["xp"] > 0
 
 
@@ -689,6 +718,9 @@ def test_a_reviewer_cannot_read_or_change_the_key_of_a_drawn_question(
     for r in (reviewer.put(f"{url}/answer", json={"options": [pick]}), reviewer.delete(f"{url}/answer")):
         assert r.status_code == 409 and "daily" in r.json()["detail"]
     answer_daily(ana, db, started)
+    assert reviewer.get(url).json()["answer_hidden"] is True  # answered, and still not out
+    assert reviewer.put(f"{url}/answer", json={"options": [pick]}).status_code == 409
+    crowd.travel(at(madrid_day(crowd.clock.now), 22, 30))
     released = reviewer.get(url).json()
     assert released["answer_hidden"] is False and released["official"]
     assert reviewer.delete(f"{url}/answer").status_code == 200
@@ -789,7 +821,9 @@ def test_a_live_quiz_started_before_the_draw_hides_the_answer_to_everyone(
         assert live_state(viewer, code)["state"] == "closed"
         f = reveal_of(viewer, code, rules_q)["feedback"]
         assert (f["official"], f["correct_options"], f["solutions"]) == (None, [], [])
-    answer_daily(dani, db, started)  # released
+    answer_daily(dani, db, started)  # answered: the key stays out until the day closes
+    assert reveal_of(host, code, rules_q)["feedback"]["official"] is None
+    crowd.travel(at(madrid_day(crowd.clock.now), 22, 30))
     assert reveal_of(host, code, rules_q)["feedback"]["official"]
 
 
@@ -806,6 +840,8 @@ def test_a_live_quiz_started_before_the_draw_hides_every_tables_result_too(
         state = live_state(viewer, code)  # the totals would say it too
         assert [t["right"] for t in state["tables"]] == [0] and state["room_right"] == 0
     answer_daily(dani, db, started)
+    assert all(a["correct"] is None for a in reveal_of(host, code, rules_q)["answers"])
+    crowd.travel(at(madrid_day(crowd.clock.now), 22, 30))
     assert all(a["correct"] is True for a in reveal_of(host, code, rules_q)["answers"])
     released = live_state(host, code)
     assert [t["right"] for t in released["tables"]] == [1] and released["room_right"] == 1
@@ -818,6 +854,8 @@ def test_the_results_sheet_leaves_out_the_official_answer_of_a_drawn_question(
     sheet = results_rows(host, code)
     assert sheet["4"][6] == "" and all(sheet[k][6] != "" for k in ("1", "2", "3"))
     answer_daily(dani, db, started)
+    assert results_rows(host, code)["4"][6] == ""
+    crowd.travel(at(madrid_day(crowd.clock.now), 22, 30))
     assert results_rows(host, code)["4"][6] != ""
 
 
@@ -843,7 +881,10 @@ def test_a_run_closed_while_the_question_was_someone_elses_daily_left_it_unseen(
     started = start_area(ana, "rules")
     points = db.scalars(select(User.rank_points).where(User.id == ana.id)).one()
     full = lp_award(True, points, 3, "daily", **shape(db, rules_q)).amount
-    result = answer_daily(ana, db, started)
+    answered_on = madrid_day(clock.now)
+    assert answer_daily(ana, db, started)["feedback"] is None
+    crowd.travel(at(answered_on, 22, 30))  # the day closes: the result shows
+    result = ana.get("/api/daily/rules/review", params={"day": str(answered_on)}).json()
     if someone_else_drew_it:
         assert (result["xp"], result["lp"]) == (
             xp_award(True, 3, "daily", first_win=True).amount,
@@ -934,7 +975,9 @@ def test_a_question_answered_today_is_not_dealt_while_another_is_free_so_the_dai
     assert previewed_elec(ana, clocks) == target
     started = start_area(ana, "elec")
     assert started["question"]["id"] == target
-    result = answer_daily(ana, db, started)
+    assert answer_daily(ana, db, started)["feedback"] is None
+    crowd.travel(at(madrid_day(crowd.clock.now), 22, 30))
+    result = ana.get("/api/daily/elec/review", params={"day": "2026-10-01"}).json()
     assert result["xp"] > 0 and result["lp"] > 0
 
 
@@ -1106,18 +1149,23 @@ def test_the_previous_release_reads_what_the_new_one_stored_and_nothing_is_over_
     login(old, ana.email, PASSWORD)
     again = start_area(old, "elec")
     assert (again["attempt_id"], again["question"]["id"]) == (elec["attempt_id"], elec["question"]["id"])
+    assert old.get("/api/daily").status_code == 200  # its page draws the rest of the day's shared rows
+    # Whether a result waits was decided when Ana started the question: another release answering it, or a
+    # shared row appearing meanwhile, changes nothing. Recorded, hidden, and its question stays out until midnight.
     result = answer_daily(old, db, elec)
-    assert result["xp"] > 0 and result["streak"] == 1
-    assert old.get("/api/daily/elec/review").json()["feedback"]["official"]
+    assert result["feedback"] is None and (result["xp"], result["lp"]) == (0, 0) and result["streak"] == 1
+    assert old.get("/api/daily/elec/review").json()["feedback"] is None
     status = old.get("/api/daily").json()
     assert status["streak"] == 1
-    assert next(a for a in status["areas"] if a["area"] == "elec")["state"] == "done"
-    assert old.get("/api/leaderboard").json()["me"] is not None
+    mine = next(a for a in status["areas"] if a["area"] == "elec")
+    assert (mine["state"], mine["pending"], mine["correct"]) == ("done", True, None)
+    assert old.get("/api/leaderboard").json()["me"] is None  # nothing is scored yet
     assert n(db, DailyQuestion) == 3
 
-    # Rolling forward over those rows: the day is shared, so nothing of the per-player draw hides anything.
-    assert withheld(db, clock.now) == set()
-    open_to_practice(bea, mech)
+    # The rest of the day is shared now: Bea gets the shared draw, but the two questions Ana drew stay out of
+    # practice until her day closes (the answered one until midnight, the open one while its clock runs).
+    assert withheld(db, clock.now) == {elec["question"]["id"], mech}
+    blocked(bea, db, mech)
     shared_elec = db.scalar(select(DailyQuestion.question_id).where(DailyQuestion.area == "elec"))
     assert start_area(bea, "elec")["question"]["id"] == shared_elec
     assert ana.get("/api/daily").json()["streak"] == 1

@@ -17,7 +17,7 @@ from ifs_tests.auth.passwords import hash_password
 from ifs_tests.bank import images
 from ifs_tests.bank.mirror import load_bank
 from ifs_tests.bank.sample import SAMPLE_DIR
-from ifs_tests.db.models import AnswerOption, Attempt, DailyQuestion, MockSession, Question, User
+from ifs_tests.db.models import AnswerOption, Attempt, DailyQuestion, LiveSession, MockSession, Question, User
 from ifs_tests.domain import rank as rank_rules
 from ifs_tests.domain import xp as xp_rules
 from ifs_tests.domain.daily import madrid_day
@@ -639,7 +639,7 @@ def test_closing_abandoned_dailies_never_deadlocks_with_a_late_answer(
     def job() -> None:
         with sessionmaker(app_engine, expire_on_commit=False)() as s:
             try:
-                results["job"] = daily.close_expired(s, later)
+                results["job"] = daily.settle_results(s, later)
             except Exception as e:  # noqa: BLE001
                 results["job"] = e
 
@@ -664,6 +664,384 @@ def test_closing_abandoned_dailies_never_deadlocks_with_a_late_answer(
         select(Attempt).where(Attempt.id.in_(started)).execution_options(populate_existing=True)
     )
     assert all(a.submitted_at == later and a.late for a in rows)
+
+
+def _answer_pending(db: Session, player: User, area: str, right: bool = True) -> int:
+    """Start the player's daily in `area` on a per-player day and answer it at once: stored and graded, its
+    result waiting for the Madrid midnight. Returns the attempt id."""
+    q, attempt = daily.start(db, player, area, NOW, rules_from=PER_PLAYER)
+    body = right_answer(db, q.id) if right else _wrong(db, q.id)
+    daily.answer(db, player, attempt.id, body.get("options"), body.get("value"), NOW + timedelta(seconds=30))
+    return attempt.id
+
+
+def _wrong(db: Session, qid: int) -> dict[str, Any]:
+    right = right_answer(db, qid)
+    if "options" in right:
+        every = db.scalars(
+            select(AnswerOption.id).where(AnswerOption.question_id == qid).order_by("position")
+        )
+        return {"options": [o for o in every if o not in right["options"]][:1]}
+    return {"value": "; ".join("-1" for _ in right["value"].split(";"))}
+
+
+def _settled_once(db: Session, user_id: int, ids: list[int], start: float) -> list[Attempt]:
+    """Every attempt granted, and the player's account holds exactly their sum: a double grant would leave the
+    account ahead of what the attempts say."""
+    db.expire_all()
+    rows = list(
+        db.scalars(select(Attempt).where(Attempt.id.in_(ids)).execution_options(populate_existing=True))
+    )
+    assert all(a.settled_at is not None for a in rows)
+    player = db.get_one(User, user_id, populate_existing=True)
+    assert player.xp == sum(a.xp for a in rows)
+    assert player.rank_points == pytest.approx(start + sum(a.lp for a in rows))
+    return rows
+
+
+LATER = NOW + timedelta(days=1)  # past the Madrid midnight that closes NOW's day (22:00 UTC on 1 October)
+
+
+def test_a_double_submit_on_a_per_player_day_records_one_answer_and_grants_nothing(
+    db: Session, app_engine: Engine, daily_player: User
+) -> None:
+    daily_player.rank_points = 500.0
+    db.commit()
+    q, attempt = daily.start(db, daily_player, "mech", NOW, rules_from=PER_PLAYER)
+    body = right_answer(db, q.id)
+    at = NOW + timedelta(seconds=20)
+    results = race(
+        app_engine,
+        *[
+            lambda s: daily.answer(
+                s, s.get_one(User, daily_player.id), attempt.id, body.get("options"), body.get("value"), at
+            )
+        ]
+        * 4,
+    )
+    assert not failed(results), results
+    for r in results:  # every copy gets the same hidden result
+        assert (r.xp, r.lp, r.checked.correct, r.checked.official) == (0, 0, None, None)
+    db.expire_all()
+    row = db.get_one(Attempt, attempt.id, populate_existing=True)
+    assert (row.correct, row.submitted_at, row.xp, row.lp, row.settled_at) == (True, at, 0, 0, None)
+    assert row.released_at == NOW.replace(hour=22)
+    player = db.get_one(User, daily_player.id, populate_existing=True)
+    assert (player.xp, player.rank_points, player.combo) == (0, 500.0, 0)
+    assert daily.settle_results(db, LATER) == (1, 0)
+    rows = _settled_once(db, daily_player.id, [attempt.id], 500.0)
+    assert rows[0].xp > 0 and rows[0].lp > 0
+
+
+def test_settle_racing_the_page_and_the_nightly_job_grants_once(
+    db: Session, app_engine: Engine, daily_player: User
+) -> None:
+    daily_player.rank_points = 500.0
+    db.commit()
+    ids = [_answer_pending(db, daily_player, area) for area in ("mech", "elec", "rules")]
+    assert db.scalar(select(func.count()).select_from(Attempt).where(Attempt.settled_at.is_not(None))) == 0
+    results = race(
+        app_engine,
+        lambda s: daily.settle_results(s, LATER),
+        lambda s: daily.settle_results(s, LATER),
+        lambda s: daily.status(s, s.get_one(User, daily_player.id), LATER, rules_from=PER_PLAYER),
+    )
+    assert not failed(results), results
+    assert results[0][1] == results[1][1] == 0 and results[0][0] + results[1][0] <= 3  # nothing failed
+    rows = _settled_once(db, daily_player.id, ids, 500.0)
+    assert all(a.settled_at == LATER and a.xp > 0 and a.lp > 0 for a in rows)
+    assert daily.settle_results(db, LATER) == (0, 0)
+
+
+def test_settle_racing_account_deletion_never_deadlocks(
+    db: Session, app_engine: Engine, daily_player: User
+) -> None:
+    """The settle takes the player's row, then the attempt: the order deleting an account takes. A deletion in
+    flight ends the settle quietly (the cascade took the attempt); it never raises or waits in a circle."""
+    admin = accounts.create_first_admin(db, "a@x.com", "Alpha", "pit lane boss 2026", NOW)
+    victims = [User(email=f"v{i}@x.com", password_hash="x", display_name=f"V{i}") for i in range(8)]
+    db.add_all(victims)
+    db.commit()
+    for v in victims:
+        _answer_pending(db, v, "mech")
+    ids = {v.email: v.id for v in victims}
+    for v in victims:
+        db.expunge(v)
+    granted = 0
+    for victim in victims:
+        settled, deleted = race(
+            app_engine,
+            lambda s: daily.settle_results(s, LATER),
+            lambda s, v=victim: privacy.delete_user(s, s.get_one(User, admin.id), ids[v.email], LATER),  # type: ignore[misc]
+        )
+        assert deleted is None, deleted  # a deadlock or a foreign key error would show here
+        assert isinstance(settled, tuple) and settled[1] == 0, (
+            settled
+        )  # and the settle carried on, not failed
+        granted += settled[0]
+        db.expire_all()
+        assert db.get(User, ids[victim.email]) is None
+        assert (
+            db.scalar(select(func.count()).select_from(Attempt).where(Attempt.user_id == ids[victim.email]))
+            == 0
+        )
+    left = db.scalar(select(func.count()).select_from(Attempt).where(Attempt.released_at.is_not(None)))
+    assert left == 0 and granted <= len(victims)  # each granted at most once: by the first to get to it
+
+
+def _settle_beside(
+    app_engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+    player_job: Callable[[Session], Any],
+    settle_for: int | None = None,
+) -> dict[str, Any]:
+    """The settle job holds the player's row mid-grant (a slow grant) while `player_job` queues behind it."""
+    job_holds, player_waits = threading.Event(), threading.Event()
+    grant = xp_service.grant
+
+    def slow_grant(s: Session, user_id: int, question: Question, *args: Any, **kwargs: Any) -> Any:
+        granted = grant(s, user_id, question, *args, **kwargs)
+        if threading.current_thread().name == "job" and not job_holds.is_set():
+            job_holds.set()
+            player_waits.wait(5)
+            time.sleep(0.5)  # the player's request locks its attempt and queues for the player's row
+        return granted
+
+    monkeypatch.setattr(xp_service, "grant", slow_grant)
+    results: dict[str, Any] = {}
+
+    def job() -> None:
+        with sessionmaker(app_engine, expire_on_commit=False)() as s:
+            try:
+                results["job"] = daily.settle_results(s, LATER, settle_for)
+            except Exception as e:  # noqa: BLE001
+                results["job"] = e
+
+    def player() -> None:
+        job_holds.wait(5)
+        with sessionmaker(app_engine, expire_on_commit=False)() as s:
+            player_waits.set()
+            try:
+                results["player"] = player_job(s)
+            except Exception as e:  # noqa: BLE001
+                results["player"] = e
+
+    threads = [threading.Thread(target=job, name="job"), threading.Thread(target=player)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    return results
+
+
+def test_settle_racing_a_late_answer_on_another_area(
+    db: Session, app_engine: Engine, daily_player: User, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    daily_player.rank_points = 500.0
+    db.commit()
+    done = _answer_pending(db, daily_player, "mech")
+    q, open_attempt = daily.start(db, daily_player, "elec", NOW, rules_from=PER_PLAYER)
+    body = right_answer(db, q.id)
+    open_id = open_attempt.id
+    results = _settle_beside(
+        app_engine,
+        monkeypatch,
+        lambda s: daily.answer(
+            s, s.get_one(User, daily_player.id), open_id, body.get("options"), body.get("value"), LATER
+        ),
+    )
+    assert not any(isinstance(r, Exception) for r in results.values()), results
+    # the job grants the waiting one and, if it gets to the player's row after the answer, the late one as well
+    # (an answer after its day's midnight is granted by its own request): never both twice
+    assert results["job"] in ((1, 0), (2, 0))
+    rows = _settled_once(db, daily_player.id, [done, open_id], 500.0)  # both granted, each once
+    late = next(a for a in rows if a.id == open_id)
+    assert (
+        late.late is True and late.submitted_at == LATER and late.lp < 0
+    )  # a right answer too late counts wrong
+    assert next(a for a in rows if a.id == done).lp > 0
+
+
+def test_settle_racing_a_practice_answer_after_midnight_grants_in_answer_order(
+    db: Session, app_engine: Engine, daily_player: User, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A wrong daily at 02:00 and a right practice answer after midnight: the daily is granted first whoever gets
+    to the player's row first, so the combo ends at 1 (the other way round it would end at 0)."""
+    daily_player.rank_points = 500.0
+    db.commit()
+    wrong_one = _answer_pending(db, daily_player, "mech", right=False)
+    practised = db.scalars(select(Question).where(Question.area == "rules", Question.graded)).first()
+    assert practised is not None
+    body = right_answer(db, practised.id)
+    scored: list[Any] = []
+
+    def player_job(s: Session) -> Any:
+        checked = practice.answer(
+            s, s.get_one(User, daily_player.id), practised.id, body.get("options"), body.get("value"), LATER
+        )
+        scored.append(checked.score)
+        return checked
+
+    results = _settle_beside(app_engine, monkeypatch, player_job)
+    assert not any(isinstance(r, Exception) for r in results.values()), results
+    assert results["job"] == (1, 0)
+    db.expire_all()
+    daily_row = db.get_one(Attempt, wrong_one, populate_existing=True)
+    assert daily_row.settled_at == LATER and daily_row.lp < 0
+    player = db.get_one(User, daily_player.id, populate_existing=True)
+    assert (player.combo, player.miss_streak) == (1, 1)
+    assert player.xp == daily_row.xp + scored[0].xp
+    assert player.rank_points == pytest.approx(500 + daily_row.lp)  # practice moves no LP
+
+
+def test_a_scored_answer_that_finds_the_settle_done_grants_nothing_twice(
+    db: Session, app_engine: Engine, daily_player: User
+) -> None:
+    """Six practice answers and a settle, all at once, after midnight: the daily is granted exactly once."""
+    daily_player.rank_points = 500.0
+    db.commit()
+    done = _answer_pending(db, daily_player, "mech")
+    qids = list(db.scalars(select(Question.id).where(Question.area != "mech", Question.graded).limit(5)))
+    jobs: list[Callable[[Session], Any]] = [lambda s: daily.settle_results(s, LATER)]
+    for qid in qids:
+        body = right_answer(db, qid)
+        jobs.append(
+            lambda s, qid=qid, body=body: practice.answer(  # type: ignore[misc]
+                s, s.get_one(User, daily_player.id), qid, body.get("options"), body.get("value"), LATER
+            )
+        )
+    results = race(app_engine, *jobs)
+    assert not failed(results), results
+    db.expire_all()
+    row = db.get_one(Attempt, done, populate_existing=True)
+    assert row.settled_at == LATER
+    practice_xp = sum(r.score.xp for r in results[1:])
+    assert db.get_one(User, daily_player.id, populate_existing=True).xp == row.xp + practice_xp
+
+
+def test_the_job_the_page_and_an_account_deletion_at_once_grant_once_and_never_deadlock(
+    db: Session, app_engine: Engine, daily_player: User
+) -> None:
+    """The night job, the owner's page (a lazy settle) and the deletion of the account all take the player's row
+    first, then the attempt. A bystander's results, reached by the job and by their own page, are granted once."""
+    admin = accounts.create_first_admin(db, "a@x.com", "Alpha", "pit lane boss 2026", NOW)
+    daily_player.rank_points = 500.0
+    victims = [User(email=f"v{i}@x.com", password_hash="x", display_name=f"V{i}") for i in range(6)]
+    db.add_all(victims)
+    db.commit()
+    bystander = [_answer_pending(db, daily_player, area) for area in ("mech", "elec")]
+    ids = {}
+    for v in victims:
+        _answer_pending(db, v, "mech")
+        ids[v.email] = v.id
+        db.expunge(v)
+    for victim in victims:
+        job, page, theirs, deleted = race(
+            app_engine,
+            lambda s: daily.settle_results(s, LATER),
+            lambda s, v=victim: daily.settle_results(s, LATER, ids[v.email]),  # type: ignore[misc]
+            lambda s: daily.status(s, s.get_one(User, daily_player.id), LATER, rules_from=PER_PLAYER),
+            lambda s, v=victim: privacy.delete_user(s, s.get_one(User, admin.id), ids[v.email], LATER),  # type: ignore[misc]
+        )
+        assert deleted is None, deleted  # a deadlock or a foreign key error would show here
+        assert isinstance(job, tuple) and job[1] == 0, job  # the settle carried on: nothing failed
+        assert not isinstance(theirs, Exception), theirs
+        assert isinstance(page, tuple) and page[1] == 0, (
+            page
+        )  # the page's own settle: a vanished account is skipped
+        db.expire_all()
+        assert db.get(User, ids[victim.email]) is None
+        assert (
+            db.scalar(select(func.count()).select_from(Attempt).where(Attempt.user_id == ids[victim.email]))
+            == 0
+        )
+    daily.settle_results(db, LATER)  # whatever the pages did not reach
+    rows = _settled_once(db, daily_player.id, bystander, 500.0)
+    assert all(a.xp > 0 and a.lp > 0 for a in rows)
+
+
+def test_a_live_share_and_the_settle_of_the_same_member_grant_each_once(
+    db: Session, app_engine: Engine, daily_player: User
+) -> None:
+    """A table member with a result waiting: the share of the table's closed question (xp.grant settles first)
+    races the night job and another share. The daily is granted once, and so is the live answer."""
+    daily_player.rank_points = 500.0
+    db.commit()
+    done = _answer_pending(db, daily_player, "mech")
+    code, _, table = _live_room(db, daily_player)
+    live.answer(db, db.get_one(User, daily_player.id), code, [], None, False, NOW)
+    session_id = db.scalar(select(LiveSession.id).where(LiveSession.code == code))
+    assert session_id is not None
+    results = race(
+        app_engine,
+        lambda s: live.share(s, session_id, LATER),
+        lambda s: daily.settle_results(s, LATER),
+        lambda s: live.share(s, session_id, LATER),
+    )
+    assert not [r for r in results if isinstance(r, Exception) and not isinstance(r, UserError)], results
+    live.share(db, session_id, LATER)
+    db.expire_all()
+    row = db.get_one(Attempt, done, populate_existing=True)
+    assert row.settled_at == LATER and row.xp > 0 and row.lp > 0
+    lives = db.scalars(
+        select(Attempt).where(Attempt.mode == "live").execution_options(populate_existing=True)
+    ).all()
+    assert sorted(a.user_id for a in lives) == sorted(u.id for u in table)  # every member, once
+    mine = next(a for a in lives if a.user_id == daily_player.id)
+    player = db.get_one(User, daily_player.id, populate_existing=True)
+    assert player.xp == row.xp + mine.xp
+    assert player.rank_points == pytest.approx(500 + row.lp)  # a table's answer moves no LP
+
+
+def test_a_live_share_with_a_poisoned_pending_row_still_scores_the_table(
+    db: Session, app_engine: Engine, daily_player: User, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A member whose waiting result cannot be granted (a row that fails) sits at a live table. The share of the
+    table's question, racing the job and another share, still pays every member their answer, once: the failing
+    row is rolled back to its savepoint and left for the next try, and nothing is raised into the share."""
+    daily_player.rank_points = 500.0
+    db.commit()
+    done = _answer_pending(db, daily_player, "mech")
+    poisoned = db.get_one(Attempt, done).question_id
+    code, _, table = _live_room(db, daily_player)
+    live.answer(db, db.get_one(User, daily_player.id), code, [], None, False, NOW)
+    session_id = db.scalar(select(LiveSession.id).where(LiveSession.code == code))
+    assert session_id is not None
+
+    def crit(_db: Session, _user: int, question: Any, _moment: Any) -> bool:
+        if getattr(question, "id", question) == poisoned:
+            raise RuntimeError("boom")
+        return False
+
+    monkeypatch.setattr(xp_service, "_crit", crit)
+    results = race(
+        app_engine,
+        lambda s: live.share(s, session_id, LATER),
+        lambda s: daily.settle_results(s, LATER),
+        lambda s: live.share(s, session_id, LATER),
+    )
+    assert not [r for r in results if isinstance(r, Exception) and not isinstance(r, UserError)], results
+    assert results[1] == (0, 1), results[1]  # counted as failed, not raised
+    live.share(db, session_id, LATER)
+    db.expire_all()
+    lives = db.scalars(
+        select(Attempt).where(Attempt.mode == "live").execution_options(populate_existing=True)
+    ).all()
+    assert sorted(a.user_id for a in lives) == sorted(u.id for u in table)  # every member, once
+    assert all(a.xp > 0 for a in lives)
+    row = db.get_one(Attempt, done, populate_existing=True)
+    assert (row.settled_at, row.xp, row.lp) == (None, 0, 0)  # still waiting
+    mine = next(a for a in lives if a.user_id == daily_player.id)
+    player = db.get_one(User, daily_player.id, populate_existing=True)
+    assert (player.xp, player.rank_points) == (mine.xp, 500.0)
+
+    monkeypatch.setattr(xp_service, "_crit", lambda *_: False)  # the fault is gone
+    assert daily.settle_results(db, LATER) == (1, 0)
+    db.expire_all()
+    row = db.get_one(Attempt, done, populate_existing=True)
+    assert row.settled_at == LATER and row.xp > 0 and row.lp > 0
+    player = db.get_one(User, daily_player.id, populate_existing=True)
+    assert player.xp == row.xp + mine.xp and player.rank_points == pytest.approx(500 + row.lp)
 
 
 LIVE_CONFIG = {

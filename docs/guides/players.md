@@ -106,8 +106,19 @@ different one, and "what did you get?" has no answer to pass on.
 2. Press **Start**. The clock starts when you open the question (from season 1b, that is also when it is drawn), and
    you get one try.
 3. Answer and press **Check answer**. When the clock reaches zero, whatever you have entered is sent.
-4. You see right or wrong, the official answer, any worked solution, and what the answer did to your LP and XP.
-   **Back to today's questions** returns to the list; **See the question** reopens an answered one.
+4. Until season 1b you see right or wrong, the official answer, any worked solution, and what the answer did to your
+   LP and XP at once. **From season 1b the answer is locked in and the result shows at midnight (Madrid time):**
+   the page says "Locked in", with the time, and shows your answer and nothing else. Right or wrong, the official
+   answer, the solution, your LP and XP arrive at midnight, once, on the Daily page under **Your latest results**
+   (they stay there for a week, with **See the question**), together with the bonuses the answer earned and any
+   promotion or drop it caused. Your rank and the boards do not move until then, and the Home card says so. Your
+   streak counts the day you answered, not the day the result shows, and so does "done" on the area. Open the page
+   at 00:01 and it is there; so is anything else you do that scores. If the page still says "Locked in. Your result is on
+   its way" after midnight, it is being granted; reload in a minute, nothing is lost (it also shows under
+   **Your latest results**). A result there can say "Held back for now": its question is another player's daily
+   today, so how it went waits until that question is out of play, and the Home line then counts the results that are in. A daily you let run out shows as
+   **Ran out** and is charged at midnight like a wrong answer. **Back to today's questions** returns to the
+   list; **See what you sent** (Home) and **See the question** reopen an answered one.
 
 If you leave while the clock runs, the area shows **Continue** and the clock keeps running: it is the server's,
 not your browser's. A question started just before midnight stays yours after midnight: the area shows
@@ -159,9 +170,10 @@ rank.
 
 Practice prefers questions you've practised least. It never serves a question you still have to answer in your
 daily questions, a mock run or a live quiz, and refuses to open one by its link until you have. From season 1b it
-also keeps back a question another player has drawn as their daily until they answer it (the message says to
-practise it later), and a mock run skips such a question if it hasn't shown it yet (the quiz then has one
-question fewer) and hides its answer in the summary if it has.
+also keeps back a question another player has drawn as their daily until the Madrid day ends (the message says to
+practise it later), and the question you answered as today's daily until your result shows at midnight (the message
+says when; the answer is not yours to see before). A mock run skips such a question if it hasn't shown it yet (the
+quiz then has one question fewer) and hides its answer in the summary if it has.
 
 ### Answer formats
 
@@ -197,7 +209,9 @@ guess more likely to land (on a typed answer, as much as a coin flip). Hints end
 ### "I'm not sure"
 
 **I'm not sure** shows the answer without guessing. In practice it moves no LP and still earns a little XP. In daily
-and mock questions it costs at most half the LP a wrong answer would.
+and mock questions it costs at most half the LP a wrong answer would. From season 1b a daily's answer shows at
+midnight, as its result does: the daily is locked in as "not sure" and you see the official answer, and the little XP,
+only then.
 
 ### Learning aids
 
@@ -262,8 +276,8 @@ its questions are held back from your daily questions and practice, so end a run
 question, your run skips it if it hasn't shown it yet. The run tells you how many it is skipping and the summary how
 many it skipped; they are not scored, and a second run of the quiz is a replay (XP only). If a question you already
 had on screen becomes someone's daily, its result is kept back: the summary marks it "result kept back", leaves it
-out of "*n* of *m* right" (both numbers) and of the XP and LP, and shows it once that player has answered (or the
-next day).
+out of "*n* of *m* right" (both numbers) and of the XP and LP, and shows it at the Madrid midnight that reveals that player's
+result.
 
 **First runs and replays.** Your first run of a quiz each season moves your rank. Starting it again later is a
 replay: XP only. A question you have already answered today earns no XP again.
@@ -321,7 +335,8 @@ MingoQuiz keeps two separate scores. Home and Profile show both cards. The full 
 - Divisions from **Mingo I** to **Mingo V**, **Jefe I** to **Jefe V**, **DT I** to **DT V**, then **the top**,
   which has a title that depends on your vertical, revealed when you reach DT V. 100 LP per division.
 - **What moves LP:** daily questions and your first run of each mock quiz each season. Right answers win LP, wrong
-  and late ones lose it; a hard question pays more and costs less. "I'm not sure" costs at most half a wrong answer.
+  and late ones lose it; a hard question pays more and costs less. From season 1b a daily's LP and XP arrive at
+  midnight (Madrid time), not when you answer; the rank card says "at midnight" from then on, and not before. "I'm not sure" costs at most half a wrong answer.
   A hint halves the win, and a wrong answer after one costs more. Practice, replays and live quizzes never move LP.
 - Your rank card says what a daily question is worth at your rank, warns you when one wrong answer would drop you a
   division, and shows **Rough patch** after 3 wrong in a row: losses are cushioned (up to half) and your next
@@ -340,7 +355,11 @@ MingoQuiz keeps two separate scores. Home and Profile show both cards. The full 
 - **Bonuses on right answers:** **First wins** (+50 % on your first 3 right answers of the day, not in live
   quizzes), **Combo** (+10 % per right answer in a row, up to +50 %, not in live quizzes), **Streak** (+5 % per day,
   up to +50 %), **Critical!** (a rare double) and **Rested** (each full day away saves 150 XP, up to 450, which
-  doubles your right answers until it runs out).
+  doubles your right answers until it runs out). A daily's bonuses are worked out for the moment you answered
+  (streak, Critical!, the day, the season), but **first wins, combo, the bad run and Rested follow the order things are
+  paid in**, so a daily answered in the morning is paid at midnight after everything you scored in between that day:
+  it gets a first win only if one of your three is still free then, and a wrong daily breaks your combo at midnight,
+  not when you answered.
 
 ### Seasons
 

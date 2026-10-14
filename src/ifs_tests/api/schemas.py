@@ -87,6 +87,9 @@ class RankOut(BaseModel):
     lp: float = Field(description="LP into the division; uncapped at the top")
     stakes: int
     swing: tuple[float, float] = Field(description="A middling daily question right and wrong, at this rank")
+    daily_at_midnight: bool = Field(
+        default=False, description="Today's daily results are granted at Madrid midnight, not on the answer"
+    )
     miss_streak: int = Field(
         description="Wrong answers in a row; from 3 losses halve and a right one pays 1.5x"
     )
@@ -255,7 +258,10 @@ class ExportAnswer(Exported):
     mode: str
     area: str | None
     answer: dict[str, Any]
-    correct: bool | None = Field(description="Hidden (null) while a mock run or live quiz is still going")
+    correct: bool | None = Field(
+        description="Hidden (null) while a mock run or live quiz is still going, and while a daily's result waits "
+        "for day close"
+    )
     passed: bool
     hint_used: bool
     xp: int
@@ -265,6 +271,15 @@ class ExportAnswer(Exported):
     started_at: datetime
     deadline_at: datetime | None = Field(description="Timed modes: when the clock ran out")
     submitted_at: datetime | None
+    released_at: datetime | None = Field(
+        description="A daily from season 1b: when its result is revealed (Madrid midnight); null otherwise"
+    )
+    settled_at: datetime | None = Field(
+        description="When that daily's XP and LP were granted; null while it waits, and on other answers"
+    )
+    reward: dict[str, Any] | None = Field(
+        description="What that grant paid on top: XP bonuses by name and any division change; null otherwise"
+    )
     signals: ExportSignals | None = Field(
         description="Ranked play from season 1b on: what the page saw while the clock ran, how often the question "
         "was reopened, and the canary's decoy; null otherwise, and 90 days after the season ended"
@@ -570,6 +585,43 @@ class DailyArea(BaseModel):
     passed: bool = Field(default=False, description='Answered "I\'m not sure"')
     xp: int
     lp: float
+    pending: bool = Field(
+        default=False,
+        description="Answered, result not yet revealed: from season 1b a daily's right or wrong, XP and LP show at "
+        "Madrid midnight; correct is null and xp, lp are 0 until then",
+    )
+    released_at: datetime | None = Field(
+        default=None, description="While pending: the Madrid midnight the result shows at"
+    )
+    ran_out: bool = Field(default=False, description="While pending: left to run out, no answer was sent")
+
+
+class DailyRevealed(BaseModel):
+    area: str
+    day: date
+    correct: bool | None
+    late: bool
+    passed: bool
+    xp: int
+    lp: float
+    bonuses: list[str] = Field(default_factory=list, description="The XP bonuses the grant paid, by name")
+    rank_change: Literal["promoted", "rose", "demoted"] | None = Field(
+        default=None, description="Whether the grant moved you into another division"
+    )
+    ran_out: bool = Field(default=False, description="Left to run out: no answer was sent")
+    level_up: int | None = Field(
+        default=None, description="The account level the grant reached, when it went up"
+    )
+    pending: bool = Field(
+        default=False,
+        description="Its midnight has passed but the result is not granted yet (the grant failed and will be "
+        "tried again): correct is null and xp, lp are 0",
+    )
+    held: bool = Field(
+        default=False,
+        description="Granted, but the question is another player's running daily: how it went is not shown "
+        "until that question is out of play; correct is null and xp, lp are 0",
+    )
 
 
 class DailyStatus(BaseModel):
@@ -578,6 +630,11 @@ class DailyStatus(BaseModel):
     xp_today: int
     lp_today: float
     areas: list[DailyArea]
+    revealed: list[DailyRevealed] = Field(
+        default_factory=list,
+        description="Your latest revealed daily results per area from the last 7 days, not today's: from season 1b "
+        "results show at midnight, here",
+    )
 
 
 class TimedQuestion(BaseModel):
@@ -598,12 +655,23 @@ class TimedQuestion(BaseModel):
         "(season 1b reached and the attempt created under it: daily, or a counted mock run). False before the rule "
         "date, with the gate unset, on replays, and on a daily started before the date",
     )
+    result_at: datetime | None = Field(
+        default=None, description="When this answer's result will show; null when it shows at once"
+    )
 
 
 class DailyResult(BaseModel):
     day: date = Field(description="The day the question belongs to")
     question: PlayQuestion
-    feedback: Feedback
+    feedback: Feedback | None = Field(
+        description="Null while the result waits for day close (season 1b): no right or wrong, official answer, XP "
+        "or LP until released_at; xp and lp read 0 then, so feedback being null is the discriminator"
+    )
+    released_at: datetime | None = Field(
+        default=None,
+        description="When a pending result is revealed: the Madrid midnight closing the question's day; null once "
+        "revealed",
+    )
     answer: KeyIn | None = Field(default=None, description="What you sent")
     late: bool
     xp: int
@@ -636,7 +704,7 @@ class MockItem(BaseModel):
     late: bool
     hidden: bool = Field(
         description="The result is kept back for now: the question became someone's daily question after you "
-        "had it on screen. It is left out of the totals and shows when its player has answered"
+        "had it on screen. It is left out of the totals and shows at the Madrid midnight that reveals its player's result"
     )
 
 
