@@ -9,7 +9,7 @@ One Python service (FastAPI) serves both the JSON API and the React single-page 
 ```mermaid
 flowchart LR
     B["Browser<br/>React SPA"] -->|"HTTPS :443"| N["The website's Nginx (isc-web)<br/>TLS, HSTS, rate limits<br/>deploy/nginx/quiz.conf"]
-    N -->|"proxy network :8000"| A
+    N -->|"quiz-edge network :8000"| A
     subgraph P["Compose project quiz-prod (quiz-staging is identical)"]
         A["api<br/>uvicorn, 2 workers<br/>/api, /auth, /media, /healthz, /readyz, SPA"]
         S["scheduler<br/>ifs-tests scheduler<br/>00:01 daily questions<br/>00:01 daily results<br/>03:00 maintenance"]
@@ -25,7 +25,7 @@ flowchart LR
 ```
 
 - **One origin.** FastAPI serves `/api/*` (JSON), `/auth/*` (sign-in, registration, resets), `/media/*` (question images), `/assets/*` (the built SPA's hashed files), `/healthz` and `/readyz`, and `index.html` for every other GET so the SPA's client-side routes work. No CORS, simple cookies. See `create_app` in `src/ifs_tests/api/app.py`.
-- **The database is never exposed.** `db` and `scheduler` sit only on an internal Docker network with no route out; `api` also joins the `proxy` network that Nginx uses, and `backup` an `egress` network used only for its heartbeat ping. Hardening of the containers is in [security.md](security.md).
+- **The database is never exposed.** `db` and `scheduler` sit only on an internal Docker network with no route out; `api` also joins `quiz-edge`, which only Nginx (`isc-web`) shares, and `backup` an `egress` network used only for its heartbeat ping. Hardening of the containers is in [security.md](security.md).
 - **Backups:** the `backup` container dumps the database nightly and before every deploy (`deploy/db/backup.sh`); Hetzner also snapshots the whole server. Restores are in the [runbook](runbook.md).
 - **Local development** runs only `db` and `api` (`compose.yaml` at the repository root); there is no scheduler locally, so run `docker compose exec api ifs-tests maintenance` when you need the nightly job.
 
@@ -137,7 +137,7 @@ The web app lives in `web/`: `web/src/routes` (pages), `web/src/components`, `we
 
 ## Request lifecycle
 
-1. **Nginx** terminates TLS, adds HSTS, rate-limits sign-in and password endpoints, caps open live event streams and requests in flight per address (sized for a whole team behind one campus IP, [security.md](security.md#server-and-containers)), overwrites `X-Forwarded-For` and proxies to `api:8000` (`deploy/nginx/quiz.conf`). Uvicorn trusts forwarded headers only from `FORWARDED_ALLOW_IPS` (the `proxy` network's subnet). `deploy/nginx.sh` installs `quiz.conf` into the website's container.
+1. **Nginx** terminates TLS, adds HSTS, rate-limits sign-in and password endpoints, caps open live event streams and requests in flight per address (sized for a whole team behind one campus IP, [security.md](security.md#server-and-containers)), overwrites `X-Forwarded-For` and proxies to `api:8000` (`deploy/nginx/quiz.conf`). Uvicorn trusts forwarded headers only from `FORWARDED_ALLOW_IPS` (the `quiz-edge` network's subnet, shared only by `isc-web` and the quiz apis, [ADR 0011](adr/0011-own-edge-network.md)). `deploy/nginx.sh` installs `quiz.conf` into the website's container.
 2. **Middleware** (`api/security.py`), outermost first: `SecurityHeaders` adds CSP and the other headers to every response, including rejections; `CSRFGuard` rejects any `POST`, `PUT`, `PATCH` or `DELETE` to `/api/` or `/auth/` that lacks `X-CSRF: 1` or carries a foreign `Origin` (403). Details in [api.md](api.md#authentication-and-csrf).
 3. **Dependencies** (`api/deps.py`) run per request:
    - `Db` opens a SQLAlchemy session for the request and closes it afterwards.

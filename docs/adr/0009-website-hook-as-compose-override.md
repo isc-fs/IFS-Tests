@@ -40,3 +40,12 @@ The website's Nginx also loads every `/etc/nginx/conf.d/*.conf`, not only its ow
 - The website's deploy still recreates `isc-web` on each push, now with the override applied each time.
 - Applying a change to the override needs `docker compose up -d` in `/srv/isc-web`: a second or two in which the
   website is down.
+
+## Addendum · 2026-10-18
+
+On 16 October 2026 root used the same hook for the team's BookStack wiki: the override now also mounts
+`/srv/isc-proxy/sites` and an include from `/srv/isc-proxy` into `isc-web`, and the wiki's container joined
+`proxy`. The file belongs to root since, so the quiz's lines in it change through the server admin, and a
+change by any party restarts `isc-web` for all three. The wiki's lines are its owners' (sergio and Mance); nothing
+in this repository manages them. Because the wiki now shares `proxy`, the quiz apis leave it for a network of their
+own, which the override also attaches to `isc-web` ([ADR 0011](0011-own-edge-network.md)).

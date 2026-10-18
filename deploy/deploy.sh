@@ -41,6 +41,11 @@ set -a
 . "$envfile"
 set +a
 [[ $QUIZ_ENV == "$env" ]] || die "QUIZ_ENV in $envfile is '$QUIZ_ENV', expected '$env'"
+edge=${EDGE_NETWORK:-quiz-edge}
+subnet=$(docker network inspect -f '{{range .IPAM.Config}}{{.Subnet}}{{end}}' "$edge" 2>/dev/null) ||
+  die "no Docker network $edge: create it and attach isc-web first (runbook 1.3, step 1)"
+[[ -n $subnet && ${FORWARDED_ALLOW_IPS:-} == "$subnet" ]] ||
+  die "FORWARDED_ALLOW_IPS in $envfile is '${FORWARDED_ALLOW_IPS:-}', but $edge is $subnet (runbook 1.3)"
 
 compose() {
   IMAGE_TAG=$1 docker compose --project-directory "$repo/deploy" -f "$repo/deploy/compose.yaml" \

@@ -34,5 +34,5 @@ USER 10001
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=3s --retries=3 CMD ["python", "-c", "import urllib.request,sys; sys.exit(urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=2).status != 200)"]
 # No access log: Nginx keeps one (with IPs) and rotates it; this one would never expire (ADR 0006).
-# uvicorn trusts X-Forwarded-For only from FORWARDED_ALLOW_IPS (the proxy network's subnet on the server, ADR 0008).
+# uvicorn trusts X-Forwarded-For only from FORWARDED_ALLOW_IPS (the quiz-edge network's subnet on the server, ADR 0011).
 CMD ["uvicorn", "ifs_tests.api.app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2", "--proxy-headers", "--no-access-log"]

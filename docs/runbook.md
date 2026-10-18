@@ -44,30 +44,36 @@ Store a copy of the prod `.env` in the team's password manager, not in a shared 
 
 ### 1.3 Network, Nginx and DNS
 
-The team's website runs on the same server as the container `isc-web` (Nginx), from its own repository, and owns ports 80 and 443; the quiz sits behind it ([ADR 0008](adr/0008-behind-the-website-nginx.md)). `isc-web` is rebuilt and recreated from the website's repository on every push to it, and its files in `/srv/isc-web` are reset to that repository each time, so the quiz never edits them: it adds a file of its own that the website's deploy keeps and applies ([ADR 0009](adr/0009-website-hook-as-compose-override.md)). In this order (once step 3 exists, the website's deploy fails if the `proxy` network of step 1 is missing):
+The team's website runs on the same server as the container `isc-web` (Nginx), from its own repository, and owns ports 80 and 443; the quiz sits behind it ([ADR 0008](adr/0008-behind-the-website-nginx.md)). `isc-web` is rebuilt and recreated from the website's repository on every push to it, and its files in `/srv/isc-web` are reset to that repository each time, so the quiz never edits them: it adds a file of its own that the website's deploy keeps and applies ([ADR 0009](adr/0009-website-hook-as-compose-override.md)). In this order (once step 3 exists, the website's deploy fails if the `quiz-edge` network of step 1 is missing):
 
-1. **Shared network** (maintainer, on the server). Check the subnet is free (`ip route | grep 10.213.` and `docker network inspect $(docker network ls -q) -f '{{.Name}} {{range .IPAM.Config}}{{.Subnet}}{{end}}'` show nothing in `10.213.0.0/24`), then:
+1. **Edge network** (maintainer, on the server): the network only `isc-web` and the quiz apis join ([ADR 0011](adr/0011-own-edge-network.md)). Check the subnet is free (`ip route | grep 10.214.` and `docker network inspect $(docker network ls -q) -f '{{.Name}} {{range .IPAM.Config}}{{.Subnet}}{{end}}'` show nothing in `10.214.0.0/24`), then:
    ```bash
-   docker network create --subnet 10.213.0.0/24 proxy
+   docker network create --subnet 10.214.0.0/24 quiz-edge
    ```
-   Both `.env` files keep `PROXY_NETWORK=proxy` and `FORWARDED_ALLOW_IPS=10.213.0.0/24` (as in `deploy/env.example`): uvicorn trusts the client address Nginx forwards only from that subnet. A subnet rather than `isc-web`'s address, because every website deploy recreates the container.
+   Both `.env` files keep `EDGE_NETWORK=quiz-edge` and `FORWARDED_ALLOW_IPS=10.214.0.0/24` (as in `deploy/env.example`): uvicorn trusts the client address Nginx forwards only from that subnet, and `deploy.sh` refuses to start if the two disagree. A subnet rather than `isc-web`'s address, because website deploys and reboots change it. Never attach anything else to `quiz-edge`: the website's own shared network, `proxy` (`10.213.0.0/24`), is where other sites behind `isc-web` live, such as the wiki.
 2. **The quiz's Nginx folder and include** (maintainer, on the server): `mkdir -p /srv/quiz/nginx` (it stays empty until step 6; an empty folder changes nothing for the website), and the one-line include `isc-web` will load after its own configuration:
    ```bash
    printf '%s\n' 'include /etc/nginx/quiz/*.conf;' > /srv/quiz/isc-web-include.conf
    ```
-3. **The hook: a Compose override next to the website's compose file** (maintainer, with `sudo`, because `/srv/isc-web` belongs to `iscdeploy`). The website's deploy (`/usr/local/bin/isc-web-autodeploy`) resets its tracked files with `git reset --hard` and runs `docker compose up -d --build` without `-f`, so this untracked file survives every website deploy and is applied each time. Check that is still true before relying on it (`cat /usr/local/bin/isc-web-autodeploy`):
+3. **The hook: a Compose override next to the website's compose file** (the server admin, as root: since 16 October 2026 the file also carries the wiki's lines and belongs to root). The website's deploy (`/usr/local/bin/isc-web-autodeploy`) resets its tracked files with `git reset --hard` and runs `docker compose up -d --build` without `-f`, so this untracked file survives every website deploy and is applied each time. Check that is still true before relying on it (`cat /usr/local/bin/isc-web-autodeploy`). The quiz's part is the two mounts and the `quiz-edge` network; the `isc-proxy` mounts and the `proxy` network are the wiki's. If the file exists, add the quiz's lines to it rather than replacing it. As it stands with both:
    ```bash
    sudo tee /srv/isc-web/docker-compose.override.yml > /dev/null <<'EOF'
-   # MingoQuiz (quiz.iscracingteam.com) behind this Nginx: isc-fs/IFS-Tests, ADR 0009 and runbook 1.3.
+   # MingoQuiz (quiz.iscracingteam.com) behind this Nginx: isc-fs/IFS-Tests, ADR 0009, ADR 0011 and runbook 1.3.
    # Not part of the website's repository: the deploy's git reset --hard keeps it, and docker compose reads it on its own.
+   # Wiki (wiki.iscracingteam.com, BookStack de sergio): configuracion en /srv/isc-proxy, de root.
    services:
      web:
        volumes:
          - /srv/quiz/nginx:/etc/nginx/quiz:ro
          - /srv/quiz/isc-web-include.conf:/etc/nginx/conf.d/zz-quiz.conf:ro
-       networks: [default, proxy]
+         - /srv/isc-proxy/sites:/etc/nginx/isc-proxy:ro
+         - /srv/isc-proxy/isc-web-include.conf:/etc/nginx/conf.d/zz-isc-proxy.conf:ro
+       # quiz-edge: only isc-web and the quiz apis (ADR 0011). proxy: the wiki.
+       networks: [default, proxy, quiz-edge]
    networks:
      proxy:
+       external: true
+     quiz-edge:
        external: true
    EOF
    ```
@@ -79,7 +85,7 @@ The team's website runs on the same server as the container `isc-web` (Nginx), f
      -v /etc/letsencrypt:/etc/letsencrypt:ro -v /srv/quiz/nginx:/etc/nginx/quiz:ro \
      -v /srv/quiz/isc-web-include.conf:/etc/nginx/conf.d/zz-quiz.conf:ro isc-web:latest nginx -t
    ```
-   Then apply it (the website is down for a second or two while `isc-web` is recreated; no rebuild): `cd /srv/isc-web && docker compose up -d`. Check `docker inspect isc-web -f '{{range .Mounts}}{{.Source}}={{.Destination}} {{end}}'` lists both mounts, `docker inspect isc-web -f '{{range $n, $_ := .NetworkSettings.Networks}}{{$n}} {{end}}'` lists `proxy`, and the website still loads. Tell the website's maintainer the file exists, and ask them to say if their deploy ever names its compose file (`-f`), cleans untracked files, or their repository gains a file with this name. To undo it: delete the file and run `docker compose up -d` there again.
+   Then apply it (the website is down for a second or two while `isc-web` is recreated; no rebuild): `cd /srv/isc-web && docker compose up -d`. Check `docker inspect isc-web -f '{{range .Mounts}}{{.Source}}={{.Destination}} {{end}}'` lists both mounts, `docker inspect isc-web -f '{{range $n, $_ := .NetworkSettings.Networks}}{{$n}} {{end}}'` lists `quiz-edge` (and `proxy`, for the wiki), and the website still loads. Tell the website's maintainer the file exists, and ask them to say if their deploy ever names its compose file (`-f`), cleans untracked files, or their repository gains a file with this name. To undo it: delete the file and run `docker compose up -d` there again.
 4. **DNS** (whoever holds the domain's DNS: Arsys today, `dns9`/`dns10.servidoresdns.net`): `A` records for `quiz` and `quiz-staging` pointing at `46.62.206.29`, like the website's. No `AAAA`: the website has none. When the domain moves to Squarespace Domains, these two records move with the website's. Check: `dig +short quiz.iscracingteam.com`.
 5. **Certificate** (server admin, on the server), before step 6: `quiz.conf` names this certificate, so Nginx refuses it until it exists. The website's certificate renews through a webroot (`/srv/isc-web/certbot-www`, which `isc-web` serves at `/var/www/certbot`) with a hook that reloads `isc-web`; the quiz's is issued the same way. Until step 6 the website's catch-all server on port 80 answers the challenge for the new names; afterwards `quiz.conf`'s own port-80 server does, from the same folder:
    ```bash
@@ -114,7 +120,36 @@ A website deploy recreates `isc-web`: for a few seconds the quiz is unreachable 
    docker exec -it quiz-prod-api-1 ifs-tests create-admin --email <their email> --name "<display name>"
    ```
 3. Load the question bank: `deploy/refresh-bank.sh prod` ([section 2.3](#23-question-bank)).
-4. Sign in at the URL, then invite everyone else from Admin (see the [admins' guide](guides/admins.md)).
+4. Once both environments run: `deploy/edge-check.sh` passes ([ADR 0011](adr/0011-own-edge-network.md)).
+5. Sign in at the URL, then invite everyone else from Admin (see the [admins' guide](guides/admins.md)).
+
+### 1.6 Moving to the edge network (2026-10)
+
+Until October 2026 the quiz apis sat on the website's shared `proxy` network and trusted `X-Forwarded-For` from all of it. Since the wiki joined it, they move to `quiz-edge` ([ADR 0011](adr/0011-own-edge-network.md)). Once only: a fresh server follows 1.3 instead. Each step leaves the quiz working, so it can stop between any two. Do it outside a live quiz: step 3 takes the website down for a second or two.
+
+1. **Network** (maintainer): step 1 of 1.3. Check: `docker network inspect quiz-edge -f '{{range .IPAM.Config}}{{.Subnet}}{{end}}'` prints `10.214.0.0/24`.
+2. **Override** (server admin, root): back up the file (`sudo cp -p /srv/isc-web/docker-compose.override.yml /root/isc-web-override.bak-$(date +%Y%m%d)`), then add `quiz-edge` to the `web` service's `networks` and declare it external, which is the whole difference between the file as it stood on 18 October 2026 and the one in step 3 of 1.3:
+   ```diff
+   -# MingoQuiz (quiz.iscracingteam.com) behind this Nginx: isc-fs/IFS-Tests, ADR 0009 and runbook 1.3.
+   +# MingoQuiz (quiz.iscracingteam.com) behind this Nginx: isc-fs/IFS-Tests, ADR 0009, ADR 0011 and runbook 1.3.
+    ...
+          - /srv/isc-proxy/isc-web-include.conf:/etc/nginx/conf.d/zz-isc-proxy.conf:ro
+   -    networks: [default, proxy]
+   +    # quiz-edge: only isc-web and the quiz apis (ADR 0011). proxy: the wiki.
+   +    networks: [default, proxy, quiz-edge]
+    networks:
+      proxy:
+        external: true
+   +  quiz-edge:
+   +    external: true
+   ```
+   Check the combined configuration without touching `isc-web`: `cd /srv/isc-web && sudo docker compose config --quiet && sudo docker compose config | grep -A4 '^    networks:'` shows the three networks.
+3. **Apply it** (server admin): `cd /srv/isc-web && sudo docker compose up -d` (no rebuild; `isc-web` is recreated). Check: `docker network inspect quiz-edge -f '{{range .Containers}}{{.Name}} {{end}}'` prints `isc-web`; the website, the wiki and both quiz sites still load (the quiz is still on `proxy` here). To undo: put the backup back and run the same command.
+4. **The quiz's `.env` files** (maintainer), in `/srv/quiz/staging/.env` and `/srv/quiz/prod/.env`: replace `PROXY_NETWORK=proxy` with `EDGE_NETWORK=quiz-edge`, and set `FORWARDED_ALLOW_IPS=10.214.0.0/24`. A release older than this change reads `PROXY_NETWORK` instead: until the checkout has this change, set `PROXY_NETWORK=quiz-edge` as well (newer ones ignore it; delete it then).
+5. **Redeploy** (maintainer): staging first, `deploy/deploy.sh staging <its deployed tag>`, then prod the same way. `deploy.sh` recreates the api on `quiz-edge` only; Nginx re-resolves `quiz-<env>-api` within 10 seconds. Check each with `curl -s https://<host>/readyz`.
+6. **Test** (maintainer): `deploy/edge-check.sh` passes: only `isc-web` and the two apis on `quiz-edge`, an address `isc-web` forwards reaches the app, and a container on `proxy` reaches neither api. `docker network inspect proxy -f '{{range .Containers}}{{.Name}} {{end}}'` no longer lists a quiz container.
+7. **After the next reboot** (the 04:00 security one, or one the server admin schedules): `deploy/edge-check.sh` again, and both `readyz`. This is the D.9 reboot drill for the new network.
+8. Commit the server changes in etckeeper, and tell the wiki's owners that `proxy` now carries only `isc-web` and the wiki.
 
 ---
 
@@ -164,6 +199,7 @@ Starting the scheduler also runs the day's jobs whose time has passed (it keeps 
 | The script stopped at | What state you're in | What to do |
 |---|---|---|
 | `usage`, `missing ... .env`, `must be chmod 600`, `QUIZ_ENV ... expected`, `tag must be`, `prod only takes release tags` | Nothing changed | Fix the argument or the file and run it again |
+| `no Docker network quiz-edge`, `FORWARDED_ALLOW_IPS in ... but quiz-edge is` | Nothing changed | Create the network and attach `isc-web` ([1.3](#13-network-nginx-and-dns), steps 1 and 3), or set `FORWARDED_ALLOW_IPS` to the subnet it prints ([ADR 0011](adr/0011-own-edge-network.md)) |
 | `a deploy of <tag> ... is already running` or `a restore of <file> ... is already running` | Nothing changed | Follow it with the log it names. If none is running (`ps aux \| grep -E 'deploy\|restore'`, after a reboot for example), `rm -r /srv/quiz/<env>/operation.lock` |
 | Any line below followed by `<tag> was not started; <env> still runs <previous>` | The app is still on the previous tag; a migration that ran stays (expand-only, so the previous release works with it) | As in the row for the line above it |
 | The image pull | Nothing changed | Check the tag in the "Publish image" summary; check the GHCR package is still public |
@@ -193,7 +229,7 @@ The bank lives in the database; images live in the `media` volume; the raw FS-Qu
 ```bash
 deploy/refresh-bank.sh staging     # then the same for prod
 ```
-It runs `ifs-tests mirror --refresh --images` then `ifs-tests push` with the deployed image. Like the other scripts, it first refuses (and runs nothing) if the `.env` isn't `chmod 600` or its `QUIZ_ENV` isn't the environment you named: the compose project is named after `QUIZ_ENV`, so a mismatch would refresh the other environment. The mirror re-fetches every quiz, the document list (rulebooks and handbooks) and the last qualifiers' results, so corrected questions, new editions and new results arrive, not just new quizzes: about 500 API calls, one per second, plus the images not already in the volume (the first full load on the server, 3 October 2026: 504 calls and 374 images in 9 minutes; [fsquiz-api.md](fsquiz-api.md#extraction-strategy)). Images already in the volume are kept; only missing ones are fetched. The push is safe to repeat and never changes past results: options are updated in place (matched by FS-Quiz's answer ID), so finished mock runs, daily reviews and live results keep working; unchanged questions are skipped apart from parsing their answer again; a question whose answer or options changed upstream loses any reviewer correction and is flagged under Admin → Question bank and in the Review "Changed upstream" queue, while a new wording keeps the correction and the difficulty but is flagged too, and a new solution or image changes nothing for reviewers; a question FS-Quiz says it removed from its quiz is hidden once and lands in the Review "Hidden" queue. Quizzes and questions FS-Quiz deleted are retired: no longer played, kept in past results, the questions hidden and flagged in "Changed upstream". The push prints its counts (`rekeyed`: answers a newer release reads differently; `hidden`: questions hidden for a removal note; `retired` and `restored`: questions deleted upstream, or back; `not_retired`, `not_changed` and `not_unlinked`: deletions, answer changes and dropped quiz-question links held back, with a warning, because the mirror would retire or change the answer of more than a quarter of the bank, or drop more than a quarter of its quiz links). If any of the three is set, check the mirror (`ifs-tests stats`, `ifs-tests show <id>` on a question it changed) before anything else: an empty or answerless mirror usually means FS-Quiz renamed a field. The database still holds the good bank, so nothing is urgent, but the refresh has already replaced the mirror in the volume (the backups hold the database, not the mirror), so fix the mirror before pushing anything else. If FS-Quiz really changed that much, push the mirror already in the volume again, letting it apply all of it: `deploy/refresh-bank.sh <env> --no-mirror --allow-mass-removal` (same `.env` checks; the script refuses `--allow-mass-removal` without `--no-mirror`, so the override only ever applies to a mirror you have checked). The quarter is of the bank before the push, so new questions arriving at the same time don't hide a mass change. Images FS-Quiz can't serve are skipped; questions that need a missing image stay hidden until it arrives. The mirror needs outbound HTTPS from the api container (through the `proxy` network).
+It runs `ifs-tests mirror --refresh --images` then `ifs-tests push` with the deployed image. Like the other scripts, it first refuses (and runs nothing) if the `.env` isn't `chmod 600` or its `QUIZ_ENV` isn't the environment you named: the compose project is named after `QUIZ_ENV`, so a mismatch would refresh the other environment. The mirror re-fetches every quiz, the document list (rulebooks and handbooks) and the last qualifiers' results, so corrected questions, new editions and new results arrive, not just new quizzes: about 500 API calls, one per second, plus the images not already in the volume (the first full load on the server, 3 October 2026: 504 calls and 374 images in 9 minutes; [fsquiz-api.md](fsquiz-api.md#extraction-strategy)). Images already in the volume are kept; only missing ones are fetched. The push is safe to repeat and never changes past results: options are updated in place (matched by FS-Quiz's answer ID), so finished mock runs, daily reviews and live results keep working; unchanged questions are skipped apart from parsing their answer again; a question whose answer or options changed upstream loses any reviewer correction and is flagged under Admin → Question bank and in the Review "Changed upstream" queue, while a new wording keeps the correction and the difficulty but is flagged too, and a new solution or image changes nothing for reviewers; a question FS-Quiz says it removed from its quiz is hidden once and lands in the Review "Hidden" queue. Quizzes and questions FS-Quiz deleted are retired: no longer played, kept in past results, the questions hidden and flagged in "Changed upstream". The push prints its counts (`rekeyed`: answers a newer release reads differently; `hidden`: questions hidden for a removal note; `retired` and `restored`: questions deleted upstream, or back; `not_retired`, `not_changed` and `not_unlinked`: deletions, answer changes and dropped quiz-question links held back, with a warning, because the mirror would retire or change the answer of more than a quarter of the bank, or drop more than a quarter of its quiz links). If any of the three is set, check the mirror (`ifs-tests stats`, `ifs-tests show <id>` on a question it changed) before anything else: an empty or answerless mirror usually means FS-Quiz renamed a field. The database still holds the good bank, so nothing is urgent, but the refresh has already replaced the mirror in the volume (the backups hold the database, not the mirror), so fix the mirror before pushing anything else. If FS-Quiz really changed that much, push the mirror already in the volume again, letting it apply all of it: `deploy/refresh-bank.sh <env> --no-mirror --allow-mass-removal` (same `.env` checks; the script refuses `--allow-mass-removal` without `--no-mirror`, so the override only ever applies to a mirror you have checked). The quarter is of the bank before the push, so new questions arriving at the same time don't hide a mass change. Images FS-Quiz can't serve are skipped; questions that need a missing image stay hidden until it arrives. The mirror needs outbound HTTPS from the api container (through the `quiz-edge` network, which is not internal for that reason).
 
 Do this on staging first. Each environment has its own mirror, so each refresh costs FS-Quiz its own requests: don't repeat it without reason ([AGENTS.md](../AGENTS.md), server etiquette).
 
@@ -292,7 +328,7 @@ Staging now holds real member data. Put it back by restoring the safety dump the
 
 The two link commands need an active admin account to exist (they act in its name). If none exists any more, create one with `create-admin` ([section 1.5](#15-first-deploy-of-an-environment)). Send links privately: anyone holding one can use it.
 
-- The server reboots itself at 04:00 when security updates need it. Containers restart on their own; the nightly jobs run earlier (daily questions and daily results 00:01, maintenance 03:00, backup 03:30).
+- The server reboots itself at 04:00 when security updates need it. Containers restart on their own; the nightly jobs run earlier (daily questions and daily results 00:01, maintenance 03:00, backup 03:30). After a reboot, `deploy/edge-check.sh` confirms that client addresses still reach the app and that nothing else joined `quiz-edge` (addresses on it change at every reboot; the trusted subnet absorbs that).
 - Logs rotate automatically (3 × 10 MB per container).
 - **Season 1b and the AI canary** (ADR 0010) are switched in the environment's `.env`: `IFS_RULES_1B_FROM=YYYY-MM-DD` (the Madrid day the Technical Directors signed; unset changes nothing; the one switch for the whole of v2.0.0, [5.8](#58-season-1b-switch-v200), the accuracy on the boards included: no tally runs before it, so unsetting it hides them all and there is no accuracy-only switch) and `IFS_CANARY=true` (only after the recall pilot). Set them on staging first, then redeploy the deployed tag (`deploy/deploy.sh <env> <deployed tag>`) to restart with them. Prod gets neither until the About and privacy notice is live there.
 - **Rolling back the signals** (ADR 0010): the page measures only when the question payload says `collect_signals`, which is `services/signals.keeps` (`policy.collect` and a reopening count on the attempt). To stop the signals alone, ship a hotfix release in which `keeps` returns `False`: pages go inert at the next question load and nothing more is stored; this is the only signals-only kill. Unsetting `IFS_RULES_1B_FROM` rolls back all of season 1b (the daily draw, the other mechanisms and the signals together), and the notice's date (`RULES_FROM` in `web/src/lib/fairPlay.ts`) must then be reverted or redeployed to match (it is also shown on About and the boards' caption, so changing the date means editing `RULES_FROM` and redeploying in the same release). Redeploying v1.1.0 is safe for open tabs: it has no `collect_signals`, a tab that still sends `signals` gets a 422 and the web app retries once without them. There is no migration to undo.
