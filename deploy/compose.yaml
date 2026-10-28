@@ -35,11 +35,15 @@ services:
     cpus: 1.0
     # /readyz queries the database as app_rt, so a wrong APP_PASSWORD or a database outage shows as unhealthy
     # (the image's own check, /healthz, only says the process is up).
+    # Health checks were most of the stack's CPU (2026-10-28: 0.35 s per run with urllib, 69% of the api's CPU):
+    # a raw socket under `python -I -S` halves a run, and start_interval keeps `up --wait` fast with a long interval.
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/readyz', timeout=2)"]
-      interval: 30s
+      test: ["CMD", "python", "-I", "-S", "-c", "import socket, sys; s = socket.create_connection(('127.0.0.1', 8000), 2); s.sendall(b'GET /readyz HTTP/1.0\\r\\n\\r\\n'); sys.exit(s.makefile('rb').readline().split()[1:2] != [b'200'])"]
+      interval: 60s
       timeout: 3s
       retries: 3
+      start_period: 60s
+      start_interval: 2s
     volumes:
       - media:/data/media
       - fsquiz:/data/fsquiz
@@ -59,9 +63,10 @@ services:
     cpus: 0.5
     # The heartbeat is only touched while the database answers (scheduler.beat).
     healthcheck:
-      test: ["CMD", "python", "-c", "import os, sys, time; sys.exit(time.time() - os.path.getmtime('/tmp/scheduler-heartbeat') > 120)"]
-      interval: 30s
-      start_period: 15s
+      test: ["CMD", "python", "-I", "-S", "-c", "import os, sys, time; sys.exit(time.time() - os.path.getmtime('/tmp/scheduler-heartbeat') > 120)"]
+      interval: 60s
+      start_period: 60s
+      start_interval: 2s
     networks: [internal]
 
   db:
@@ -90,9 +95,11 @@ services:
       - ./db/roles.sql:/quiz/roles.sql:ro
     networks: [internal]
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d quiz"]
-      interval: 5s
-      retries: 12
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "postgres", "-d", "quiz"]
+      interval: 30s
+      retries: 3
+      start_period: 60s
+      start_interval: 1s
 
   backup:
     image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
