@@ -20,7 +20,7 @@ x-app: &app
     IFS_ENV: ${QUIZ_ENV}
     IFS_DATABASE_URL: postgresql+psycopg://app_rt:${APP_PASSWORD:?}@db:5432/quiz
     IFS_PUBLIC_ORIGIN: https://${QUIZ_HOST:?}
-    FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:?set to the proxy network's subnet}
+    FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:?set to the edge network's subnet}
     IFS_RULES_1B_FROM: ${IFS_RULES_1B_FROM:-}
     IFS_CANARY: ${IFS_CANARY:-false}
   depends_on:
@@ -49,7 +49,7 @@ services:
       - fsquiz:/data/fsquiz
     networks:
       internal: {}
-      proxy:
+      edge:
         aliases: ["quiz-${QUIZ_ENV}-api"]
 
   scheduler:
@@ -130,9 +130,10 @@ networks:
   internal:
     internal: true
   egress: {}
-  proxy:
+  # Only isc-web and the quiz apis: not the website's shared `proxy` network (ADR 0011).
+  edge:
     external: true
-    name: ${PROXY_NETWORK:-proxy}
+    name: ${EDGE_NETWORK:-quiz-edge}
 
 volumes:
   pgdata:

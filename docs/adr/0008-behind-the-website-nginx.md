@@ -2,6 +2,8 @@
 
 - **Status:** accepted · 2026-10-02. Refines ADR 0003 where the server turned out different from what it assumed.
   The hook in the website's repository is superseded by a Compose override on the server ([ADR 0009](0009-website-hook-as-compose-override.md)).
+  The `proxy` network and its trusted subnet are superseded by the quiz's own `quiz-edge` network, once other
+  sites joined `proxy` ([ADR 0011](0011-own-edge-network.md)).
 - **Deciders:** Álvaro González (Driverless TD)
 
 ## Context

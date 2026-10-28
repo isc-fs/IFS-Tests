@@ -20,6 +20,7 @@ from pathlib import Path
 import pytest
 
 DEPLOY = Path(__file__).parents[2] / "deploy"
+EDGE = "network inspect|0|10.214.0.0/24"  # deploy.sh finds the quiz-edge network; a test's own answer wins
 
 STUB = """#!/usr/bin/env bash
 echo "$*" >> "$STUB_LOG"
@@ -41,7 +42,9 @@ def server(tmp_path: Path, env: str = "staging", mode: int = 0o600, quiz_env: st
     root = tmp_path / "srv"
     (root / env).mkdir(parents=True)
     envfile = root / env / ".env"
-    envfile.write_text(f"QUIZ_ENV={quiz_env or env}\nMIGRATOR_PASSWORD=x\n")
+    envfile.write_text(
+        f"QUIZ_ENV={quiz_env or env}\nMIGRATOR_PASSWORD=x\nFORWARDED_ALLOW_IPS=10.214.0.0/24\n"
+    )
     envfile.chmod(mode)
     (root / env / "deployed-tag").write_text("v1.0.0\n")
     return root
@@ -64,7 +67,7 @@ def run(
     stub.chmod(0o755)
     log, rules = tmp_path / "docker.log", tmp_path / "answers"
     log.write_text("")
-    rules.write_text("\n".join(answers) + "\n")
+    rules.write_text("\n".join([*answers, EDGE]) + "\n")
     environment = {
         **os.environ,
         "PATH": f"{bin_dir}:{os.environ['PATH']}",
@@ -152,6 +155,22 @@ def deploy(tmp_path: Path, current: str, recorded: list[str], chain: list[str]) 
         ],
     )
     return done.returncode, done.stdout + done.stderr, docker
+
+
+def test_deploy_refuses_without_the_edge_network(tmp_path: Path) -> None:
+    server(tmp_path)
+    done, docker = run(tmp_path, "deploy.sh", "staging", "sha-1a2b3c4", answers=["network inspect|1|"])
+    assert done.returncode != 0 and "no Docker network quiz-edge" in done.stderr, done.stderr
+    assert docker == ["network inspect -f {{range .IPAM.Config}}{{.Subnet}}{{end}} quiz-edge"]
+
+
+def test_deploy_refuses_to_trust_another_subnet_than_the_edge_networks(tmp_path: Path) -> None:
+    server(tmp_path)
+    done, docker = run(
+        tmp_path, "deploy.sh", "staging", "sha-1a2b3c4", answers=["network inspect|0|10.213.0.0/24"]
+    )
+    assert done.returncode != 0 and "but quiz-edge is 10.213.0.0/24" in done.stderr, done.stderr
+    assert len(docker) == 1
 
 
 FP = {"0016": "a" * 16, "0017": "b" * 16, "0018": "c" * 16}
@@ -364,7 +383,7 @@ def lose_terminal(
     (bin_dir / "docker").chmod(0o755)
     log, rules = tmp_path / "docker.log", tmp_path / "answers"
     log.write_text("")
-    rules.write_text("\n".join(answers) + "\n")
+    rules.write_text("\n".join([*answers, EDGE]) + "\n")
     env = {
         **os.environ,
         "PATH": f"{bin_dir}:{os.environ['PATH']}",
