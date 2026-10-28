@@ -32,7 +32,7 @@ ENV PATH="/app/.venv/bin:$PATH" PYTHONUNBUFFERED=1 IFS_WEB_DIST=/app/web/dist IF
     GLIBC_TUNABLES=glibc.malloc.mmap_threshold=1048576
 USER 10001
 EXPOSE 8000
-HEALTHCHECK --interval=30s --timeout=3s --retries=3 CMD ["python", "-c", "import urllib.request,sys; sys.exit(urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=2).status != 200)"]
+HEALTHCHECK --interval=60s --timeout=3s --retries=3 --start-period=60s --start-interval=2s CMD ["python", "-I", "-S", "-c", "import socket, sys; s = socket.create_connection(('127.0.0.1', 8000), 2); s.sendall(b'GET /healthz HTTP/1.0\\r\\n\\r\\n'); sys.exit(s.makefile('rb').readline().split()[1:2] != [b'200'])"]
 # No access log: Nginx keeps one (with IPs) and rotates it; this one would never expire (ADR 0006).
 # uvicorn trusts X-Forwarded-For only from FORWARDED_ALLOW_IPS (the quiz-edge network's subnet on the server, ADR 0011).
 CMD ["uvicorn", "ifs_tests.api.app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2", "--proxy-headers", "--no-access-log"]

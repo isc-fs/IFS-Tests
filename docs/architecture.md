@@ -159,7 +159,7 @@ The `scheduler` container runs `ifs-tests scheduler` (`cli.py`), which loops eve
 
 - A job runs at most once per Madrid date. If the process starts after a job's time (a deploy, the server's 04:00 reboot), the job runs once straight away; every job is idempotent, so that is safe.
 - A failing job is logged (`docker compose logs scheduler`) and not retried until the next day.
-- After each pass the loop runs `SELECT 1` and, only if it succeeds, touches `/tmp/scheduler-heartbeat` (`scheduler.beat`); the container's health check fails if the file is older than 120 seconds. So the scheduler turns unhealthy when it can't reach the database (a wrong `APP_PASSWORD`, the database down), not only when the loop is stuck; each missed beat logs `database unavailable: ...`.
+- After each pass the loop runs `SELECT 1` and, only if it succeeds, touches `/tmp/scheduler-heartbeat` (`scheduler.beat`); the container's health check (every 60 seconds) fails if the file is older than 120 seconds. So the scheduler turns unhealthy when it can't reach the database (a wrong `APP_PASSWORD`, the database down), not only when the loop is stuck; each missed beat logs `database unavailable: ...`.
 - The `backup` container runs its own loop: a dump at 03:30, after maintenance and before the 04:00 reboot.
 - `ifs-tests maintenance` runs the same maintenance job by hand, and `ifs-tests settle` the 00:01 day-close settle alone (maintenance includes it).
 - Both the `api` and `scheduler` containers run with `TZ=Europe/Madrid`, so their log timestamps are Madrid time; the database itself keeps UTC (`timezone=UTC`), and every Madrid-day rule computes the day in code (`domain/daily.madrid_day`).

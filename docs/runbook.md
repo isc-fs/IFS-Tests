@@ -316,7 +316,7 @@ Staging now holds real member data. Put it back by restoring the safety dump the
 
 | Task | Command |
 |---|---|
-| Status and health | `docker ps --filter name=quiz-` (api, scheduler and db show `healthy`; api and scheduler turn `unhealthy` when they can't reach the database) |
+| Status and health | `docker ps --filter name=quiz-` (api, scheduler and db show `healthy`; api and scheduler turn `unhealthy` when they can't reach the database). The checks run every 60 s (db every 30 s), and every 1–2 s during a container's first minute so `deploy.sh` doesn't wait on them; an outage shows as `unhealthy` after about three minutes. They are cheap on purpose (a raw socket under `python -I -S`, `pg_isready` without a shell): the first ones, Python with `urllib` every 30 s and a shell every 5 s, were about 70% of the stack's CPU (October 2026) |
 | Is the site up | `curl -sI https://quiz.iscracingteam.com/healthz` (the app process answers), then `curl -s https://quiz.iscracingteam.com/readyz` (`{"status":"ok"}`: it reaches the database too and the schema has what the code needs; 503 `unavailable`: it doesn't reach it; 503 `schema out of date`: a migration is missing; see the api's log) |
 | Database shell (read-only) | `docker exec -it quiz-prod-db-1 psql -U backup_ro -d quiz` |
 | Database shell (superuser, for fixes) | `docker exec -it quiz-prod-db-1 psql -U postgres -d quiz` |
@@ -359,7 +359,7 @@ docker logs -f quiz-prod-api-1          # follow live
    docker logs --since 30h quiz-prod-scheduler-1 | grep -E "daily|settle|maintenance"
    ```
    A healthy night shows one `daily: {'mech': ..., 'elec': ..., 'rules': ...}` line and one `settle: {...}` line (00:01, `dailies_settled` and `dailies_settle_failed`) and one `maintenance: {...}` line with a count per step (the keys and what each means: [maintenance calendar](maintenance.md#nightly-automatic)). A `maintenance failed` line with a traceback means the job stopped at that step; most steps commit as they go, so what ran before it stays done, and the next run (it is idempotent) picks up the rest.
-2. The container's health (`docker ps`) only says the scheduler loop is alive and reaches the database (it touches a heartbeat file every 30 s, only after a `SELECT 1` succeeds; otherwise it logs `database unavailable: ...` and turns `unhealthy` a few minutes later); it doesn't say a job succeeded. A job that fails is logged and not retried until the next day or the next restart.
+2. The container's health (`docker ps`) only says the scheduler loop is alive and reaches the database (it touches a heartbeat file every 30 s, only after a `SELECT 1` succeeds; otherwise it logs `database unavailable: ...` and turns `unhealthy` about five minutes later: 120 s for the heartbeat to go stale, then three failed checks a minute apart); it doesn't say a job succeeded. A job that fails is logged and not retried until the next day or the next restart.
 3. The jobs keep no record in the database. Indirect checks: today's daily questions exist (`SELECT area, question_id FROM daily_questions WHERE day = (now() AT TIME ZONE 'Europe/Madrid')::date;`, though the first visitor of the day also picks them), and retention deletions appear in the audit log as `user.delete` with `"by": "retention"`.
 
 ### 5.3 Run the maintenance by hand
