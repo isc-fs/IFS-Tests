@@ -17,8 +17,9 @@ state in GitHub Issues.
 Phase 1 is the groundwork (FS-Quiz mirror, proposal). Phases 2–4 build
 the web app on the team's own server: invite + password accounts,
 practice, mock quizzes, a daily question and a leaderboard. The design
-is in `docs/architecture.md` and `docs/adr/`. Phase 5 collects ideas for
-after launch.
+is in `docs/architecture.md` and `docs/adr/`. Phase 5 is the launch;
+phase 6 collects deferred ideas; phases 7–10 are the fair-play rules and
+the season-1b mechanics (ADR 0010).
 
 ## Phase summary
 
@@ -29,7 +30,11 @@ after launch.
 | 3 | Training MVP<br><sub>One branch per way of answering questions, then the tools around them</sub> | ✅ done `feat/8-practice` · ✅ done `feat/9-daily-question` · ✅ done `feat/10-mock-quiz` · ✅ done `feat/11-admin-taxonomy` · ✅ done `feat/12-leaderboard` · ✅ done `feat/13-xp-levels` · ✅ done `feat/14-learning-aids` · ✅ done `feat/15-mingoquiz` | `v0.3.0` |
 | 4 | Team play<br><sub>Live quiz sessions for team meetings and vertical training (ADR 0005)</sub> | ✅ done `feat/16-live-quiz` | `v0.4.0` |
 | 5 | Launch | ✅ done `feat/17-privacy-account` · ✅ done `feat/18-ranked-lp` · ✅ done `feat/19-documentation` · 🔄 active `feat/20-launch` · ✅ done `feat/21-release-decisions` | `v1.0.0` |
-| 6 | After launch _(deferred)_<br><sub>Ideas to prioritise with the team once the MVP is in use</sub> | ⏸ deferred `feat/22-admin-totp` · ⏸ deferred `feat/23-notion-sync` · ⏸ deferred `feat/24-solution-bounty` · ⏸ deferred `feat/25-team-questions` · ⏸ deferred `feat/26-rule-page-links` · ⏸ deferred `feat/27-daily-per-player` | `v1.1.0` |
+| 6 | After launch _(deferred)_<br><sub>Ideas to prioritise with the team once the MVP is in use</sub> | ⏸ deferred `feat/22-admin-totp` · ⏸ deferred `feat/23-notion-sync` · ⏸ deferred `feat/24-solution-bounty` · ⏸ deferred `feat/25-team-questions` · ⏸ deferred `feat/26-rule-page-links` · ⏸ deferred `feat/36-rank-open-questions` | `v1.1.0` |
+| 7 | Fair play<br><sub>Ships in v2.0.0. ADR 0010: the rules per mode in English and Spanish, honest boards and read-only forensics. Branch numbers 28–35 and fix/41 were assigned by the plan; 22–26 and 36 stay in phase 6 for the deferred ideas; 27 moved to phase 8</sub> | ✅ done `feat/28-fair-play-policy` · ✅ done `feat/29-integrity-report` · ✅ done `feat/30-board-accuracy` | `v2.0.0` |
+| 8 | Season 1b<br><sub>Season 1b ships as the single release v2.0.0, deployed dark: a per-player daily with results at day close, option shuffle, and the server side of the announced per-answer totals (phases 7 and 9 land in it too). One switch, IFS_RULES_1B_FROM (26 October 2026, Madrid), turns them all on at one Madrid midnight; IFS_CANARY stays off until the recall pilot (ADR 0010)</sub> | ✅ done `feat/27-daily-per-player` · ✅ done `feat/31-daily-results-at-day-close` · ✅ done `feat/32-daily-option-shuffle` · ✅ done `feat/33-ranked-signals-server` · 🔜 planned `fix/40-release-v2.0.0` | `v2.0.0` |
+| 9 | Signals<br><sub>Ships in v2.0.0 with phase 8, from the same switch: the client sends the totals the notice already names, from a Madrid midnight set at deploy, and the report reads them</sub> | ✅ done `feat/34-ranked-signals-client` · ✅ done `feat/35-integrity-signals-and-canary` | `v2.0.0` |
+| 10 | Contract<br><sub>v2.1: after v2.0.0 has run in prod with the per-player daily in effect, the shared daily goes (the contract step)</sub> | 🔜 planned `fix/41-drop-shared-daily` | `v2.1.0` |
 
 ## Branch diagram
 
@@ -148,6 +153,70 @@ gitGraph
     merge feat/21-release-decisions
     checkout main
     merge dev tag: "v1.0.0"
+    checkout dev
+
+    %% Phase 7 — Fair play
+    branch feat/28-fair-play-policy
+    commit id: "✔ Fair-play rules per mode in English and Spanish dated to season 1b, the privacy purpose and signals notice, the board caption, ADR 0010, LIA and DPIA"
+    checkout dev
+    merge feat/28-fair-play-policy
+    branch feat/29-integrity-report
+    commit id: "✔ Read-only integrity-report CLI with pseudonymous output, recusal and a two-person reveal; pure statistics with table tests"
+    checkout dev
+    merge feat/29-integrity-report
+    branch feat/30-board-accuracy
+    commit id: "✔ Accuracy with Wilson bounds and n beside LP on the boards; ranking order unchanged"
+    checkout dev
+    merge feat/30-board-accuracy
+    checkout main
+    merge dev tag: "v2.0.0"
+    checkout dev
+
+    %% Phase 8 — Season 1b
+    branch feat/27-daily-per-player
+    commit id: "✔ A daily question drawn per player from its own Madrid-midnight effective date; today's drawn set withheld from practice, mock summary, review and live picks"
+    checkout dev
+    merge feat/27-daily-per-player
+    branch feat/31-daily-results-at-day-close
+    commit id: "✔ Daily answers recorded, graded and granted at Madrid day close (settle), so nothing leaks through /me or the rank card"
+    checkout dev
+    merge feat/31-daily-results-at-day-close
+    branch feat/32-daily-option-shuffle
+    commit id: "✔ Option order shuffled per daily attempt, with exclusions for positional and ordered options and a reviewer toggle"
+    checkout dev
+    merge feat/32-daily-option-shuffle
+    branch feat/33-ranked-signals-server
+    commit id: "✔ Nullable per-answer totals on ranked attempts, uniform decoy draw behind IFS_CANARY, export and purge 90 days after season end, two-step rollout"
+    checkout dev
+    merge feat/33-ranked-signals-server
+    branch fix/40-release-v2.0.0
+    commit id: "○ Release v2.0.0, ranked-play integrity deployed dark: version, notes, roadmap and API client"
+    checkout dev
+    merge fix/40-release-v2.0.0
+    checkout main
+    merge dev tag: "v2.0.0"
+    checkout dev
+
+    %% Phase 9 — Signals
+    branch feat/34-ranked-signals-client
+    commit id: "✔ Ranked-signals hook (declared and undeclared time away, paste on typed answers, long copies) and the honest AI note on copy"
+    checkout dev
+    merge feat/34-ranked-signals-client
+    branch feat/35-integrity-signals-and-canary
+    commit id: "✔ Signals as context columns and canary evidence in the integrity report"
+    checkout dev
+    merge feat/35-integrity-signals-and-canary
+    checkout main
+    merge dev tag: "v2.0.0"
+    checkout dev
+
+    %% Phase 10 — Contract
+    branch fix/41-drop-shared-daily
+    commit id: "○ Contract step in its own release after the per-player daily is in effect; drop daily_questions, ensure_daily and the scheduler job"
+    checkout dev
+    merge fix/41-drop-shared-daily
+    checkout main
+    merge dev tag: "v2.1.0"
     checkout dev
 
 ```

@@ -233,24 +233,25 @@ def test_roadmap_places_the_integrity_branches_in_phases_seven_to_ten() -> None:
     text = read(ROOT / ".github" / "roadmap.yaml")
     by_phase = phases(text)
     expected = {
-        7: ("v1.2.0", ["feat/28-fair-play-policy", "feat/29-integrity-report", "feat/30-board-accuracy"]),
+        7: ("v2.0.0", ["feat/28-fair-play-policy", "feat/29-integrity-report", "feat/30-board-accuracy"]),
         8: (
-            "v1.3.0",
+            "v2.0.0",
             [
                 "feat/27-daily-per-player",
                 "feat/31-daily-results-at-day-close",
                 "feat/32-daily-option-shuffle",
                 "feat/33-ranked-signals-server",
+                "fix/40-release-v2.0.0",
             ],
         ),
         9: (
-            "v1.4.0",
+            "v2.0.0",
             [
                 "feat/34-ranked-signals-client",
                 "feat/35-integrity-signals-and-canary",
             ],
         ),
-        10: ("v1.5.0", ["fix/40-drop-shared-daily"]),
+        10: ("v2.1.0", ["fix/41-drop-shared-daily"]),
     }
     for number, (tag, names) in expected.items():
         block = by_phase[number]
@@ -294,7 +295,7 @@ def test_adr_gates_are_achievable_before_the_rule_date() -> None:
     assert re.search(r"before 26 October 2026, with a target of at least 7 days before, by 19 October", text)
     assert re.search(r"sign this ADR.*before it goes to production", text)
     assert re.search(r"admin-settable\s+hide", text)
-    assert re.search(r"fix/40 is a later release again", text)
+    assert re.search(r"fix/41 is a later release again", text)
     assert not re.search(r"14 days", text)
 
 
